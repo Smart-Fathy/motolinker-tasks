@@ -1,0 +1,20 @@
+{
+  "name": "motolinker-task-bot",
+  "version": "1.0.0",
+  "description": "MotoLinker Slack Task Management Bot — Chiefs assign, teams execute.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@slack/bolt": "^3.19.0",
+    "@supabase/supabase-js": "^2.43.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
