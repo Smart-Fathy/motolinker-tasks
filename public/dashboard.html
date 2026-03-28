@@ -329,10 +329,11 @@
   <div class="auth-card">
     <div class="auth-icon">🔐</div>
     <h2 class="auth-title">Admin Access</h2>
-    <p class="auth-sub">Enter your dashboard token to continue</p>
-    <input type="password" id="token-input" class="auth-input" placeholder="Dashboard token…">
-    <p id="auth-error" class="auth-error">Invalid token. Please try again.</p>
-    <button class="btn btn-primary btn-full" onclick="submitToken()">Access Dashboard</button>
+    <p class="auth-sub">Sign in with your admin credentials</p>
+    <input type="text"     id="login-username" class="auth-input" placeholder="Username" autocomplete="username">
+    <input type="password" id="login-password" class="auth-input" placeholder="Password" autocomplete="current-password">
+    <p id="auth-error" class="auth-error">Invalid username or password.</p>
+    <button class="btn btn-primary btn-full" onclick="submitLogin()">Sign In</button>
   </div>
 </div>
 
@@ -423,61 +424,75 @@
 
 <script>
 // ── Auth ────────────────────────────────────────────────────────────────────
-let authToken = new URLSearchParams(location.search).get('token')
-             || localStorage.getItem('ml_dashboard_token')
-             || '';
+let authToken = localStorage.getItem('ml_admin_token') || '';
 
 let allTasks = [];
 let charts   = {};
 let refreshTimer = null;
 let countdown    = 60;
 
-function apiUrl(p) {
-  return authToken ? `${p}?token=${encodeURIComponent(authToken)}` : p;
+// All API calls go through here — adds Bearer token header automatically
+function apiFetch(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+  return fetch(path, { ...opts, headers });
 }
 
 async function checkAuth() {
+  if (!authToken) { showAuthScreen(); return false; }
   try {
-    const r = await fetch(apiUrl('/api/dashboard/stats'));
-    if (r.status === 401) {
-      document.getElementById('auth-screen').style.display = 'flex';
-      return false;
-    }
-  } catch (_) { /* network error — show dashboard anyway and let API calls surface errors */ }
+    const r = await apiFetch('/api/auth/check');
+    if (r.status === 401) { showAuthScreen(); return false; }
+  } catch (_) { /* network issue — show dashboard and let calls fail naturally */ }
   document.getElementById('app').style.display = 'block';
   return true;
 }
 
-async function submitToken() {
-  authToken = document.getElementById('token-input').value.trim();
+function showAuthScreen() {
+  localStorage.removeItem('ml_admin_token');
+  authToken = '';
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+async function submitLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl    = document.getElementById('auth-error');
+  errEl.style.display = 'none';
   try {
-    const r = await fetch(apiUrl('/api/dashboard/stats'));
-    if (r.status === 401) {
-      document.getElementById('auth-error').style.display = 'block';
-      return;
-    }
-    localStorage.setItem('ml_dashboard_token', authToken);
+    const r = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!r.ok) { errEl.style.display = 'block'; return; }
+    const data = await r.json();
+    authToken = data.token;
+    localStorage.setItem('ml_admin_token', authToken);
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     loadDashboard();
   } catch (e) {
-    document.getElementById('auth-error').textContent = 'Connection error: ' + e.message;
-    document.getElementById('auth-error').style.display = 'block';
+    errEl.textContent = 'Connection error: ' + e.message;
+    errEl.style.display = 'block';
   }
 }
 
-document.getElementById('token-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') submitToken();
+document.getElementById('login-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitLogin();
 });
 
 // ── Fetch ───────────────────────────────────────────────────────────────────
 async function fetchStats() {
-  const r = await fetch(apiUrl('/api/dashboard/stats'));
+  const r = await apiFetch('/api/dashboard/stats');
+  if (r.status === 401) { showAuthScreen(); throw new Error('Session expired'); }
   if (!r.ok) throw new Error('Stats: ' + r.status);
   return r.json();
 }
 async function fetchTasks() {
-  const r = await fetch(apiUrl('/api/dashboard/tasks'));
+  const r = await apiFetch('/api/dashboard/tasks');
+  if (r.status === 401) { showAuthScreen(); throw new Error('Session expired'); }
   if (!r.ok) throw new Error('Tasks: ' + r.status);
   return r.json();
 }
