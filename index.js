@@ -1,10 +1,15 @@
-const { App, LogLevel } = require('@slack/bolt');
+const { App, ExpressReceiver, LogLevel } = require('@slack/bolt');
 const { createClient } = require('@supabase/supabase-js');
+const path = require('path');
 
 // ─── App Init ────────────────────────────────────────────────────────────────
+const receiver = new ExpressReceiver({
+  signingSecret: process.env.SLACK_SIGNING_SECRET,
+});
+
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
+  receiver,
   logLevel: LogLevel.INFO,
 });
 
@@ -537,9 +542,84 @@ app.command('/task-stats', async ({ command, ack, client, respond }) => {
   });
 });
 
+// ─── Admin Dashboard ──────────────────────────────────────────────────────────
+const DASHBOARD_TOKEN = process.env.DASHBOARD_TOKEN;
+
+function dashboardAuth(req, res, next) {
+  if (!DASHBOARD_TOKEN) return next();
+  const provided = req.query.token || req.headers['x-dashboard-token'];
+  if (provided !== DASHBOARD_TOKEN) {
+    return res.status(401).send('Unauthorized — add ?token=<DASHBOARD_TOKEN> to the URL');
+  }
+  next();
+}
+
+receiver.router.get('/dashboard', dashboardAuth, (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+receiver.router.get('/api/dashboard/tasks', dashboardAuth, async (_req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+receiver.router.get('/api/dashboard/stats', dashboardAuth, async (_req, res) => {
+  try {
+    const { data: tasks, error } = await supabase.from('tasks').select('*');
+    if (error) throw error;
+
+    if (!tasks || tasks.length === 0) {
+      return res.json({
+        total: 0, done: 0, inProgress: 0, todo: 0,
+        highPriority: 0, overdue: 0,
+        byChannel: {}, byPriority: { high: 0, medium: 0, low: 0 },
+        completionRate: 0,
+      });
+    }
+
+    const total      = tasks.length;
+    const done       = tasks.filter((t) => t.status === 'done').length;
+    const inProgress = tasks.filter((t) => t.status === 'in_progress').length;
+    const todo       = tasks.filter((t) => t.status === 'todo').length;
+    const highPriority = tasks.filter((t) => t.priority === 'high' && t.status !== 'done').length;
+
+    const today  = new Date().toISOString().split('T')[0];
+    const overdue = tasks.filter((t) => t.due_date < today && t.status !== 'done').length;
+
+    const byChannel = {};
+    tasks.forEach((t) => {
+      if (!byChannel[t.channel_name]) {
+        byChannel[t.channel_name] = { todo: 0, in_progress: 0, done: 0, total: 0 };
+      }
+      byChannel[t.channel_name][t.status]++;
+      byChannel[t.channel_name].total++;
+    });
+
+    const byPriority = { high: 0, medium: 0, low: 0 };
+    tasks.forEach((t) => { if (byPriority[t.priority] !== undefined) byPriority[t.priority]++; });
+
+    res.json({
+      total, done, inProgress, todo, highPriority, overdue,
+      byChannel, byPriority,
+      completionRate: Math.round((done / total) * 100),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 (async () => {
   const port = process.env.PORT || 3000;
   await app.start(port);
   console.log(`⚡️ MotoLinker Task Bot running on port ${port}`);
+  console.log(`📊 Admin dashboard available at http://localhost:${port}/dashboard`);
 })();
