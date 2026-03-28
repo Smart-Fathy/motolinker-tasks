@@ -1087,10 +1087,29 @@ async function deleteTask(id) {
   loadDashboard();
 }
 
+function downloadCSVTemplate() {
+  const rows = [
+    ['title', 'description', 'channel_name', 'assignee_id', 'due_date', 'priority', 'milestone'],
+    ['Fix homepage bug',    'Button not working on mobile', '#digital-presence', 'U012345678', '2026-04-15', 'high',   'Sprint 1'],
+    ['Write Q2 report',     'Monthly summary for leadership', '#marketing',      'U087654321', '2026-04-30', 'medium', 'Q2'],
+    ['Update docs',         '',                              '#general',          'U012345678', '2026-05-01', 'low',   ''],
+  ];
+  const csv  = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'tasks_template.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function openCSVModal() {
   showModal('Bulk Upload Tasks via CSV', `
     <p style="font-size:13px;color:var(--muted);margin-bottom:12px">CSV columns: <code>title, description, channel_name, assignee_id, due_date, priority, milestone</code></p>
     <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Use <strong>#channel-name</strong> format. Get assignee IDs from the Employees page.</p>
+    <div style="margin-bottom:16px">
+      <button class="btn btn-outline" onclick="downloadCSVTemplate()" style="font-size:12px">⬇ Download Template</button>
+    </div>
     <div class="form-group"><label class="form-label">CSV File *</label><input type="file" id="csv-file" accept=".csv" class="form-control" style="padding:6px"></div>
     <div id="csv-result" style="margin-top:8px"></div>
   `, `<button class="btn btn-outline" onclick="hideModal()">Close</button>
