@@ -196,7 +196,19 @@
     }
     .table-title { font-size: 14px; font-weight: 700; }
 
-    .table-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+    .table-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+    /* ── Bulk action bar ───────────────────────────────────── */
+    .bulk-bar {
+      display: none; align-items: center; gap: 10px;
+      padding: 10px 20px;
+      background: #eef2ff; border-bottom: 1px solid #c7d2fe;
+      font-size: 13px; font-weight: 600; color: var(--primary);
+    }
+    .bulk-bar.visible { display: flex; }
+
+    /* row checkbox */
+    input[type=checkbox].row-cb { width: 15px; height: 15px; cursor: pointer; accent-color: var(--primary); }
 
     .filter-input {
       padding: 7px 12px;
@@ -607,6 +619,12 @@
           </select>
         </div>
       </div>
+      <div id="bulk-bar" class="bulk-bar">
+        <span id="bulk-count">0 selected</span>
+        <button class="btn btn-success" style="padding:5px 14px;font-size:12px" onclick="bulkMarkDone()">✅ Mark Done</button>
+        <button class="btn btn-danger"  style="padding:5px 14px;font-size:12px" onclick="bulkDelete()">🗑 Delete</button>
+        <button class="btn btn-outline" style="padding:5px 14px;font-size:12px" onclick="clearSelection()">✕ Clear</button>
+      </div>
       <div id="table-container">
         <div class="loading"><div class="spinner"></div> Loading tasks…</div>
       </div>
@@ -938,7 +956,9 @@ function renderTable(tasks) {
     const dueLabel = overdue ? `${t.due_date} ⚠️` : t.due_date;
     const createdDate = new Date(t.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
-    return `<tr>
+    const isDone = t.status === 'done';
+    return `<tr id="row-${t.id}">
+      <td style="width:32px"><input type="checkbox" class="row-cb task-cb" data-id="${t.id}" onchange="onRowCheck()"></td>
       <td class="task-id">#${t.id}</td>
       <td>
         <div class="task-title">${esc(t.title)}</div>
@@ -952,6 +972,7 @@ function renderTable(tasks) {
       <td>${t.milestone ? `<span class="milestone-tag">🏁 ${esc(t.milestone)}</span>` : `<span style="color:var(--muted)">—</span>`}</td>
       <td style="font-size:12px;color:var(--muted);white-space:nowrap">${createdDate}</td>
       <td style="white-space:nowrap">
+        ${isDone ? '' : `<button class="btn btn-success" style="padding:4px 10px;font-size:11px" onclick="quickDone(${t.id})">✓ Done</button> `}
         <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openTaskModal(${t.id})">Edit</button>
         <button class="btn btn-danger"  style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteTask(${t.id})">Delete</button>
       </td>
@@ -963,6 +984,7 @@ function renderTable(tasks) {
       <table>
         <thead>
           <tr>
+            <th style="width:32px"><input type="checkbox" class="row-cb" id="cb-all" onchange="toggleSelectAll(this)"></th>
             <th>ID</th>
             <th>Title</th>
             <th>Channel</th>
@@ -1022,6 +1044,54 @@ function startCountdown() {
     el.textContent = `Auto-refresh in ${countdown}s`;
     if (countdown <= 0) { clearInterval(refreshTimer); loadDashboard(); }
   }, 1000);
+}
+
+// ── Selection & bulk actions ──────────────────────────────────────────────────
+function getSelectedIds() {
+  return [...document.querySelectorAll('.task-cb:checked')].map(cb => parseInt(cb.dataset.id));
+}
+
+function onRowCheck() {
+  const ids  = getSelectedIds();
+  const all  = document.querySelectorAll('.task-cb');
+  const bar  = document.getElementById('bulk-bar');
+  const cbAll = document.getElementById('cb-all');
+  document.getElementById('bulk-count').textContent = `${ids.length} selected`;
+  bar.classList.toggle('visible', ids.length > 0);
+  if (cbAll) cbAll.indeterminate = ids.length > 0 && ids.length < all.length;
+  if (cbAll) cbAll.checked = ids.length === all.length && all.length > 0;
+}
+
+function toggleSelectAll(cb) {
+  document.querySelectorAll('.task-cb').forEach(el => { el.checked = cb.checked; });
+  onRowCheck();
+}
+
+function clearSelection() {
+  document.querySelectorAll('.task-cb, #cb-all').forEach(el => { el.checked = false; el.indeterminate = false; });
+  document.getElementById('bulk-bar').classList.remove('visible');
+}
+
+async function quickDone(id) {
+  await apiFetch(`/api/dashboard/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'done' }) });
+  loadDashboard();
+}
+
+async function bulkMarkDone() {
+  const ids = getSelectedIds();
+  if (!ids.length) return;
+  await Promise.all(ids.map(id => apiFetch(`/api/dashboard/tasks/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'done' }) })));
+  clearSelection();
+  loadDashboard();
+}
+
+async function bulkDelete() {
+  const ids = getSelectedIds();
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} selected task(s)? This cannot be undone.`)) return;
+  await Promise.all(ids.map(id => apiFetch(`/api/dashboard/tasks/${id}`, { method: 'DELETE' })));
+  clearSelection();
+  loadDashboard();
 }
 
 // ── User name cache & resolver ────────────────────────────────────────────────
@@ -1089,10 +1159,10 @@ async function deleteTask(id) {
 
 function downloadCSVTemplate() {
   const rows = [
-    ['title', 'description', 'channel_name', 'assignee_id', 'due_date', 'priority', 'milestone'],
-    ['Fix homepage bug',    'Button not working on mobile', '#digital-presence', 'U012345678', '2026-04-15', 'high',   'Sprint 1'],
-    ['Write Q2 report',     'Monthly summary for leadership', '#marketing',      'U087654321', '2026-04-30', 'medium', 'Q2'],
-    ['Update docs',         '',                              '#general',          'U012345678', '2026-05-01', 'low',   ''],
+    ['title', 'description', 'channel_name', 'assignee_id', 'due_date', 'priority', 'milestone', 'status'],
+    ['Fix homepage bug',    'Button not working on mobile',   '#digital-presence', 'U012345678', '2026-04-15', 'high',   'Sprint 1', 'todo'],
+    ['Write Q2 report',     'Monthly summary for leadership', '#marketing',        'U087654321', '15/04/2026', 'medium', 'Q2',       'in_progress'],
+    ['Old task from Jan',   'Completed last quarter',         '#general',          'U012345678', '15/1/2026',  'low',    'Q1',       'done'],
   ];
   const csv  = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -1105,8 +1175,9 @@ function downloadCSVTemplate() {
 
 function openCSVModal() {
   showModal('Bulk Upload Tasks via CSV', `
-    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">CSV columns: <code>title, description, channel_name, assignee_id, due_date, priority, milestone</code></p>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Use <strong>#channel-name</strong> format. Get assignee IDs from the Employees page.</p>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">CSV columns: <code>title, description, channel_name, assignee_id, due_date, priority, milestone, status</code></p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:4px">Use <strong>#channel-name</strong> format. Get assignee IDs from the Employees page.</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Dates accept any format: <code>2026-04-15</code>, <code>15/04/2026</code>, <code>15/4/2026</code>. Past dates are allowed.</p>
     <div style="margin-bottom:16px">
       <button class="btn btn-outline" onclick="downloadCSVTemplate()" style="font-size:12px">⬇ Download Template</button>
     </div>

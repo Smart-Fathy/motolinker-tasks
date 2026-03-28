@@ -347,6 +347,27 @@ receiver.router.delete('/api/dashboard/tasks/:id', requireAuth, async (req, res)
 });
 
 // ── CSV Bulk Upload ───────────────────────────────────────────────────────────
+function normalizeDate(str) {
+  if (!str) return str;
+  str = str.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str; // already YYYY-MM-DD
+  // DD/MM/YYYY or D/M/YYYY or DD-MM-YYYY
+  const dmy = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+  if (dmy) {
+    let [, d, m, y] = dmy;
+    // If first part > 12 it must be day; otherwise assume DD/MM (international default)
+    if (parseInt(d) > 12) return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+    if (parseInt(m) > 12) return `${y}-${d.padStart(2,'0')}-${m.padStart(2,'0')}`;
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`; // assume DD/MM
+  }
+  // YYYY/MM/DD
+  const ymd = str.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+  if (ymd) return `${ymd[1]}-${ymd[2].padStart(2,'0')}-${ymd[3].padStart(2,'0')}`;
+  // Fallback: let JS parse it
+  const parsed = new Date(str);
+  if (!isNaN(parsed)) return parsed.toISOString().split('T')[0];
+  return str;
+}
 function parseCSV(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   if (lines.length < 2) return [];
@@ -378,7 +399,7 @@ receiver.router.post('/api/dashboard/tasks/bulk', requireAuth, upload.single('fi
       errors.push(`Row ${i + 2}: missing required fields (title, channel_name, assignee_id, due_date)`); return;
     }
     const chName = row.channel_name.startsWith('#') ? row.channel_name : '#' + row.channel_name;
-    inserts.push({ title: row.title, description: row.description || '', channel_id: chId, channel_name: chName, assignee_id: row.assignee_id, due_date: row.due_date, priority: ['high', 'medium', 'low'].includes(row.priority) ? row.priority : 'medium', milestone: row.milestone || '', created_by: 'dashboard_bulk', status: 'todo' });
+    inserts.push({ title: row.title, description: row.description || '', channel_id: chId, channel_name: chName, assignee_id: row.assignee_id, due_date: normalizeDate(row.due_date), priority: ['high', 'medium', 'low'].includes(row.priority) ? row.priority : 'medium', milestone: row.milestone || '', created_by: 'dashboard_bulk', status: row.status && ['todo','in_progress','done'].includes(row.status) ? row.status : 'todo' });
   });
 
   if (inserts.length) {
