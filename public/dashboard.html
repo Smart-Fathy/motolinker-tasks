@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MotoLinker · Admin Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #f0f4f8;
+      --surface:   #ffffff;
+      --border:    #e2e8f0;
+      --text:      #1a202c;
+      --muted:     #718096;
+      --primary:   #5a67d8;
+      --success:   #38a169;
+      --warning:   #d69e2e;
+      --danger:    #e53e3e;
+      --info:      #3182ce;
+      --orange:    #dd6b20;
+      --radius:    12px;
+      --shadow:    0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+      --shadow-md: 0 4px 16px rgba(0,0,0,.08);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+
+    .header-left { display: flex; align-items: center; gap: 12px; }
+
+    .logo {
+      width: 36px; height: 36px;
+      background: var(--primary);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 18px; font-weight: 800;
+      flex-shrink: 0;
+    }
+
+    .header h1 { font-size: 17px; font-weight: 700; }
+
+    .header-badge {
+      background: #ebf0ff;
+      color: var(--primary);
+      font-size: 10px; font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 999px;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+    }
+
+    .header-right { display: flex; align-items: center; gap: 14px; }
+
+    .last-updated { font-size: 12px; color: var(--muted); }
+
+    .refresh-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+
+    .refresh-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--success);
+      flex-shrink: 0;
+    }
+    .refresh-dot.pulse { animation: pulse .8s ease-in-out; }
+    @keyframes pulse {
+      0%   { opacity: 1; transform: scale(1); }
+      50%  { opacity: .4; transform: scale(1.6); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border-radius: 8px;
+      font-size: 13px; font-weight: 500; cursor: pointer; border: none;
+      transition: filter .15s, background .15s;
+      white-space: nowrap;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-outline:hover { background: var(--bg); }
+    .btn-full { width: 100%; justify-content: center; padding: 11px; }
+
+    /* ── Main ───────────────────────────────────────────────── */
+    .main { padding: 28px; max-width: 1440px; margin: 0 auto; }
+
+    /* ── Stats Grid ─────────────────────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+    @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 700px)  { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 20px 16px;
+      box-shadow: var(--shadow);
+      border-top: 3px solid transparent;
+    }
+    .stat-card.total       { border-top-color: var(--info); }
+    .stat-card.done        { border-top-color: var(--success); }
+    .stat-card.in-progress { border-top-color: var(--warning); }
+    .stat-card.todo        { border-top-color: var(--muted); }
+    .stat-card.high-pri    { border-top-color: var(--danger); }
+    .stat-card.overdue     { border-top-color: var(--orange); }
+
+    .stat-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .6px; color: var(--muted); margin-bottom: 10px;
+    }
+    .stat-value { font-size: 36px; font-weight: 800; line-height: 1; margin-bottom: 5px; }
+    .stat-sub   { font-size: 12px; color: var(--muted); }
+
+    .stat-card.total       .stat-value { color: var(--info); }
+    .stat-card.done        .stat-value { color: var(--success); }
+    .stat-card.in-progress .stat-value { color: var(--warning); }
+    .stat-card.todo        .stat-value { color: var(--muted); }
+    .stat-card.high-pri    .stat-value { color: var(--danger); }
+    .stat-card.overdue     .stat-value { color: var(--orange); }
+
+    /* ── Progress Bar ───────────────────────────────────────── */
+    .progress-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 22px;
+      display: flex; align-items: center; gap: 18px;
+    }
+    .progress-label { font-size: 13px; font-weight: 600; white-space: nowrap; min-width: 180px; }
+    .progress-track { flex: 1; height: 10px; background: var(--border); border-radius: 999px; overflow: hidden; }
+    .progress-fill  { height: 100%; background: linear-gradient(90deg, #38a169, #68d391); border-radius: 999px; transition: width .6s ease; }
+    .progress-pct   { font-size: 20px; font-weight: 800; color: var(--success); min-width: 52px; text-align: right; }
+
+    /* ── Charts ─────────────────────────────────────────────── */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+    @media (max-width: 1100px) { .charts-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 640px)  { .charts-grid { grid-template-columns: 1fr; } }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+    .card-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 16px; }
+    .chart-wrap { position: relative; height: 230px; }
+
+    /* ── Table ──────────────────────────────────────────────── */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .table-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px;
+    }
+    .table-title { font-size: 14px; font-weight: 700; }
+
+    .table-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .filter-input {
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .filter-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(90,103,216,.12);
+    }
+    .search-input { min-width: 200px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+    thead th {
+      padding: 10px 16px;
+      text-align: left;
+      font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .5px;
+      color: var(--muted);
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      cursor: pointer; user-select: none;
+    }
+    thead th:hover { color: var(--text); }
+    thead th.sort-asc::after  { content: ' ↑'; }
+    thead th.sort-desc::after { content: ' ↓'; }
+
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #f7f9fc; }
+
+    td { padding: 12px 16px; vertical-align: middle; }
+
+    .task-id   { font-family: monospace; font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .task-title { font-weight: 600; max-width: 260px; }
+    .task-desc  { font-size: 11px; color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 3px 9px; border-radius: 999px;
+      font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+    .badge-todo        { background: #edf2f7; color: #4a5568; }
+    .badge-in_progress { background: #fef3c7; color: #92400e; }
+    .badge-done        { background: #d1fae5; color: #065f46; }
+    .badge-high        { background: #fee2e2; color: #991b1b; }
+    .badge-medium      { background: #fef3c7; color: #92400e; }
+    .badge-low         { background: #dcfce7; color: #166534; }
+
+    .channel-tag { font-size: 12px; color: var(--primary); font-weight: 600; white-space: nowrap; }
+    .due-date    { font-size: 12px; white-space: nowrap; }
+    .due-date.overdue  { color: var(--danger); font-weight: 700; }
+    .due-date.due-soon { color: var(--orange); font-weight: 600; }
+
+    .milestone-tag {
+      font-size: 11px; background: #ebf4ff; color: var(--info);
+      padding: 2px 7px; border-radius: 4px; white-space: nowrap;
+    }
+
+    .assignee-id { font-size: 11px; font-family: monospace; color: var(--muted); }
+
+    .table-footer {
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px; color: var(--muted);
+      background: var(--bg);
+    }
+
+    /* ── Utility ────────────────────────────────────────────── */
+    .loading {
+      display: flex; align-items: center; justify-content: center;
+      padding: 64px; color: var(--muted); font-size: 14px; gap: 10px;
+    }
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-msg {
+      background: #fff5f5; border: 1px solid #fed7d7; color: #c53030;
+      padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 18px;
+    }
+
+    .empty-state { text-align: center; padding: 56px; color: var(--muted); }
+    .empty-icon  { font-size: 44px; margin-bottom: 12px; }
+    .empty-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; color: var(--text); }
+    .empty-sub   { font-size: 13px; }
+
+    /* ── Auth Screen ─────────────────────────────────────────── */
+    .auth-screen {
+      min-height: 100vh; display: flex;
+      align-items: center; justify-content: center; background: var(--bg);
+    }
+    .auth-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 44px 40px;
+      width: 360px; box-shadow: var(--shadow-md); text-align: center;
+    }
+    .auth-icon {
+      width: 58px; height: 58px; background: var(--primary);
+      border-radius: 14px; display: flex; align-items: center;
+      justify-content: center; font-size: 28px; margin: 0 auto 18px;
+    }
+    .auth-title  { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+    .auth-sub    { font-size: 14px; color: var(--muted); margin-bottom: 24px; }
+    .auth-input  {
+      width: 100%; padding: 10px 14px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 14px; outline: none; margin-bottom: 12px;
+    }
+    .auth-input:focus { border-color: var(--primary); }
+    .auth-error  { color: var(--danger); font-size: 12px; margin-bottom: 8px; display: none; }
+  </style>
+</head>
+<body>
+
+<!-- ── Auth Screen ─────────────────────────────────────────────────────────── -->
+<div id="auth-screen" class="auth-screen" style="display:none">
+  <div class="auth-card">
+    <div class="auth-icon">🔐</div>
+    <h2 class="auth-title">Admin Access</h2>
+    <p class="auth-sub">Enter your dashboard token to continue</p>
+    <input type="password" id="token-input" class="auth-input" placeholder="Dashboard token…">
+    <p id="auth-error" class="auth-error">Invalid token. Please try again.</p>
+    <button class="btn btn-primary btn-full" onclick="submitToken()">Access Dashboard</button>
+  </div>
+</div>
+
+<!-- ── Dashboard ──────────────────────────────────────────────────────────── -->
+<div id="app" style="display:none">
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">M</div>
+      <h1>MotoLinker</h1>
+      <span class="header-badge">Admin Dashboard</span>
+    </div>
+    <div class="header-right">
+      <div class="refresh-indicator">
+        <div class="refresh-dot" id="refresh-dot"></div>
+        <span id="refresh-countdown">Auto-refresh in 60s</span>
+      </div>
+      <span class="last-updated" id="last-updated"></span>
+      <button class="btn btn-outline" onclick="loadDashboard()">↻ Refresh</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <div id="error-container"></div>
+
+    <!-- Stats -->
+    <div class="stats-grid" id="stats-grid">
+      <div class="loading" style="grid-column:1/-1"><div class="spinner"></div> Loading stats…</div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-card">
+      <span class="progress-label">Overall Completion Rate</span>
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+      <span class="progress-pct" id="progress-pct">—</span>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="card-title">Tasks by Channel</div>
+        <div class="chart-wrap"><canvas id="channelChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="card-title">Status Distribution</div>
+        <div class="chart-wrap"><canvas id="statusChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="card-title">Priority Breakdown</div>
+        <div class="chart-wrap"><canvas id="priorityChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Task Table -->
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-title">All Tasks</span>
+        <div class="table-filters">
+          <input  type="text"   id="search"         class="filter-input search-input" placeholder="🔍  Search title or description…" oninput="filterTasks()">
+          <select id="f-status"   class="filter-input" onchange="filterTasks()">
+            <option value="">All Status</option>
+            <option value="todo">⏳ To Do</option>
+            <option value="in_progress">▶️ In Progress</option>
+            <option value="done">✅ Done</option>
+          </select>
+          <select id="f-priority" class="filter-input" onchange="filterTasks()">
+            <option value="">All Priority</option>
+            <option value="high">🔴 High</option>
+            <option value="medium">🟡 Medium</option>
+            <option value="low">🟢 Low</option>
+          </select>
+          <select id="f-channel"  class="filter-input" onchange="filterTasks()">
+            <option value="">All Channels</option>
+          </select>
+        </div>
+      </div>
+      <div id="table-container">
+        <div class="loading"><div class="spinner"></div> Loading tasks…</div>
+      </div>
+      <div class="table-footer">
+        <span id="table-count">—</span>
+        <span>MotoLinker Task Management</span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── Auth ────────────────────────────────────────────────────────────────────
+let authToken = new URLSearchParams(location.search).get('token')
+             || localStorage.getItem('ml_dashboard_token')
+             || '';
+
+let allTasks = [];
+let charts   = {};
+let refreshTimer = null;
+let countdown    = 60;
+
+function apiUrl(p) {
+  return authToken ? `${p}?token=${encodeURIComponent(authToken)}` : p;
+}
+
+async function checkAuth() {
+  try {
+    const r = await fetch(apiUrl('/api/dashboard/stats'));
+    if (r.status === 401) {
+      document.getElementById('auth-screen').style.display = 'flex';
+      return false;
+    }
+  } catch (_) { /* network error — show dashboard anyway and let API calls surface errors */ }
+  document.getElementById('app').style.display = 'block';
+  return true;
+}
+
+async function submitToken() {
+  authToken = document.getElementById('token-input').value.trim();
+  try {
+    const r = await fetch(apiUrl('/api/dashboard/stats'));
+    if (r.status === 401) {
+      document.getElementById('auth-error').style.display = 'block';
+      return;
+    }
+    localStorage.setItem('ml_dashboard_token', authToken);
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadDashboard();
+  } catch (e) {
+    document.getElementById('auth-error').textContent = 'Connection error: ' + e.message;
+    document.getElementById('auth-error').style.display = 'block';
+  }
+}
+
+document.getElementById('token-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitToken();
+});
+
+// ── Fetch ───────────────────────────────────────────────────────────────────
+async function fetchStats() {
+  const r = await fetch(apiUrl('/api/dashboard/stats'));
+  if (!r.ok) throw new Error('Stats: ' + r.status);
+  return r.json();
+}
+async function fetchTasks() {
+  const r = await fetch(apiUrl('/api/dashboard/tasks'));
+  if (!r.ok) throw new Error('Tasks: ' + r.status);
+  return r.json();
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+const TODAY = new Date().toISOString().split('T')[0];
+function isOverdue(d, s) { return s !== 'done' && d < TODAY; }
+function isDueSoon(d, s) {
+  if (s === 'done') return false;
+  const diff = (new Date(d) - new Date()) / 86400000;
+  return diff >= 0 && diff <= 3;
+}
+
+function statusBadge(s) {
+  const map = { todo: '⏳ To Do', in_progress: '▶️ In Progress', done: '✅ Done' };
+  return `<span class="badge badge-${s}">${map[s] || s}</span>`;
+}
+function priorityBadge(p) {
+  const map = { high: '🔴 High', medium: '🟡 Medium', low: '🟢 Low' };
+  return `<span class="badge badge-${p}">${map[p] || p}</span>`;
+}
+
+// ── Render Stats ─────────────────────────────────────────────────────────────
+function renderStats(s) {
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card total">
+      <div class="stat-label">Total Tasks</div>
+      <div class="stat-value">${s.total}</div>
+      <div class="stat-sub">All time</div>
+    </div>
+    <div class="stat-card done">
+      <div class="stat-label">Completed</div>
+      <div class="stat-value">${s.done}</div>
+      <div class="stat-sub">${s.completionRate}% rate</div>
+    </div>
+    <div class="stat-card in-progress">
+      <div class="stat-label">In Progress</div>
+      <div class="stat-value">${s.inProgress}</div>
+      <div class="stat-sub">Active now</div>
+    </div>
+    <div class="stat-card todo">
+      <div class="stat-label">To Do</div>
+      <div class="stat-value">${s.todo}</div>
+      <div class="stat-sub">Pending start</div>
+    </div>
+    <div class="stat-card high-pri">
+      <div class="stat-label">High Priority</div>
+      <div class="stat-value">${s.highPriority}</div>
+      <div class="stat-sub">Open issues</div>
+    </div>
+    <div class="stat-card overdue">
+      <div class="stat-label">Overdue</div>
+      <div class="stat-value">${s.overdue}</div>
+      <div class="stat-sub">Past due date</div>
+    </div>
+  `;
+
+  document.getElementById('progress-fill').style.width = s.completionRate + '%';
+  document.getElementById('progress-pct').textContent  = s.completionRate + '%';
+}
+
+// ── Charts ───────────────────────────────────────────────────────────────────
+function renderCharts(s) {
+  const channels = Object.keys(s.byChannel);
+
+  // Stacked bar — Tasks by channel
+  if (charts.channel) charts.channel.destroy();
+  charts.channel = new Chart(document.getElementById('channelChart'), {
+    type: 'bar',
+    data: {
+      labels: channels,
+      datasets: [
+        { label: 'To Do',       data: channels.map(c => s.byChannel[c].todo        || 0), backgroundColor: '#94a3b8' },
+        { label: 'In Progress', data: channels.map(c => s.byChannel[c].in_progress || 0), backgroundColor: '#f59e0b' },
+        { label: 'Done',        data: channels.map(c => s.byChannel[c].done        || 0), backgroundColor: '#10b981' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 10 } } },
+      scales: {
+        x: { stacked: true, ticks: { font: { size: 11 } } },
+        y: { stacked: true, ticks: { stepSize: 1, font: { size: 11 } }, beginAtZero: true },
+      },
+    },
+  });
+
+  // Doughnut — Status distribution
+  if (charts.status) charts.status.destroy();
+  charts.status = new Chart(document.getElementById('statusChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['To Do', 'In Progress', 'Done'],
+      datasets: [{ data: [s.todo, s.inProgress, s.done], backgroundColor: ['#94a3b8','#f59e0b','#10b981'], borderWidth: 0 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '65%',
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 12 } } },
+    },
+  });
+
+  // Horizontal bar — Priority breakdown
+  if (charts.priority) charts.priority.destroy();
+  charts.priority = new Chart(document.getElementById('priorityChart'), {
+    type: 'bar',
+    data: {
+      labels: ['High', 'Medium', 'Low'],
+      datasets: [{
+        label: 'Tasks',
+        data: [s.byPriority.high, s.byPriority.medium, s.byPriority.low],
+        backgroundColor: ['#ef4444', '#f59e0b', '#10b981'],
+        borderRadius: 6,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { stepSize: 1, font: { size: 11 } }, beginAtZero: true },
+        y: { ticks: { font: { size: 11 } } },
+      },
+    },
+  });
+}
+
+// ── Table ────────────────────────────────────────────────────────────────────
+function populateChannelFilter(tasks) {
+  const sel = document.getElementById('f-channel');
+  const cur = sel.value;
+  const channels = [...new Set(tasks.map(t => t.channel_name))].sort();
+  sel.innerHTML = '<option value="">All Channels</option>';
+  channels.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c; o.textContent = c;
+    if (c === cur) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function filterTasks() {
+  const search   = document.getElementById('search').value.toLowerCase();
+  const status   = document.getElementById('f-status').value;
+  const priority = document.getElementById('f-priority').value;
+  const channel  = document.getElementById('f-channel').value;
+
+  const filtered = allTasks.filter(t => {
+    if (status   && t.status       !== status)   return false;
+    if (priority && t.priority     !== priority) return false;
+    if (channel  && t.channel_name !== channel)  return false;
+    if (search && !t.title.toLowerCase().includes(search)
+               && !(t.description || '').toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  renderTable(filtered);
+}
+
+function renderTable(tasks) {
+  const container = document.getElementById('table-container');
+
+  if (!tasks.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <div class="empty-title">No tasks found</div>
+        <div class="empty-sub">Adjust the filters or create tasks via Slack using <code>/task-create</code></div>
+      </div>`;
+    document.getElementById('table-count').textContent = '0 tasks';
+    return;
+  }
+
+  const rows = tasks.map(t => {
+    const overdue = isOverdue(t.due_date, t.status);
+    const soon    = !overdue && isDueSoon(t.due_date, t.status);
+    const dueCls  = overdue ? 'overdue' : (soon ? 'due-soon' : '');
+    const dueLabel = overdue ? `${t.due_date} ⚠️` : t.due_date;
+    const createdDate = new Date(t.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+
+    return `<tr>
+      <td class="task-id">#${t.id}</td>
+      <td>
+        <div class="task-title">${esc(t.title)}</div>
+        ${t.description ? `<div class="task-desc" title="${esc(t.description)}">${esc(t.description)}</div>` : ''}
+      </td>
+      <td class="channel-tag">${esc(t.channel_name)}</td>
+      <td class="assignee-id">${esc(t.assignee_id)}</td>
+      <td class="due-date ${dueCls}">${dueLabel}</td>
+      <td>${priorityBadge(t.priority)}</td>
+      <td>${statusBadge(t.status)}</td>
+      <td>${t.milestone ? `<span class="milestone-tag">🏁 ${esc(t.milestone)}</span>` : `<span style="color:var(--muted)">—</span>`}</td>
+      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${createdDate}</td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Channel</th>
+            <th>Assignee</th>
+            <th>Due Date</th>
+            <th>Priority</th>
+            <th>Status</th>
+            <th>Milestone</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  document.getElementById('table-count').textContent =
+    `Showing ${tasks.length} of ${allTasks.length} task${allTasks.length !== 1 ? 's' : ''}`;
+}
+
+// ── Load Dashboard ───────────────────────────────────────────────────────────
+async function loadDashboard() {
+  document.getElementById('error-container').innerHTML = '';
+
+  const dot = document.getElementById('refresh-dot');
+  dot.classList.remove('pulse');
+  void dot.offsetWidth; // reflow to restart animation
+  dot.classList.add('pulse');
+
+  try {
+    const [stats, tasks] = await Promise.all([fetchStats(), fetchTasks()]);
+
+    renderStats(stats);
+    renderCharts(stats);
+
+    allTasks = tasks;
+    populateChannelFilter(tasks);
+    filterTasks();
+
+    document.getElementById('last-updated').textContent =
+      'Updated ' + new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    startCountdown();
+  } catch (err) {
+    document.getElementById('error-container').innerHTML =
+      `<div class="error-msg">⚠️ ${esc(err.message)}</div>`;
+  }
+}
+
+function startCountdown() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  countdown = 60;
+  const el = document.getElementById('refresh-countdown');
+  el.textContent = `Auto-refresh in ${countdown}s`;
+  refreshTimer = setInterval(() => {
+    countdown--;
+    el.textContent = `Auto-refresh in ${countdown}s`;
+    if (countdown <= 0) { clearInterval(refreshTimer); loadDashboard(); }
+  }, 1000);
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+(async () => {
+  const ok = await checkAuth();
+  if (ok) loadDashboard();
+})();
+</script>
+</body>
+</html>
