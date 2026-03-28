@@ -554,6 +554,8 @@ function dashboardAuth(req, res, next) {
   next();
 }
 
+receiver.router.get('/', (_req, res) => res.redirect('/dashboard'));
+
 receiver.router.get('/dashboard', dashboardAuth, (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
