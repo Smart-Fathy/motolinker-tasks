@@ -320,6 +320,169 @@
     }
     .auth-input:focus { border-color: var(--primary); }
     .auth-error  { color: var(--danger); font-size: 12px; margin-bottom: 8px; display: none; }
+
+    /* ── Sidebar ─────────────────────────────────────────────── */
+    .layout { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: 220px; flex-shrink: 0;
+      background: #1e2130;
+      display: flex; flex-direction: column;
+      position: fixed; top: 0; left: 0; bottom: 0;
+      z-index: 200; overflow-y: auto;
+    }
+
+    .sidebar-logo {
+      display: flex; align-items: center; gap: 10px;
+      padding: 20px 18px 16px;
+      border-bottom: 1px solid rgba(255,255,255,.07);
+    }
+    .sidebar-logo-icon {
+      width: 32px; height: 32px; background: var(--primary);
+      border-radius: 8px; display: flex; align-items: center;
+      justify-content: center; color: #fff; font-weight: 800; font-size: 15px;
+      flex-shrink: 0;
+    }
+    .sidebar-logo-text { color: #fff; font-weight: 700; font-size: 15px; }
+    .sidebar-logo-sub  { color: rgba(255,255,255,.4); font-size: 10px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+
+    .sidebar-nav { flex: 1; padding: 12px 10px; }
+    .sidebar-section-label {
+      color: rgba(255,255,255,.3); font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .8px;
+      padding: 10px 8px 4px;
+    }
+
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 12px; border-radius: 8px;
+      color: rgba(255,255,255,.6); font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: background .15s, color .15s;
+      margin-bottom: 2px; user-select: none;
+    }
+    .nav-item:hover  { background: rgba(255,255,255,.07); color: rgba(255,255,255,.9); }
+    .nav-item.active { background: rgba(90,103,216,.35); color: #fff; }
+    .nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+
+    .sidebar-footer {
+      padding: 12px 10px;
+      border-top: 1px solid rgba(255,255,255,.07);
+    }
+    .logout-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 12px; border-radius: 8px;
+      color: rgba(255,255,255,.5); font-size: 13px; cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .logout-btn:hover { background: rgba(239,68,68,.15); color: #f87171; }
+
+    .app-content { margin-left: 220px; flex: 1; min-width: 0; }
+
+    /* ── Page visibility ─────────────────────────────────────── */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Employees page ──────────────────────────────────────── */
+    .employee-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px; padding: 28px;
+    }
+    .employee-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px;
+      box-shadow: var(--shadow); text-align: center;
+    }
+    .employee-avatar {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--primary); margin: 0 auto 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 700; color: #fff; overflow: hidden;
+    }
+    .employee-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+    .employee-name  { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
+    .employee-title { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .employee-id    { font-size: 10px; font-family: monospace; color: var(--muted); background: var(--bg); padding: 2px 6px; border-radius: 4px; }
+    .employee-stats { display: flex; justify-content: center; gap: 12px; margin-top: 10px; }
+    .employee-stat  { text-align: center; }
+    .employee-stat-val { font-size: 18px; font-weight: 700; }
+    .employee-stat-lbl { font-size: 10px; color: var(--muted); }
+
+    /* ── Requests page ───────────────────────────────────────── */
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 24px 28px 0;
+    }
+    .page-title { font-size: 20px; font-weight: 700; }
+
+    /* ── Hours page ──────────────────────────────────────────── */
+    .hours-summary {
+      display: flex; gap: 16px; padding: 24px 28px 0; flex-wrap: wrap;
+    }
+    .hours-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 24px;
+      box-shadow: var(--shadow); min-width: 150px;
+    }
+    .hours-card-val { font-size: 28px; font-weight: 800; color: var(--primary); }
+    .hours-card-lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Email page ──────────────────────────────────────────── */
+    .email-page { padding: 28px; max-width: 900px; }
+    .email-connect-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 32px; text-align: center;
+      box-shadow: var(--shadow); max-width: 480px; margin: 40px auto;
+    }
+    .email-icon   { font-size: 48px; margin-bottom: 12px; }
+    .email-title  { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .email-sub    { font-size: 14px; color: var(--muted); margin-bottom: 20px; }
+    .inbox-item {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 12px 0; border-bottom: 1px solid var(--border);
+    }
+    .inbox-item:last-child { border-bottom: none; }
+    .inbox-from   { font-size: 13px; font-weight: 600; min-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .inbox-subject { font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .inbox-subject.unread { font-weight: 700; }
+    .inbox-date   { font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .unread-dot   { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); flex-shrink: 0; margin-top: 3px; }
+
+    /* ── Modal ───────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.45);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; padding: 20px;
+    }
+    .modal {
+      background: var(--surface); border-radius: 14px;
+      width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 8px 40px rgba(0,0,0,.2);
+    }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 24px 0;
+    }
+    .modal-title  { font-size: 16px; font-weight: 700; }
+    .modal-close  { cursor: pointer; font-size: 20px; color: var(--muted); line-height: 1; background: none; border: none; }
+    .modal-close:hover { color: var(--text); }
+    .modal-body   { padding: 20px 24px; }
+    .modal-footer { padding: 0 24px 20px; display: flex; justify-content: flex-end; gap: 8px; }
+
+    .form-group   { margin-bottom: 14px; }
+    .form-label   { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .4px; }
+    .form-control {
+      width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 13px; background: var(--bg);
+      color: var(--text); outline: none; transition: border-color .15s;
+    }
+    .form-control:focus { border-color: var(--primary); background: var(--surface); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .btn-danger  { background: var(--danger); color: #fff; }
+    .btn-danger:hover { filter: brightness(1.1); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { filter: brightness(1.1); }
   </style>
 </head>
 <body>
@@ -339,6 +502,35 @@
 
 <!-- ── Dashboard ──────────────────────────────────────────────────────────── -->
 <div id="app" style="display:none">
+  <div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">M</div>
+      <div>
+        <div class="sidebar-logo-text">MotoLinker</div>
+        <div class="sidebar-logo-sub">Super Admin</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section-label">Management</div>
+      <div class="nav-item active" onclick="navigate('tasks')"    id="nav-tasks">    <span class="nav-icon">📋</span> Tasks</div>
+      <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon">👥</span> Employees</div>
+      <div class="nav-item"        onclick="navigate('requests')"  id="nav-requests"> <span class="nav-icon">📬</span> Requests</div>
+      <div class="nav-item"        onclick="navigate('hours')"     id="nav-hours">    <span class="nav-icon">⏱️</span> Hours Logs</div>
+      <div class="sidebar-section-label">Account</div>
+      <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon">✉️</span> My Email</div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="logout-btn" onclick="logout()">
+        <span>🚪</span> Sign Out
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <div class="app-content">
   <header class="header">
     <div class="header-left">
       <div class="logo">M</div>
@@ -348,13 +540,15 @@
     <div class="header-right">
       <div class="refresh-indicator">
         <div class="refresh-dot" id="refresh-dot"></div>
-        <span id="refresh-countdown">Auto-refresh in 60s</span>
+        <span id="refresh-countdown">Auto-refresh in 30s</span>
       </div>
       <span class="last-updated" id="last-updated"></span>
       <button class="btn btn-outline" onclick="loadDashboard()">↻ Refresh</button>
     </div>
   </header>
 
+  <!-- ── TASKS PAGE ─────────────────────────────────────── -->
+  <div id="page-tasks" class="page active">
   <main class="main">
     <div id="error-container"></div>
 
@@ -393,6 +587,8 @@
       <div class="table-header">
         <span class="table-title">All Tasks</span>
         <div class="table-filters">
+          <button class="btn btn-primary" onclick="openTaskModal()" style="margin-right:4px">+ Add Task</button>
+          <button class="btn btn-outline"  onclick="openCSVModal()"  style="margin-right:8px">⬆ CSV Upload</button>
           <input  type="text"   id="search"         class="filter-input search-input" placeholder="🔍  Search title or description…" oninput="filterTasks()">
           <select id="f-status"   class="filter-input" onchange="filterTasks()">
             <option value="">All Status</option>
@@ -420,6 +616,66 @@
       </div>
     </div>
   </main>
+  </div><!-- /page-tasks -->
+
+  <!-- ── EMPLOYEES PAGE ────────────────────────────────── -->
+  <div id="page-employees" class="page">
+    <div class="page-header">
+      <span class="page-title">👥 Employees</span>
+    </div>
+    <div id="employee-grid" class="employee-grid">
+      <div class="loading"><div class="spinner"></div> Loading employees…</div>
+    </div>
+  </div>
+
+  <!-- ── REQUESTS PAGE ─────────────────────────────────── -->
+  <div id="page-requests" class="page">
+    <div class="page-header">
+      <span class="page-title">📬 Requests</span>
+      <button class="btn btn-primary" onclick="openRequestModal()">+ New Request</button>
+    </div>
+    <div style="padding:0 28px 28px">
+      <div id="requests-table-container" style="margin-top:18px">
+        <div class="loading"><div class="spinner"></div> Loading requests…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── HOURS LOGS PAGE ───────────────────────────────── -->
+  <div id="page-hours" class="page">
+    <div class="page-header">
+      <span class="page-title">⏱️ Hours Logs</span>
+      <button class="btn btn-primary" onclick="openHoursModal()">+ Log Hours</button>
+    </div>
+    <div class="hours-summary" id="hours-summary"></div>
+    <div style="padding:0 28px 28px">
+      <div id="hours-table-container" style="margin-top:18px">
+        <div class="loading"><div class="spinner"></div> Loading hours…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── EMAIL PAGE ────────────────────────────────────── -->
+  <div id="page-email" class="page">
+    <div class="email-page" id="email-content">
+      <div class="loading"><div class="spinner"></div> Loading email status…</div>
+    </div>
+  </div>
+
+  </div><!-- /app-content -->
+  </div><!-- /layout -->
+</div><!-- /app -->
+
+<!-- ── Modals ─────────────────────────────────────────────────────────────── -->
+<div id="modal-overlay" class="modal-overlay" style="display:none" onclick="closeModal(event)">
+  <div class="modal" id="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Modal</span>
+      <button class="modal-close" onclick="hideModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer" id="modal-footer"></div>
+  </div>
 </div>
 
 <script>
@@ -614,9 +870,15 @@ function renderCharts(s) {
     },
     options: {
       responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      layout: { padding: { right: 16 } },
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { stepSize: 1, font: { size: 11 } }, beginAtZero: true },
+        x: {
+          beginAtZero: true,
+          suggestedMax: Math.max(s.byPriority.high, s.byPriority.medium, s.byPriority.low, 1) + 1,
+          ticks: { stepSize: 1, precision: 0, font: { size: 11 } },
+          grid: { display: true },
+        },
         y: { ticks: { font: { size: 11 } } },
       },
     },
@@ -683,12 +945,16 @@ function renderTable(tasks) {
         ${t.description ? `<div class="task-desc" title="${esc(t.description)}">${esc(t.description)}</div>` : ''}
       </td>
       <td class="channel-tag">${esc(t.channel_name)}</td>
-      <td class="assignee-id">${esc(t.assignee_id)}</td>
+      <td class="assignee-id">${resolvedName(t.assignee_id)}</td>
       <td class="due-date ${dueCls}">${dueLabel}</td>
       <td>${priorityBadge(t.priority)}</td>
       <td>${statusBadge(t.status)}</td>
       <td>${t.milestone ? `<span class="milestone-tag">🏁 ${esc(t.milestone)}</span>` : `<span style="color:var(--muted)">—</span>`}</td>
       <td style="font-size:12px;color:var(--muted);white-space:nowrap">${createdDate}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openTaskModal(${t.id})">Edit</button>
+        <button class="btn btn-danger"  style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteTask(${t.id})">Delete</button>
+      </td>
     </tr>`;
   }).join('');
 
@@ -706,6 +972,7 @@ function renderTable(tasks) {
             <th>Status</th>
             <th>Milestone</th>
             <th>Created</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -726,7 +993,7 @@ async function loadDashboard() {
   dot.classList.add('pulse');
 
   try {
-    const [stats, tasks] = await Promise.all([fetchStats(), fetchTasks()]);
+    const [stats, tasks] = await Promise.all([fetchStats(), fetchTasks(), preloadUsers()]);
 
     renderStats(stats);
     renderCharts(stats);
@@ -755,6 +1022,350 @@ function startCountdown() {
     el.textContent = `Auto-refresh in ${countdown}s`;
     if (countdown <= 0) { clearInterval(refreshTimer); loadDashboard(); }
   }, 1000);
+}
+
+// ── User name cache & resolver ────────────────────────────────────────────────
+let usersMap = {};
+async function preloadUsers() {
+  try { usersMap = await apiFetch('/api/dashboard/users').then(r => r.json()); } catch (_) {}
+}
+function resolvedName(id) {
+  const u = usersMap[id];
+  if (!u) return `<span class="assignee-id">${esc(id)}</span>`;
+  const initials = (u.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  const avatar   = u.avatar ? `<img src="${esc(u.avatar)}" style="width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:5px">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--primary);color:#fff;font-size:9px;font-weight:700;vertical-align:middle;margin-right:5px">${initials}</span>`;
+  return `<span style="display:inline-flex;align-items:center;white-space:nowrap;font-size:12px">${avatar}${esc(u.displayName||u.name)}</span>`;
+}
+
+// ── Task CRUD modals ──────────────────────────────────────────────────────────
+let slackChannels = [];
+async function ensureChannels() {
+  if (!slackChannels.length) slackChannels = await apiFetch('/api/dashboard/channels').then(r => r.json()).catch(() => []);
+}
+
+async function openTaskModal(id) {
+  await Promise.all([ensureChannels(), preloadUsers()]);
+  const t = id ? allTasks.find(x => x.id === id) : null;
+  const chanOpts = slackChannels.map(c => `<option value="${c.id}|${esc(c.name)}"${t?.channel_id===c.id?' selected':''}>${esc(c.name)}</option>`).join('');
+  const userOpts = Object.values(usersMap).map(u => `<option value="${u.id}"${t?.assignee_id===u.id?' selected':''}>${esc(u.displayName||u.name)}</option>`).join('');
+  showModal(t ? `Edit Task #${t.id}` : 'Add New Task', `
+    <div class="form-group"><label class="form-label">Title *</label><input class="form-control" id="t-title" value="${esc(t?.title||'')}" placeholder="Task title…"></div>
+    <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="t-desc" rows="2">${esc(t?.description||'')}</textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Channel *</label><select class="form-control" id="t-channel"><option value="">Select channel…</option>${chanOpts}</select></div>
+      <div class="form-group"><label class="form-label">Assignee *</label><select class="form-control" id="t-assignee"><option value="">Select person…</option>${userOpts}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Due Date *</label><input class="form-control" id="t-due" type="date" value="${t?.due_date||''}"></div>
+      <div class="form-group"><label class="form-label">Priority</label>
+        <select class="form-control" id="t-priority">${['high','medium','low'].map(p=>`<option value="${p}"${(t?.priority||'medium')===p?' selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Status</label>
+        <select class="form-control" id="t-status">${[['todo','⏳ To Do'],['in_progress','▶️ In Progress'],['done','✅ Done']].map(([v,l])=>`<option value="${v}"${(t?.status||'todo')===v?' selected':''}>${l}</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label">Milestone</label><input class="form-control" id="t-milestone" value="${esc(t?.milestone||'')}" placeholder="e.g. Sprint 3…"></div>
+    </div>
+  `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTask(${id||'null'})">Save</button>`);
+}
+
+async function saveTask(id) {
+  const chanVal = document.getElementById('t-channel').value;
+  const [channel_id, channel_name] = chanVal.includes('|') ? chanVal.split('|') : [chanVal, chanVal];
+  const body = { title: document.getElementById('t-title').value.trim(), description: document.getElementById('t-desc').value.trim(), channel_id, channel_name, assignee_id: document.getElementById('t-assignee').value, due_date: document.getElementById('t-due').value, priority: document.getElementById('t-priority').value, status: document.getElementById('t-status').value, milestone: document.getElementById('t-milestone').value.trim() };
+  if (!body.title || !body.channel_id || !body.assignee_id || !body.due_date) { alert('Title, channel, assignee and due date are required'); return; }
+  const url = id ? `/api/dashboard/tasks/${id}` : '/api/dashboard/tasks';
+  const method = id ? 'PUT' : 'POST';
+  const r = await apiFetch(url, { method, body: JSON.stringify(body) });
+  if (!r.ok) { const e = await r.json(); alert('Error: ' + e.error); return; }
+  hideModal(); loadDashboard();
+}
+
+async function deleteTask(id) {
+  if (!confirm(`Delete task #${id}? This cannot be undone.`)) return;
+  await apiFetch(`/api/dashboard/tasks/${id}`, { method: 'DELETE' });
+  loadDashboard();
+}
+
+function openCSVModal() {
+  showModal('Bulk Upload Tasks via CSV', `
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">CSV columns: <code>title, description, channel_name, assignee_id, due_date, priority, milestone</code></p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Use <strong>#channel-name</strong> format. Get assignee IDs from the Employees page.</p>
+    <div class="form-group"><label class="form-label">CSV File *</label><input type="file" id="csv-file" accept=".csv" class="form-control" style="padding:6px"></div>
+    <div id="csv-result" style="margin-top:8px"></div>
+  `, `<button class="btn btn-outline" onclick="hideModal()">Close</button>
+      <button class="btn btn-primary" onclick="uploadCSV()">Upload</button>`);
+}
+
+async function uploadCSV() {
+  const file = document.getElementById('csv-file').files[0];
+  if (!file) { alert('Please select a CSV file'); return; }
+  const fd = new FormData(); fd.append('file', file);
+  const headers = {}; if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+  const r = await fetch('/api/dashboard/tasks/bulk', { method: 'POST', headers, body: fd });
+  const data = await r.json();
+  const res = document.getElementById('csv-result');
+  if (data.error) { res.innerHTML = `<div class="error-msg">⚠️ ${esc(data.error)}</div>`; return; }
+  res.innerHTML = `<div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;padding:10px 14px;border-radius:8px;font-size:13px">✅ Inserted <strong>${data.inserted}</strong> task(s)${data.errors?.length ? `<br><span style="color:var(--warning)">${data.errors.join('<br>')}</span>` : ''}</div>`;
+  loadDashboard();
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+let currentPage = 'tasks';
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, hours: loadHours, email: loadEmail };
+
+function navigate(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.getElementById('nav-' + page).classList.add('active');
+  currentPage = page;
+  if (pageLoaders[page]) pageLoaders[page]();
+}
+
+async function logout() {
+  try { await apiFetch('/api/auth/logout', { method: 'POST' }); } catch (_) {}
+  showAuthScreen();
+}
+
+// ── Modal helpers ─────────────────────────────────────────────────────────────
+function showModal(title, bodyHTML, footerHTML) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML   = bodyHTML;
+  document.getElementById('modal-footer').innerHTML = footerHTML;
+  document.getElementById('modal-overlay').style.display = 'flex';
+}
+function hideModal() { document.getElementById('modal-overlay').style.display = 'none'; }
+function closeModal(e) { if (e.target === document.getElementById('modal-overlay')) hideModal(); }
+
+// ── Employees ─────────────────────────────────────────────────────────────────
+async function loadEmployees() {
+  const grid = document.getElementById('employee-grid');
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
+  try {
+    const [users, tasks] = await Promise.all([
+      apiFetch('/api/dashboard/users').then(r => r.json()),
+      apiFetch('/api/dashboard/tasks').then(r => r.json()),
+    ]);
+    const tasksByUser = {};
+    tasks.forEach(t => {
+      if (!tasksByUser[t.assignee_id]) tasksByUser[t.assignee_id] = { total: 0, done: 0 };
+      tasksByUser[t.assignee_id].total++;
+      if (t.status === 'done') tasksByUser[t.assignee_id].done++;
+    });
+    const members = Object.values(users);
+    if (!members.length) { grid.innerHTML = '<div class="loading">No employees found</div>'; return; }
+    grid.innerHTML = members.map(u => {
+      const stats = tasksByUser[u.id] || { total: 0, done: 0 };
+      const initials = (u.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+      const avatarHtml = u.avatar
+        ? `<img src="${esc(u.avatar)}" alt="${esc(u.name)}">`
+        : initials;
+      return `<div class="employee-card">
+        <div class="employee-avatar">${avatarHtml}</div>
+        <div class="employee-name">${esc(u.name)}</div>
+        <div class="employee-title">${esc(u.title || 'Team Member')}</div>
+        <div class="employee-id">${esc(u.id)}</div>
+        <div class="employee-stats">
+          <div class="employee-stat"><div class="employee-stat-val" style="color:var(--info)">${stats.total}</div><div class="employee-stat-lbl">Tasks</div></div>
+          <div class="employee-stat"><div class="employee-stat-val" style="color:var(--success)">${stats.done}</div><div class="employee-stat-lbl">Done</div></div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    grid.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`;
+  }
+}
+
+// ── Requests ──────────────────────────────────────────────────────────────────
+let allRequests = [];
+const reqStatusColors = { pending: 'badge-todo', in_review: 'badge-in_progress', approved: 'badge-done', rejected: 'badge-high' };
+const reqStatusLabels = { pending: '⏳ Pending', in_review: '▶️ In Review', approved: '✅ Approved', rejected: '🚫 Rejected' };
+
+async function loadRequests() {
+  const c = document.getElementById('requests-table-container');
+  c.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const r = await apiFetch('/api/dashboard/requests'); allRequests = await r.json();
+    renderRequestsTable();
+  } catch (e) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`; }
+}
+
+function renderRequestsTable() {
+  const c = document.getElementById('requests-table-container');
+  if (!allRequests.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">No requests yet</div></div>'; return; }
+  c.innerHTML = `<div style="overflow-x:auto"><table>
+    <thead><tr><th>ID</th><th>Title</th><th>Priority</th><th>Status</th><th>Assigned To</th><th>Created</th><th>Actions</th></tr></thead>
+    <tbody>${allRequests.map(r => `<tr>
+      <td class="task-id">#${r.id}</td>
+      <td><div class="task-title">${esc(r.title)}</div>${r.description ? `<div class="task-desc">${esc(r.description)}</div>` : ''}</td>
+      <td>${priorityBadge(r.priority)}</td>
+      <td><span class="badge ${reqStatusColors[r.status] || 'badge-todo'}">${reqStatusLabels[r.status] || r.status}</span></td>
+      <td style="font-size:12px;font-family:monospace;color:var(--muted)">${esc(r.assigned_to || '—')}</td>
+      <td style="font-size:12px;color:var(--muted)">${new Date(r.created_at).toLocaleDateString()}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="editRequest(${r.id})">Edit</button>
+        <button class="btn btn-danger"  style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteRequest(${r.id})">Delete</button>
+      </td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function openRequestModal(id) {
+  const req = id ? allRequests.find(r => r.id === id) : null;
+  showModal(req ? 'Edit Request' : 'New Request', `
+    <div class="form-group"><label class="form-label">Title *</label><input class="form-control" id="req-title" value="${esc(req?.title || '')}" placeholder="Request title…"></div>
+    <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="req-desc" rows="3" placeholder="Details…">${esc(req?.description || '')}</textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Priority</label>
+        <select class="form-control" id="req-priority">
+          ${['high','medium','low'].map(p => `<option value="${p}"${(req?.priority||'medium')===p?' selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Status</label>
+        <select class="form-control" id="req-status">
+          ${Object.entries(reqStatusLabels).map(([v,l]) => `<option value="${v}"${(req?.status||'pending')===v?' selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Assigned To (Slack ID)</label><input class="form-control" id="req-assigned" value="${esc(req?.assigned_to || '')}" placeholder="U012345…"></div>
+  `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRequest(${id || 'null'})">Save</button>`);
+}
+function editRequest(id) { openRequestModal(id); }
+
+async function saveRequest(id) {
+  const body = { title: document.getElementById('req-title').value.trim(), description: document.getElementById('req-desc').value.trim(), priority: document.getElementById('req-priority').value, status: document.getElementById('req-status').value, assigned_to: document.getElementById('req-assigned').value.trim() };
+  if (!body.title) { alert('Title is required'); return; }
+  const url = id ? `/api/dashboard/requests/${id}` : '/api/dashboard/requests';
+  const method = id ? 'PUT' : 'POST';
+  await apiFetch(url, { method, body: JSON.stringify(body) });
+  hideModal(); loadRequests();
+}
+
+async function deleteRequest(id) {
+  if (!confirm('Delete this request?')) return;
+  await apiFetch(`/api/dashboard/requests/${id}`, { method: 'DELETE' });
+  loadRequests();
+}
+
+// ── Hours Logs ────────────────────────────────────────────────────────────────
+let allHours = [], allTasksForHours = [];
+
+async function loadHours() {
+  const c = document.getElementById('hours-table-container');
+  c.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const [hours, tasks] = await Promise.all([
+      apiFetch('/api/dashboard/hours').then(r => r.json()),
+      apiFetch('/api/dashboard/tasks').then(r => r.json()),
+    ]);
+    allHours = hours; allTasksForHours = tasks;
+    renderHoursTable();
+  } catch (e) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`; }
+}
+
+function renderHoursTable() {
+  const total = allHours.reduce((s, h) => s + parseFloat(h.hours || 0), 0);
+  document.getElementById('hours-summary').innerHTML = `
+    <div class="hours-card"><div class="hours-card-val">${total.toFixed(1)}h</div><div class="hours-card-lbl">Total Hours Logged</div></div>
+    <div class="hours-card"><div class="hours-card-val" style="color:var(--success)">${allHours.length}</div><div class="hours-card-lbl">Log Entries</div></div>`;
+  const c = document.getElementById('hours-table-container');
+  if (!allHours.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">⏱️</div><div class="empty-title">No hours logged yet</div></div>'; return; }
+  c.innerHTML = `<div style="overflow-x:auto"><table>
+    <thead><tr><th>Task</th><th>Channel</th><th>User ID</th><th>Hours</th><th>Note</th><th>Date</th><th></th></tr></thead>
+    <tbody>${allHours.map(h => `<tr>
+      <td class="task-title">${esc(h.tasks?.title || `Task #${h.task_id}`)}</td>
+      <td class="channel-tag">${esc(h.tasks?.channel_name || '—')}</td>
+      <td style="font-size:11px;font-family:monospace;color:var(--muted)">${esc(h.user_id)}</td>
+      <td><strong>${parseFloat(h.hours).toFixed(1)}h</strong></td>
+      <td style="font-size:12px;color:var(--muted)">${esc(h.description || '—')}</td>
+      <td style="font-size:12px;color:var(--muted)">${new Date(h.logged_at).toLocaleDateString()}</td>
+      <td><button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteHours(${h.id})">Delete</button></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function openHoursModal() {
+  const taskOptions = allTasksForHours.map(t => `<option value="${t.id}">#${t.id} — ${esc(t.title)}</option>`).join('');
+  showModal('Log Hours', `
+    <div class="form-group"><label class="form-label">Task *</label><select class="form-control" id="h-task"><option value="">Select task…</option>${taskOptions}</select></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">User ID *</label><input class="form-control" id="h-user" placeholder="U012345…"></div>
+      <div class="form-group"><label class="form-label">Hours *</label><input class="form-control" id="h-hours" type="number" min="0.25" step="0.25" placeholder="e.g. 2.5"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Note</label><input class="form-control" id="h-note" placeholder="What was done…"></div>
+  `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveHours()">Log Hours</button>`);
+}
+
+async function saveHours() {
+  const body = { task_id: document.getElementById('h-task').value, user_id: document.getElementById('h-user').value.trim(), hours: document.getElementById('h-hours').value, description: document.getElementById('h-note').value.trim() };
+  if (!body.task_id || !body.user_id || !body.hours) { alert('Task, user ID and hours are required'); return; }
+  await apiFetch('/api/dashboard/hours', { method: 'POST', body: JSON.stringify(body) });
+  hideModal(); loadHours();
+}
+
+async function deleteHours(id) {
+  if (!confirm('Remove this hours entry?')) return;
+  await apiFetch(`/api/dashboard/hours/${id}`, { method: 'DELETE' });
+  loadHours();
+}
+
+// ── Email ─────────────────────────────────────────────────────────────────────
+async function loadEmail() {
+  const c = document.getElementById('email-content');
+  c.innerHTML = '<div class="loading"><div class="spinner"></div> Checking Gmail…</div>';
+  try {
+    const status = await apiFetch('/api/email/status').then(r => r.json());
+    if (!status.configured) {
+      c.innerHTML = `<div class="email-connect-card">
+        <div class="email-icon">📧</div>
+        <div class="email-title">Connect Gmail</div>
+        <div class="email-sub">To enable Gmail integration, add these env vars in Railway then redeploy:</div>
+        <pre style="text-align:left;background:var(--bg);padding:12px;border-radius:8px;font-size:12px;margin-bottom:16px">GOOGLE_CLIENT_ID=your_client_id\nGOOGLE_CLIENT_SECRET=your_secret\nAPP_URL=https://your-app.railway.app</pre>
+        <div class="email-sub" style="font-size:12px">Get credentials at <strong>console.cloud.google.com</strong> → APIs & Services → Credentials</div>
+      </div>`;
+      return;
+    }
+    if (!status.connected) {
+      c.innerHTML = `<div class="email-connect-card">
+        <div class="email-icon">✉️</div>
+        <div class="email-title">Connect Your Gmail</div>
+        <div class="email-sub">Sign in with Google to view your inbox directly in this dashboard.</div>
+        <a href="/api/email/connect" class="btn btn-primary btn-full" style="text-decoration:none;display:inline-flex;justify-content:center">Connect Gmail</a>
+      </div>`;
+      return;
+    }
+    // Connected — load inbox
+    c.innerHTML = `<div style="max-width:800px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div><strong style="font-size:16px">✉️ ${esc(status.name)}</strong> <span style="color:var(--muted);font-size:13px">${esc(status.email)}</span></div>
+        <button class="btn btn-outline" onclick="disconnectEmail()" style="font-size:12px">Disconnect</button>
+      </div>
+      <div class="table-card"><div class="table-header"><span class="table-title">Inbox</span></div>
+      <div id="inbox-list" style="padding:0 20px"><div class="loading"><div class="spinner"></div></div></div></div>
+    </div>`;
+    const msgs = await apiFetch('/api/email/messages').then(r => r.json());
+    const inbox = document.getElementById('inbox-list');
+    if (!msgs.length) { inbox.innerHTML = '<div class="empty-state" style="padding:24px">No messages</div>'; return; }
+    inbox.innerHTML = msgs.map(m => `<div class="inbox-item">
+      ${m.unread ? '<div class="unread-dot"></div>' : '<div style="width:8px;flex-shrink:0"></div>'}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+          <span class="inbox-from">${esc(m.from.replace(/<.*>/, '').trim() || m.from)}</span>
+          <span class="inbox-date">${new Date(m.date).toLocaleDateString()}</span>
+        </div>
+        <div class="inbox-subject ${m.unread ? 'unread' : ''}">${esc(m.subject || '(no subject)')}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.snippet)}</div>
+      </div>
+    </div>`).join('');
+  } catch (e) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`; }
+}
+
+async function disconnectEmail() {
+  await apiFetch('/api/email/disconnect', { method: 'POST' });
+  loadEmail();
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
