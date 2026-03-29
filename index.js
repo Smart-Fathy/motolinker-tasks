@@ -404,6 +404,23 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+receiver.router.post('/api/dashboard/tasks/sync-lists', requireAuth, async (_req, res) => {
+  try {
+    const { data: tasks, error } = await supabase.from('tasks').select('*').or('slack_list_record_id.is.null,slack_list_record_id.eq.');
+    if (error) throw error;
+    res.json({ queued: tasks.length, message: `Syncing ${tasks.length} tasks to Slack Lists in the background...` });
+    // Run sync after responding so the request doesn't time out
+    (async () => {
+      let synced = 0, failed = 0;
+      for (const task of tasks) {
+        try { await addTaskToSlackList(task); synced++; } catch { failed++; }
+        await new Promise(r => setTimeout(r, 300)); // avoid rate limits
+      }
+      console.log(`Slack Lists backfill complete: ${synced} synced, ${failed} failed`);
+    })();
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 receiver.router.post('/api/dashboard/tasks', requireAuth, express.json(), async (req, res) => {
   const { title, description, channel_id, channel_name, assignee_id, due_date, priority, milestone } = req.body;
   if (!title || !channel_id || !channel_name || !assignee_id || !due_date || !priority)

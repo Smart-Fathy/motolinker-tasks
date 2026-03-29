@@ -600,7 +600,8 @@
         <span class="table-title">All Tasks</span>
         <div class="table-filters">
           <button class="btn btn-primary" onclick="openTaskModal()" style="margin-right:4px">+ Add Task</button>
-          <button class="btn btn-outline"  onclick="openCSVModal()"  style="margin-right:8px">⬆ CSV Upload</button>
+          <button class="btn btn-outline"  onclick="openCSVModal()"  style="margin-right:4px">⬆ CSV Upload</button>
+          <button class="btn btn-outline"  onclick="syncToSlackLists()" id="sync-lists-btn" style="margin-right:8px" title="Push all tasks to Slack Lists">⚡ Sync Slack Lists</button>
           <input  type="text"   id="search"         class="filter-input search-input" placeholder="🔍  Search title or description…" oninput="filterTasks()">
           <select id="f-status"   class="filter-input" onchange="filterTasks()">
             <option value="">All Status</option>
@@ -1198,6 +1199,18 @@ async function uploadCSV() {
   if (data.error) { res.innerHTML = `<div class="error-msg">⚠️ ${esc(data.error)}</div>`; return; }
   res.innerHTML = `<div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;padding:10px 14px;border-radius:8px;font-size:13px">✅ Inserted <strong>${data.inserted}</strong> task(s)${data.errors?.length ? `<br><span style="color:var(--warning)">${data.errors.join('<br>')}</span>` : ''}</div>`;
   loadDashboard();
+}
+
+async function syncToSlackLists() {
+  const btn = document.getElementById('sync-lists-btn');
+  btn.disabled = true; btn.textContent = '⏳ Syncing…';
+  try {
+    const r = await apiFetch('/api/dashboard/tasks/sync-lists', { method: 'POST' });
+    const data = await r.json();
+    if (data.error) { alert('Sync failed: ' + data.error); }
+    else { alert(`${data.message}\n\nCheck your Slack channels — lists will appear within a minute.`); }
+  } catch (e) { alert('Sync error: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '⚡ Sync Slack Lists'; }
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
