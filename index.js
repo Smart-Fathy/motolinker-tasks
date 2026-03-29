@@ -87,7 +87,7 @@ async function getOrCreateChannelList(channelId, channelName) {
       name: 'MotoLinker Tasks',
       description: 'Tasks managed by MotoLinker bot',
       schema: [
-        { key: 'title',    name: 'Title',    type: 'text', is_primary: true },
+        { key: 'title',    name: 'Title',    type: 'text' },
         { key: 'assignee', name: 'Assignee', type: 'text' },
         { key: 'due_date', name: 'Due Date', type: 'text' },
         { key: 'priority', name: 'Priority', type: 'text' },
