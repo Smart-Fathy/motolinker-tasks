@@ -87,11 +87,11 @@ async function getOrCreateChannelList(channelId, channelName) {
       name: 'MotoLinker Tasks',
       description: 'Tasks managed by MotoLinker bot',
       schema: [
-        { id: 'title',    name: 'Title',    type: 'text', is_primary: true },
-        { id: 'assignee', name: 'Assignee', type: 'text' },
-        { id: 'due_date', name: 'Due Date', type: 'text' },
-        { id: 'priority', name: 'Priority', type: 'text' },
-        { id: 'status',   name: 'Status',   type: 'text' },
+        { key: 'title',    name: 'Title',    type: 'text', is_primary: true },
+        { key: 'assignee', name: 'Assignee', type: 'text' },
+        { key: 'due_date', name: 'Due Date', type: 'text' },
+        { key: 'priority', name: 'Priority', type: 'text' },
+        { key: 'status',   name: 'Status',   type: 'text' },
       ],
     });
     if (result.ok && result.list?.id) {
