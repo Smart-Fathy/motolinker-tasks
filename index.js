@@ -82,29 +82,32 @@ async function getSlackChannels() {
 const SLACK_TASKS_WEBHOOK_URL = process.env.SLACK_TASKS_WEBHOOK_URL;
 
 async function notifySlackWebhook(task, action = 'created') {
-  if (!SLACK_TASKS_WEBHOOK_URL) return;
+  if (!SLACK_TASKS_WEBHOOK_URL) { console.warn('SLACK_TASKS_WEBHOOK_URL not set — skipping webhook'); return; }
   try {
-    // Resolve display name for assignee if possible (best-effort)
     const users = await getSlackUsers().catch(() => ({}));
     const assigneeName = users[task.assignee_id]?.name || task.assignee_id;
-    await fetch(SLACK_TASKS_WEBHOOK_URL, {
+    const payload = {
+      task_id:      String(task.id),
+      title:        task.title || '',
+      status:       task.status || 'todo',
+      assignee:     assigneeName,
+      assignee_id:  task.assignee_id || '',
+      due_date:     task.due_date || '',
+      priority:     task.priority || 'medium',
+      channel_name: task.channel_name || '',
+      channel_id:   task.channel_id || '',
+      milestone:    task.milestone || '',
+      description:  task.description || '',
+      action,
+    };
+    console.log(`notifySlackWebhook [${action}] task #${task.id}: ${task.title}`);
+    const resp = await fetch(SLACK_TASKS_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        task_id:      String(task.id),
-        title:        task.title || '',
-        status:       task.status || 'todo',
-        assignee:     assigneeName,
-        assignee_id:  task.assignee_id || '',
-        due_date:     task.due_date || '',
-        priority:     task.priority || 'medium',
-        channel_name: task.channel_name || '',
-        channel_id:   task.channel_id || '',
-        milestone:    task.milestone || '',
-        description:  task.description || '',
-        action,
-      }),
+      body: JSON.stringify(payload),
     });
+    const text = await resp.text();
+    console.log(`webhook response [${resp.status}]:`, text);
   } catch (e) { console.warn('notifySlackWebhook:', e.message); }
 }
 
