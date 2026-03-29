@@ -99,7 +99,7 @@ async function addTaskToSlackList(task) {
   try {
     const listId = await getOrCreateChannelList(task.channel_id, task.channel_name);
     if (!listId) return;
-    const result = await slackClient.apiCall('lists.records.add', {
+    const result = await slackClient.apiCall('lists.record.add', {
       list: listId,
       fields: {
         Name: `[${(task.status || 'todo').replace('_', ' ')}] ${task.title} — Due: ${task.due_date || 'N/A'} | Priority: ${task.priority || 'medium'} | Assignee: <@${task.assignee_id}>`,
@@ -116,7 +116,7 @@ async function updateTaskInSlackList(task) {
   try {
     const listId = await getOrCreateChannelList(task.channel_id, task.channel_name);
     if (!listId) return;
-    await slackClient.apiCall('lists.records.edit', {
+    await slackClient.apiCall('lists.record.edit', {
       list:   listId,
       record: task.slack_list_record_id,
       fields: {
@@ -131,7 +131,7 @@ async function removeTaskFromSlackList(task) {
   try {
     const listId = await getOrCreateChannelList(task.channel_id, task.channel_name);
     if (!listId) return;
-    await slackClient.apiCall('lists.records.remove', {
+    await slackClient.apiCall('lists.record.remove', {
       list:   listId,
       record: task.slack_list_record_id,
     });
