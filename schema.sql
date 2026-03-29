@@ -15,10 +15,14 @@ CREATE TABLE IF NOT EXISTS tasks (
   milestone      TEXT DEFAULT '',
   status         TEXT NOT NULL DEFAULT 'todo'
                    CHECK (status IN ('todo', 'in_progress', 'done')),
-  created_by     TEXT NOT NULL,
-  created_at     TIMESTAMPTZ DEFAULT NOW(),
-  updated_at     TIMESTAMPTZ DEFAULT NOW()
+  created_by           TEXT NOT NULL,
+  slack_list_record_id TEXT DEFAULT '',
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Run this if the table already exists:
+-- ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slack_list_record_id TEXT DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_tasks_channel_id  ON tasks (channel_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee_id ON tasks (assignee_id);

@@ -76,6 +76,85 @@ async function getSlackChannels() {
   return _chCache;
 }
 
+// ─── Slack Lists Integration ──────────────────────────────────────────────────
+const channelListCache = new Map(); // channelId → listId
+
+async function getOrCreateChannelList(channelId, channelName) {
+  if (channelListCache.has(channelId)) return channelListCache.get(channelId);
+  try {
+    const result = await slackClient.apiCall('lists.create', {
+      channel: channelId,
+      name: 'MotoLinker Tasks',
+      description: 'Tasks managed by MotoLinker bot',
+      schema: {
+        columns: [
+          { id: 'title',    name: 'Title',    type: 'text', is_primary: true },
+          { id: 'assignee', name: 'Assignee', type: 'text' },
+          { id: 'due_date', name: 'Due Date', type: 'text' },
+          { id: 'priority', name: 'Priority', type: 'text' },
+          { id: 'status',   name: 'Status',   type: 'text' },
+        ],
+      },
+    });
+    if (result.ok && result.list?.id) {
+      channelListCache.set(channelId, result.list.id);
+      return result.list.id;
+    }
+  } catch (e) { console.warn(`Slack Lists create for ${channelName}:`, e.message); }
+  return null;
+}
+
+async function addTaskToSlackList(task) {
+  try {
+    const listId = await getOrCreateChannelList(task.channel_id, task.channel_name);
+    if (!listId) return;
+    const result = await slackClient.apiCall('lists.records.add', {
+      list: listId,
+      fields: {
+        title:    task.title,
+        assignee: task.assignee_id,
+        due_date: task.due_date || '',
+        priority: task.priority || 'medium',
+        status:   task.status   || 'todo',
+      },
+    });
+    if (result.ok && result.record?.id) {
+      await supabase.from('tasks').update({ slack_list_record_id: result.record.id }).eq('id', task.id);
+    }
+  } catch (e) { console.warn('addTaskToSlackList:', e.message); }
+}
+
+async function updateTaskInSlackList(task) {
+  if (!task.slack_list_record_id) return;
+  try {
+    const listId = await getOrCreateChannelList(task.channel_id, task.channel_name);
+    if (!listId) return;
+    await slackClient.apiCall('lists.records.edit', {
+      list:   listId,
+      record: task.slack_list_record_id,
+      fields: {
+        title:    task.title,
+        assignee: task.assignee_id,
+        due_date: task.due_date || '',
+        priority: task.priority || 'medium',
+        status:   task.status   || 'todo',
+      },
+    });
+  } catch (e) { console.warn('updateTaskInSlackList:', e.message); }
+}
+
+async function removeTaskFromSlackList(task) {
+  if (!task.slack_list_record_id) return;
+  try {
+    const listId = await getOrCreateChannelList(task.channel_id, task.channel_name);
+    if (!listId) return;
+    await slackClient.apiCall('lists.records.remove', {
+      list:   listId,
+      record: task.slack_list_record_id,
+    });
+  } catch (e) { console.warn('removeTaskFromSlackList:', e.message); }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 async function isChief(client, userId) {
   try {
@@ -172,6 +251,9 @@ app.view('create_task_modal', async ({ ack, body, view, client }) => {
     .select().single();
   if (error) { console.error('Supabase insert error:', error); return; }
 
+  // Add to Slack Lists (best-effort, non-blocking)
+  addTaskToSlackList(task).catch(() => {});
+
   await client.chat.postMessage({ channel: channelId, text: `📋 New task assigned: ${title}`, blocks: buildTaskBlocks(task) });
   try {
     await client.chat.postMessage({ channel: assigneeId, text: `You've been assigned a task: *${title}*`, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `👋 Hey! You've been assigned a new task by <@${createdBy}>.\n\n*${title}*\n${description ? `>${description}\n` : ''}\n*${priorityEmoji(priority)} Priority:* ${priority} · *📅 Due:* ${dueDate}${milestone ? ` · *🏁 Milestone:* ${milestone}` : ''}\n\n👉 Check <#${channelId}> to update the task status.` } }] });
@@ -185,6 +267,8 @@ async function handleStatusUpdate(ack, body, action, client, newStatus) {
   const taskId = parseInt(action.value, 10);
   const { data: task } = await supabase.from('tasks').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', taskId).select().single();
   if (!task) return;
+
+  updateTaskInSlackList(task).catch(() => {});
 
   const updatedBlocks = body.message.blocks.map(block => {
     if (block.type === 'section' && Array.isArray(block.fields)) {
@@ -229,6 +313,8 @@ app.command('/task-delete', async ({ command, ack, client, respond }) => {
   if (!await isChief(client, command.user_id)) { await respond({ response_type: 'ephemeral', text: '🚫 Only chiefs can delete tasks.' }); return; }
   const taskId = parseInt(command.text.trim(), 10);
   if (!taskId) { await respond({ response_type: 'ephemeral', text: '⚠️ Usage: `/task-delete <task_id>`' }); return; }
+  const { data: taskToDelete } = await supabase.from('tasks').select('*').eq('id', taskId).single();
+  if (taskToDelete) await removeTaskFromSlackList(taskToDelete).catch(() => {});
   const { error } = await supabase.from('tasks').delete().eq('id', taskId);
   await respond({ response_type: 'ephemeral', text: error ? `❌ Failed to delete task #${taskId}.` : `🗑️ Task *#${taskId}* deleted.` });
 });
@@ -326,7 +412,8 @@ receiver.router.post('/api/dashboard/tasks', requireAuth, express.json(), async 
     .insert({ title, description: description || '', channel_id, channel_name, assignee_id, due_date, priority, milestone: milestone || '', created_by: 'dashboard', status: 'todo' })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
-  // Best-effort Slack notifications
+  // Best-effort Slack notifications and Lists sync
+  addTaskToSlackList(task).catch(() => {});
   try {
     await slackClient.chat.postMessage({ channel: channel_id, text: `📋 New task: ${title}`, blocks: buildTaskBlocks(task) });
     await slackClient.chat.postMessage({ channel: CHIEFS_CHANNEL_ID, text: `✅ Task #${task.id} created via dashboard: ${title}` });
@@ -337,10 +424,13 @@ receiver.router.post('/api/dashboard/tasks', requireAuth, express.json(), async 
 receiver.router.put('/api/dashboard/tasks/:id', requireAuth, express.json(), async (req, res) => {
   const { data, error } = await supabase.from('tasks').update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
+  updateTaskInSlackList(data).catch(() => {});
   res.json(data);
 });
 
 receiver.router.delete('/api/dashboard/tasks/:id', requireAuth, async (req, res) => {
+  const { data: taskToRemove } = await supabase.from('tasks').select('*').eq('id', req.params.id).single();
+  if (taskToRemove) await removeTaskFromSlackList(taskToRemove).catch(() => {});
   const { error } = await supabase.from('tasks').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
@@ -405,6 +495,8 @@ receiver.router.post('/api/dashboard/tasks/bulk', requireAuth, upload.single('fi
   if (inserts.length) {
     const { data, error } = await supabase.from('tasks').insert(inserts).select();
     if (error) return res.status(500).json({ error: error.message });
+    // Sync all inserted tasks to Slack Lists (best-effort)
+    for (const task of data) { addTaskToSlackList(task).catch(() => {}); }
     return res.json({ inserted: data.length, errors });
   }
   res.json({ inserted: 0, errors });
