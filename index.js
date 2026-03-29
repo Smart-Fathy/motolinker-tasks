@@ -86,15 +86,13 @@ async function getOrCreateChannelList(channelId, channelName) {
       channel: channelId,
       name: 'MotoLinker Tasks',
       description: 'Tasks managed by MotoLinker bot',
-      schema: {
-        columns: [
-          { id: 'title',    name: 'Title',    type: 'text', is_primary: true },
-          { id: 'assignee', name: 'Assignee', type: 'text' },
-          { id: 'due_date', name: 'Due Date', type: 'text' },
-          { id: 'priority', name: 'Priority', type: 'text' },
-          { id: 'status',   name: 'Status',   type: 'text' },
-        ],
-      },
+      schema: [
+        { id: 'title',    name: 'Title',    type: 'text', is_primary: true },
+        { id: 'assignee', name: 'Assignee', type: 'text' },
+        { id: 'due_date', name: 'Due Date', type: 'text' },
+        { id: 'priority', name: 'Priority', type: 'text' },
+        { id: 'status',   name: 'Status',   type: 'text' },
+      ],
     });
     if (result.ok && result.list?.id) {
       channelListCache.set(channelId, result.list.id);
