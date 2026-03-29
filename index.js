@@ -76,67 +76,45 @@ async function getSlackChannels() {
   return _chCache;
 }
 
-// ─── Slack Lists Integration ──────────────────────────────────────────────────
-const channelListCache = new Map(); // channelId → listId
+// ─── Slack Workflow Webhook ───────────────────────────────────────────────────
+// Set SLACK_TASKS_WEBHOOK_URL in Railway env vars to enable.
+// Create a Slack workflow: "From a webhook" → map fields → "Add to list" action.
+const SLACK_TASKS_WEBHOOK_URL = process.env.SLACK_TASKS_WEBHOOK_URL;
 
-async function getOrCreateChannelList(channelId, channelName) {
-  if (channelListCache.has(channelId)) return channelListCache.get(channelId);
+async function notifySlackWebhook(task, action = 'created') {
+  if (!SLACK_TASKS_WEBHOOK_URL) { console.warn('SLACK_TASKS_WEBHOOK_URL not set — skipping webhook'); return; }
   try {
-    const result = await slackClient.apiCall('lists.create', {
-      channel: channelId,
-      name: 'MotoLinker Tasks',
-      description: 'Tasks managed by MotoLinker bot',
+    const users = await getSlackUsers().catch(() => ({}));
+    const assigneeName = users[task.assignee_id]?.name || task.assignee_id;
+    const payload = {
+      task_id:      String(task.id),
+      title:        task.title || '',
+      status:       task.status || 'todo',
+      assignee:     assigneeName,
+      assignee_id:  task.assignee_id || '',
+      due_date:     task.due_date || '',
+      priority:     task.priority || 'medium',
+      channel_name: task.channel_name || '',
+      channel_id:   task.channel_id || '',
+      milestone:    task.milestone || '',
+      description:  task.description || '',
+      action,
+    };
+    console.log(`notifySlackWebhook [${action}] task #${task.id}: ${task.title}`);
+    const resp = await fetch(SLACK_TASKS_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
-    if (result.ok && result.list?.id) {
-      channelListCache.set(channelId, result.list.id);
-      return result.list.id;
-    }
-  } catch (e) { console.warn(`Slack Lists create for ${channelName}:`, e.message); }
-  return null;
+    const text = await resp.text();
+    console.log(`webhook response [${resp.status}]:`, text);
+  } catch (e) { console.warn('notifySlackWebhook:', e.message); }
 }
 
-async function addTaskToSlackList(task) {
-  try {
-    const listId = await getOrCreateChannelList(task.channel_id, task.channel_name);
-    if (!listId) return;
-    const result = await slackClient.apiCall('lists.record.add', {
-      list: listId,
-      fields: {
-        Name: `[${(task.status || 'todo').replace('_', ' ')}] ${task.title} — Due: ${task.due_date || 'N/A'} | Priority: ${task.priority || 'medium'} | Assignee: <@${task.assignee_id}>`,
-      },
-    });
-    if (result.ok && result.record?.id) {
-      await supabase.from('tasks').update({ slack_list_record_id: result.record.id }).eq('id', task.id);
-    }
-  } catch (e) { console.warn('addTaskToSlackList:', e.message); }
-}
-
-async function updateTaskInSlackList(task) {
-  if (!task.slack_list_record_id) return;
-  try {
-    const listId = await getOrCreateChannelList(task.channel_id, task.channel_name);
-    if (!listId) return;
-    await slackClient.apiCall('lists.record.edit', {
-      list:   listId,
-      record: task.slack_list_record_id,
-      fields: {
-        Name: `[${(task.status || 'todo').replace('_', ' ')}] ${task.title} — Due: ${task.due_date || 'N/A'} | Priority: ${task.priority || 'medium'} | Assignee: <@${task.assignee_id}>`,
-      },
-    });
-  } catch (e) { console.warn('updateTaskInSlackList:', e.message); }
-}
-
-async function removeTaskFromSlackList(task) {
-  if (!task.slack_list_record_id) return;
-  try {
-    const listId = await getOrCreateChannelList(task.channel_id, task.channel_name);
-    if (!listId) return;
-    await slackClient.apiCall('lists.record.remove', {
-      list:   listId,
-      record: task.slack_list_record_id,
-    });
-  } catch (e) { console.warn('removeTaskFromSlackList:', e.message); }
-}
+// Keep these as aliases so all existing call sites still work
+const addTaskToSlackList    = task => notifySlackWebhook(task, 'created');
+const updateTaskInSlackList = task => notifySlackWebhook(task, 'updated');
+const removeTaskFromSlackList = task => notifySlackWebhook(task, 'deleted');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 async function isChief(client, userId) {
