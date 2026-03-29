@@ -86,13 +86,6 @@ async function getOrCreateChannelList(channelId, channelName) {
       channel: channelId,
       name: 'MotoLinker Tasks',
       description: 'Tasks managed by MotoLinker bot',
-      schema: [
-        { key: 'title',    name: 'Title',    type: 'text' },
-        { key: 'assignee', name: 'Assignee', type: 'text' },
-        { key: 'due_date', name: 'Due Date', type: 'text' },
-        { key: 'priority', name: 'Priority', type: 'text' },
-        { key: 'status',   name: 'Status',   type: 'text' },
-      ],
     });
     if (result.ok && result.list?.id) {
       channelListCache.set(channelId, result.list.id);
@@ -109,11 +102,7 @@ async function addTaskToSlackList(task) {
     const result = await slackClient.apiCall('lists.records.add', {
       list: listId,
       fields: {
-        title:    task.title,
-        assignee: task.assignee_id,
-        due_date: task.due_date || '',
-        priority: task.priority || 'medium',
-        status:   task.status   || 'todo',
+        Name: `[${(task.status || 'todo').replace('_', ' ')}] ${task.title} — Due: ${task.due_date || 'N/A'} | Priority: ${task.priority || 'medium'} | Assignee: <@${task.assignee_id}>`,
       },
     });
     if (result.ok && result.record?.id) {
@@ -131,11 +120,7 @@ async function updateTaskInSlackList(task) {
       list:   listId,
       record: task.slack_list_record_id,
       fields: {
-        title:    task.title,
-        assignee: task.assignee_id,
-        due_date: task.due_date || '',
-        priority: task.priority || 'medium',
-        status:   task.status   || 'todo',
+        Name: `[${(task.status || 'todo').replace('_', ' ')}] ${task.title} — Due: ${task.due_date || 'N/A'} | Priority: ${task.priority || 'medium'} | Assignee: <@${task.assignee_id}>`,
       },
     });
   } catch (e) { console.warn('updateTaskInSlackList:', e.message); }
