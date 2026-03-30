@@ -46,13 +46,13 @@
   .user-role { font-size:11px; color:var(--muted); }
 
   /* Content */
-  .content { margin-left:var(--sidebar-w); min-height:100vh; }
+  .content { margin-left:var(--sidebar-w); min-height:100vh; width:calc(100% - var(--sidebar-w)); }
   .topbar { height:var(--topbar-h); background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; padding:0 28px; position:sticky; top:0; z-index:50; }
   .topbar-title { font-size:16px; font-weight:600; }
   .topbar-hours { display:flex; align-items:center; gap:8px; background:rgba(99,102,241,.1); border:1px solid rgba(99,102,241,.25); border-radius:20px; padding:5px 14px; font-size:13px; font-weight:600; color:var(--primary); }
 
   /* Pages */
-  .page { display:none; padding:28px; }
+  .page { display:none; padding:28px; max-width:100%; }
   .page.active { display:block; }
   .page-title { font-size:20px; font-weight:700; margin-bottom:24px; }
 
