@@ -765,6 +765,17 @@ receiver.router.get('/api/employee/tasks', requireEmployeeAuth, async (req, res)
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// All employee tasks (current + completed) for My Tasks page
+receiver.router.get('/api/employee/my-tasks', requireEmployeeAuth, async (req, res) => {
+  try {
+    const { data: emp } = await supabase.from('employees').select('slack_user_id').eq('id', req.employee.id).single();
+    if (!emp?.slack_user_id) return res.json([]);
+    const { data, error } = await supabase.from('tasks').select('*').eq('assignee_id', emp.slack_user_id).order('due_date', { ascending: true });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Employee hours
 receiver.router.get('/api/employee/hours', requireEmployeeAuth, async (req, res) => {
   const { data, error } = await supabase.from('hours_logs')
