@@ -732,6 +732,66 @@ receiver.router.post('/api/email/disconnect', requireAuth, (_req, res) => {
   res.json({ ok: true });
 });
 
+// Helper: refresh Gmail token if needed
+async function getGmailToken() {
+  if (!gmailTokens) throw new Error('Gmail not connected');
+  if (gmailTokens.refresh_token && Date.now() > (gmailTokens.expiry_date || 0) - 60_000) {
+    const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: gmailTokens.refresh_token, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, grant_type: 'refresh_token' }) });
+    const refreshed = await r.json();
+    if (refreshed.access_token) gmailTokens = { ...gmailTokens, ...refreshed, expiry_date: Date.now() + ((refreshed.expires_in || 3600) * 1000) };
+  }
+  return gmailTokens.access_token;
+}
+
+// Helper: decode Gmail message body
+function decodeGmailBody(payload) {
+  if (payload.body?.data) return Buffer.from(payload.body.data, 'base64url').toString('utf-8');
+  if (payload.parts) {
+    const html = payload.parts.find(p => p.mimeType === 'text/html');
+    const text = payload.parts.find(p => p.mimeType === 'text/plain');
+    const part = html || text;
+    if (part?.body?.data) return Buffer.from(part.body.data, 'base64url').toString('utf-8');
+    for (const p of payload.parts) { if (p.parts) { const nested = decodeGmailBody(p); if (nested) return nested; } }
+  }
+  return '';
+}
+
+// Full email by ID
+receiver.router.get('/api/email/messages/:id', requireAuth, async (req, res) => {
+  try {
+    const token = await getGmailToken();
+    const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${req.params.id}?format=full`, { headers: { Authorization: `Bearer ${token}` } });
+    const msg = await r.json();
+    const headers = msg.payload?.headers || [];
+    const get = n => headers.find(h => h.name.toLowerCase() === n.toLowerCase())?.value || '';
+    res.json({
+      id: msg.id, threadId: msg.threadId, labelIds: msg.labelIds || [],
+      subject: get('Subject'), from: get('From'), to: get('To'), date: get('Date'),
+      messageId: get('Message-ID'),
+      body: decodeGmailBody(msg.payload || {}),
+      isHtml: !!(msg.payload?.parts?.find(p => p.mimeType === 'text/html') || msg.payload?.mimeType === 'text/html'),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Send / Reply
+receiver.router.post('/api/email/send', requireAuth, express.json(), async (req, res) => {
+  const { to, subject, body, threadId, inReplyTo } = req.body;
+  if (!to || !subject || !body) return res.status(400).json({ error: 'to, subject and body are required' });
+  try {
+    const token = await getGmailToken();
+    const lines = [`To: ${to}`, `Subject: ${subject}`, 'Content-Type: text/plain; charset=utf-8'];
+    if (inReplyTo) { lines.push(`In-Reply-To: ${inReplyTo}`); lines.push(`References: ${inReplyTo}`); }
+    const raw = Buffer.from(lines.join('\r\n') + '\r\n\r\n' + body).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const payload = { raw };
+    if (threadId) payload.threadId = threadId;
+    const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await r.json();
+    if (result.error) throw new Error(result.error.message);
+    res.json({ ok: true, id: result.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Employee Portal ──────────────────────────────────────────────────────────
 receiver.router.get('/employee', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'employee.html')));
 
