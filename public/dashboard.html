@@ -534,6 +534,8 @@
       <div class="nav-item"        onclick="navigate('hours')"     id="nav-hours">    <span class="nav-icon">⏱️</span> Hours Logs</div>
       <div class="sidebar-section-label">Account</div>
       <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon">✉️</span> My Email</div>
+      <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon">💾</span> My Drive</div>
+      <div class="nav-item"        onclick="navigate('sheets')"    id="nav-sheets">   <span class="nav-icon">📊</span> My Sheets</div>
     </nav>
     <div class="sidebar-footer">
       <div class="logout-btn" onclick="logout()">
@@ -684,6 +686,20 @@
   <div id="page-email" class="page">
     <div id="email-content" style="flex:1;overflow:auto;padding:28px">
       <div class="loading"><div class="spinner"></div> Loading email status…</div>
+    </div>
+  </div>
+
+  <!-- ── DRIVE PAGE ─────────────────────────────────────── -->
+  <div id="page-drive" class="page">
+    <div id="drive-content" style="padding:28px">
+      <div class="loading"><div class="spinner"></div> Loading Drive…</div>
+    </div>
+  </div>
+
+  <!-- ── SHEETS PAGE ────────────────────────────────────── -->
+  <div id="page-sheets" class="page">
+    <div id="sheets-content" style="padding:28px">
+      <div class="loading"><div class="spinner"></div> Loading Sheets…</div>
     </div>
   </div>
 
@@ -1223,7 +1239,7 @@ async function syncToSlackLists() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, hours: loadHours, email: loadEmail };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets };
 
 function navigate(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1642,10 +1658,97 @@ async function disconnectEmail() {
   loadEmail();
 }
 
+// ── Drive / Sheets ────────────────────────────────────────────────────────────
+function driveFileIcon(mimeType) {
+  if (!mimeType) return '📎';
+  if (mimeType === 'application/vnd.google-apps.folder') return '📁';
+  if (mimeType === 'application/vnd.google-apps.spreadsheet') return '📊';
+  if (mimeType === 'application/vnd.google-apps.document') return '📄';
+  if (mimeType === 'application/vnd.google-apps.presentation') return '📽️';
+  if (mimeType === 'application/pdf') return '📑';
+  if (mimeType.startsWith('image/')) return '🖼️';
+  if (mimeType.startsWith('video/')) return '🎥';
+  if (mimeType.startsWith('audio/')) return '🎵';
+  return '📎';
+}
+
+function renderDriveFiles(files, containerId, disconnectFn) {
+  const c = document.getElementById(containerId);
+  if (!files.length) { c.innerHTML += '<div class="empty-state" style="padding:24px 0">No files found</div>'; return; }
+  const rows = files.map(f => `
+    <tr>
+      <td style="padding:12px 16px;font-size:13px">${driveFileIcon(f.mimeType)} ${esc(f.name)}</td>
+      <td style="padding:12px 16px;font-size:12px;color:var(--muted)">${f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '—'}</td>
+      <td style="padding:12px 16px;text-align:right">
+        ${f.webViewLink ? `<a href="${f.webViewLink}" target="_blank" rel="noopener" class="btn btn-outline" style="font-size:12px;padding:4px 12px;text-decoration:none">Open ↗</a>` : ''}
+      </td>
+    </tr>`).join('');
+  const existing = c.querySelector('.table-card');
+  if (existing) existing.querySelector('tbody').innerHTML = rows;
+}
+
+async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, connectFn, title, icon) {
+  const c = document.getElementById(contentId);
+  c.innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
+  try {
+    const status = await apiFetch(statusApi).then(r => r.json());
+    if (!status.configured) {
+      c.innerHTML = `<div class="email-connect-card">
+        <div class="email-icon">${icon}</div><div class="email-title">Connect Google Drive</div>
+        <div class="email-sub">Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars then redeploy.</div>
+      </div>`; return;
+    }
+    if (!status.connected) {
+      c.innerHTML = `<div class="email-connect-card">
+        <div class="email-icon">${icon}</div><div class="email-title">${title}</div>
+        <div class="email-sub">Connect your Google account to browse your Drive files.</div>
+        <a href="#" onclick="${connectFn}()" class="btn btn-primary btn-full" style="text-decoration:none;display:inline-flex;justify-content:center">Connect Google Drive</a>
+      </div>`; return;
+    }
+    const files = await apiFetch(filesApi).then(r => r.json());
+    c.innerHTML = `
+      <div style="max-width:900px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:36px;height:36px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px">${esc(status.name?.[0]||'?')}</div>
+            <div><div style="font-weight:600;font-size:14px">${esc(status.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(status.email)}</div></div>
+          </div>
+          <button class="btn btn-outline" onclick="${disconnectFn}()" style="font-size:12px">Disconnect</button>
+        </div>
+        <div class="table-card">
+          <div class="table-header"><span class="table-title">${icon} ${title}</span><span style="font-size:12px;color:var(--muted)">${files.length} file${files.length!==1?'s':''}</span></div>
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr>
+              <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Name</th>
+              <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Modified</th>
+              <th style="padding:10px 16px;border-bottom:1px solid var(--border)"></th>
+            </tr></thead>
+            <tbody>${files.map(f => `
+              <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+                <td style="padding:12px 16px;font-size:13px">${driveFileIcon(f.mimeType)} ${esc(f.name)}</td>
+                <td style="padding:12px 16px;font-size:12px;color:var(--muted)">${f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '—'}</td>
+                <td style="padding:12px 16px;text-align:right">${f.webViewLink ? `<a href="${f.webViewLink}" target="_blank" rel="noopener" class="btn btn-outline" style="font-size:12px;padding:4px 12px;text-decoration:none">Open ↗</a>` : ''}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  } catch (e) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`; }
+}
+
+function connectDrive()  { window.location.href = '/api/drive/connect?_t=' + encodeURIComponent(authToken || ''); }
+async function disconnectDrive()  { await apiFetch('/api/drive/disconnect', { method: 'POST' }); loadDrive(); }
+function loadDrive()  { loadDriveSection('/api/drive/status',  '/api/drive/files',  'disconnectDrive',  'drive-content',  'connectDrive',  'My Drive',   '💾'); }
+function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheets', 'disconnectDrive',  'sheets-content', 'connectDrive',  'My Sheets',  '📊'); }
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
   const ok = await checkAuth();
-  if (ok) loadDashboard();
+  if (!ok) return;
+  const hash = location.hash.replace('#', '');
+  const validPages = ['tasks','employees','requests','hours','email','drive','sheets'];
+  if (hash && validPages.includes(hash)) navigate(hash);
+  else loadDashboard();
 })();
 </script>
 </body>

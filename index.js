@@ -31,6 +31,9 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const sessions         = new Map(); // admin sessions
 const employeeSessions = new Map(); // employee portal sessions
 let gmailTokens = null;
+let driveTokens = null;              // admin Drive/Sheets
+const employeeDriveTokens = new Map(); // employeeId -> drive tokens
+const pendingDriveAuth = new Map();    // state -> { type, employeeId? }
 
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
@@ -791,6 +794,96 @@ receiver.router.post('/api/email/send', requireAuth, express.json(), async (req,
     res.json({ ok: true, id: result.id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ── Google Drive / Sheets ─────────────────────────────────────────────────────
+const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
+
+async function getDriveToken(tokens) {
+  if (!tokens) throw new Error('Drive not connected');
+  if (tokens.refresh_token && Date.now() > (tokens.expiry_date || 0) - 60_000) {
+    const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: tokens.refresh_token, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, grant_type: 'refresh_token' }) });
+    const refreshed = await r.json();
+    if (refreshed.access_token) Object.assign(tokens, refreshed, { expiry_date: Date.now() + ((refreshed.expires_in || 3600) * 1000) });
+  }
+  return tokens.access_token;
+}
+
+async function listDriveFiles(tokens, mimeType) {
+  const token = await getDriveToken(tokens);
+  const q = mimeType ? `mimeType='${mimeType}' and trashed=false` : 'trashed=false';
+  const fields = 'files(id,name,mimeType,modifiedTime,webViewLink,iconLink,size)';
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&orderBy=modifiedTime+desc&pageSize=50&fields=${encodeURIComponent(fields)}`;
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error.message);
+  return d.files || [];
+}
+
+// Admin drive connect
+receiver.router.get('/api/drive/status', requireAuth, (_req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.json({ configured: false });
+  if (!driveTokens) return res.json({ configured: true, connected: false });
+  res.json({ configured: true, connected: true, email: driveTokens.email, name: driveTokens.name });
+});
+
+receiver.router.get('/api/drive/connect', requireAuth, (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.status(400).send('GOOGLE_CLIENT_ID not configured');
+  const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  const state = crypto.randomBytes(16).toString('hex');
+  pendingDriveAuth.set(state, { type: 'admin' });
+  const params = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: `${base}/api/drive/callback`, response_type: 'code', scope: DRIVE_SCOPES, access_type: 'offline', prompt: 'consent', state });
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+receiver.router.get('/api/drive/callback', async (req, res) => {
+  const { code, state } = req.query;
+  if (!code) return res.status(400).send('No code provided');
+  const pending = pendingDriveAuth.get(state);
+  pendingDriveAuth.delete(state);
+  if (!pending) return res.status(400).send('Invalid state');
+  try {
+    const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, redirect_uri: `${base}/api/drive/callback`, grant_type: 'authorization_code' }) });
+    const tokens = await tokenRes.json();
+    if (!tokens.access_token) throw new Error(tokens.error_description || 'No access token');
+    const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
+    const profile = await profileRes.json();
+    const full = { ...tokens, email: profile.email, name: profile.name, expiry_date: Date.now() + ((tokens.expires_in || 3600) * 1000) };
+    if (pending.type === 'employee' && pending.employeeId) {
+      employeeDriveTokens.set(pending.employeeId, full);
+      return res.redirect('/employee#drive');
+    }
+    driveTokens = full;
+    res.redirect('/dashboard#drive');
+  } catch (e) { res.status(500).send(`OAuth error: ${e.message}`); }
+});
+
+receiver.router.post('/api/drive/disconnect', requireAuth, (_req, res) => { driveTokens = null; res.json({ ok: true }); });
+
+receiver.router.get('/api/drive/files',  requireAuth, async (_req, res) => { try { res.json(await listDriveFiles(driveTokens)); } catch (e) { res.status(500).json({ error: e.message }); } });
+receiver.router.get('/api/drive/sheets', requireAuth, async (_req, res) => { try { res.json(await listDriveFiles(driveTokens, 'application/vnd.google-apps.spreadsheet')); } catch (e) { res.status(500).json({ error: e.message }); } });
+
+// Employee drive connect
+receiver.router.get('/api/employee/drive/status', requireEmployeeAuth, (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.json({ configured: false });
+  const t = employeeDriveTokens.get(req.employee.id);
+  if (!t) return res.json({ configured: true, connected: false });
+  res.json({ configured: true, connected: true, email: t.email, name: t.name });
+});
+
+receiver.router.get('/api/employee/drive/connect', requireEmployeeAuth, (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.status(400).send('GOOGLE_CLIENT_ID not configured');
+  const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  const state = crypto.randomBytes(16).toString('hex');
+  pendingDriveAuth.set(state, { type: 'employee', employeeId: req.employee.id });
+  const params = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: `${base}/api/drive/callback`, response_type: 'code', scope: DRIVE_SCOPES, access_type: 'offline', prompt: 'consent', state });
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+receiver.router.post('/api/employee/drive/disconnect', requireEmployeeAuth, (req, res) => { employeeDriveTokens.delete(req.employee.id); res.json({ ok: true }); });
+
+receiver.router.get('/api/employee/drive/files',  requireEmployeeAuth, async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id))); } catch (e) { res.status(500).json({ error: e.message }); } });
+receiver.router.get('/api/employee/drive/sheets', requireEmployeeAuth, async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id), 'application/vnd.google-apps.spreadsheet')); } catch (e) { res.status(500).json({ error: e.message }); } });
 
 // ─── Employee Portal ──────────────────────────────────────────────────────────
 receiver.router.get('/employee', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'employee.html')));
