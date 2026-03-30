@@ -641,7 +641,12 @@
   <div id="page-employees" class="page">
     <div class="page-header">
       <span class="page-title">👥 Employees</span>
+      <button class="btn btn-primary" onclick="openEmpModal()">+ Create Employee</button>
     </div>
+    <div id="employee-accounts-section" style="padding:0 28px 28px">
+      <div id="employees-table-container"><div class="loading"><div class="spinner"></div> Loading…</div></div>
+    </div>
+    <div style="padding:0 28px 8px"><h3 style="font-size:14px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin:0 0 16px">Slack Team Overview</h3></div>
     <div id="employee-grid" class="employee-grid">
       <div class="loading"><div class="spinner"></div> Loading employees…</div>
     </div>
@@ -972,6 +977,7 @@ function renderTable(tasks) {
       <td>${statusBadge(t.status)}</td>
       <td>${t.milestone ? `<span class="milestone-tag">🏁 ${esc(t.milestone)}</span>` : `<span style="color:var(--muted)">—</span>`}</td>
       <td style="font-size:12px;color:var(--muted);white-space:nowrap">${createdDate}</td>
+      <td style="font-size:12px;white-space:nowrap">${t.completed_at ? `<span style="color:var(--success)">${new Date(t.completed_at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}</span>` : `<span style="color:var(--muted)">—</span>`}</td>
       <td style="white-space:nowrap">
         ${isDone ? '' : `<button class="btn btn-success" style="padding:4px 10px;font-size:11px" onclick="quickDone(${t.id})">✓ Done</button> `}
         <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openTaskModal(${t.id})">Edit</button>
@@ -995,6 +1001,7 @@ function renderTable(tasks) {
             <th>Status</th>
             <th>Milestone</th>
             <th>Created</th>
+            <th>Completed</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -1242,14 +1249,42 @@ function hideModal() { document.getElementById('modal-overlay').style.display = 
 function closeModal(e) { if (e.target === document.getElementById('modal-overlay')) hideModal(); }
 
 // ── Employees ─────────────────────────────────────────────────────────────────
+let allEmployees = [];
+
 async function loadEmployees() {
   const grid = document.getElementById('employee-grid');
-  grid.innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
+  const tableC = document.getElementById('employees-table-container');
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  tableC.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   try {
-    const [users, tasks] = await Promise.all([
+    const [users, tasks, emps] = await Promise.all([
       apiFetch('/api/dashboard/users').then(r => r.json()),
       apiFetch('/api/dashboard/tasks').then(r => r.json()),
+      apiFetch('/api/dashboard/employees').then(r => r.json()),
     ]);
+    allEmployees = emps;
+
+    // Employee portal accounts table
+    if (!emps.length) {
+      tableC.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px">No employee portal accounts yet. Click "+ Create Employee" to add one.</div>';
+    } else {
+      tableC.innerHTML = `<div style="overflow-x:auto"><table>
+        <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Slack ID</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody>${emps.map(e => `<tr>
+          <td class="task-title">${esc(e.name)}</td>
+          <td><code style="font-size:12px">${esc(e.username)}</code></td>
+          <td style="font-size:12px;color:var(--muted)">${esc(e.email || '—')}</td>
+          <td style="font-size:11px;color:var(--muted);font-family:monospace">${esc(e.slack_user_id || '—')}</td>
+          <td style="font-size:12px;color:var(--muted)">${new Date(e.created_at).toLocaleDateString()}</td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openEmpModal(${e.id})">Edit</button>
+            <button class="btn btn-danger" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteEmployee(${e.id})">Delete</button>
+          </td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+    }
+
+    // Slack team overview cards
     const tasksByUser = {};
     tasks.forEach(t => {
       if (!tasksByUser[t.assignee_id]) tasksByUser[t.assignee_id] = { total: 0, done: 0 };
@@ -1257,13 +1292,11 @@ async function loadEmployees() {
       if (t.status === 'done') tasksByUser[t.assignee_id].done++;
     });
     const members = Object.values(users);
-    if (!members.length) { grid.innerHTML = '<div class="loading">No employees found</div>'; return; }
+    if (!members.length) { grid.innerHTML = '<div class="loading">No Slack members found</div>'; return; }
     grid.innerHTML = members.map(u => {
       const stats = tasksByUser[u.id] || { total: 0, done: 0 };
       const initials = (u.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-      const avatarHtml = u.avatar
-        ? `<img src="${esc(u.avatar)}" alt="${esc(u.name)}">`
-        : initials;
+      const avatarHtml = u.avatar ? `<img src="${esc(u.avatar)}" alt="${esc(u.name)}">` : initials;
       return `<div class="employee-card">
         <div class="employee-avatar">${avatarHtml}</div>
         <div class="employee-name">${esc(u.name)}</div>
@@ -1277,7 +1310,48 @@ async function loadEmployees() {
     }).join('');
   } catch (e) {
     grid.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`;
+    tableC.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`;
   }
+}
+
+function openEmpModal(id) {
+  const e = id ? allEmployees.find(x => x.id === id) : null;
+  showModal(e ? 'Edit Employee' : 'Create Employee', `
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Full Name *</label><input class="form-control" id="em-name" value="${esc(e?.name||'')}" placeholder="e.g. Sara Ahmed"></div>
+      <div class="form-group"><label class="form-label">Username *</label><input class="form-control" id="em-username" value="${esc(e?.username||'')}" placeholder="e.g. sara.ahmed"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Password ${e ? '(leave blank to keep)' : '*'}</label><input class="form-control" id="em-password" type="password" placeholder="${e ? 'New password…' : 'Set password…'}"></div>
+      <div class="form-group"><label class="form-label">Email</label><input class="form-control" id="em-email" value="${esc(e?.email||'')}" placeholder="sara@company.com"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Slack User ID <span style="color:var(--muted);font-size:11px">(optional, e.g. U012345)</span></label><input class="form-control" id="em-slack" value="${esc(e?.slack_user_id||'')}" placeholder="U012345…"></div>
+  `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEmployee(${id||'null'})">Save</button>`);
+}
+
+async function saveEmployee(id) {
+  const body = {
+    name:          document.getElementById('em-name').value.trim(),
+    username:      document.getElementById('em-username').value.trim(),
+    password:      document.getElementById('em-password').value,
+    email:         document.getElementById('em-email').value.trim(),
+    slack_user_id: document.getElementById('em-slack').value.trim(),
+  };
+  if (!body.name || !body.username) { alert('Name and username are required'); return; }
+  if (!id && !body.password) { alert('Password is required for new employees'); return; }
+  if (!body.password) delete body.password;
+  const r = await apiFetch(id ? `/api/dashboard/employees/${id}` : '/api/dashboard/employees',
+    { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+  const data = await r.json();
+  if (data.error) { alert('Error: ' + data.error); return; }
+  hideModal(); loadEmployees();
+}
+
+async function deleteEmployee(id) {
+  if (!confirm('Delete this employee account? They will no longer be able to log in.')) return;
+  await apiFetch(`/api/dashboard/employees/${id}`, { method: 'DELETE' });
+  loadEmployees();
 }
 
 // ── Requests ──────────────────────────────────────────────────────────────────

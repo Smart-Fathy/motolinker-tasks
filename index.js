@@ -28,15 +28,36 @@ const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
 // ─── Session Store ────────────────────────────────────────────────────────────
-const sessions = new Map();
-let gmailTokens = null; // { access_token, refresh_token, email, name, expiry_date }
+const sessions         = new Map(); // admin sessions
+const employeeSessions = new Map(); // employee portal sessions
+let gmailTokens = null;
 
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+function verifyPassword(password, stored) {
+  try {
+    const [salt, hash] = stored.split(':');
+    return crypto.scryptSync(password, salt, 64).toString('hex') === hash;
+  } catch { return false; }
+}
 
 function requireAuth(req, res, next) {
   const auth  = req.headers['authorization'] || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query._t;
   if (!token || !sessions.has(token)) return res.status(401).json({ error: 'Unauthorized' });
+  next();
+}
+
+function requireEmployeeAuth(req, res, next) {
+  const auth  = req.headers['authorization'] || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query._t;
+  if (!token || !employeeSessions.has(token)) return res.status(401).json({ error: 'Unauthorized' });
+  req.employee = employeeSessions.get(token);
   next();
 }
 
@@ -264,7 +285,8 @@ app.view('create_task_modal', async ({ ack, body, view, client }) => {
 async function handleStatusUpdate(ack, body, action, client, newStatus) {
   await ack();
   const taskId = parseInt(action.value, 10);
-  const { data: task } = await supabase.from('tasks').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', taskId).select().single();
+  const completedAt = newStatus === 'done' ? new Date().toISOString() : null;
+  const { data: task } = await supabase.from('tasks').update({ status: newStatus, completed_at: completedAt, updated_at: new Date().toISOString() }).eq('id', taskId).select().single();
   if (!task) return;
 
   updateTaskInSlackList(task).catch(() => {});
@@ -331,8 +353,9 @@ app.view('update_task_modal', async ({ ack, body, view, client }) => {
   const taskId    = parseInt(view.state.values.task_select.task_input.selected_option.value, 10);
   const newStatus = view.state.values.status_select.status_input.selected_option.value;
 
+  const completedAt2 = newStatus === 'done' ? new Date().toISOString() : null;
   const { data: task } = await supabase.from('tasks')
-    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .update({ status: newStatus, completed_at: completedAt2, updated_at: new Date().toISOString() })
     .eq('id', taskId).select().single();
   if (!task) return;
 
@@ -504,7 +527,10 @@ receiver.router.post('/api/dashboard/tasks', requireAuth, express.json(), async 
 });
 
 receiver.router.put('/api/dashboard/tasks/:id', requireAuth, express.json(), async (req, res) => {
-  const { data, error } = await supabase.from('tasks').update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
+  const updates = { ...req.body, updated_at: new Date().toISOString() };
+  if (updates.status === 'done' && !updates.completed_at) updates.completed_at = new Date().toISOString();
+  if (updates.status && updates.status !== 'done') updates.completed_at = null;
+  const { data, error } = await supabase.from('tasks').update(updates).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
   updateTaskInSlackList(data).catch(() => {});
   res.json(data);
@@ -703,6 +729,94 @@ receiver.router.get('/api/email/messages', requireAuth, async (_req, res) => {
 
 receiver.router.post('/api/email/disconnect', requireAuth, (_req, res) => {
   gmailTokens = null;
+  res.json({ ok: true });
+});
+
+// ─── Employee Portal ──────────────────────────────────────────────────────────
+receiver.router.get('/employee', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'employee.html')));
+
+// Employee auth
+receiver.router.post('/api/employee/login', express.json(), async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+  const { data: emp } = await supabase.from('employees').select('*').eq('username', username).single();
+  if (!emp || !verifyPassword(password, emp.password_hash)) return res.status(401).json({ error: 'Invalid username or password' });
+  const token = generateToken();
+  employeeSessions.set(token, { id: emp.id, name: emp.name, username: emp.username });
+  res.json({ token, name: emp.name, username: emp.username, id: emp.id });
+});
+receiver.router.get('/api/employee/check', requireEmployeeAuth, (req, res) => res.json({ ok: true, ...req.employee }));
+receiver.router.post('/api/employee/logout', requireEmployeeAuth, (req, res) => {
+  const token = (req.headers['authorization'] || '').slice(7);
+  employeeSessions.delete(token);
+  res.json({ ok: true });
+});
+
+// Employee tasks list (for dropdown)
+receiver.router.get('/api/employee/tasks', requireEmployeeAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('tasks').select('id, title, channel_name, status')
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// Employee hours
+receiver.router.get('/api/employee/hours', requireEmployeeAuth, async (req, res) => {
+  const { data, error } = await supabase.from('hours_logs')
+    .select('*, tasks(title, channel_name)')
+    .eq('employee_id', req.employee.id)
+    .order('logged_at', { ascending: false })
+    .limit(50);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+receiver.router.post('/api/employee/hours', requireEmployeeAuth, express.json(), async (req, res) => {
+  const { task_id, task_description, hours, description, log_date } = req.body;
+  if (!hours) return res.status(400).json({ error: 'Hours are required' });
+  if (!task_id && !task_description) return res.status(400).json({ error: 'Either select a task or type a task name' });
+  const insert = {
+    employee_id: req.employee.id,
+    user_id: req.employee.username,
+    hours: parseFloat(hours),
+    description: description || '',
+    log_date: log_date || new Date().toISOString().split('T')[0],
+    task_description: task_description || '',
+  };
+  if (task_id) insert.task_id = parseInt(task_id);
+  const { data, error } = await supabase.from('hours_logs').insert(insert).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// ── Admin: Employee management ────────────────────────────────────────────────
+receiver.router.get('/api/dashboard/employees', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('employees').select('id, name, username, email, slack_user_id, created_at').order('name');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+receiver.router.post('/api/dashboard/employees', requireAuth, express.json(), async (req, res) => {
+  const { name, username, password, email, slack_user_id } = req.body;
+  if (!name || !username || !password) return res.status(400).json({ error: 'Name, username and password are required' });
+  const { data: existing } = await supabase.from('employees').select('id').eq('username', username).single();
+  if (existing) return res.status(409).json({ error: 'Username already taken' });
+  const { data, error } = await supabase.from('employees')
+    .insert({ name, username, password_hash: hashPassword(password), email: email || '', slack_user_id: slack_user_id || '' })
+    .select('id, name, username, email, slack_user_id, created_at').single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+receiver.router.put('/api/dashboard/employees/:id', requireAuth, express.json(), async (req, res) => {
+  const { name, username, password, email, slack_user_id } = req.body;
+  const updates = { name, username, email: email || '', slack_user_id: slack_user_id || '', updated_at: new Date().toISOString() };
+  if (password) updates.password_hash = hashPassword(password);
+  const { data, error } = await supabase.from('employees').update(updates).eq('id', req.params.id)
+    .select('id, name, username, email, slack_user_id, created_at').single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+receiver.router.delete('/api/dashboard/employees/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('employees').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
 
