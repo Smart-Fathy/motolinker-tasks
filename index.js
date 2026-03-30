@@ -752,12 +752,17 @@ receiver.router.post('/api/employee/logout', requireEmployeeAuth, (req, res) => 
   res.json({ ok: true });
 });
 
-// Employee tasks list (for dropdown)
-receiver.router.get('/api/employee/tasks', requireEmployeeAuth, async (_req, res) => {
-  const { data, error } = await supabase.from('tasks').select('id, title, channel_name, status')
-    .order('created_at', { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+// Employee tasks list (for dropdown — only their assigned, non-done tasks)
+receiver.router.get('/api/employee/tasks', requireEmployeeAuth, async (req, res) => {
+  try {
+    // Get the employee's slack_user_id to match against task assignee_id
+    const { data: emp } = await supabase.from('employees').select('slack_user_id').eq('id', req.employee.id).single();
+    let query = supabase.from('tasks').select('id, title, channel_name, status').neq('status', 'done').order('created_at', { ascending: false });
+    if (emp?.slack_user_id) query = query.eq('assignee_id', emp.slack_user_id);
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Employee hours
