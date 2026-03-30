@@ -1490,6 +1490,11 @@ async function deleteHours(id) {
 }
 
 // ── Email ─────────────────────────────────────────────────────────────────────
+function connectGmail() {
+  // Browser navigation can't send Authorization header, so pass token as query param
+  window.location.href = '/api/email/connect?_t=' + encodeURIComponent(authToken || '');
+}
+
 async function loadEmail() {
   const c = document.getElementById('email-content');
   c.innerHTML = '<div class="loading"><div class="spinner"></div> Checking Gmail…</div>';
@@ -1510,7 +1515,7 @@ async function loadEmail() {
         <div class="email-icon">✉️</div>
         <div class="email-title">Connect Your Gmail</div>
         <div class="email-sub">Sign in with Google to view your inbox directly in this dashboard.</div>
-        <a href="/api/email/connect" class="btn btn-primary btn-full" style="text-decoration:none;display:inline-flex;justify-content:center">Connect Gmail</a>
+        <a href="#" onclick="connectGmail()" class="btn btn-primary btn-full" style="text-decoration:none;display:inline-flex;justify-content:center">Connect Gmail</a>
       </div>`;
       return;
     }
