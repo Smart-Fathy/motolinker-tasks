@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MotoLinker — Employee Portal</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117; --surface: #1a1d2e; --card: #222638; --border: #2e3250;
+    --text: #e2e8f0; --muted: #8892a4; --primary: #6366f1; --primary-h: #4f46e5;
+    --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --info: #38bdf8;
+    --radius: 10px; --font: 'Inter', system-ui, sans-serif;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+
+  /* ── Auth Screen ── */
+  .auth-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+  .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 40px; width: 100%; max-width: 400px; }
+  .auth-logo { text-align: center; margin-bottom: 28px; }
+  .auth-logo-icon { width: 52px; height: 52px; background: var(--primary); border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin: 0 auto 12px; }
+  .auth-logo h1 { font-size: 20px; font-weight: 700; }
+  .auth-logo p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .auth-error { background: rgba(239,68,68,.1); border: 1px solid var(--danger); color: var(--danger); padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+
+  /* ── Main App ── */
+  .app { display: none; flex-direction: column; min-height: 100vh; }
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 28px; height: 60px; display: flex; align-items: center; justify-content: space-between; }
+  .topbar-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+  .topbar-brand-icon { width: 32px; height: 32px; background: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .topbar-user { font-size: 13px; color: var(--muted); }
+  .main { padding: 32px 28px; max-width: 900px; margin: 0 auto; width: 100%; }
+
+  /* ── Form ── */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
+  .card-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media(max-width:600px) { .form-row { grid-template-columns: 1fr; } }
+  .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  .form-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .form-control { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 9px 12px; border-radius: 8px; font-size: 14px; outline: none; transition: border .2s; }
+  .form-control:focus { border-color: var(--primary); }
+  .form-hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .task-toggle { display: flex; gap: 8px; margin-bottom: 4px; }
+  .toggle-btn { flex: 1; padding: 7px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 12px; cursor: pointer; text-align: center; transition: all .2s; }
+  .toggle-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+
+  /* ── Buttons ── */
+  .btn { padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all .15s; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-h); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+  .btn-danger { background: rgba(239,68,68,.1); border: 1px solid var(--danger); color: var(--danger); }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: rgba(255,255,255,.04); padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); }
+  td { padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: middle; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+
+  /* ── Status badges ── */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-todo { background: rgba(148,163,184,.1); color: #94a3b8; }
+  .badge-in_progress { background: rgba(251,191,36,.1); color: #fbbf24; }
+  .badge-done { background: rgba(34,197,94,.1); color: #22c55e; }
+
+  /* ── Alert ── */
+  .alert-success { background: rgba(34,197,94,.1); border: 1px solid var(--success); color: var(--success); padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+
+  .loading { text-align: center; padding: 32px; color: var(--muted); font-size: 14px; }
+  .empty { text-align: center; padding: 32px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<!-- Auth Screen -->
+<div class="auth-screen" id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-icon">🏍</div>
+      <h1>Employee Portal</h1>
+      <p>MotoLinker · Log your daily hours</p>
+    </div>
+    <div class="auth-error" id="auth-error"></div>
+    <div class="form-group">
+      <label class="form-label">Username</label>
+      <input class="form-control" id="login-username" placeholder="Your username" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input class="form-control" id="login-password" type="password" placeholder="Your password" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter')submitLogin()">
+    </div>
+    <button class="btn btn-primary" style="width:100%;margin-top:8px" id="login-btn" onclick="submitLogin()">Sign In</button>
+  </div>
+</div>
+
+<!-- Main App -->
+<div class="app" id="app">
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="topbar-brand-icon">🏍</div>
+      MotoLinker Employee Portal
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-user" id="topbar-name"></span>
+      <button class="btn btn-outline" onclick="logout()" style="padding:6px 14px">Sign Out</button>
+    </div>
+  </div>
+  <div class="main">
+
+    <!-- Log Hours Form -->
+    <div class="card">
+      <div class="card-title">⏱️ Log Hours</div>
+      <div class="alert-success" id="log-success">✅ Hours logged successfully!</div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Date *</label>
+          <input class="form-control" id="h-date" type="date">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Hours Worked *</label>
+          <input class="form-control" id="h-hours" type="number" min="0.25" step="0.25" placeholder="e.g. 3.5">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Task</label>
+        <div class="task-toggle">
+          <div class="toggle-btn active" id="toggle-select" onclick="setTaskMode('select')">Select from list</div>
+          <div class="toggle-btn" id="toggle-type" onclick="setTaskMode('type')">Type task name</div>
+        </div>
+        <div id="task-select-wrap">
+          <select class="form-control" id="h-task-select">
+            <option value="">Loading tasks…</option>
+          </select>
+          <div class="form-hint">Can't find your task? Switch to "Type task name"</div>
+        </div>
+        <div id="task-type-wrap" style="display:none">
+          <input class="form-control" id="h-task-text" placeholder="e.g. Fixed homepage banner issue">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Notes <span style="color:var(--muted);font-size:10px">(optional)</span></label>
+        <input class="form-control" id="h-note" placeholder="What did you work on specifically?">
+      </div>
+
+      <button class="btn btn-primary" id="log-btn" onclick="logHours()">Log Hours</button>
+    </div>
+
+    <!-- Recent Hours -->
+    <div class="card">
+      <div class="card-title">📋 My Recent Hours</div>
+      <div id="hours-container"><div class="loading">Loading…</div></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let empToken = localStorage.getItem('ml_emp_token');
+let empInfo  = null;
+let taskMode = 'select';
+
+async function empFetch(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (empToken) headers['Authorization'] = 'Bearer ' + empToken;
+  return fetch(path, { ...opts, headers });
+}
+
+async function submitLogin() {
+  const btn = document.getElementById('login-btn');
+  const err = document.getElementById('auth-error');
+  err.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const r = await fetch('/api/employee/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: document.getElementById('login-username').value.trim(), password: document.getElementById('login-password').value }),
+    });
+    const data = await r.json();
+    if (data.error) { err.textContent = data.error; err.style.display = 'block'; return; }
+    empToken = data.token; empInfo = data;
+    localStorage.setItem('ml_emp_token', empToken);
+    showApp();
+  } catch (e) { err.textContent = 'Connection error'; err.style.display = 'block'; }
+  finally { btn.disabled = false; btn.textContent = 'Sign In'; }
+}
+
+async function checkAuth() {
+  if (!empToken) return showLogin();
+  try {
+    const r = await empFetch('/api/employee/check');
+    if (!r.ok) { localStorage.removeItem('ml_emp_token'); empToken = null; return showLogin(); }
+    empInfo = await r.json();
+    showApp();
+  } catch { showLogin(); }
+}
+
+function showLogin() {
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+async function showApp() {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('topbar-name').textContent = empInfo?.name || empInfo?.username || '';
+  document.getElementById('h-date').value = new Date().toISOString().split('T')[0];
+  await Promise.all([loadTasks(), loadMyHours()]);
+}
+
+async function logout() {
+  try { await empFetch('/api/employee/logout', { method: 'POST' }); } catch (_) {}
+  localStorage.removeItem('ml_emp_token'); empToken = null;
+  showLogin();
+}
+
+async function loadTasks() {
+  try {
+    const r = await empFetch('/api/employee/tasks');
+    const tasks = await r.json();
+    const sel = document.getElementById('h-task-select');
+    sel.innerHTML = '<option value="">— No specific task —</option>' +
+      tasks.map(t => `<option value="${t.id}">[${t.status.replace('_',' ')}] #${t.id} — ${t.title.substring(0,60)}${t.title.length>60?'…':''}</option>`).join('');
+  } catch (e) { console.error('loadTasks:', e); }
+}
+
+function setTaskMode(mode) {
+  taskMode = mode;
+  document.getElementById('toggle-select').classList.toggle('active', mode === 'select');
+  document.getElementById('toggle-type').classList.toggle('active', mode === 'type');
+  document.getElementById('task-select-wrap').style.display = mode === 'select' ? '' : 'none';
+  document.getElementById('task-type-wrap').style.display   = mode === 'type'   ? '' : 'none';
+}
+
+async function logHours() {
+  const btn = document.getElementById('log-btn');
+  const succ = document.getElementById('log-success');
+  succ.style.display = 'none';
+  const hours = document.getElementById('h-hours').value;
+  const date  = document.getElementById('h-date').value;
+  const note  = document.getElementById('h-note').value.trim();
+  const taskId   = taskMode === 'select' ? document.getElementById('h-task-select').value : '';
+  const taskText = taskMode === 'type'   ? document.getElementById('h-task-text').value.trim() : '';
+
+  if (!hours || parseFloat(hours) <= 0) { alert('Please enter valid hours'); return; }
+  if (!date) { alert('Please select a date'); return; }
+  if (taskMode === 'type' && !taskText) { alert('Please type a task name'); return; }
+
+  btn.disabled = true; btn.textContent = 'Logging…';
+  try {
+    const body = { hours, log_date: date, description: note };
+    if (taskId)   body.task_id          = parseInt(taskId);
+    if (taskText) body.task_description = taskText;
+    const r = await empFetch('/api/employee/hours', { method: 'POST', body: JSON.stringify(body) });
+    const data = await r.json();
+    if (data.error) { alert('Error: ' + data.error); return; }
+    // Reset form
+    document.getElementById('h-hours').value = '';
+    document.getElementById('h-note').value  = '';
+    document.getElementById('h-task-text').value = '';
+    document.getElementById('h-task-select').value = '';
+    succ.style.display = 'block';
+    setTimeout(() => { succ.style.display = 'none'; }, 4000);
+    loadMyHours();
+  } catch (e) { alert('Error: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Log Hours'; }
+}
+
+async function loadMyHours() {
+  const c = document.getElementById('hours-container');
+  c.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    const r = await empFetch('/api/employee/hours');
+    const hours = await r.json();
+    if (!hours.length) { c.innerHTML = '<div class="empty">No hours logged yet.</div>'; return; }
+    const total = hours.reduce((s, h) => s + parseFloat(h.hours || 0), 0);
+    c.innerHTML = `
+      <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 20px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:var(--primary)">${total.toFixed(1)}h</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Total Logged</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 20px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:var(--success)">${hours.length}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Entries</div>
+        </div>
+      </div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Date</th><th>Task</th><th>Hours</th><th>Notes</th></tr></thead>
+        <tbody>${hours.map(h => {
+          const taskName = h.tasks?.title || h.task_description || '—';
+          const channel  = h.tasks?.channel_name ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${h.tasks.channel_name}</div>` : '';
+          return `<tr>
+            <td style="white-space:nowrap;color:var(--muted);font-size:12px">${h.log_date || new Date(h.logged_at).toLocaleDateString()}</td>
+            <td><div style="font-size:13px">${taskName}</div>${channel}</td>
+            <td><strong style="color:var(--primary)">${parseFloat(h.hours).toFixed(1)}h</strong></td>
+            <td style="font-size:12px;color:var(--muted)">${h.description || '—'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+  } catch (e) { c.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
+}
+
+checkAuth();
+</script>
+</body>
+</html>

@@ -88,6 +88,34 @@ CREATE TRIGGER requests_updated_at
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ============================================================
+--  Employees (portal users)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS employees (
+  id            BIGSERIAL PRIMARY KEY,
+  name          TEXT NOT NULL,
+  username      TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  email         TEXT DEFAULT '',
+  slack_user_id TEXT DEFAULT '',
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+--  Run these if tables already exist (migrations)
+-- ============================================================
+
+-- Completion date on tasks
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+-- Employee portal columns on hours_logs
+ALTER TABLE hours_logs ALTER COLUMN task_id DROP NOT NULL;
+ALTER TABLE hours_logs ADD COLUMN IF NOT EXISTS task_description TEXT DEFAULT '';
+ALTER TABLE hours_logs ADD COLUMN IF NOT EXISTS log_date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE hours_logs ADD COLUMN IF NOT EXISTS employee_id BIGINT REFERENCES employees(id) ON DELETE SET NULL;
+
+-- ============================================================
 --  Optional: Row Level Security (RLS)
 -- ============================================================
 
