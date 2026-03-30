@@ -777,8 +777,7 @@ receiver.router.get('/api/employee/my-tasks', requireEmployeeAuth, async (req, r
 });
 
 // Employee marks their own task as done
-receiver.router.put('/api/employee/my-tasks/:id', requireEmployeeAuth, express.json(), async (req, res) => {
-  try {
+receiver.router.put('/api/employee/my-tasks/:id', requireEmployeeAuth, express.json(), async (req, res) => {  try {
     const { data: emp } = await supabase.from('employees').select('slack_user_id').eq('id', req.employee.id).single();
     if (!emp?.slack_user_id) return res.status(403).json({ error: 'No Slack user linked to this account' });
     // Verify the task is actually assigned to this employee
@@ -794,6 +793,31 @@ receiver.router.put('/api/employee/my-tasks/:id', requireEmployeeAuth, express.j
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Employee channels list (for task creation)
+receiver.router.get('/api/employee/channels', requireEmployeeAuth, async (_req, res) => {
+  try { res.json(await getSlackChannels()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Employee creates a new task (assigned to themselves)
+receiver.router.post('/api/employee/my-tasks', requireEmployeeAuth, express.json(), async (req, res) => {
+  try {
+    const { data: emp } = await supabase.from('employees').select('slack_user_id, name').eq('id', req.employee.id).single();
+    if (!emp?.slack_user_id) return res.status(403).json({ error: 'No Slack user ID linked to your account. Ask your admin to set it.' });
+    const { title, description, channel_id, channel_name, due_date, priority, milestone } = req.body;
+    if (!title || !channel_id || !channel_name || !due_date) return res.status(400).json({ error: 'Title, channel and due date are required' });
+    const { data: task, error } = await supabase.from('tasks')
+      .insert({ title, description: description || '', channel_id, channel_name, assignee_id: emp.slack_user_id, due_date, priority: priority || 'medium', milestone: milestone || '', created_by: req.employee.username, status: 'todo' })
+      .select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    // Notify channel and update task board
+    try {
+      await slackClient.chat.postMessage({ channel: channel_id, text: `📋 New task: ${title}`, blocks: buildTaskBlocks(task) });
+    } catch (e) { console.warn('Slack notify failed:', e.message); }
+    updateChannelTaskBoard(channel_id, channel_name).catch(() => {});
+    res.json(task);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 receiver.router.get('/api/employee/hours', requireEmployeeAuth, async (req, res) => {
   const { data, error } = await supabase.from('hours_logs')
     .select('*, tasks(title, channel_name)')
