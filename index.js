@@ -691,12 +691,36 @@ receiver.router.get('/api/email/connect', requireAuth, (req, res) => {
 });
 
 receiver.router.get('/api/email/callback', async (req, res) => {
-  if (!req.query.code) return res.status(400).send('No code provided');
+  const { code, state } = req.query;
+  if (!code) return res.status(400).send('No code provided');
+
+  // If state matches a pending Drive auth, handle as Drive
+  const pending = state ? pendingDriveAuth.get(state) : null;
+  if (pending) {
+    pendingDriveAuth.delete(state);
+    try {
+      const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, redirect_uri: `${base}/api/email/callback`, grant_type: 'authorization_code' }) });
+      const tokens = await tokenRes.json();
+      if (!tokens.access_token) throw new Error(tokens.error_description || 'No access token');
+      const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
+      const profile = await profileRes.json();
+      const full = { ...tokens, email: profile.email, name: profile.name, expiry_date: Date.now() + ((tokens.expires_in || 3600) * 1000) };
+      if (pending.type === 'employee' && pending.employeeId) {
+        employeeDriveTokens.set(pending.employeeId, full);
+        return res.redirect('/employee#drive');
+      }
+      driveTokens = full;
+      return res.redirect('/dashboard#drive');
+    } catch (e) { return res.status(500).send(`OAuth error: ${e.message}`); }
+  }
+
+  // Otherwise handle as Gmail
   try {
     const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: req.query.code, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, redirect_uri: `${base}/api/email/callback`, grant_type: 'authorization_code' }),
+      body: JSON.stringify({ code, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, redirect_uri: `${base}/api/email/callback`, grant_type: 'authorization_code' }),
     });
     const tokens = await tokenRes.json();
     if (!tokens.access_token) throw new Error(tokens.error_description || 'No access token');
@@ -831,31 +855,8 @@ receiver.router.get('/api/drive/connect', requireAuth, (req, res) => {
   const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
   const state = crypto.randomBytes(16).toString('hex');
   pendingDriveAuth.set(state, { type: 'admin' });
-  const params = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: `${base}/api/drive/callback`, response_type: 'code', scope: DRIVE_SCOPES, access_type: 'offline', prompt: 'consent', state });
+  const params = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: `${base}/api/email/callback`, response_type: 'code', scope: DRIVE_SCOPES, access_type: 'offline', prompt: 'consent', state });
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
-});
-
-receiver.router.get('/api/drive/callback', async (req, res) => {
-  const { code, state } = req.query;
-  if (!code) return res.status(400).send('No code provided');
-  const pending = pendingDriveAuth.get(state);
-  pendingDriveAuth.delete(state);
-  if (!pending) return res.status(400).send('Invalid state');
-  try {
-    const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, redirect_uri: `${base}/api/drive/callback`, grant_type: 'authorization_code' }) });
-    const tokens = await tokenRes.json();
-    if (!tokens.access_token) throw new Error(tokens.error_description || 'No access token');
-    const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
-    const profile = await profileRes.json();
-    const full = { ...tokens, email: profile.email, name: profile.name, expiry_date: Date.now() + ((tokens.expires_in || 3600) * 1000) };
-    if (pending.type === 'employee' && pending.employeeId) {
-      employeeDriveTokens.set(pending.employeeId, full);
-      return res.redirect('/employee#drive');
-    }
-    driveTokens = full;
-    res.redirect('/dashboard#drive');
-  } catch (e) { res.status(500).send(`OAuth error: ${e.message}`); }
 });
 
 receiver.router.post('/api/drive/disconnect', requireAuth, (_req, res) => { driveTokens = null; res.json({ ok: true }); });
@@ -876,7 +877,7 @@ receiver.router.get('/api/employee/drive/connect', requireEmployeeAuth, (req, re
   const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
   const state = crypto.randomBytes(16).toString('hex');
   pendingDriveAuth.set(state, { type: 'employee', employeeId: req.employee.id });
-  const params = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: `${base}/api/drive/callback`, response_type: 'code', scope: DRIVE_SCOPES, access_type: 'offline', prompt: 'consent', state });
+  const params = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: `${base}/api/email/callback`, response_type: 'code', scope: DRIVE_SCOPES, access_type: 'offline', prompt: 'consent', state });
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
 
