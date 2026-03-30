@@ -680,8 +680,8 @@
   </div>
 
   <!-- ── EMAIL PAGE ────────────────────────────────────── -->
-  <div id="page-email" class="page">
-    <div class="email-page" id="email-content">
+  <div id="page-email" class="page" style="padding:0;height:calc(100vh - 64px);display:none;flex-direction:column">
+    <div id="email-content" style="flex:1;overflow:auto;padding:28px">
       <div class="loading"><div class="spinner"></div> Loading email status…</div>
     </div>
   </div>
@@ -1491,9 +1491,10 @@ async function deleteHours(id) {
 
 // ── Email ─────────────────────────────────────────────────────────────────────
 function connectGmail() {
-  // Browser navigation can't send Authorization header, so pass token as query param
   window.location.href = '/api/email/connect?_t=' + encodeURIComponent(authToken || '');
 }
+
+let emailInboxCache = [];
 
 async function loadEmail() {
   const c = document.getElementById('email-content');
@@ -1502,47 +1503,137 @@ async function loadEmail() {
     const status = await apiFetch('/api/email/status').then(r => r.json());
     if (!status.configured) {
       c.innerHTML = `<div class="email-connect-card">
-        <div class="email-icon">📧</div>
-        <div class="email-title">Connect Gmail</div>
-        <div class="email-sub">To enable Gmail integration, add these env vars in Railway then redeploy:</div>
-        <pre style="text-align:left;background:var(--bg);padding:12px;border-radius:8px;font-size:12px;margin-bottom:16px">GOOGLE_CLIENT_ID=your_client_id\nGOOGLE_CLIENT_SECRET=your_secret\nAPP_URL=https://your-app.railway.app</pre>
-        <div class="email-sub" style="font-size:12px">Get credentials at <strong>console.cloud.google.com</strong> → APIs & Services → Credentials</div>
-      </div>`;
-      return;
+        <div class="email-icon">📧</div><div class="email-title">Connect Gmail</div>
+        <div class="email-sub">Add these env vars in Railway then redeploy:</div>
+        <pre style="text-align:left;background:var(--bg);padding:12px;border-radius:8px;font-size:12px;margin-bottom:16px">GOOGLE_CLIENT_ID=...\nGOOGLE_CLIENT_SECRET=...\nAPP_URL=https://your-app.railway.app</pre>
+      </div>`; return;
     }
     if (!status.connected) {
       c.innerHTML = `<div class="email-connect-card">
-        <div class="email-icon">✉️</div>
-        <div class="email-title">Connect Your Gmail</div>
-        <div class="email-sub">Sign in with Google to view your inbox directly in this dashboard.</div>
+        <div class="email-icon">✉️</div><div class="email-title">Connect Your Gmail</div>
+        <div class="email-sub">Sign in with Google to view your inbox in this dashboard.</div>
         <a href="#" onclick="connectGmail()" class="btn btn-primary btn-full" style="text-decoration:none;display:inline-flex;justify-content:center">Connect Gmail</a>
-      </div>`;
-      return;
+      </div>`; return;
     }
-    // Connected — load inbox
-    c.innerHTML = `<div style="max-width:800px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-        <div><strong style="font-size:16px">✉️ ${esc(status.name)}</strong> <span style="color:var(--muted);font-size:13px">${esc(status.email)}</span></div>
-        <button class="btn btn-outline" onclick="disconnectEmail()" style="font-size:12px">Disconnect</button>
-      </div>
-      <div class="table-card"><div class="table-header"><span class="table-title">Inbox</span></div>
-      <div id="inbox-list" style="padding:0 20px"><div class="loading"><div class="spinner"></div></div></div></div>
-    </div>`;
-    const msgs = await apiFetch('/api/email/messages').then(r => r.json());
-    const inbox = document.getElementById('inbox-list');
-    if (!msgs.length) { inbox.innerHTML = '<div class="empty-state" style="padding:24px">No messages</div>'; return; }
-    inbox.innerHTML = msgs.map(m => `<div class="inbox-item">
-      ${m.unread ? '<div class="unread-dot"></div>' : '<div style="width:8px;flex-shrink:0"></div>'}
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
-          <span class="inbox-from">${esc(m.from.replace(/<.*>/, '').trim() || m.from)}</span>
-          <span class="inbox-date">${new Date(m.date).toLocaleDateString()}</span>
+    // Connected — render inbox layout
+    c.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:36px;height:36px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px">${esc(status.name?.[0]||'?')}</div>
+          <div><div style="font-weight:600;font-size:14px">${esc(status.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(status.email)}</div></div>
         </div>
-        <div class="inbox-subject ${m.unread ? 'unread' : ''}">${esc(m.subject || '(no subject)')}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.snippet)}</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="openCompose()" style="font-size:13px">✏️ Compose</button>
+          <button class="btn btn-outline" onclick="disconnectEmail()" style="font-size:12px">Disconnect</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:20px;align-items:flex-start">
+        <div style="flex:0 0 380px;min-width:0">
+          <div class="table-card">
+            <div class="table-header"><span class="table-title">Inbox</span><button class="btn btn-outline" onclick="loadEmail()" style="font-size:11px;padding:4px 10px">↺ Refresh</button></div>
+            <div id="inbox-list"><div class="loading"><div class="spinner"></div></div></div>
+          </div>
+        </div>
+        <div style="flex:1;min-width:0" id="email-view-panel">
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:40px;text-align:center;color:var(--muted)">
+            <div style="font-size:32px;margin-bottom:8px">✉️</div>
+            <div style="font-size:14px">Select an email to read it</div>
+          </div>
+        </div>
+      </div>`;
+    const msgs = await apiFetch('/api/email/messages').then(r => r.json());
+    emailInboxCache = Array.isArray(msgs) ? msgs : [];
+    renderInboxList();
+  } catch (e) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`; }
+}
+
+function renderInboxList() {
+  const inbox = document.getElementById('inbox-list');
+  if (!inbox) return;
+  if (!emailInboxCache.length) { inbox.innerHTML = '<div class="empty-state" style="padding:24px">No messages</div>'; return; }
+  inbox.innerHTML = emailInboxCache.map(m => `
+    <div class="inbox-item" onclick="openEmail('${esc(m.id)}')" style="cursor:pointer;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;gap:10px;align-items:flex-start;transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
+      ${m.unread ? '<div class="unread-dot" style="width:8px;height:8px;background:var(--primary);border-radius:50%;flex-shrink:0;margin-top:5px"></div>' : '<div style="width:8px;flex-shrink:0"></div>'}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px">
+          <span style="font-size:13px;font-weight:${m.unread?'700':'500'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px">${esc(m.from.replace(/<.*>/,'').trim()||m.from)}</span>
+          <span style="font-size:11px;color:var(--muted);flex-shrink:0">${new Date(m.date).toLocaleDateString()}</span>
+        </div>
+        <div style="font-size:12px;font-weight:${m.unread?'600':'400'};margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.subject||'(no subject)')}</div>
+        <div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.snippet||'')}</div>
       </div>
     </div>`).join('');
-  } catch (e) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`; }
+}
+
+async function openEmail(id) {
+  const panel = document.getElementById('email-view-panel');
+  if (!panel) return;
+  panel.innerHTML = '<div class="loading" style="padding:40px"><div class="spinner"></div></div>';
+  try {
+    const msg = await apiFetch(`/api/email/messages/${id}`).then(r => r.json());
+    if (msg.error) throw new Error(msg.error);
+    const fromEmail = msg.from.match(/<(.+)>/)?.[1] || msg.from;
+    const bodyHtml = msg.isHtml
+      ? `<iframe srcdoc="${esc(msg.body)}" style="width:100%;border:none;min-height:400px;background:#fff;border-radius:0 0 var(--radius) var(--radius)" onload="this.style.height=this.contentDocument.body.scrollHeight+40+'px'"></iframe>`
+      : `<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;color:var(--text);line-height:1.6">${esc(msg.body||'(empty)')}</pre>`;
+    panel.innerHTML = `
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <div style="padding:20px 24px;border-bottom:1px solid var(--border)">
+          <div style="font-size:16px;font-weight:700;margin-bottom:12px">${esc(msg.subject||'(no subject)')}</div>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div style="font-size:13px">
+              <div style="color:var(--muted);margin-bottom:2px">From: <span style="color:var(--text)">${esc(msg.from)}</span></div>
+              ${msg.to ? `<div style="color:var(--muted)">To: <span style="color:var(--text)">${esc(msg.to)}</span></div>` : ''}
+              <div style="color:var(--muted);font-size:12px;margin-top:4px">${new Date(msg.date).toLocaleString()}</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-shrink:0">
+              <button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="openReply('${esc(msg.id)}','${esc(msg.threadId)}','${esc(fromEmail)}','${esc(msg.subject||'')}','${esc(msg.messageId||'')}')">↩ Reply</button>
+              <button class="btn btn-outline" style="font-size:12px;padding:6px 14px" onclick="openCompose('${esc(fromEmail)}')">Forward / Compose</button>
+            </div>
+          </div>
+        </div>
+        <div style="padding:${msg.isHtml?'0':'20px 24px'}">${bodyHtml}</div>
+      </div>`;
+  } catch (e) { panel.innerHTML = `<div class="error-msg" style="margin:0">⚠️ ${esc(e.message)}</div>`; }
+}
+
+function openReply(msgId, threadId, to, subject, messageId) {
+  const replySubject = subject.startsWith('Re:') ? subject : 'Re: ' + subject;
+  showEmailCompose(to, replySubject, '', threadId, messageId);
+}
+
+function openCompose(to = '') {
+  showEmailCompose(to, '', '');
+}
+
+function showEmailCompose(to, subject, body, threadId = '', inReplyTo = '') {
+  showModal('✉️ ' + (threadId ? 'Reply' : 'New Email'), `
+    <div class="form-group"><label class="form-label">To *</label><input class="form-control" id="em-to" value="${esc(to)}" placeholder="recipient@example.com"></div>
+    <div class="form-group"><label class="form-label">Subject *</label><input class="form-control" id="em-subject" value="${esc(subject)}" placeholder="Subject…"></div>
+    <div class="form-group"><label class="form-label">Message *</label><textarea class="form-control" id="em-body" rows="8" placeholder="Write your message…" style="resize:vertical">${esc(body)}</textarea></div>
+    <input type="hidden" id="em-thread" value="${esc(threadId)}">
+    <input type="hidden" id="em-inreplyto" value="${esc(inReplyTo)}">
+  `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" id="em-send-btn" onclick="sendEmail()">Send ✉️</button>`);
+}
+
+async function sendEmail() {
+  const btn = document.getElementById('em-send-btn');
+  const to       = document.getElementById('em-to').value.trim();
+  const subject  = document.getElementById('em-subject').value.trim();
+  const body     = document.getElementById('em-body').value.trim();
+  const threadId = document.getElementById('em-thread').value;
+  const inReplyTo = document.getElementById('em-inreplyto').value;
+  if (!to || !subject || !body) { alert('To, subject and message are required'); return; }
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const r = await apiFetch('/api/email/send', { method: 'POST', body: JSON.stringify({ to, subject, body, threadId: threadId||undefined, inReplyTo: inReplyTo||undefined }) });
+    const d = await r.json();
+    if (d.error) { alert('Failed to send: ' + d.error); return; }
+    hideModal();
+    alert('✅ Email sent successfully!');
+  } catch (e) { alert('Error: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Send ✉️'; }
 }
 
 async function disconnectEmail() {
