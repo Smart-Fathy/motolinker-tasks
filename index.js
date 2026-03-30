@@ -116,6 +116,19 @@ async function buildTaskBoardBlocks(channelId, channelName) {
     blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*✅ Done (${grouped.done.length})*\n${doneList}${extra}` } });
   }
 
+  blocks.push({ type: 'divider' });
+  blocks.push({
+    type: 'actions',
+    block_id: `board_actions_${channelId}`,
+    elements: [{
+      type: 'button',
+      text: { type: 'plain_text', text: '🔄 Update a Task' },
+      value: channelId,
+      action_id: 'update_task_button',
+      style: 'primary',
+    }],
+  });
+
   return blocks;
 }
 
@@ -269,6 +282,70 @@ async function handleStatusUpdate(ack, body, action, client, newStatus) {
 app.action('status_in_progress', p => handleStatusUpdate(p.ack, p.body, p.action, p.client, 'in_progress'));
 app.action('status_done',        p => handleStatusUpdate(p.ack, p.body, p.action, p.client, 'done'));
 app.action('status_todo',        p => handleStatusUpdate(p.ack, p.body, p.action, p.client, 'todo'));
+
+// ─── Task Board — Update a Task button ───────────────────────────────────────
+app.action('update_task_button', async ({ ack, body, action, client }) => {
+  await ack();
+  const channelId = action.value;
+  const userId    = body.user.id;
+
+  // Show the user's own tasks first, fall back to all non-done channel tasks
+  const { data: all } = await supabase.from('tasks').select('*')
+    .eq('channel_id', channelId).neq('status', 'done').order('due_date', { ascending: true });
+  if (!all || all.length === 0) return; // nothing to update
+
+  const mine  = all.filter(t => t.assignee_id === userId);
+  const tasks = mine.length > 0 ? mine : all;
+
+  const taskOptions = tasks.map(t => ({
+    text:  { type: 'plain_text', text: `${priorityEmoji(t.priority)} ${t.title.substring(0, 74)}` },
+    value: String(t.id),
+  }));
+
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: {
+      type: 'modal', callback_id: 'update_task_modal',
+      private_metadata: channelId,
+      title:  { type: 'plain_text', text: '🔄 Update Task Status' },
+      submit: { type: 'plain_text', text: 'Update' },
+      close:  { type: 'plain_text', text: 'Cancel' },
+      blocks: [
+        { type: 'input', block_id: 'task_select', label: { type: 'plain_text', text: 'Task' },
+          element: { type: 'static_select', action_id: 'task_input',
+            placeholder: { type: 'plain_text', text: 'Choose a task…' }, options: taskOptions } },
+        { type: 'input', block_id: 'status_select', label: { type: 'plain_text', text: 'New Status' },
+          element: { type: 'static_select', action_id: 'status_input', options: [
+            { text: { type: 'plain_text', text: '⏳ To Do'        }, value: 'todo'        },
+            { text: { type: 'plain_text', text: '▶️ In Progress'  }, value: 'in_progress' },
+            { text: { type: 'plain_text', text: '✅ Done'         }, value: 'done'        },
+          ]}},
+      ],
+    },
+  });
+});
+
+app.view('update_task_modal', async ({ ack, body, view, client }) => {
+  await ack();
+  const channelId = view.private_metadata;
+  const taskId    = parseInt(view.state.values.task_select.task_input.selected_option.value, 10);
+  const newStatus = view.state.values.status_select.status_input.selected_option.value;
+
+  const { data: task } = await supabase.from('tasks')
+    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .eq('id', taskId).select().single();
+  if (!task) return;
+
+  // Refresh the pinned task board
+  await updateChannelTaskBoard(channelId, task.channel_name);
+
+  // Notify chiefs
+  try {
+    await client.chat.postMessage({ channel: CHIEFS_CHANNEL_ID, text: `Task #${taskId} updated`,
+      blocks: [{ type: 'section', text: { type: 'mrkdwn',
+        text: `📊 Task *#${taskId}* — *${task.title}*\nStatus → *${statusLabel(newStatus)}* by <@${body.user.id}> in <#${channelId}>` } }] });
+  } catch (e) { console.warn('Chiefs notify failed:', e.message); }
+});
 
 // ─── /task-list ───────────────────────────────────────────────────────────────
 app.command('/task-list', async ({ command, ack, client, respond }) => {
