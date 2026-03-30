@@ -393,6 +393,7 @@
     /* ── Page visibility ─────────────────────────────────────── */
     .page { display: none; }
     .page.active { display: block; }
+    #page-email.active { display: flex; flex-direction: column; padding: 0; height: calc(100vh - 64px); }
 
     /* ── Employees page ──────────────────────────────────────── */
     .employee-grid {
@@ -680,7 +681,7 @@
   </div>
 
   <!-- ── EMAIL PAGE ────────────────────────────────────── -->
-  <div id="page-email" class="page" style="padding:0;height:calc(100vh - 64px);display:none;flex-direction:column">
+  <div id="page-email" class="page">
     <div id="email-content" style="flex:1;overflow:auto;padding:28px">
       <div class="loading"><div class="spinner"></div> Loading email status…</div>
     </div>
