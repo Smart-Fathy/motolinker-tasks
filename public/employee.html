@@ -405,10 +405,13 @@ function renderTasksList() {
     const isOverdue = t.due_date < today && t.status !== 'done';
     const completedDate = t.completed_at
       ? `<span class="complete-date">✅ Completed ${new Date(t.completed_at).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}</span>` : '';
-    return `<div class="task-item">
+    return `<div class="task-item" id="task-item-${t.id}">
       <div class="task-dot ${t.status}"></div>
       <div class="task-info">
-        <div class="task-name${t.status==='done'?' done':''}">${t.title}</div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+          <div class="task-name${t.status==='done'?' done':''}">${t.title}</div>
+          ${activeTab === 'current' ? `<button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="markTaskDone(${t.id})">✓ Done</button>` : ''}
+        </div>
         <div class="task-meta">
           <span>${t.channel_name}</span>
           <span>Due ${t.due_date}</span>
@@ -494,6 +497,19 @@ async function loadMyHours() {
       }).join('')}</tbody>
     </table></div>`;
   } catch (e) { c.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
+}
+
+/* ── Mark task done ── */
+async function markTaskDone(taskId) {
+  const btn = document.querySelector(`#task-item-${taskId} button`);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await ef(`/api/employee/my-tasks/${taskId}`, { method: 'PUT' });
+    const d = await r.json();
+    if (d.error) { alert('Error: ' + d.error); if (btn) { btn.disabled = false; btn.textContent = '✓ Done'; } return; }
+    await loadMyTasks();     // refresh task list + stats
+    await loadDropdownTasks(); // remove from log hours dropdown
+  } catch (e) { alert('Error: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = '✓ Done'; } }
 }
 
 checkAuth();
