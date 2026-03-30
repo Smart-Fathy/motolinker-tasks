@@ -76,45 +76,70 @@ async function getSlackChannels() {
   return _chCache;
 }
 
-// ─── Slack Workflow Webhook ───────────────────────────────────────────────────
-// Set SLACK_TASKS_WEBHOOK_URL in Railway env vars to enable.
-// Create a Slack workflow: "From a webhook" → map fields → "Add to list" action.
-const SLACK_TASKS_WEBHOOK_URL = process.env.SLACK_TASKS_WEBHOOK_URL;
+// ─── Pinned Task Board ────────────────────────────────────────────────────────
+// One pinned message per channel showing all tasks, auto-updated on any change.
+const taskBoardCache = new Map(); // channelId → message ts
 
-async function notifySlackWebhook(task, action = 'created') {
-  if (!SLACK_TASKS_WEBHOOK_URL) { console.warn('SLACK_TASKS_WEBHOOK_URL not set — skipping webhook'); return; }
-  try {
-    const users = await getSlackUsers().catch(() => ({}));
-    const assigneeName = users[task.assignee_id]?.name || task.assignee_id;
-    const payload = {
-      task_id:      String(task.id),
-      title:        task.title || '',
-      status:       task.status || 'todo',
-      assignee:     assigneeName,
-      assignee_id:  task.assignee_id || '',
-      due_date:     task.due_date || '',
-      priority:     task.priority || 'medium',
-      channel_name: task.channel_name || '',
-      channel_id:   task.channel_id || '',
-      milestone:    task.milestone || '',
-      description:  task.description || '',
-      action,
-    };
-    console.log(`notifySlackWebhook [${action}] task #${task.id}: ${task.title}`);
-    const resp = await fetch(SLACK_TASKS_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const text = await resp.text();
-    console.log(`webhook response [${resp.status}]:`, text);
-  } catch (e) { console.warn('notifySlackWebhook:', e.message); }
+async function buildTaskBoardBlocks(channelId, channelName) {
+  const { data: tasks } = await supabase.from('tasks').select('*')
+    .eq('channel_id', channelId)
+    .order('due_date', { ascending: true });
+  if (!tasks || tasks.length === 0) return null;
+
+  const users = await getSlackUsers().catch(() => ({}));
+  const grouped = { todo: [], in_progress: [], done: [] };
+  tasks.forEach(t => { if (grouped[t.status]) grouped[t.status].push(t); });
+
+  const line = t => {
+    const name = users[t.assignee_id]?.displayName || users[t.assignee_id]?.name || t.assignee_id;
+    return `${priorityEmoji(t.priority)} *${t.title}* — ${name} · Due \`${t.due_date}\`${t.milestone ? ` · 🏁 ${t.milestone}` : ''}`;
+  };
+
+  const updated = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const blocks = [
+    { type: 'header', text: { type: 'plain_text', text: `📋 Task Board — ${channelName}` } },
+    { type: 'context', elements: [{ type: 'mrkdwn', text: `${tasks.length} task(s) total · Last updated ${updated}` }] },
+    { type: 'divider' },
+  ];
+
+  if (grouped.todo.length) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*⏳ To Do (${grouped.todo.length})*\n${grouped.todo.map(t => `• ${line(t)}`).join('\n')}` } });
+    blocks.push({ type: 'divider' });
+  }
+  if (grouped.in_progress.length) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*▶️ In Progress (${grouped.in_progress.length})*\n${grouped.in_progress.map(t => `• ${line(t)}`).join('\n')}` } });
+    blocks.push({ type: 'divider' });
+  }
+  if (grouped.done.length) {
+    const doneList = grouped.done.slice(0, 5).map(t => `• ✅ ~~${t.title}~~`).join('\n');
+    const extra = grouped.done.length > 5 ? `\n_…and ${grouped.done.length - 5} more_` : '';
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*✅ Done (${grouped.done.length})*\n${doneList}${extra}` } });
+  }
+
+  return blocks;
 }
 
-// Keep these as aliases so all existing call sites still work
-const addTaskToSlackList    = task => notifySlackWebhook(task, 'created');
-const updateTaskInSlackList = task => notifySlackWebhook(task, 'updated');
-const removeTaskFromSlackList = task => notifySlackWebhook(task, 'deleted');
+async function updateChannelTaskBoard(channelId, channelName) {
+  try {
+    const blocks = await buildTaskBoardBlocks(channelId, channelName);
+    if (!blocks) return;
+    const text = `📋 Task Board — ${channelName}`;
+
+    if (taskBoardCache.has(channelId)) {
+      await slackClient.chat.update({ channel: channelId, ts: taskBoardCache.get(channelId), blocks, text });
+    } else {
+      const result = await slackClient.chat.postMessage({ channel: channelId, text, blocks });
+      if (result.ok && result.ts) {
+        taskBoardCache.set(channelId, result.ts);
+        try { await slackClient.pins.add({ channel: channelId, timestamp: result.ts }); } catch (_) {}
+      }
+    }
+  } catch (e) { console.warn(`updateChannelTaskBoard ${channelName}:`, e.message); }
+}
+
+const addTaskToSlackList     = task => updateChannelTaskBoard(task.channel_id, task.channel_name);
+const updateTaskInSlackList  = task => updateChannelTaskBoard(task.channel_id, task.channel_name);
+const removeTaskFromSlackList = task => updateChannelTaskBoard(task.channel_id, task.channel_name);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 async function isChief(client, userId) {
@@ -367,17 +392,19 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
 
 receiver.router.post('/api/dashboard/tasks/sync-lists', requireAuth, async (_req, res) => {
   try {
-    const { data: tasks, error } = await supabase.from('tasks').select('*').or('slack_list_record_id.is.null,slack_list_record_id.eq.');
+    const { data: tasks, error } = await supabase.from('tasks').select('channel_id, channel_name');
     if (error) throw error;
-    res.json({ queued: tasks.length, message: `Syncing ${tasks.length} tasks to Slack Lists in the background...` });
-    // Run sync after responding so the request doesn't time out
+    // Deduplicate channels
+    const channels = {};
+    tasks.forEach(t => { channels[t.channel_id] = t.channel_name; });
+    const channelList = Object.entries(channels);
+    res.json({ queued: channelList.length, message: `Posting task boards to ${channelList.length} channel(s) in Slack...` });
     (async () => {
-      let synced = 0, failed = 0;
-      for (const task of tasks) {
-        try { await addTaskToSlackList(task); synced++; } catch { failed++; }
-        await new Promise(r => setTimeout(r, 300)); // avoid rate limits
+      for (const [channelId, channelName] of channelList) {
+        await updateChannelTaskBoard(channelId, channelName);
+        await new Promise(r => setTimeout(r, 800));
       }
-      console.log(`Slack Lists backfill complete: ${synced} synced, ${failed} failed`);
+      console.log(`Task board sync complete: ${channelList.length} channels updated`);
     })();
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -473,8 +500,10 @@ receiver.router.post('/api/dashboard/tasks/bulk', requireAuth, upload.single('fi
   if (inserts.length) {
     const { data, error } = await supabase.from('tasks').insert(inserts).select();
     if (error) return res.status(500).json({ error: error.message });
-    // Sync all inserted tasks to Slack Lists (best-effort)
-    for (const task of data) { addTaskToSlackList(task).catch(() => {}); }
+    // Update task board for each affected channel (best-effort)
+    const affected = {};
+    data.forEach(t => { affected[t.channel_id] = t.channel_name; });
+    Object.entries(affected).forEach(([cid, cname]) => updateChannelTaskBoard(cid, cname).catch(() => {}));
     return res.json({ inserted: data.length, errors });
   }
   res.json({ inserted: 0, errors });
