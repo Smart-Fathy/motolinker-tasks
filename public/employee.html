@@ -240,6 +240,10 @@
 
     <!-- ── My Tasks Page ── -->
     <div class="page" id="page-tasks">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div style="font-size:20px;font-weight:700">My Tasks</div>
+        <button class="btn btn-primary" onclick="openNewTaskModal()">+ New Task</button>
+      </div>
       <div id="tasks-stats" class="stats-row"></div>
       <div class="tabs">
         <div class="tab active" id="tab-current"   onclick="switchTab('current')">⏳ Current Tasks</div>
@@ -258,6 +262,55 @@
 
   </div><!-- /content -->
 </div><!-- /layout -->
+
+<!-- ── New Task Modal ── -->
+<div id="task-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:520px;overflow:hidden">
+    <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:16px;font-weight:700">➕ New Task</div>
+      <button onclick="closeTaskModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div style="padding:24px">
+      <div id="task-modal-err" style="display:none;background:rgba(239,68,68,.1);border:1px solid var(--danger);color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px"></div>
+      <div class="form-group">
+        <label class="form-label">Title *</label>
+        <input class="form-control" id="nt-title" placeholder="What needs to be done?">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea class="form-control" id="nt-desc" rows="2" placeholder="More details…" style="resize:vertical"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Channel *</label>
+          <select class="form-control" id="nt-channel"><option value="">Loading…</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Due Date *</label>
+          <input class="form-control" id="nt-due" type="date">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Priority</label>
+          <select class="form-control" id="nt-priority">
+            <option value="high">🔴 High</option>
+            <option value="medium" selected>🟡 Medium</option>
+            <option value="low">🟢 Low</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Milestone</label>
+          <input class="form-control" id="nt-milestone" placeholder="e.g. Q2 Launch">
+        </div>
+      </div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px">
+      <button class="btn btn-outline" onclick="closeTaskModal()">Cancel</button>
+      <button class="btn btn-primary" id="nt-submit-btn" onclick="submitNewTask()">Create Task</button>
+    </div>
+  </div>
+</div>
 
 <script>
 let empToken  = localStorage.getItem('ml_emp_token');
@@ -497,6 +550,58 @@ async function loadMyHours() {
       }).join('')}</tbody>
     </table></div>`;
   } catch (e) { c.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
+}
+
+/* ── New Task Modal ── */
+async function openNewTaskModal() {
+  document.getElementById('nt-title').value     = '';
+  document.getElementById('nt-desc').value      = '';
+  document.getElementById('nt-milestone').value = '';
+  document.getElementById('nt-due').value       = '';
+  document.getElementById('nt-priority').value  = 'medium';
+  document.getElementById('task-modal-err').style.display = 'none';
+  document.getElementById('task-modal-overlay').style.display = 'flex';
+  // Load channels
+  try {
+    const r = await ef('/api/employee/channels');
+    const channels = await r.json();
+    document.getElementById('nt-channel').innerHTML =
+      '<option value="">Select channel…</option>' +
+      channels.map(c => `<option value="${c.id}|${c.name}">${c.name}</option>`).join('');
+  } catch (e) { document.getElementById('nt-channel').innerHTML = '<option value="">Failed to load</option>'; }
+}
+
+function closeTaskModal() {
+  document.getElementById('task-modal-overlay').style.display = 'none';
+}
+
+async function submitNewTask() {
+  const btn = document.getElementById('nt-submit-btn');
+  const err = document.getElementById('task-modal-err');
+  err.style.display = 'none';
+  const title    = document.getElementById('nt-title').value.trim();
+  const chanVal  = document.getElementById('nt-channel').value;
+  const due_date = document.getElementById('nt-due').value;
+  if (!title)    { err.textContent = 'Title is required'; err.style.display = 'block'; return; }
+  if (!chanVal)  { err.textContent = 'Please select a channel'; err.style.display = 'block'; return; }
+  if (!due_date) { err.textContent = 'Due date is required'; err.style.display = 'block'; return; }
+  const [channel_id, channel_name] = chanVal.split('|');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const r = await ef('/api/employee/my-tasks', { method: 'POST', body: JSON.stringify({
+      title, channel_id, channel_name,
+      description: document.getElementById('nt-desc').value.trim(),
+      due_date,
+      priority:  document.getElementById('nt-priority').value,
+      milestone: document.getElementById('nt-milestone').value.trim(),
+    })});
+    const d = await r.json();
+    if (d.error) { err.textContent = d.error; err.style.display = 'block'; return; }
+    closeTaskModal();
+    await loadMyTasks();
+    await loadDropdownTasks();
+  } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
+  finally { btn.disabled = false; btn.textContent = 'Create Task'; }
 }
 
 /* ── Mark task done ── */
