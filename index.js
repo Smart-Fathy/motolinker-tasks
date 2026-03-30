@@ -776,7 +776,24 @@ receiver.router.get('/api/employee/my-tasks', requireEmployeeAuth, async (req, r
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Employee hours
+// Employee marks their own task as done
+receiver.router.put('/api/employee/my-tasks/:id', requireEmployeeAuth, express.json(), async (req, res) => {
+  try {
+    const { data: emp } = await supabase.from('employees').select('slack_user_id').eq('id', req.employee.id).single();
+    if (!emp?.slack_user_id) return res.status(403).json({ error: 'No Slack user linked to this account' });
+    // Verify the task is actually assigned to this employee
+    const { data: task } = await supabase.from('tasks').select('id, assignee_id').eq('id', req.params.id).single();
+    if (!task || task.assignee_id !== emp.slack_user_id) return res.status(403).json({ error: 'Task not assigned to you' });
+    const completedAt = new Date().toISOString();
+    const { data, error } = await supabase.from('tasks')
+      .update({ status: 'done', completed_at: completedAt, updated_at: completedAt })
+      .eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    // Refresh channel task board
+    updateChannelTaskBoard(data.channel_id, data.channel_name).catch(() => {});
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 receiver.router.get('/api/employee/hours', requireEmployeeAuth, async (req, res) => {
   const { data, error } = await supabase.from('hours_logs')
     .select('*, tasks(title, channel_name)')
