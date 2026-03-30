@@ -34,7 +34,8 @@
   .sidebar-icon { width:34px; height:34px; background:var(--primary); border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
   .sidebar-brand-name { font-size:13px; font-weight:700; line-height:1.2; }
   .sidebar-brand-sub  { font-size:10px; color:var(--muted); }
-  .sidebar-nav { flex:1; padding:12px 10px; display:flex; flex-direction:column; gap:2px; }
+  .sidebar-nav { flex:1; padding:12px 10px; display:flex; flex-direction:column; gap:2px; overflow-y:auto; }
+  .sidebar-section-label { color:rgba(255,255,255,.3); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; padding:10px 8px 4px; }
   .nav-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; font-size:13px; font-weight:500; color:var(--muted); cursor:pointer; transition:all .15s; border:none; background:none; width:100%; text-align:left; }
   .nav-item:hover { background:rgba(255,255,255,.05); color:var(--text); }
   .nav-item.active { background:rgba(99,102,241,.15); color:var(--primary); font-weight:600; }
@@ -166,6 +167,7 @@
       </div>
     </div>
     <nav class="sidebar-nav">
+      <div class="sidebar-section-label">Work</div>
       <button class="nav-item active" id="nav-log"   onclick="navigate('log')">
         <span class="nav-icon">⏱️</span> Log Hours
       </button>
@@ -174,6 +176,13 @@
       </button>
       <button class="nav-item"        id="nav-hours" onclick="navigate('hours')">
         <span class="nav-icon">📊</span> Hours Log
+      </button>
+      <div class="sidebar-section-label">Google</div>
+      <button class="nav-item"        id="nav-drive"  onclick="navigate('drive')">
+        <span class="nav-icon">💾</span> My Drive
+      </button>
+      <button class="nav-item"        id="nav-sheets" onclick="navigate('sheets')">
+        <span class="nav-icon">📊</span> My Sheets
       </button>
     </nav>
     <div class="sidebar-footer">
@@ -257,6 +266,20 @@
       <div id="hours-stats" class="stats-row"></div>
       <div class="card" style="padding:0;overflow:hidden">
         <div id="hours-table-container"><div class="loading"><span class="spinner"></span>Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- ── My Drive Page ── -->
+    <div class="page" id="page-drive">
+      <div id="drive-content" style="padding:28px">
+        <div class="loading"><span class="spinner"></span> Loading Drive…</div>
+      </div>
+    </div>
+
+    <!-- ── My Sheets Page ── -->
+    <div class="page" id="page-sheets">
+      <div id="sheets-content" style="padding:28px">
+        <div class="loading"><span class="spinner"></span> Loading Sheets…</div>
       </div>
     </div>
 
@@ -370,6 +393,8 @@ async function showApp() {
   document.getElementById('user-name').textContent = name;
   document.getElementById('user-avatar').textContent = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
   document.getElementById('h-date').value = new Date().toISOString().split('T')[0];
+  const hash = location.hash.replace('#', '');
+  if (hash && pageTitles[hash]) navigate(hash);
   await Promise.all([loadDropdownTasks(), loadMyTasks(), loadMyHours()]);
 }
 
@@ -379,13 +404,15 @@ async function logout() {
 }
 
 /* ── Navigation ── */
-const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log' };
+const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', drive: 'My Drive', sheets: 'My Sheets' };
+const pageLoaders = { drive: loadDrive, sheets: loadSheets };
 function navigate(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.getElementById('nav-' + page).classList.add('active');
   document.getElementById('topbar-title').textContent = pageTitles[page];
+  if (pageLoaders[page]) pageLoaders[page]();
 }
 
 /* ── Task mode toggle ── */
@@ -616,6 +643,85 @@ async function markTaskDone(taskId) {
     await loadDropdownTasks(); // remove from log hours dropdown
   } catch (e) { alert('Error: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = '✓ Done'; } }
 }
+
+/* ── Drive / Sheets ── */
+function esc(s) { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
+function driveIcon(m) {
+  if (!m) return '📎';
+  if (m === 'application/vnd.google-apps.folder') return '📁';
+  if (m === 'application/vnd.google-apps.spreadsheet') return '📊';
+  if (m === 'application/vnd.google-apps.document') return '📄';
+  if (m === 'application/vnd.google-apps.presentation') return '📽️';
+  if (m === 'application/pdf') return '📑';
+  if (m.startsWith('image/')) return '🖼️';
+  if (m.startsWith('video/')) return '🎥';
+  return '📎';
+}
+
+async function loadDriveSection(statusUrl, filesUrl, connectUrl, disconnectUrl, contentId, title, icon) {
+  const c = document.getElementById(contentId);
+  c.innerHTML = '<div class="loading"><span class="spinner"></span> Loading…</div>';
+  try {
+    const status = await ef(statusUrl).then(r => r.json());
+    if (!status.configured) {
+      c.innerHTML = `<div style="text-align:center;padding:60px 20px">
+        <div style="font-size:40px;margin-bottom:12px">${icon}</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px">${title}</div>
+        <div style="font-size:13px;color:var(--muted)">Google Drive integration not configured. Contact your admin.</div>
+      </div>`; return;
+    }
+    if (!status.connected) {
+      c.innerHTML = `<div style="text-align:center;padding:60px 20px">
+        <div style="font-size:40px;margin-bottom:12px">${icon}</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px">${title}</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:20px">Connect your Google account to access your files.</div>
+        <a href="${connectUrl}?_t=${encodeURIComponent(empToken||'')}" class="btn btn-primary" style="text-decoration:none">Connect Google Drive</a>
+      </div>`; return;
+    }
+    const files = await ef(filesUrl).then(r => r.json());
+    c.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:34px;height:34px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff">${esc(status.name?.[0]||'?')}</div>
+          <div><div style="font-weight:600;font-size:14px">${esc(status.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(status.email)}</div></div>
+        </div>
+        <button class="btn btn-outline" style="font-size:12px" onclick="disconnectDrive('${disconnectUrl}','${contentId}','${title}','${icon}')">Disconnect</button>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:14px;font-weight:600">${icon} ${title}</span>
+          <span style="font-size:12px;color:var(--muted)">${files.length} file${files.length!==1?'s':''}</span>
+        </div>
+        ${files.length ? `<table style="width:100%;border-collapse:collapse">
+          <thead><tr>
+            <th style="padding:9px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Name</th>
+            <th style="padding:9px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Modified</th>
+            <th style="padding:9px 16px;border-bottom:1px solid var(--border)"></th>
+          </tr></thead>
+          <tbody>${files.map(f => `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:11px 16px;font-size:13px">${driveIcon(f.mimeType)} ${esc(f.name)}</td>
+            <td style="padding:11px 16px;font-size:12px;color:var(--muted)">${f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '—'}</td>
+            <td style="padding:11px 16px;text-align:right">${f.webViewLink ? `<a href="${f.webViewLink}" target="_blank" rel="noopener" class="btn btn-outline" style="font-size:12px;padding:4px 12px;text-decoration:none">Open ↗</a>` : ''}</td>
+          </tr>`).join('')}</tbody>
+        </table>` : '<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">No files found</div>'}
+      </div>`;
+  } catch (e) { c.innerHTML = `<div style="padding:20px;color:var(--danger);font-size:13px">⚠️ ${esc(e.message)}</div>`; }
+}
+
+async function disconnectDrive(url, contentId, title, icon) {
+  await ef(url, { method: 'POST' });
+  const c = document.getElementById(contentId);
+  c.innerHTML = '';
+  const isSheets = contentId === 'sheets-content';
+  loadDriveSection(
+    '/api/employee/drive/status',
+    isSheets ? '/api/employee/drive/sheets' : '/api/employee/drive/files',
+    '/api/employee/drive/connect', url, contentId, title, icon
+  );
+}
+
+function loadDrive()  { loadDriveSection('/api/employee/drive/status', '/api/employee/drive/files',  '/api/employee/drive/connect', '/api/employee/drive/disconnect', 'drive-content',  'My Drive',  '💾'); }
+function loadSheets() { loadDriveSection('/api/employee/drive/status', '/api/employee/drive/sheets', '/api/employee/drive/connect', '/api/employee/drive/disconnect', 'sheets-content', 'My Sheets', '📊'); }
 
 checkAuth();
 </script>
