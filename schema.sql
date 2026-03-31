@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS requests (
   id          BIGSERIAL PRIMARY KEY,
   title       TEXT NOT NULL,
   description TEXT DEFAULT '',
+  category    TEXT DEFAULT '',
   status      TEXT NOT NULL DEFAULT 'pending'
                 CHECK (status IN ('pending', 'in_review', 'approved', 'rejected')),
   priority    TEXT NOT NULL DEFAULT 'medium'
@@ -108,6 +109,9 @@ CREATE TABLE IF NOT EXISTS employees (
 
 -- Completion date on tasks
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+-- Category column on requests
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS category TEXT DEFAULT '';
 
 -- Employee portal columns on hours_logs
 ALTER TABLE hours_logs ALTER COLUMN task_id DROP NOT NULL;
