@@ -1389,10 +1389,11 @@ function renderRequestsTable() {
   const c = document.getElementById('requests-table-container');
   if (!allRequests.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">No requests yet</div></div>'; return; }
   c.innerHTML = `<div style="overflow-x:auto"><table>
-    <thead><tr><th>ID</th><th>Title</th><th>Priority</th><th>Status</th><th>Assigned To</th><th>Created</th><th>Actions</th></tr></thead>
+    <thead><tr><th>ID</th><th>Title</th><th>Submitted By</th><th>Priority</th><th>Status</th><th>Assigned To</th><th>Created</th><th>Actions</th></tr></thead>
     <tbody>${allRequests.map(r => `<tr>
       <td class="task-id">#${r.id}</td>
-      <td><div class="task-title">${esc(r.title)}</div>${r.description ? `<div class="task-desc">${esc(r.description)}</div>` : ''}</td>
+      <td><div class="task-title">${esc(r.title)}</div>${r.description ? `<div class="task-desc">${esc(r.description)}</div>` : ''}${r.category ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(r.category)}</div>` : ''}</td>
+      <td style="font-size:13px"><span style="background:rgba(99,102,241,.12);color:var(--primary);padding:3px 8px;border-radius:6px;font-size:12px;font-weight:600">${esc(r.created_by || '—')}</span></td>
       <td>${priorityBadge(r.priority)}</td>
       <td><span class="badge ${reqStatusColors[r.status] || 'badge-todo'}">${reqStatusLabels[r.status] || r.status}</span></td>
       <td style="font-size:12px;font-family:monospace;color:var(--muted)">${esc(r.assigned_to || '—')}</td>
