@@ -889,9 +889,26 @@ receiver.router.get('/api/employee/drive/sheets', requireEmployeeAuth, async (re
 // ─── Employee Portal ──────────────────────────────────────────────────────────
 receiver.router.get('/employee', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'employee.html')));
 
+// Employee Requests
+receiver.router.get('/api/employee/requests', requireEmployeeAuth, async (req, res) => {
+  const { data, error } = await supabase.from('requests').select('*')
+    .eq('created_by', req.employee.username).order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json(), async (req, res) => {
+  const { title, description, category, priority } = req.body || {};
+  if (!title) return res.status(400).json({ error: 'Title is required' });
+  const { data, error } = await supabase.from('requests')
+    .insert({ title, description: description || '', priority: priority || 'medium', assigned_to: '', created_by: req.employee.username, status: 'pending', category: category || '' })
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 // Employee auth
 receiver.router.post('/api/employee/login', express.json(), async (req, res) => {
-  const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   const { data: emp } = await supabase.from('employees').select('*').eq('username', username).single();
   if (!emp || !verifyPassword(password, emp.password_hash)) return res.status(401).json({ error: 'Invalid username or password' });
