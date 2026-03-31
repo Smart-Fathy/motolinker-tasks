@@ -909,6 +909,7 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json
 
 // Employee auth
 receiver.router.post('/api/employee/login', express.json(), async (req, res) => {
+  const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   const { data: emp } = await supabase.from('employees').select('*').eq('username', username).single();
   if (!emp || !verifyPassword(password, emp.password_hash)) return res.status(401).json({ error: 'Invalid username or password' });
