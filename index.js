@@ -31,9 +31,20 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const sessions         = new Map(); // admin sessions
 const employeeSessions = new Map(); // employee portal sessions
 let gmailTokens = null;
-let driveTokens = null;              // admin Drive/Sheets
-const employeeDriveTokens = new Map(); // employeeId -> drive tokens
-const pendingDriveAuth = new Map();    // state -> { type, employeeId? }
+let driveTokens = null;
+const employeeDriveTokens = new Map();
+const pendingDriveAuth = new Map();
+
+// Car Sync config (in-memory, survives restarts via env)
+let carSyncConfig = {
+  sheetId:    process.env.CARSYNC_SHEET_ID    || '',
+  wpUrl:      process.env.CARSYNC_WP_URL      || '',
+  wpUsername: process.env.CARSYNC_WP_USER     || '',
+  wpPassword: process.env.CARSYNC_WP_PASS     || '',
+  wpPostType: process.env.CARSYNC_WP_TYPE     || 'post',
+  mapping:    {},   // { wpField: columnIndex }
+  lastSync:   null, // { at, created, updated, errors }
+};
 
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
@@ -863,6 +874,129 @@ receiver.router.post('/api/drive/disconnect', requireAuth, (_req, res) => { driv
 
 receiver.router.get('/api/drive/files',  requireAuth, async (_req, res) => { try { res.json(await listDriveFiles(driveTokens)); } catch (e) { res.status(500).json({ error: e.message }); } });
 receiver.router.get('/api/drive/sheets', requireAuth, async (_req, res) => { try { res.json(await listDriveFiles(driveTokens, 'application/vnd.google-apps.spreadsheet')); } catch (e) { res.status(500).json({ error: e.message }); } });
+
+// ── Car Stock Sync ────────────────────────────────────────────────────────────
+async function readSheet(sheetId, token) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values/A1:Z2000`;
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error.message);
+  return d.values || [];
+}
+
+async function wpFetch(url, method, auth, body) {
+  const opts = { method, headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  return fetch(url, opts);
+}
+
+receiver.router.get('/api/carsync/config', requireAuth, (_req, res) => {
+  const { lastSync, mapping, sheetId, wpUrl, wpUsername, wpPostType } = carSyncConfig;
+  res.json({ sheetId, wpUrl, wpUsername, wpPostType, mapping, lastSync, hasPassword: !!carSyncConfig.wpPassword, driveConnected: !!driveTokens });
+});
+
+receiver.router.post('/api/carsync/config', requireAuth, express.json(), (req, res) => {
+  const { sheetId, wpUrl, wpUsername, wpPassword, wpPostType, mapping } = req.body;
+  if (sheetId    !== undefined) carSyncConfig.sheetId    = sheetId;
+  if (wpUrl      !== undefined) carSyncConfig.wpUrl      = wpUrl.replace(/\/$/, '');
+  if (wpUsername !== undefined) carSyncConfig.wpUsername = wpUsername;
+  if (wpPassword !== undefined) carSyncConfig.wpPassword = wpPassword;
+  if (wpPostType !== undefined) carSyncConfig.wpPostType = wpPostType || 'post';
+  if (mapping    !== undefined) carSyncConfig.mapping    = mapping;
+  res.json({ ok: true });
+});
+
+receiver.router.get('/api/carsync/preview', requireAuth, async (_req, res) => {
+  try {
+    if (!carSyncConfig.sheetId) return res.status(400).json({ error: 'Sheet ID not configured' });
+    if (!driveTokens) return res.status(400).json({ error: 'Google Drive not connected' });
+    const token = await getDriveToken(driveTokens);
+    const rows = await readSheet(carSyncConfig.sheetId, token);
+    if (!rows.length) return res.json({ headers: [], rows: [] });
+    const [headers, ...data] = rows;
+    res.json({ headers, rows: data.slice(0, 8) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+receiver.router.post('/api/carsync/test-wp', requireAuth, express.json(), async (req, res) => {
+  const { wpUrl, wpUsername, wpPassword, wpPostType } = req.body;
+  if (!wpUrl || !wpUsername || !wpPassword) return res.status(400).json({ error: 'URL, username and password required' });
+  try {
+    const base = wpUrl.replace(/\/$/, '');
+    const auth = Buffer.from(`${wpUsername}:${wpPassword}`).toString('base64');
+    const r = await fetch(`${base}/wp-json/wp/v2/${wpPostType || 'post'}?per_page=1`, { headers: { Authorization: `Basic ${auth}` } });
+    if (r.status === 401) return res.json({ ok: false, error: 'Invalid credentials' });
+    if (r.status === 404) return res.json({ ok: false, error: `Post type "${wpPostType}" not found. Check the slug.` });
+    if (!r.ok) return res.json({ ok: false, error: `WordPress returned ${r.status}` });
+    const data = await r.json();
+    res.json({ ok: true, count: Array.isArray(data) ? data.length : 0 });
+  } catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
+receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req, res) => {
+  try {
+    const { sheetId, wpUrl, wpUsername, wpPassword, wpPostType, mapping } = carSyncConfig;
+    if (!sheetId)    return res.status(400).json({ error: 'Sheet ID not configured' });
+    if (!wpUrl)      return res.status(400).json({ error: 'WordPress URL not configured' });
+    if (!wpUsername || !wpPassword) return res.status(400).json({ error: 'WordPress credentials not configured' });
+    if (!driveTokens) return res.status(400).json({ error: 'Google Drive not connected' });
+
+    const token = await getDriveToken(driveTokens);
+    const rows  = await readSheet(sheetId, token);
+    if (rows.length < 2) return res.json({ created: 0, updated: 0, skipped: 0, errors: [] });
+
+    const [, ...dataRows] = rows;
+    const auth    = Buffer.from(`${wpUsername}:${wpPassword}`).toString('base64');
+    const base    = wpUrl.replace(/\/$/, '');
+    const type    = wpPostType || 'post';
+
+    const getCol = (row, field) => {
+      const idx = mapping[field];
+      return (idx !== undefined && idx !== '' && idx !== null) ? (row[idx] || '').toString().trim() : '';
+    };
+
+    let created = 0, updated = 0, skipped = 0;
+    const errors = [];
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      const title = getCol(row, 'title');
+      if (!title) { skipped++; continue; }
+
+      // Build WP post payload
+      const statusVal = getCol(row, 'status').toLowerCase();
+      const wpStatus  = statusVal === 'sold' || statusVal === 'inactive' ? 'draft' : 'publish';
+      const meta = {};
+      ['price','make','model','year','mileage','color','vin','stock_number','fuel_type','transmission','body_type'].forEach(f => {
+        const v = getCol(row, f); if (v) meta[f] = v;
+      });
+      const postData = { title, content: getCol(row, 'description'), status: wpStatus, meta, acf: { ...meta } };
+
+      // Find existing post by VIN or title
+      let existingId = null;
+      const vin = meta.vin;
+      if (vin) {
+        try {
+          const sr = await fetch(`${base}/wp-json/wp/v2/${type}?search=${encodeURIComponent(vin)}&per_page=1&_fields=id,title`, { headers: { Authorization: `Basic ${auth}` } });
+          const sl = await sr.json();
+          if (Array.isArray(sl) && sl.length) existingId = sl[0].id;
+        } catch (_) {}
+      }
+
+      try {
+        const url    = existingId ? `${base}/wp-json/wp/v2/${type}/${existingId}` : `${base}/wp-json/wp/v2/${type}`;
+        const method = existingId ? 'PUT' : 'POST';
+        const r = await wpFetch(url, method, auth, postData);
+        const d = await r.json();
+        if (d.code || d.error) { errors.push(`Row ${i + 2}: ${d.message || d.error}`); }
+        else { existingId ? updated++ : created++; }
+      } catch (e) { errors.push(`Row ${i + 2}: ${e.message}`); }
+    }
+
+    carSyncConfig.lastSync = { at: new Date().toISOString(), created, updated, skipped, errors: errors.slice(0, 20) };
+    res.json(carSyncConfig.lastSync);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // Employee drive connect
 receiver.router.get('/api/employee/drive/status', requireEmployeeAuth, (req, res) => {
