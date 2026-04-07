@@ -1355,6 +1355,7 @@ const CS_FIELDS = [
 
 let csHeaders = [];
 let csMapping = {};
+let csWpKeys  = {};
 
 async function loadCarSync() {
   try {
@@ -1364,6 +1365,7 @@ async function loadCarSync() {
     if (cfg.wpUsername) document.getElementById('cs-wp-user').value  = cfg.wpUsername;
     if (cfg.wpPostType) document.getElementById('cs-wp-type').value  = cfg.wpPostType;
     csMapping = cfg.mapping || {};
+    csWpKeys  = cfg.wpKeyMapping || {};
     if (!cfg.driveConnected) document.getElementById('drive-warn').style.display = '';
     if (cfg.lastSync) showSyncResult(cfg.lastSync);
     if (cfg.sheetId && cfg.driveConnected) loadSheetPreview();
@@ -1390,15 +1392,30 @@ function renderMapping() {
   const body = document.getElementById('mapping-body');
   if (!csHeaders.length) { body.innerHTML = '<div style="color:var(--muted);font-size:13px">No columns found in sheet.</div>'; return; }
   const options = `<option value="">— skip —</option>` + csHeaders.map((h, i) => `<option value="${i}">${esc(h)} (col ${i + 1})</option>`).join('');
-  body.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">` +
-    CS_FIELDS.map(f => `
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="font-size:12px;font-weight:600;min-width:160px;color:var(--text)">${esc(f.label)}</div>
-        <select class="form-control" style="font-size:12px" id="map-${f.key}" onchange="csMapping['${f.key}']=this.value===''?undefined:+this.value">
-          ${options}
-        </select>
-      </div>`).join('') +
-    `</div><button class="btn btn-outline" style="margin-top:12px;font-size:12px" onclick="saveCarSyncConfig()">Save Mapping</button>`;
+  body.innerHTML =
+    `<div style="display:grid;grid-template-columns:max-content 1fr 1fr;gap:8px 12px;align-items:center;margin-bottom:8px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Field</div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Sheet Column</div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">WP Meta Key <span style="font-weight:400">(e.g. custom-text-61)</span></div>` +
+    CS_FIELDS.filter(f => f.key !== 'title' && f.key !== 'description' && f.key !== 'status').map(f => `
+      <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap">${esc(f.label)}</div>
+      <select class="form-control" style="font-size:12px" id="map-${f.key}" onchange="csMapping['${f.key}']=this.value===''?undefined:+this.value">
+        ${options}
+      </select>
+      <input class="form-control" style="font-size:12px" id="wpkey-${f.key}" placeholder="${f.key}" value="${esc(csWpKeys[f.key] || '')}" oninput="csWpKeys['${f.key}']=this.value.trim()||undefined">`).join('') +
+    `</div>
+    <div style="display:grid;grid-template-columns:max-content 1fr 1fr;gap:8px 12px;align-items:center;border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
+      <div style="font-size:12px;font-weight:600;color:var(--text)">Car Title *</div>
+      <select class="form-control" style="font-size:12px" id="map-title" onchange="csMapping['title']=this.value===''?undefined:+this.value">${options}</select>
+      <div style="font-size:11px;color:var(--muted)">Used as post title</div>
+      <div style="font-size:12px;font-weight:600;color:var(--text)">Description</div>
+      <select class="form-control" style="font-size:12px" id="map-description" onchange="csMapping['description']=this.value===''?undefined:+this.value">${options}</select>
+      <div style="font-size:11px;color:var(--muted)">Used as post body</div>
+      <div style="font-size:12px;font-weight:600;color:var(--text)">Status</div>
+      <select class="form-control" style="font-size:12px" id="map-status" onchange="csMapping['status']=this.value===''?undefined:+this.value">${options}</select>
+      <div style="font-size:11px;color:var(--muted)">sold → draft, else publish</div>
+    </div>
+    <button class="btn btn-outline" style="margin-top:12px;font-size:12px" onclick="saveCarSyncConfig()">Save Mapping</button>`;
   // Restore saved mapping
   CS_FIELDS.forEach(f => {
     const el = document.getElementById('map-' + f.key);
@@ -1427,7 +1444,7 @@ async function discoverFields() {
     if (d.error) { res.textContent = '⚠️ ' + d.error; return; }
     const xmlKeys = Object.keys(d.xmlFields || {});
     const restKeys = Object.keys(d.restMeta || {});
-    res.textContent = `XML-RPC custom_fields keys found:\n${xmlKeys.length ? xmlKeys.map(k => `  ${k}: ${d.xmlFields[k]}`).join('\n') : '  (none found)'}\n\nREST API meta keys:\n${restKeys.length ? restKeys.join('\n  ') : '  (none found)'}`;
+    res.textContent = `XML-RPC custom_fields keys found:\n${xmlKeys.length ? xmlKeys.map(k => `  ${k}: ${d.xmlFields[k]}`).join('\n') : '  (none found)'}\n\nREST API meta keys:\n${restKeys.length ? restKeys.join('\n  ') : '  (none found)'}\n\n💡 Copy the key names above into the "WP Meta Key" column in the mapping below.`;
   } catch (e) { res.textContent = '⚠️ ' + e.message; }
   finally { btn.disabled = false; btn.textContent = '🔍 Discover Fields'; }
 }
@@ -1447,11 +1464,12 @@ async function testWpConnection() {
 
 async function saveCarSyncConfig(silent = false) {
   const body = {
-    sheetId:    document.getElementById('cs-sheet-id').value.trim(),
-    wpUrl:      document.getElementById('cs-wp-url').value.trim(),
-    wpUsername: document.getElementById('cs-wp-user').value.trim(),
-    wpPostType: document.getElementById('cs-wp-type').value.trim(),
-    mapping:    csMapping,
+    sheetId:      document.getElementById('cs-sheet-id').value.trim(),
+    wpUrl:        document.getElementById('cs-wp-url').value.trim(),
+    wpUsername:   document.getElementById('cs-wp-user').value.trim(),
+    wpPostType:   document.getElementById('cs-wp-type').value.trim(),
+    mapping:      csMapping,
+    wpKeyMapping: Object.fromEntries(Object.entries(csWpKeys).filter(([,v]) => v)),
   };
   const pass = document.getElementById('cs-wp-pass').value;
   if (pass) body.wpPassword = pass;
