@@ -938,12 +938,33 @@ receiver.router.post('/api/carsync/discover-fields', requireAuth, express.json()
     const base = wpUrl.replace(/\/$/, '').replace(/\/wp-admin\/?$/, '');
     const type = wpPostType || 'listing';
 
-    // Get one existing listing via XML-RPC to inspect its custom_fields
+    // Get one existing listing via XML-RPC to inspect its custom_fields + terms
     const xml = await wpXmlRpc(base, 'wp.getPosts', [1, wpUsername, wpPassword, {
       post_type: type, post_status: 'any', number: 1, fields: ['post_id','post_title','custom_fields','terms']
     }]);
 
-    // Also try REST API for meta (with ?_fields=meta)
+    // Parse XML-RPC custom_fields — show ALL keys including private ones
+    const cfKeys = [...xml.matchAll(/<name>key<\/name>\s*<value><string>([^<]+)<\/string>/g)].map(m => m[1]);
+    const cfVals = [...xml.matchAll(/<name>value<\/name>\s*<value><string>([^<]*)<\/string>/g)].map(m => m[1]);
+    const xmlFields = {};
+    cfKeys.forEach((k, i) => { xmlFields[k] = cfVals[i] || '(empty)'; });
+
+    // Get taxonomy slugs for this post type
+    let taxonomies = {};
+    try {
+      const taxXml = await wpXmlRpc(base, 'wp.getTaxonomies', [1, wpUsername, wpPassword]);
+      // Extract taxonomy names and labels
+      const taxNames   = [...taxXml.matchAll(/<name>name<\/name>\s*<value><string>([^<]+)<\/string>/g)].map(m => m[1]);
+      const taxLabels  = [...taxXml.matchAll(/<name>label<\/name>\s*<value><string>([^<]+)<\/string>/g)].map(m => m[1]);
+      taxNames.forEach((slug, i) => {
+        // Skip built-in WP taxonomies not relevant to listings
+        if (!['category', 'post_tag', 'nav_menu', 'post_format', 'link_category'].includes(slug)) {
+          taxonomies[slug] = taxLabels[i] || slug;
+        }
+      });
+    } catch (_) {}
+
+    // Also try REST API for meta
     const restRes = await fetch(`${base}/wp-json/wp/v2/${type}?per_page=1&_fields=id,title,meta,acf`);
     let restMeta = {};
     if (restRes.ok) {
@@ -952,13 +973,7 @@ receiver.router.post('/api/carsync/discover-fields', requireAuth, express.json()
       if (restData[0]?.acf)   restMeta = { ...restMeta, ...restData[0].acf };
     }
 
-    // Parse XML-RPC custom_fields
-    const cfKeys = [...xml.matchAll(/<name>key<\/name>\s*<value><string>([^<]+)<\/string>/g)].map(m => m[1]);
-    const cfVals = [...xml.matchAll(/<name>value<\/name>\s*<value><string>([^<]*)<\/string>/g)].map(m => m[1]);
-    const xmlFields = {};
-    cfKeys.forEach((k, i) => { if (!k.startsWith('_')) xmlFields[k] = cfVals[i] || ''; });
-
-    res.json({ xmlFields, restMeta, rawXml: xml.slice(0, 3000) });
+    res.json({ xmlFields, restMeta, taxonomies });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1069,15 +1084,21 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
       const statusVal = getCol(row, 'status').toLowerCase();
       const wpStatus  = statusVal === 'sold' || statusVal === 'inactive' ? 'draft' : 'publish';
 
-      // Build custom_fields — use exact WP meta keys from wpKeyMapping if configured
+      // Build custom_fields and terms_names from wpKeyMapping
+      // If a WP key is prefixed with "tax:" it goes into terms_names (taxonomy), otherwise custom_fields
       const metaFields = ['price', 'make', 'model', 'year', 'mileage', 'color', 'vin', 'stock_number', 'fuel_type', 'transmission', 'body_type'];
       const customFields = [];
+      const termsNames   = {};
       metaFields.forEach(field => {
         const v = getCol(row, field);
         if (!v) return;
-        // Use the exact meta key the user configured, or fall back to the field name
-        const key = (wpKeyMapping && wpKeyMapping[field]) ? wpKeyMapping[field] : field;
-        customFields.push({ key, value: v });
+        const mappedKey = (wpKeyMapping && wpKeyMapping[field]) ? wpKeyMapping[field] : field;
+        if (mappedKey.startsWith('tax:')) {
+          const taxSlug = mappedKey.slice(4).trim();
+          if (taxSlug) termsNames[taxSlug] = [v];
+        } else {
+          customFields.push({ key: mappedKey, value: v });
+        }
       });
 
       const postStruct = {
@@ -1087,6 +1108,7 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
         post_type:     type,
         custom_fields: customFields,
       };
+      if (Object.keys(termsNames).length) postStruct.terms_names = termsNames;
 
       try {
         await wpXmlRpc(base, 'wp.newPost', [1, wpUsername, wpPassword, postStruct]);

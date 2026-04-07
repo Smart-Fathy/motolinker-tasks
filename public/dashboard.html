@@ -1402,7 +1402,7 @@ function renderMapping() {
       <select class="form-control" style="font-size:12px" id="map-${f.key}" onchange="csMapping['${f.key}']=this.value===''?undefined:+this.value">
         ${options}
       </select>
-      <input class="form-control" style="font-size:12px" id="wpkey-${f.key}" placeholder="${f.key}" value="${esc(csWpKeys[f.key] || '')}" oninput="csWpKeys['${f.key}']=this.value.trim()||undefined">`).join('') +
+      <input class="form-control" style="font-size:12px" id="wpkey-${f.key}" placeholder="meta key or tax:slug" value="${esc(csWpKeys[f.key] || '')}" oninput="csWpKeys['${f.key}']=this.value.trim()||undefined">`).join('') +
     `</div>
     <div style="display:grid;grid-template-columns:max-content 1fr 1fr;gap:8px 12px;align-items:center;border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
       <div style="font-size:12px;font-weight:600;color:var(--text)">Car Title *</div>
@@ -1442,9 +1442,17 @@ async function discoverFields() {
     const body = { wpUrl: document.getElementById('cs-wp-url').value.trim(), wpUsername: document.getElementById('cs-wp-user').value.trim(), wpPassword: document.getElementById('cs-wp-pass').value, wpPostType: document.getElementById('cs-wp-type').value.trim() };
     const d = await apiFetch('/api/carsync/discover-fields', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
     if (d.error) { res.textContent = '⚠️ ' + d.error; return; }
-    const xmlKeys = Object.keys(d.xmlFields || {});
-    const restKeys = Object.keys(d.restMeta || {});
-    res.textContent = `XML-RPC custom_fields keys found:\n${xmlKeys.length ? xmlKeys.map(k => `  ${k}: ${d.xmlFields[k]}`).join('\n') : '  (none found)'}\n\nREST API meta keys:\n${restKeys.length ? restKeys.join('\n  ') : '  (none found)'}\n\n💡 Copy the key names above into the "WP Meta Key" column in the mapping below.`;
+    const xmlKeys  = Object.keys(d.xmlFields   || {});
+    const restKeys = Object.keys(d.restMeta    || {});
+    const taxKeys  = Object.entries(d.taxonomies || {});
+    let out = '';
+    out += `📋 META FIELDS (use key name directly, e.g. custom-text-61):\n`;
+    out += xmlKeys.length ? xmlKeys.map(k => `  ${k}: ${d.xmlFields[k]}`).join('\n') : '  (none found)';
+    if (restKeys.length) out += `\n\nREST API meta:\n  ` + restKeys.join('\n  ');
+    out += `\n\n🏷️ TAXONOMIES (prefix with "tax:", e.g. tax:listing_make):\n`;
+    out += taxKeys.length ? taxKeys.map(([slug, label]) => `  tax:${slug}  ← ${label}`).join('\n') : '  (none found)';
+    out += `\n\n💡 In the WP Meta Key column:\n   • For text fields (Year, Mileage): enter the meta key (e.g. custom-text-61)\n   • For dropdowns (Make, Model, Transmission): enter tax:taxonomy_slug`;
+    res.textContent = out;
   } catch (e) { res.textContent = '⚠️ ' + e.message; }
   finally { btn.disabled = false; btn.textContent = '🔍 Discover Fields'; }
 }
