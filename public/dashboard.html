@@ -748,8 +748,8 @@
             </div>
             <div>
               <div class="form-label" style="margin-bottom:6px">Post Type slug</div>
-              <input class="form-control" id="cs-wp-type" placeholder="post" value="post">
-              <div style="font-size:11px;color:var(--muted);margin-top:4px">e.g. post, car, listing, vehicle</div>
+              <input class="form-control" id="cs-wp-type" placeholder="listing" value="listing">
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">The WordPress post type (e.g. listing, car, vehicle, post)</div>
             </div>
             <div>
               <div class="form-label" style="margin-bottom:6px">WP Username</div>
@@ -1417,23 +1417,11 @@ async function testWpConnection() {
   const btn = document.getElementById('wp-test-btn');
   btn.disabled = true; btn.textContent = 'Testing…';
   const statusEl = document.getElementById('wp-status');
-  const typeInput = document.getElementById('cs-wp-type');
   try {
-    const body = { wpUrl: document.getElementById('cs-wp-url').value.trim(), wpUsername: document.getElementById('cs-wp-user').value.trim(), wpPassword: document.getElementById('cs-wp-pass').value, wpPostType: typeInput.value.trim() };
+    const body = { wpUrl: document.getElementById('cs-wp-url').value.trim(), wpUsername: document.getElementById('cs-wp-user').value.trim(), wpPassword: document.getElementById('cs-wp-pass').value };
     const d = await apiFetch('/api/carsync/test-wp', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
-    if (d.ok) {
-      statusEl.innerHTML = `<span style="color:var(--success)">✅ Connected — post type <strong>${esc(d.postType)}</strong> found</span>`;
-    } else if (d.available) {
-      // Show clickable list of discovered post types
-      const pills = d.available.map(t =>
-        `<span onclick="document.getElementById('cs-wp-type').value='${esc(t.restBase)}';testWpConnection()"
-          style="cursor:pointer;background:rgba(99,102,241,.15);color:var(--primary);padding:3px 10px;border-radius:6px;font-size:12px;font-weight:600;margin:2px;display:inline-block"
-          title="Click to use this type">${esc(t.name)} — <code>${esc(t.restBase)}</code></span>`
-      ).join(' ');
-      statusEl.innerHTML = `<div style="color:var(--warning);font-size:12px;margin-bottom:6px">⚠️ ${esc(d.error)} Available types (click to select):</div><div>${pills}</div>`;
-    } else {
-      statusEl.innerHTML = `<span style="color:var(--danger)">⚠️ ${esc(d.error)}</span>`;
-    }
+    if (d.ok) statusEl.innerHTML = `<span style="color:var(--success)">✅ Connected to WordPress successfully</span>`;
+    else      statusEl.innerHTML = `<span style="color:var(--danger)">⚠️ ${esc(d.error)}</span>`;
   } catch (e) { statusEl.innerHTML = `<span style="color:var(--danger)">⚠️ ${esc(e.message)}</span>`; }
   finally { btn.disabled = false; btn.textContent = 'Test Connection'; }
 }

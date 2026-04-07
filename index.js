@@ -884,10 +884,35 @@ async function readSheet(sheetId, token) {
   return d.values || [];
 }
 
-async function wpFetch(url, method, auth, body) {
-  const opts = { method, headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' } };
-  if (body) opts.body = JSON.stringify(body);
-  return fetch(url, opts);
+// ── XML-RPC helpers ────────────────────────────────────────────────────────────
+function xmlEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function xmlVal(v) {
+  if (v === null || v === undefined) return '<string></string>';
+  if (typeof v === 'boolean')        return `<boolean>${v ? 1 : 0}</boolean>`;
+  if (typeof v === 'number' && Number.isInteger(v)) return `<int>${v}</int>`;
+  if (Array.isArray(v))              return `<array><data>${v.map(i => `<value>${xmlVal(i)}</value>`).join('')}</data></array>`;
+  if (typeof v === 'object')         return `<struct>${Object.entries(v).map(([k,val]) => `<member><name>${xmlEsc(k)}</name><value>${xmlVal(val)}</value></member>`).join('')}</struct>`;
+  return `<string>${xmlEsc(String(v))}</string>`;
+}
+function xmlCall(method, params) {
+  return `<?xml version="1.0"?><methodCall><methodName>${method}</methodName><params>${params.map(p => `<param><value>${xmlVal(p)}</value></param>`).join('')}</params></methodCall>`;
+}
+async function wpXmlRpc(base, method, params) {
+  const r = await fetch(`${base}/xmlrpc.php`, { method: 'POST', headers: { 'Content-Type': 'text/xml; charset=utf-8' }, body: xmlCall(method, params) });
+  const text = await r.text();
+  if (text.includes('<name>faultCode</name>') || text.includes('<name>faultString</name>')) {
+    const m = text.match(/<name>faultString<\/name>\s*<value><string>([^<]*)<\/string>/);
+    throw new Error(m ? m[1] : 'XML-RPC error');
+  }
+  return text;
+}
+function xmlParseInt(text) {
+  const m = text.match(/<value><(?:string|int|i4)>(\d+)<\/(?:string|int|i4)><\/value>/);
+  return m ? parseInt(m[1]) : null;
+}
+function xmlParseArray(text) {
+  // Minimal: extract all <string> values from an array response
+  return [...text.matchAll(/<value><string>([^<]*)<\/string><\/value>/g)].map(m => m[1]);
 }
 
 receiver.router.get('/api/carsync/config', requireAuth, (_req, res) => {
@@ -919,35 +944,22 @@ receiver.router.get('/api/carsync/preview', requireAuth, async (_req, res) => {
 });
 
 receiver.router.post('/api/carsync/test-wp', requireAuth, express.json(), async (req, res) => {
-  const { wpUrl, wpUsername, wpPassword, wpPostType } = req.body;
+  const { wpUrl, wpUsername, wpPassword } = req.body;
   if (!wpUrl || !wpUsername || !wpPassword) return res.status(400).json({ error: 'URL, username and password required' });
   try {
-    const base = wpUrl.replace(/\/$/, '');
-    const auth = Buffer.from(`${wpUsername}:${wpPassword}`).toString('base64');
-    const headers = { Authorization: `Basic ${auth}` };
-
-    // First verify credentials via /wp-json/wp/v2/users/me
-    const meRes = await fetch(`${base}/wp-json/wp/v2/users/me`, { headers });
-    if (meRes.status === 401 || meRes.status === 403) return res.json({ ok: false, error: 'Invalid credentials — check username and password' });
-
-    // Try the requested post type
-    if (wpPostType) {
-      const r = await fetch(`${base}/wp-json/wp/v2/${wpPostType}?per_page=1`, { headers });
-      if (r.ok) return res.json({ ok: true, postType: wpPostType });
+    const base = wpUrl.replace(/\/$/, '').replace(/\/wp-admin\/?$/, '');
+    await wpXmlRpc(base, 'wp.getProfile', [1, wpUsername, wpPassword]);
+    res.json({ ok: true });
+  } catch (e) {
+    const msg = e.message.toLowerCase();
+    if (msg.includes('incorrect') || msg.includes('wrong') || msg.includes('invalid') || msg.includes('login')) {
+      res.json({ ok: false, error: 'Invalid credentials — check username and password' });
+    } else if (msg.includes('xmlrpc') || msg.includes('405') || msg.includes('disabled')) {
+      res.json({ ok: false, error: 'XML-RPC is disabled on this WordPress site. Enable it under Settings → Writing, or use a plugin like "Enable XML-RPC".' });
+    } else {
+      res.json({ ok: false, error: e.message });
     }
-
-    // Auto-discover available post types from WP REST API types endpoint
-    const typesRes = await fetch(`${base}/wp-json/wp/v2/types`, { headers });
-    if (typesRes.ok) {
-      const types = await typesRes.json();
-      const available = Object.entries(types)
-        .filter(([, t]) => t.rest_base)
-        .map(([slug, t]) => ({ slug, restBase: t.rest_base, name: t.name }));
-      return res.json({ ok: false, error: `Post type "${wpPostType}" not found.`, available });
-    }
-
-    return res.json({ ok: false, error: `Post type "${wpPostType}" not found. Check the slug.` });
-  } catch (e) { res.json({ ok: false, error: e.message }); }
+  }
 });
 
 receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req, res) => {
@@ -958,15 +970,13 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
     if (!wpUsername || !wpPassword) return res.status(400).json({ error: 'WordPress credentials not configured' });
     if (!driveTokens) return res.status(400).json({ error: 'Google Drive not connected' });
 
+    const base  = wpUrl.replace(/\/$/, '').replace(/\/wp-admin\/?$/, '');
+    const type  = wpPostType || 'listing';
     const token = await getDriveToken(driveTokens);
     const rows  = await readSheet(sheetId, token);
     if (rows.length < 2) return res.json({ created: 0, updated: 0, skipped: 0, errors: [] });
 
     const [, ...dataRows] = rows;
-    const auth    = Buffer.from(`${wpUsername}:${wpPassword}`).toString('base64');
-    const base    = wpUrl.replace(/\/$/, '');
-    const type    = wpPostType || 'post';
-
     const getCol = (row, field) => {
       const idx = mapping[field];
       return (idx !== undefined && idx !== '' && idx !== null) ? (row[idx] || '').toString().trim() : '';
@@ -976,38 +986,46 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
     const errors = [];
 
     for (let i = 0; i < dataRows.length; i++) {
-      const row = dataRows[i];
+      const row   = dataRows[i];
       const title = getCol(row, 'title');
       if (!title) { skipped++; continue; }
 
-      // Build WP post payload
       const statusVal = getCol(row, 'status').toLowerCase();
       const wpStatus  = statusVal === 'sold' || statusVal === 'inactive' ? 'draft' : 'publish';
-      const meta = {};
-      ['price','make','model','year','mileage','color','vin','stock_number','fuel_type','transmission','body_type'].forEach(f => {
-        const v = getCol(row, f); if (v) meta[f] = v;
-      });
-      const postData = { title, content: getCol(row, 'description'), status: wpStatus, meta, acf: { ...meta } };
 
-      // Find existing post by VIN or title
+      const customFields = [];
+      ['price','make','model','year','mileage','color','vin','stock_number','fuel_type','transmission','body_type'].forEach(f => {
+        const v = getCol(row, f);
+        if (v) customFields.push({ key: f, value: v });
+      });
+
+      const postStruct = {
+        post_title:   title,
+        post_content: getCol(row, 'description'),
+        post_status:  wpStatus,
+        post_type:    type,
+        custom_fields: customFields,
+      };
+
+      // Find existing post by VIN (search via public REST API — no auth required for reads)
       let existingId = null;
-      const vin = meta.vin;
+      const vin = customFields.find(f => f.key === 'vin')?.value;
       if (vin) {
         try {
-          const sr = await fetch(`${base}/wp-json/wp/v2/${type}?search=${encodeURIComponent(vin)}&per_page=1&_fields=id,title`, { headers: { Authorization: `Basic ${auth}` } });
-          const sl = await sr.json();
-          if (Array.isArray(sl) && sl.length) existingId = sl[0].id;
+          const sr = await fetch(`${base}/wp-json/wp/v2/${type}?search=${encodeURIComponent(vin)}&per_page=1&_fields=id`);
+          if (sr.ok) { const sl = await sr.json(); if (Array.isArray(sl) && sl.length) existingId = sl[0].id; }
         } catch (_) {}
       }
 
       try {
-        const url    = existingId ? `${base}/wp-json/wp/v2/${type}/${existingId}` : `${base}/wp-json/wp/v2/${type}`;
-        const method = existingId ? 'PUT' : 'POST';
-        const r = await wpFetch(url, method, auth, postData);
-        const d = await r.json();
-        if (d.code || d.error) { errors.push(`Row ${i + 2}: ${d.message || d.error}`); }
-        else { existingId ? updated++ : created++; }
-      } catch (e) { errors.push(`Row ${i + 2}: ${e.message}`); }
+        if (existingId) {
+          await wpXmlRpc(base, 'wp.editPost', [1, wpUsername, wpPassword, existingId, postStruct]);
+          updated++;
+        } else {
+          await wpXmlRpc(base, 'wp.newPost', [1, wpUsername, wpPassword, postStruct]);
+          created++;
+        }
+      } catch (e) { errors.push(`Row ${i + 2} (${title}): ${e.message}`); }
     }
 
     carSyncConfig.lastSync = { at: new Date().toISOString(), created, updated, skipped, errors: errors.slice(0, 20) };
