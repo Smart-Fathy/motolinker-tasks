@@ -42,13 +42,14 @@ const pendingDriveAuth = new Map();
 
 // Car Sync config (in-memory, survives restarts via env)
 let carSyncConfig = {
-  sheetId:    process.env.CARSYNC_SHEET_ID    || '',
-  wpUrl:      process.env.CARSYNC_WP_URL      || '',
-  wpUsername: process.env.CARSYNC_WP_USER     || '',
-  wpPassword: process.env.CARSYNC_WP_PASS     || '',
-  wpPostType: process.env.CARSYNC_WP_TYPE     || 'listing',
-  mapping:    {},   // { wpField: columnIndex }
-  lastSync:   null, // { at, created, updated, errors }
+  sheetId:      process.env.CARSYNC_SHEET_ID    || '',
+  wpUrl:        process.env.CARSYNC_WP_URL      || '',
+  wpUsername:   process.env.CARSYNC_WP_USER     || '',
+  wpPassword:   process.env.CARSYNC_WP_PASS     || '',
+  wpPostType:   process.env.CARSYNC_WP_TYPE     || 'listing',
+  mapping:      {},   // { field: columnIndex }
+  wpKeyMapping: {},   // { field: wpMetaKeyName } — exact WP meta key per field
+  lastSync:     null, // { at, created, skipped, errors }
 };
 
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
@@ -962,18 +963,19 @@ receiver.router.post('/api/carsync/discover-fields', requireAuth, express.json()
 });
 
 receiver.router.get('/api/carsync/config', requireAuth, (_req, res) => {
-  const { lastSync, mapping, sheetId, wpUrl, wpUsername, wpPostType } = carSyncConfig;
-  res.json({ sheetId, wpUrl, wpUsername, wpPostType, mapping, lastSync, hasPassword: !!carSyncConfig.wpPassword, driveConnected: !!driveTokens });
+  const { lastSync, mapping, wpKeyMapping, sheetId, wpUrl, wpUsername, wpPostType } = carSyncConfig;
+  res.json({ sheetId, wpUrl, wpUsername, wpPostType, mapping, wpKeyMapping, lastSync, hasPassword: !!carSyncConfig.wpPassword, driveConnected: !!driveTokens });
 });
 
 receiver.router.post('/api/carsync/config', requireAuth, express.json(), (req, res) => {
-  const { sheetId, wpUrl, wpUsername, wpPassword, wpPostType, mapping } = req.body;
-  if (sheetId    !== undefined) carSyncConfig.sheetId    = sheetId;
-  if (wpUrl      !== undefined) carSyncConfig.wpUrl      = wpUrl.replace(/\/$/, '');
-  if (wpUsername !== undefined) carSyncConfig.wpUsername = wpUsername;
-  if (wpPassword !== undefined) carSyncConfig.wpPassword = wpPassword;
-  if (wpPostType !== undefined) carSyncConfig.wpPostType = wpPostType || 'post';
-  if (mapping    !== undefined) carSyncConfig.mapping    = mapping;
+  const { sheetId, wpUrl, wpUsername, wpPassword, wpPostType, mapping, wpKeyMapping } = req.body;
+  if (sheetId      !== undefined) carSyncConfig.sheetId      = sheetId;
+  if (wpUrl        !== undefined) carSyncConfig.wpUrl        = wpUrl.replace(/\/$/, '');
+  if (wpUsername   !== undefined) carSyncConfig.wpUsername   = wpUsername;
+  if (wpPassword   !== undefined) carSyncConfig.wpPassword   = wpPassword;
+  if (wpPostType   !== undefined) carSyncConfig.wpPostType   = wpPostType || 'listing';
+  if (mapping      !== undefined) carSyncConfig.mapping      = mapping;
+  if (wpKeyMapping !== undefined) carSyncConfig.wpKeyMapping = wpKeyMapping;
   res.json({ ok: true });
 });
 
@@ -1010,7 +1012,7 @@ receiver.router.post('/api/carsync/test-wp', requireAuth, express.json(), async 
 
 receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req, res) => {
   try {
-    const { sheetId, wpUrl, wpUsername, wpPassword, wpPostType, mapping } = carSyncConfig;
+    const { sheetId, wpUrl, wpUsername, wpPassword, wpPostType, mapping, wpKeyMapping } = carSyncConfig;
     if (!sheetId)    return res.status(400).json({ error: 'Sheet ID not configured' });
     if (!wpUrl)      return res.status(400).json({ error: 'WordPress URL not configured' });
     if (!wpUsername || !wpPassword) return res.status(400).json({ error: 'WordPress credentials not configured' });
@@ -1067,29 +1069,14 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
       const statusVal = getCol(row, 'status').toLowerCase();
       const wpStatus  = statusVal === 'sold' || statusVal === 'inactive' ? 'draft' : 'publish';
 
-      // Build custom_fields — use discovered plugin keys if available, otherwise generic names
-      const fieldMap = {
-        price: ['price', '_price', 'listing_price', '_listing_price', 'fave_property_price'],
-        make:  ['make', '_make', 'listing_make', 'car_make'],
-        model: ['model', '_model', 'listing_model', 'car_model'],
-        year:  ['year', '_year', 'listing_year', 'car_year'],
-        mileage: ['mileage', '_mileage', 'listing_mileage'],
-        color: ['color', '_color', 'listing_color', 'car_color'],
-        vin:   ['vin', '_vin', 'listing_vin', 'car_vin'],
-        stock_number: ['stock_number', '_stock_number'],
-        fuel_type: ['fuel_type', '_fuel_type', 'listing_fuel_type'],
-        transmission: ['transmission', '_transmission', 'listing_transmission'],
-        body_type: ['body_type', '_body_type', 'listing_body_type'],
-      };
-
+      // Build custom_fields — use exact WP meta keys from wpKeyMapping if configured
+      const metaFields = ['price', 'make', 'model', 'year', 'mileage', 'color', 'vin', 'stock_number', 'fuel_type', 'transmission', 'body_type'];
       const customFields = [];
-      Object.entries(fieldMap).forEach(([field, keys]) => {
+      metaFields.forEach(field => {
         const v = getCol(row, field);
         if (!v) return;
-        // If we discovered real plugin keys, prefer matching ones; otherwise use first key
-        const key = pluginMetaKeys
-          ? (keys.find(k => pluginMetaKeys.includes(k)) || keys[0])
-          : keys[0];
+        // Use the exact meta key the user configured, or fall back to the field name
+        const key = (wpKeyMapping && wpKeyMapping[field]) ? wpKeyMapping[field] : field;
         customFields.push({ key, value: v });
       });
 
