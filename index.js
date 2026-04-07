@@ -915,6 +915,37 @@ function xmlParseArray(text) {
   return [...text.matchAll(/<value><string>([^<]*)<\/string><\/value>/g)].map(m => m[1]);
 }
 
+// Discover plugin meta keys from an existing listing
+receiver.router.post('/api/carsync/discover-fields', requireAuth, express.json(), async (req, res) => {
+  const { wpUrl, wpUsername, wpPassword, wpPostType } = req.body;
+  try {
+    const base = wpUrl.replace(/\/$/, '').replace(/\/wp-admin\/?$/, '');
+    const type = wpPostType || 'listing';
+
+    // Get one existing listing via XML-RPC to inspect its custom_fields
+    const xml = await wpXmlRpc(base, 'wp.getPosts', [1, wpUsername, wpPassword, {
+      post_type: type, post_status: 'any', number: 1, fields: ['post_id','post_title','custom_fields','terms']
+    }]);
+
+    // Also try REST API for meta (with ?_fields=meta)
+    const restRes = await fetch(`${base}/wp-json/wp/v2/${type}?per_page=1&_fields=id,title,meta,acf`);
+    let restMeta = {};
+    if (restRes.ok) {
+      const restData = await restRes.json();
+      if (restData[0]?.meta)  restMeta = { ...restMeta, ...restData[0].meta };
+      if (restData[0]?.acf)   restMeta = { ...restMeta, ...restData[0].acf };
+    }
+
+    // Parse XML-RPC custom_fields
+    const cfKeys = [...xml.matchAll(/<name>key<\/name>\s*<value><string>([^<]+)<\/string>/g)].map(m => m[1]);
+    const cfVals = [...xml.matchAll(/<name>value<\/name>\s*<value><string>([^<]*)<\/string>/g)].map(m => m[1]);
+    const xmlFields = {};
+    cfKeys.forEach((k, i) => { if (!k.startsWith('_')) xmlFields[k] = cfVals[i] || ''; });
+
+    res.json({ xmlFields, restMeta, rawXml: xml.slice(0, 3000) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 receiver.router.get('/api/carsync/config', requireAuth, (_req, res) => {
   const { lastSync, mapping, sheetId, wpUrl, wpUsername, wpPostType } = carSyncConfig;
   res.json({ sheetId, wpUrl, wpUsername, wpPostType, mapping, lastSync, hasPassword: !!carSyncConfig.wpPassword, driveConnected: !!driveTokens });
@@ -982,7 +1013,32 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
       return (idx !== undefined && idx !== '' && idx !== null) ? (row[idx] || '').toString().trim() : '';
     };
 
-    let created = 0, updated = 0, skipped = 0;
+    // Load all existing listing titles to prevent duplication
+    const existingTitles = new Set();
+    try {
+      let page = 1;
+      while (true) {
+        const r = await fetch(`${base}/wp-json/wp/v2/${type}?per_page=100&page=${page}&status=any&_fields=title`);
+        if (!r.ok) break;
+        const items = await r.json();
+        if (!Array.isArray(items) || !items.length) break;
+        items.forEach(item => existingTitles.add((item.title?.rendered || item.title || '').toLowerCase().trim()));
+        if (items.length < 100) break;
+        page++;
+      }
+    } catch (_) {}
+
+    // Discover plugin's actual meta keys from the first existing listing
+    let pluginMetaKeys = null;
+    try {
+      const xml = await wpXmlRpc(base, 'wp.getPosts', [1, wpUsername, wpPassword, {
+        post_type: type, post_status: 'any', number: 1, fields: ['post_id','custom_fields']
+      }]);
+      const cfKeys = [...xml.matchAll(/<name>key<\/name>\s*<value><string>([^<]+)<\/string>/g)].map(m => m[1]);
+      if (cfKeys.length) pluginMetaKeys = cfKeys.filter(k => !k.startsWith('_'));
+    } catch (_) {}
+
+    let created = 0, skipped = 0;
     const errors = [];
 
     for (let i = 0; i < dataRows.length; i++) {
@@ -990,45 +1046,53 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
       const title = getCol(row, 'title');
       if (!title) { skipped++; continue; }
 
+      // Skip if already exists (no duplication)
+      if (existingTitles.has(title.toLowerCase().trim())) { skipped++; continue; }
+
       const statusVal = getCol(row, 'status').toLowerCase();
       const wpStatus  = statusVal === 'sold' || statusVal === 'inactive' ? 'draft' : 'publish';
 
+      // Build custom_fields — use discovered plugin keys if available, otherwise generic names
+      const fieldMap = {
+        price: ['price', '_price', 'listing_price', '_listing_price', 'fave_property_price'],
+        make:  ['make', '_make', 'listing_make', 'car_make'],
+        model: ['model', '_model', 'listing_model', 'car_model'],
+        year:  ['year', '_year', 'listing_year', 'car_year'],
+        mileage: ['mileage', '_mileage', 'listing_mileage'],
+        color: ['color', '_color', 'listing_color', 'car_color'],
+        vin:   ['vin', '_vin', 'listing_vin', 'car_vin'],
+        stock_number: ['stock_number', '_stock_number'],
+        fuel_type: ['fuel_type', '_fuel_type', 'listing_fuel_type'],
+        transmission: ['transmission', '_transmission', 'listing_transmission'],
+        body_type: ['body_type', '_body_type', 'listing_body_type'],
+      };
+
       const customFields = [];
-      ['price','make','model','year','mileage','color','vin','stock_number','fuel_type','transmission','body_type'].forEach(f => {
-        const v = getCol(row, f);
-        if (v) customFields.push({ key: f, value: v });
+      Object.entries(fieldMap).forEach(([field, keys]) => {
+        const v = getCol(row, field);
+        if (!v) return;
+        // If we discovered real plugin keys, prefer matching ones; otherwise use first key
+        const key = pluginMetaKeys
+          ? (keys.find(k => pluginMetaKeys.includes(k)) || keys[0])
+          : keys[0];
+        customFields.push({ key, value: v });
       });
 
       const postStruct = {
-        post_title:   title,
-        post_content: getCol(row, 'description'),
-        post_status:  wpStatus,
-        post_type:    type,
+        post_title:    title,
+        post_content:  getCol(row, 'description'),
+        post_status:   wpStatus,
+        post_type:     type,
         custom_fields: customFields,
       };
 
-      // Find existing post by VIN (search via public REST API — no auth required for reads)
-      let existingId = null;
-      const vin = customFields.find(f => f.key === 'vin')?.value;
-      if (vin) {
-        try {
-          const sr = await fetch(`${base}/wp-json/wp/v2/${type}?search=${encodeURIComponent(vin)}&per_page=1&_fields=id`);
-          if (sr.ok) { const sl = await sr.json(); if (Array.isArray(sl) && sl.length) existingId = sl[0].id; }
-        } catch (_) {}
-      }
-
       try {
-        if (existingId) {
-          await wpXmlRpc(base, 'wp.editPost', [1, wpUsername, wpPassword, existingId, postStruct]);
-          updated++;
-        } else {
-          await wpXmlRpc(base, 'wp.newPost', [1, wpUsername, wpPassword, postStruct]);
-          created++;
-        }
+        await wpXmlRpc(base, 'wp.newPost', [1, wpUsername, wpPassword, postStruct]);
+        created++;
       } catch (e) { errors.push(`Row ${i + 2} (${title}): ${e.message}`); }
     }
 
-    carSyncConfig.lastSync = { at: new Date().toISOString(), created, updated, skipped, errors: errors.slice(0, 20) };
+    carSyncConfig.lastSync = { at: new Date().toISOString(), created, skipped, errors: errors.slice(0, 20) };
     res.json(carSyncConfig.lastSync);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

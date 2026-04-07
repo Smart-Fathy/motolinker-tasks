@@ -763,8 +763,10 @@
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             <button class="btn btn-outline" onclick="testWpConnection()" id="wp-test-btn">Test Connection</button>
+            <button class="btn btn-outline" onclick="discoverFields()" id="wp-discover-btn">🔍 Discover Fields</button>
             <button class="btn btn-primary" onclick="saveCarSyncConfig()">Save Settings</button>
           </div>
+          <div id="discover-result" style="display:none;margin-top:12px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:monospace;white-space:pre-wrap;max-height:200px;overflow:auto"></div>
         </div>
       </div>
 
@@ -1413,6 +1415,23 @@ function renderPreview(headers, rows) {
   document.getElementById('preview-body').innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
 }
 
+async function discoverFields() {
+  const btn = document.getElementById('wp-discover-btn');
+  const res = document.getElementById('discover-result');
+  btn.disabled = true; btn.textContent = 'Discovering…';
+  res.style.display = '';
+  res.textContent = 'Loading…';
+  try {
+    const body = { wpUrl: document.getElementById('cs-wp-url').value.trim(), wpUsername: document.getElementById('cs-wp-user').value.trim(), wpPassword: document.getElementById('cs-wp-pass').value, wpPostType: document.getElementById('cs-wp-type').value.trim() };
+    const d = await apiFetch('/api/carsync/discover-fields', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
+    if (d.error) { res.textContent = '⚠️ ' + d.error; return; }
+    const xmlKeys = Object.keys(d.xmlFields || {});
+    const restKeys = Object.keys(d.restMeta || {});
+    res.textContent = `XML-RPC custom_fields keys found:\n${xmlKeys.length ? xmlKeys.map(k => `  ${k}: ${d.xmlFields[k]}`).join('\n') : '  (none found)'}\n\nREST API meta keys:\n${restKeys.length ? restKeys.join('\n  ') : '  (none found)'}`;
+  } catch (e) { res.textContent = '⚠️ ' + e.message; }
+  finally { btn.disabled = false; btn.textContent = '🔍 Discover Fields'; }
+}
+
 async function testWpConnection() {
   const btn = document.getElementById('wp-test-btn');
   btn.disabled = true; btn.textContent = 'Testing…';
@@ -1447,7 +1466,7 @@ function showSyncResult(r) {
   const color = hasErrors ? 'var(--warning)' : 'var(--success)';
   el.innerHTML = `<div style="background:rgba(34,197,94,.07);border:1px solid ${color};border-radius:10px;padding:14px 18px">
     <div style="font-weight:600;font-size:13px;margin-bottom:6px" style="color:${color}">
-      Last sync: ${new Date(r.at).toLocaleString()} — ✅ ${r.created} created, 🔄 ${r.updated} updated${r.skipped ? `, ⏭️ ${r.skipped} skipped` : ''}${hasErrors ? `, ⚠️ ${r.errors.length} error(s)` : ''}
+      Last sync: ${new Date(r.at).toLocaleString()} — ✅ ${r.created} created${r.skipped ? `, ⏭️ ${r.skipped} skipped (already exist)` : ''}${hasErrors ? `, ⚠️ ${r.errors.length} error(s)` : ''}
     </div>
     ${hasErrors ? `<div style="font-size:12px;color:var(--warning);margin-top:6px">${r.errors.map(e => esc(e)).join('<br>')}</div>` : ''}
   </div>`;
