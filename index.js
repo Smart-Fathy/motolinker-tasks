@@ -8,17 +8,22 @@ const multer  = require('multer');
 
 // ─── App Init ─────────────────────────────────────────────────────────────────
 const receiver = new ExpressReceiver({
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
+  signingSecret: process.env.SLACK_SIGNING_SECRET || 'placeholder-secret',
 });
 
-const app = new App({
-  token: process.env.SLACK_BOT_TOKEN,
-  receiver,
-  logLevel: LogLevel.INFO,
-});
+let app = null;
+if (process.env.SLACK_BOT_TOKEN) {
+  app = new App({
+    token: process.env.SLACK_BOT_TOKEN,
+    receiver,
+    logLevel: LogLevel.INFO,
+  });
+} else {
+  console.warn('[Slack] SLACK_BOT_TOKEN not set — Slack features disabled. Dashboard will still work.');
+}
 
 const supabase    = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-const slackClient = new WebClient(process.env.SLACK_BOT_TOKEN);
+const slackClient = process.env.SLACK_BOT_TOKEN ? new WebClient(process.env.SLACK_BOT_TOKEN) : null;
 const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 const CHIEFS_CHANNEL_ID    = process.env.CHIEFS_CHANNEL_ID;
@@ -81,6 +86,7 @@ let _chCache    = null, _chCacheAt    = 0;
 
 async function getSlackUsers() {
   if (_usersCache && Date.now() - _usersCacheAt < 300_000) return _usersCache;
+  if (!slackClient) { if (!_usersCache) _usersCache = {}; return _usersCache; }
   try {
     const { members = [] } = await slackClient.users.list({ limit: 200 });
     _usersCache = {};
@@ -102,6 +108,7 @@ async function getSlackUsers() {
 
 async function getSlackChannels() {
   if (_chCache && Date.now() - _chCacheAt < 300_000) return _chCache;
+  if (!slackClient) { if (!_chCache) _chCache = []; return _chCache; }
   try {
     const { channels = [] } = await slackClient.conversations.list({ types: 'public_channel,private_channel', limit: 200 });
     _chCache = channels.filter(c => !c.is_archived && c.id !== CHIEFS_CHANNEL_ID)
@@ -168,6 +175,7 @@ async function buildTaskBoardBlocks(channelId, channelName) {
 }
 
 async function updateChannelTaskBoard(channelId, channelName) {
+  if (!slackClient) return;
   try {
     const blocks = await buildTaskBoardBlocks(channelId, channelName);
     if (!blocks) return;
@@ -232,6 +240,9 @@ function buildTaskBlocks(task) {
     { type: 'context', elements: [{ type: 'mrkdwn', text: `Created by <@${task.created_by}> · Use \`/task-list\` to see all your channel tasks` }] },
   ];
 }
+
+// ─── Slack Commands & Actions (only registered when SLACK_BOT_TOKEN is set) ───
+if (app) {
 
 // ─── /task-create ─────────────────────────────────────────────────────────────
 app.command('/task-create', async ({ command, ack, client, respond }) => {
@@ -438,6 +449,8 @@ app.command('/task-stats', async ({ command, ack, client, respond }) => {
   ]});
 });
 
+} // end if (app)
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Admin Dashboard API ──────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -532,11 +545,13 @@ receiver.router.post('/api/dashboard/tasks', requireAuth, express.json(), async 
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   // Best-effort Slack notifications and Lists sync
-  addTaskToSlackList(task).catch(() => {});
-  try {
-    await slackClient.chat.postMessage({ channel: channel_id, text: `📋 New task: ${title}`, blocks: buildTaskBlocks(task) });
-    await slackClient.chat.postMessage({ channel: CHIEFS_CHANNEL_ID, text: `✅ Task #${task.id} created via dashboard: ${title}` });
-  } catch (e) { console.warn('Slack notify failed:', e.message); }
+  if (slackClient) {
+    addTaskToSlackList(task).catch(() => {});
+    try {
+      await slackClient.chat.postMessage({ channel: channel_id, text: `📋 New task: ${title}`, blocks: buildTaskBlocks(task) });
+      await slackClient.chat.postMessage({ channel: CHIEFS_CHANNEL_ID, text: `✅ Task #${task.id} created via dashboard: ${title}` });
+    } catch (e) { console.warn('Slack notify failed:', e.message); }
+  }
   res.json(task);
 });
 
@@ -1215,9 +1230,11 @@ receiver.router.post('/api/employee/my-tasks', requireEmployeeAuth, express.json
       .select().single();
     if (error) return res.status(500).json({ error: error.message });
     // Notify channel and update task board
-    try {
-      await slackClient.chat.postMessage({ channel: channel_id, text: `📋 New task: ${title}`, blocks: buildTaskBlocks(task) });
-    } catch (e) { console.warn('Slack notify failed:', e.message); }
+    if (slackClient) {
+      try {
+        await slackClient.chat.postMessage({ channel: channel_id, text: `📋 New task: ${title}`, blocks: buildTaskBlocks(task) });
+      } catch (e) { console.warn('Slack notify failed:', e.message); }
+    }
     updateChannelTaskBoard(channel_id, channel_name).catch(() => {});
     res.json(task);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1285,7 +1302,14 @@ receiver.router.delete('/api/dashboard/employees/:id', requireAuth, async (req, 
 // ─── Start ────────────────────────────────────────────────────────────────────
 (async () => {
   const port = process.env.PORT || 3000;
-  await app.start(port);
+  if (app) {
+    await app.start(port);
+  } else {
+    // Start Express directly when Slack is disabled
+    receiver.app.listen(port, () => {
+      console.log(`⚡️  MotoLinker running on port ${port} (Slack disabled)`);
+    });
+  }
   console.log(`⚡️  MotoLinker Task Bot running on port ${port}`);
   console.log(`📊  Admin dashboard → http://localhost:${port}/dashboard`);
   if (!ADMIN_PASSWORD) console.warn('⚠️   ADMIN_PASSWORD is not set — dashboard login will fail!');
