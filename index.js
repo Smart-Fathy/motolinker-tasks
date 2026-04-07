@@ -41,7 +41,7 @@ let carSyncConfig = {
   wpUrl:      process.env.CARSYNC_WP_URL      || '',
   wpUsername: process.env.CARSYNC_WP_USER     || '',
   wpPassword: process.env.CARSYNC_WP_PASS     || '',
-  wpPostType: process.env.CARSYNC_WP_TYPE     || 'post',
+  wpPostType: process.env.CARSYNC_WP_TYPE     || 'listing',
   mapping:    {},   // { wpField: columnIndex }
   lastSync:   null, // { at, created, updated, errors }
 };
