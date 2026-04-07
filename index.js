@@ -924,12 +924,29 @@ receiver.router.post('/api/carsync/test-wp', requireAuth, express.json(), async 
   try {
     const base = wpUrl.replace(/\/$/, '');
     const auth = Buffer.from(`${wpUsername}:${wpPassword}`).toString('base64');
-    const r = await fetch(`${base}/wp-json/wp/v2/${wpPostType || 'post'}?per_page=1`, { headers: { Authorization: `Basic ${auth}` } });
-    if (r.status === 401) return res.json({ ok: false, error: 'Invalid credentials' });
-    if (r.status === 404) return res.json({ ok: false, error: `Post type "${wpPostType}" not found. Check the slug.` });
-    if (!r.ok) return res.json({ ok: false, error: `WordPress returned ${r.status}` });
-    const data = await r.json();
-    res.json({ ok: true, count: Array.isArray(data) ? data.length : 0 });
+    const headers = { Authorization: `Basic ${auth}` };
+
+    // First verify credentials via /wp-json/wp/v2/users/me
+    const meRes = await fetch(`${base}/wp-json/wp/v2/users/me`, { headers });
+    if (meRes.status === 401 || meRes.status === 403) return res.json({ ok: false, error: 'Invalid credentials — check username and password' });
+
+    // Try the requested post type
+    if (wpPostType) {
+      const r = await fetch(`${base}/wp-json/wp/v2/${wpPostType}?per_page=1`, { headers });
+      if (r.ok) return res.json({ ok: true, postType: wpPostType });
+    }
+
+    // Auto-discover available post types from WP REST API types endpoint
+    const typesRes = await fetch(`${base}/wp-json/wp/v2/types`, { headers });
+    if (typesRes.ok) {
+      const types = await typesRes.json();
+      const available = Object.entries(types)
+        .filter(([, t]) => t.rest_base)
+        .map(([slug, t]) => ({ slug, restBase: t.rest_base, name: t.name }));
+      return res.json({ ok: false, error: `Post type "${wpPostType}" not found.`, available });
+    }
+
+    return res.json({ ok: false, error: `Post type "${wpPostType}" not found. Check the slug.` });
   } catch (e) { res.json({ ok: false, error: e.message }); }
 });
 
