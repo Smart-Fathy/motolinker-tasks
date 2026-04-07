@@ -532,6 +532,8 @@
       <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon">👥</span> Employees</div>
       <div class="nav-item"        onclick="navigate('requests')"  id="nav-requests"> <span class="nav-icon">📬</span> Requests</div>
       <div class="nav-item"        onclick="navigate('hours')"     id="nav-hours">    <span class="nav-icon">⏱️</span> Hours Logs</div>
+      <div class="sidebar-section-label">Integrations</div>
+      <div class="nav-item"        onclick="navigate('carsync')"   id="nav-carsync">  <span class="nav-icon">🚗</span> Car Sync</div>
       <div class="sidebar-section-label">Account</div>
       <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon">✉️</span> My Email</div>
       <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon">💾</span> My Drive</div>
@@ -700,6 +702,87 @@
   <div id="page-sheets" class="page">
     <div id="sheets-content" style="padding:28px">
       <div class="loading"><div class="spinner"></div> Loading Sheets…</div>
+    </div>
+  </div>
+
+  <!-- ── CAR SYNC PAGE ────────────────────────────────────── -->
+  <div id="page-carsync" class="page">
+    <div style="max-width:860px;padding:28px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:20px;font-weight:700">🚗 Car Stock Sync</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Import car listings from Google Sheets → WordPress automatically</div>
+        </div>
+        <button class="btn btn-primary" id="sync-run-btn" onclick="runCarSync()" style="min-width:140px">▶ Run Sync Now</button>
+      </div>
+
+      <!-- Last sync status -->
+      <div id="carsync-last" style="display:none;margin-bottom:20px"></div>
+
+      <!-- Step 1: Google Sheet -->
+      <div class="table-card" style="margin-bottom:16px">
+        <div class="table-header"><span class="table-title">① Google Sheet</span><span id="sheet-status" style="font-size:12px"></span></div>
+        <div style="padding:16px 20px">
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+            <div style="flex:1;min-width:220px">
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Google Sheet ID</div>
+              <input class="form-control" id="cs-sheet-id" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" style="font-family:monospace;font-size:12px">
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">The long ID from the sheet URL: …/spreadsheets/d/<strong>ID</strong>/edit</div>
+            </div>
+            <button class="btn btn-outline" onclick="loadSheetPreview()" style="white-space:nowrap;height:38px">Load Preview</button>
+          </div>
+          <div id="drive-warn" style="display:none;margin-top:12px;padding:10px 14px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;font-size:13px;color:var(--warning)">
+            ⚠️ Google Drive not connected. Go to <a href="#" onclick="navigate('drive')" style="color:var(--warning)">My Drive</a> first to connect your Google account.
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: WordPress -->
+      <div class="table-card" style="margin-bottom:16px">
+        <div class="table-header"><span class="table-title">② WordPress Connection</span><span id="wp-status" style="font-size:12px"></span></div>
+        <div style="padding:16px 20px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+            <div>
+              <div class="form-label" style="margin-bottom:6px">WordPress Site URL</div>
+              <input class="form-control" id="cs-wp-url" placeholder="https://yoursite.com">
+            </div>
+            <div>
+              <div class="form-label" style="margin-bottom:6px">Post Type slug</div>
+              <input class="form-control" id="cs-wp-type" placeholder="post" value="post">
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">e.g. post, car, listing, vehicle</div>
+            </div>
+            <div>
+              <div class="form-label" style="margin-bottom:6px">WP Username</div>
+              <input class="form-control" id="cs-wp-user" placeholder="admin" autocomplete="off">
+            </div>
+            <div>
+              <div class="form-label" style="margin-bottom:6px">Password</div>
+              <input class="form-control" id="cs-wp-pass" type="password" placeholder="Your WordPress password" autocomplete="off">
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">Your regular WordPress login password</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-outline" onclick="testWpConnection()" id="wp-test-btn">Test Connection</button>
+            <button class="btn btn-primary" onclick="saveCarSyncConfig()">Save Settings</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Column Mapping -->
+      <div class="table-card" style="margin-bottom:16px" id="mapping-section">
+        <div class="table-header"><span class="table-title">③ Column Mapping</span><span style="font-size:12px;color:var(--muted)">Map your sheet columns to car fields</span></div>
+        <div style="padding:16px 20px">
+          <div id="mapping-body">
+            <div style="color:var(--muted);font-size:13px">Load a sheet preview first to see your columns.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4: Preview -->
+      <div class="table-card" id="preview-section" style="display:none;margin-bottom:16px">
+        <div class="table-header"><span class="table-title">④ Sheet Preview</span><span id="preview-count" style="font-size:12px;color:var(--muted)"></span></div>
+        <div style="overflow-x:auto" id="preview-body"></div>
+      </div>
     </div>
   </div>
 
@@ -1239,7 +1322,7 @@ async function syncToSlackLists() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, carsync: loadCarSync };
 
 function navigate(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1248,6 +1331,138 @@ function navigate(page) {
   document.getElementById('nav-' + page).classList.add('active');
   currentPage = page;
   if (pageLoaders[page]) pageLoaders[page]();
+}
+
+// ── Car Sync ──────────────────────────────────────────────────────────────────
+const CS_FIELDS = [
+  { key: 'title',        label: 'Car Title *' },
+  { key: 'description',  label: 'Description' },
+  { key: 'price',        label: 'Price' },
+  { key: 'status',       label: 'Status (sold/available)' },
+  { key: 'make',         label: 'Make (Brand)' },
+  { key: 'model',        label: 'Model' },
+  { key: 'year',         label: 'Year' },
+  { key: 'mileage',      label: 'Mileage' },
+  { key: 'color',        label: 'Color' },
+  { key: 'vin',          label: 'VIN (used to match existing)' },
+  { key: 'stock_number', label: 'Stock Number' },
+  { key: 'fuel_type',    label: 'Fuel Type' },
+  { key: 'transmission', label: 'Transmission' },
+  { key: 'body_type',    label: 'Body Type' },
+];
+
+let csHeaders = [];
+let csMapping = {};
+
+async function loadCarSync() {
+  try {
+    const cfg = await apiFetch('/api/carsync/config').then(r => r.json());
+    if (cfg.sheetId)    document.getElementById('cs-sheet-id').value = cfg.sheetId;
+    if (cfg.wpUrl)      document.getElementById('cs-wp-url').value   = cfg.wpUrl;
+    if (cfg.wpUsername) document.getElementById('cs-wp-user').value  = cfg.wpUsername;
+    if (cfg.wpPostType) document.getElementById('cs-wp-type').value  = cfg.wpPostType;
+    csMapping = cfg.mapping || {};
+    if (!cfg.driveConnected) document.getElementById('drive-warn').style.display = '';
+    if (cfg.lastSync) showSyncResult(cfg.lastSync);
+    if (cfg.sheetId && cfg.driveConnected) loadSheetPreview();
+  } catch (_) {}
+}
+
+async function loadSheetPreview() {
+  const sheetId = document.getElementById('cs-sheet-id').value.trim();
+  if (!sheetId) { alert('Enter a Sheet ID first'); return; }
+  const statusEl = document.getElementById('sheet-status');
+  statusEl.innerHTML = '<span style="color:var(--muted)">Loading…</span>';
+  try {
+    await saveCarSyncConfig(true);
+    const d = await apiFetch('/api/carsync/preview').then(r => r.json());
+    if (d.error) { statusEl.innerHTML = `<span style="color:var(--danger)">⚠️ ${esc(d.error)}</span>`; return; }
+    csHeaders = d.headers || [];
+    statusEl.innerHTML = `<span style="color:var(--success)">✅ ${d.rows.length} rows loaded</span>`;
+    renderMapping();
+    renderPreview(d.headers, d.rows);
+  } catch (e) { statusEl.innerHTML = `<span style="color:var(--danger)">⚠️ ${esc(e.message)}</span>`; }
+}
+
+function renderMapping() {
+  const body = document.getElementById('mapping-body');
+  if (!csHeaders.length) { body.innerHTML = '<div style="color:var(--muted);font-size:13px">No columns found in sheet.</div>'; return; }
+  const options = `<option value="">— skip —</option>` + csHeaders.map((h, i) => `<option value="${i}">${esc(h)} (col ${i + 1})</option>`).join('');
+  body.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">` +
+    CS_FIELDS.map(f => `
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font-size:12px;font-weight:600;min-width:160px;color:var(--text)">${esc(f.label)}</div>
+        <select class="form-control" style="font-size:12px" id="map-${f.key}" onchange="csMapping['${f.key}']=this.value===''?undefined:+this.value">
+          ${options}
+        </select>
+      </div>`).join('') +
+    `</div><button class="btn btn-outline" style="margin-top:12px;font-size:12px" onclick="saveCarSyncConfig()">Save Mapping</button>`;
+  // Restore saved mapping
+  CS_FIELDS.forEach(f => {
+    const el = document.getElementById('map-' + f.key);
+    if (el && csMapping[f.key] !== undefined) el.value = csMapping[f.key];
+  });
+}
+
+function renderPreview(headers, rows) {
+  const section = document.getElementById('preview-section');
+  section.style.display = '';
+  document.getElementById('preview-count').textContent = `First ${rows.length} rows`;
+  const ths = headers.map(h => `<th>${esc(h)}</th>`).join('');
+  const trs = rows.map(r => `<tr>${headers.map((_, i) => `<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r[i] || '')}</td>`).join('')}</tr>`).join('');
+  document.getElementById('preview-body').innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+}
+
+async function testWpConnection() {
+  const btn = document.getElementById('wp-test-btn');
+  btn.disabled = true; btn.textContent = 'Testing…';
+  const statusEl = document.getElementById('wp-status');
+  try {
+    const body = { wpUrl: document.getElementById('cs-wp-url').value.trim(), wpUsername: document.getElementById('cs-wp-user').value.trim(), wpPassword: document.getElementById('cs-wp-pass').value, wpPostType: document.getElementById('cs-wp-type').value.trim() };
+    const d = await apiFetch('/api/carsync/test-wp', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
+    if (d.ok) statusEl.innerHTML = `<span style="color:var(--success)">✅ Connected to WordPress</span>`;
+    else statusEl.innerHTML = `<span style="color:var(--danger)">⚠️ ${esc(d.error)}</span>`;
+  } catch (e) { statusEl.innerHTML = `<span style="color:var(--danger)">⚠️ ${esc(e.message)}</span>`; }
+  finally { btn.disabled = false; btn.textContent = 'Test Connection'; }
+}
+
+async function saveCarSyncConfig(silent = false) {
+  const body = {
+    sheetId:    document.getElementById('cs-sheet-id').value.trim(),
+    wpUrl:      document.getElementById('cs-wp-url').value.trim(),
+    wpUsername: document.getElementById('cs-wp-user').value.trim(),
+    wpPostType: document.getElementById('cs-wp-type').value.trim(),
+    mapping:    csMapping,
+  };
+  const pass = document.getElementById('cs-wp-pass').value;
+  if (pass) body.wpPassword = pass;
+  await apiFetch('/api/carsync/config', { method: 'POST', body: JSON.stringify(body) });
+  if (!silent) alert('Settings saved.');
+}
+
+function showSyncResult(r) {
+  const el = document.getElementById('carsync-last');
+  el.style.display = '';
+  const hasErrors = r.errors && r.errors.length;
+  const color = hasErrors ? 'var(--warning)' : 'var(--success)';
+  el.innerHTML = `<div style="background:rgba(34,197,94,.07);border:1px solid ${color};border-radius:10px;padding:14px 18px">
+    <div style="font-weight:600;font-size:13px;margin-bottom:6px" style="color:${color}">
+      Last sync: ${new Date(r.at).toLocaleString()} — ✅ ${r.created} created, 🔄 ${r.updated} updated${r.skipped ? `, ⏭️ ${r.skipped} skipped` : ''}${hasErrors ? `, ⚠️ ${r.errors.length} error(s)` : ''}
+    </div>
+    ${hasErrors ? `<div style="font-size:12px;color:var(--warning);margin-top:6px">${r.errors.map(e => esc(e)).join('<br>')}</div>` : ''}
+  </div>`;
+}
+
+async function runCarSync() {
+  const btn = document.getElementById('sync-run-btn');
+  btn.disabled = true; btn.textContent = '⏳ Syncing…';
+  try {
+    await saveCarSyncConfig(true);
+    const d = await apiFetch('/api/carsync/run', { method: 'POST' }).then(r => r.json());
+    if (d.error) { alert('Sync error: ' + d.error); return; }
+    showSyncResult(d);
+  } catch (e) { alert('Sync error: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '▶ Run Sync Now'; }
 }
 
 async function logout() {
@@ -1747,7 +1962,7 @@ function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheet
   const ok = await checkAuth();
   if (!ok) return;
   const hash = location.hash.replace('#', '');
-  const validPages = ['tasks','employees','requests','hours','email','drive','sheets'];
+  const validPages = ['tasks','employees','requests','hours','email','drive','sheets','carsync'];
   if (hash && validPages.includes(hash)) navigate(hash);
   else loadDashboard();
 })();
