@@ -949,19 +949,26 @@ receiver.router.post('/api/carsync/discover-fields', requireAuth, express.json()
     const xmlFields = {};
     cfKeys.forEach((k, i) => { xmlFields[k] = cfVals[i] || '(empty)'; });
 
-    // Get taxonomy slugs for this post type
+    // Get taxonomy slugs — parse <member><name>X</name><value>...</value></member> pairs correctly
     let taxonomies = {};
     try {
       const taxXml = await wpXmlRpc(base, 'wp.getTaxonomies', [1, wpUsername, wpPassword]);
-      // Extract taxonomy names and labels
-      const taxNames   = [...taxXml.matchAll(/<name>name<\/name>\s*<value><string>([^<]+)<\/string>/g)].map(m => m[1]);
-      const taxLabels  = [...taxXml.matchAll(/<name>label<\/name>\s*<value><string>([^<]+)<\/string>/g)].map(m => m[1]);
-      taxNames.forEach((slug, i) => {
-        // Skip built-in WP taxonomies not relevant to listings
-        if (!['category', 'post_tag', 'nav_menu', 'post_format', 'link_category'].includes(slug)) {
-          taxonomies[slug] = taxLabels[i] || slug;
+      // Match each <member> block and extract field name + value
+      const memberRe = /<member>\s*<name>([^<]+)<\/name>\s*<value>(?:<string>)?([^<]*)(?:<\/string>)?<\/value>\s*<\/member>/g;
+      // Split by <struct> to process each taxonomy individually
+      const structs = taxXml.split('<struct>').slice(1);
+      for (const struct of structs) {
+        let slug = '', label = '';
+        let m;
+        const re = /<member>\s*<name>([^<]+)<\/name>\s*<value><string>([^<]*)<\/string><\/value>\s*<\/member>/g;
+        while ((m = re.exec(struct)) !== null) {
+          if (m[1] === 'name')  slug  = m[2];
+          if (m[1] === 'label') label = m[2];
         }
-      });
+        if (slug && !['category', 'post_tag', 'nav_menu', 'post_format', 'link_category'].includes(slug)) {
+          taxonomies[slug] = label || slug;
+        }
+      }
     } catch (_) {}
 
     // Also try REST API for meta
