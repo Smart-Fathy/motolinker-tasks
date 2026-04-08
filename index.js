@@ -933,29 +933,35 @@ function xmlParseArray(text) {
 
 // Discover plugin meta keys from an existing listing
 receiver.router.post('/api/carsync/discover-fields', requireAuth, express.json(), async (req, res) => {
-  const { wpUrl, wpUsername, wpPassword, wpPostType } = req.body;
+  const { wpUrl, wpUsername, wpPassword, wpPostType, postId } = req.body;
   try {
     const base = wpUrl.replace(/\/$/, '').replace(/\/wp-admin\/?$/, '');
     const type = wpPostType || 'listing';
 
-    // Get one existing listing via XML-RPC to inspect its custom_fields + terms
-    const xml = await wpXmlRpc(base, 'wp.getPosts', [1, wpUsername, wpPassword, {
-      post_type: type, post_status: 'any', number: 1, fields: ['post_id','post_title','custom_fields','terms']
+    // Get up to 10 listings and merge all their custom_fields to build complete key picture
+    const xmlAll = await wpXmlRpc(base, 'wp.getPosts', [1, wpUsername, wpPassword, {
+      post_type: type, post_status: 'any', number: 10,
+      fields: ['post_id', 'post_title', 'custom_fields'],
+      ...(postId ? { post_id: Number(postId) } : { orderby: 'date', order: 'DESC' }),
     }]);
 
-    // Parse XML-RPC custom_fields — show ALL keys including private ones
-    const cfKeys = [...xml.matchAll(/<name>key<\/name>\s*<value><string>([^<]+)<\/string>/g)].map(m => m[1]);
-    const cfVals = [...xml.matchAll(/<name>value<\/name>\s*<value><string>([^<]*)<\/string>/g)].map(m => m[1]);
+    // Parse ALL custom_fields from all posts, merge unique keys preferring non-empty values
     const xmlFields = {};
-    cfKeys.forEach((k, i) => { xmlFields[k] = cfVals[i] || '(empty)'; });
+    const keyRe  = /<name>key<\/name>\s*<value><string>([^<]+)<\/string>/g;
+    const valRe  = /<name>value<\/name>\s*<value><string>([^<]*)<\/string>/g;
+    const allKeys = [...xmlAll.matchAll(keyRe)].map(m => m[1]);
+    const allVals = [...xmlAll.matchAll(valRe)].map(m => m[1]);
+    allKeys.forEach((k, i) => {
+      const v = allVals[i] || '';
+      if (!(k in xmlFields) || (!xmlFields[k] || xmlFields[k] === '(empty)' || xmlFields[k] === 'N/A')) {
+        xmlFields[k] = v || '(empty)';
+      }
+    });
 
-    // Get taxonomy slugs — parse <member><name>X</name><value>...</value></member> pairs correctly
+    // Parse taxonomy slugs correctly per struct
     let taxonomies = {};
     try {
       const taxXml = await wpXmlRpc(base, 'wp.getTaxonomies', [1, wpUsername, wpPassword]);
-      // Match each <member> block and extract field name + value
-      const memberRe = /<member>\s*<name>([^<]+)<\/name>\s*<value>(?:<string>)?([^<]*)(?:<\/string>)?<\/value>\s*<\/member>/g;
-      // Split by <struct> to process each taxonomy individually
       const structs = taxXml.split('<struct>').slice(1);
       for (const struct of structs) {
         let slug = '', label = '';
@@ -971,16 +977,7 @@ receiver.router.post('/api/carsync/discover-fields', requireAuth, express.json()
       }
     } catch (_) {}
 
-    // Also try REST API for meta
-    const restRes = await fetch(`${base}/wp-json/wp/v2/${type}?per_page=1&_fields=id,title,meta,acf`);
-    let restMeta = {};
-    if (restRes.ok) {
-      const restData = await restRes.json();
-      if (restData[0]?.meta)  restMeta = { ...restMeta, ...restData[0].meta };
-      if (restData[0]?.acf)   restMeta = { ...restMeta, ...restData[0].acf };
-    }
-
-    res.json({ xmlFields, restMeta, taxonomies });
+    res.json({ xmlFields, taxonomies });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1092,8 +1089,10 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
       const wpStatus  = statusVal === 'sold' || statusVal === 'inactive' ? 'draft' : 'publish';
 
       // Build custom_fields and terms_names from wpKeyMapping
-      // If a WP key is prefixed with "tax:" it goes into terms_names (taxonomy), otherwise custom_fields
-      const metaFields = ['price', 'make', 'model', 'year', 'mileage', 'color', 'vin', 'stock_number', 'fuel_type', 'transmission', 'body_type'];
+      // "tax:slug" → terms_names (supports comma-separated multi-terms), otherwise custom_fields
+      const metaFields = ['price', 'make', 'model', 'year', 'mileage', 'color', 'vin', 'stock_number',
+                          'fuel_type', 'transmission', 'body_type', 'drive_type', 'power_train',
+                          'condition', 'category', 'features'];
       const customFields = [];
       const termsNames   = {};
       metaFields.forEach(field => {
@@ -1102,7 +1101,11 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
         const mappedKey = (wpKeyMapping && wpKeyMapping[field]) ? wpKeyMapping[field] : field;
         if (mappedKey.startsWith('tax:')) {
           const taxSlug = mappedKey.slice(4).trim();
-          if (taxSlug) termsNames[taxSlug] = [v];
+          if (taxSlug) {
+            // Support comma-separated values for multi-term fields (e.g. features)
+            const terms = v.split(',').map(t => t.trim()).filter(Boolean);
+            termsNames[taxSlug] = terms;
+          }
         } else {
           customFields.push({ key: mappedKey, value: v });
         }

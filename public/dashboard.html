@@ -761,12 +761,15 @@
               <div style="font-size:11px;color:var(--muted);margin-top:4px">Your regular WordPress login password</div>
             </div>
           </div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
             <button class="btn btn-outline" onclick="testWpConnection()" id="wp-test-btn">Test Connection</button>
-            <button class="btn btn-outline" onclick="discoverFields()" id="wp-discover-btn">🔍 Discover Fields</button>
+            <div style="display:flex;align-items:center;gap:6px">
+              <button class="btn btn-outline" onclick="discoverFields()" id="wp-discover-btn">🔍 Discover Fields</button>
+              <input class="form-control" id="discover-post-id" placeholder="Post ID (optional)" style="width:160px;font-size:12px" title="Enter a specific WP post ID to inspect (e.g. 9970). Leave empty to scan recent listings.">
+            </div>
             <button class="btn btn-primary" onclick="saveCarSyncConfig()">Save Settings</button>
           </div>
-          <div id="discover-result" style="display:none;margin-top:12px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:monospace;white-space:pre-wrap;max-height:200px;overflow:auto"></div>
+          <div id="discover-result" style="display:none;margin-top:12px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:monospace;white-space:pre-wrap;max-height:220px;overflow:auto"></div>
         </div>
       </div>
 
@@ -1346,11 +1349,16 @@ const CS_FIELDS = [
   { key: 'year',         label: 'Year' },
   { key: 'mileage',      label: 'Mileage' },
   { key: 'color',        label: 'Color' },
-  { key: 'vin',          label: 'VIN (used to match existing)' },
+  { key: 'vin',          label: 'VIN' },
   { key: 'stock_number', label: 'Stock Number' },
-  { key: 'fuel_type',    label: 'Fuel Type' },
+  { key: 'fuel_type',    label: 'Fuel Type / Power Train' },
   { key: 'transmission', label: 'Transmission' },
-  { key: 'body_type',    label: 'Body Type' },
+  { key: 'body_type',    label: 'Body Type / Style' },
+  { key: 'drive_type',   label: 'Drive Type' },
+  { key: 'power_train',  label: 'Power Train (Electric/Gas)' },
+  { key: 'condition',    label: 'Condition (New/Used)' },
+  { key: 'category',     label: 'Category (e.g. SUVs)' },
+  { key: 'features',     label: 'Features (comma-separated)' },
 ];
 
 let csHeaders = [];
@@ -1439,19 +1447,20 @@ async function discoverFields() {
   res.style.display = '';
   res.textContent = 'Loading…';
   try {
-    const body = { wpUrl: document.getElementById('cs-wp-url').value.trim(), wpUsername: document.getElementById('cs-wp-user').value.trim(), wpPassword: document.getElementById('cs-wp-pass').value, wpPostType: document.getElementById('cs-wp-type').value.trim() };
+    const postId = document.getElementById('discover-post-id').value.trim();
+    const body = { wpUrl: document.getElementById('cs-wp-url').value.trim(), wpUsername: document.getElementById('cs-wp-user').value.trim(), wpPassword: document.getElementById('cs-wp-pass').value, wpPostType: document.getElementById('cs-wp-type').value.trim(), ...(postId ? { postId } : {}) };
     const d = await apiFetch('/api/carsync/discover-fields', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
     if (d.error) { res.textContent = '⚠️ ' + d.error; return; }
-    const xmlKeys = Object.keys(d.xmlFields || {});
-    const taxEntries = Object.entries(d.taxonomies || {}).filter(([s]) => s.startsWith('listing_') || s.match(/^(post_tag|category)$/));
-    let out = '';
-    out += `📋 META FIELDS (enter key directly in "WP Meta Key"):\n`;
+    const xmlKeys    = Object.keys(d.xmlFields  || {});
+    const taxEntries = Object.entries(d.taxonomies || {}).filter(([s]) => s.startsWith('listing_'));
+    let out = postId ? `Inspecting post ID ${postId}\n\n` : `Scanned up to 10 recent listings (merged keys)\n\n`;
+    out += `📋 META FIELDS — enter key directly in "WP Meta Key":\n`;
     out += xmlKeys.length ? xmlKeys.map(k => `  ${k}: ${d.xmlFields[k]}`).join('\n') : '  (none found)';
-    out += `\n\n🏷️ TAXONOMY FIELDS (prefix with "tax:" in "WP Meta Key"):\n`;
+    out += `\n\n🏷️ TAXONOMY FIELDS — prefix with "tax:" in "WP Meta Key":\n`;
     out += taxEntries.length
       ? taxEntries.map(([slug, label]) => `  tax:${slug}   → ${label}`).join('\n')
       : '  (none found)';
-    out += `\n\n💡 Usage:\n   Text/number fields (Year, Mileage, Price): use meta key e.g. custom-text-61\n   Dropdown fields (Make, Model, Transmission, Drive Type): use tax:listing_make etc.`;
+    out += `\n\n💡 Text fields → use meta key (e.g. year, price, custom-text-61)\n   Dropdowns → tax:listing_make, tax:listing_model etc.\n   Features → tax:listing_feature  (comma-separated in sheet: "360 Camera, ACC, BSM")`;
     res.textContent = out;
   } catch (e) { res.textContent = '⚠️ ' + e.message; }
   finally { btn.disabled = false; btn.textContent = '🔍 Discover Fields'; }
