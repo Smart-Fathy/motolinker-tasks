@@ -1,5 +1,5 @@
 {
-  "scraped_at": "2026-04-08T19:49:09.491Z",
+  "scraped_at": "2026-04-08T20:45:55.180Z",
   "source": "/tmp/avatr06.pdf",
   "series_name": "Avita 06",
   "trims": [
@@ -1213,10 +1213,20 @@
     },
     {
       "section": "",
-      "label": "Appearance/Anti- Standard theft configuration Exterior Kit",
+      "label": "Appearance/Anti- Standard",
       "values": [
-        "Optional Sporty (6000 style yuan)",
-        "- none Sporty (6000 style yuan)",
+        "",
+        "- none",
+        "",
+        ""
+      ]
+    },
+    {
+      "section": "",
+      "label": "theft configuration Exterior Kit",
+      "values": [
+        "Sporty (6000 style yuan)",
+        "Sporty (6000 style yuan)",
         "Sporty (6000 style yuan)",
         "Sporty (6000 style yuan)"
       ]
@@ -1725,18 +1735,18 @@
       "section": "",
       "label": "Exterior color",
       "values": [
-        "Black/Crimson Black/White ¥ Obsidian Black Yun Zi ¥ Black/Smoky ¥ Purple Obsidian Gray",
-        "¥ Obsidian Black 6000 Obsidian Gray 2500 Yun Zi ¥ Black/Crimson 6000 Black/White ¥ 6000 Black/Smoky ¥ Purple",
-        "Obsidian Gray Black/Smoky ¥ Purple 6000 ¥ Black/Crimson 6000 Yun Zi ¥ 2500 Obsidian Black 6000 Black/White ¥",
-        "Obsidian Black Yun Zi ¥ 6000 Black/Smoky ¥ ¥ Purple 6000 Obsidian Gray 6000 Black/Crimson 2500 Black/White ¥"
+        "Black/White Obsidian Black Yun Zi Black/Smoky Purple Obsidian Gray",
+        "Obsidian Gray 2500 Yun Zi Black/Crimson 6000 Black/White 6000 Black/Smoky Purple",
+        "Black/Smoky Purple 6000 Black/Crimson Yun Zi 2500 Obsidian Black 6000 Black/White",
+        "Yun Zi 6000 Black/Smoky Purple Obsidian Gray 6000 Black/Crimson 2500 Black/White"
       ]
     },
     {
       "section": "",
       "label": "Interior color",
       "values": [
-        "Twilight Purple/Smoke White Daihong ¥",
-        "Twilight Purple/Smoke White 10000 Deep purple",
+        "Twilight Purple/Smoke White Daihong",
+        "Twilight Purple/Smoke White Deep purple",
         "Twilight Purple/Smoke White Deep purple",
         "Deep purple Twilight Purple/Smoke White"
       ]
@@ -1746,8 +1756,8 @@
       "label": "Optional Standard Package configuration CATL 5C Snapdragon Super Plus Hybrid Battery",
       "values": [
         "Optional Includes: CATL 5C Snapdragon Super Plus Hybrid Battery (45.06kWh) (price Optional not equipment available)",
-        "- none Includes: CATL 5C Snapdragon Super Plus Hybrid Battery (45.06kWh) (price Optional not equipment available)",
-        "Includes: CATL 5C Snapdragon Super Plus Hybrid Battery (45.06kWh) (price Optional not equipment available)",
+        "- none Includes: CATL 5C Snapdragon Super Plus Hybrid Battery (45.06kWh) Optional equipment",
+        "Includes: CATL 5C Snapdragon Super Plus Hybrid Battery (45.06kWh) Optional equipment",
         "-"
       ]
     },
@@ -1755,7 +1765,7 @@
       "section": "",
       "label": "Ultra-HD Electronic Exterior Rearview Mirror Kit",
       "values": [
-        "Includes: Ultra-high- definition electronic exterior rearview mirrors, dual 6.7-inch high-definition rearview screens, front door welcome logo lights, intelligent exterior welcome",
+        "Includes: Ultra-high- definition electronic exterior rearview mirrors, dual 6.7-inch high-definition rearview screens, front door welcome logo lights, intelligent exterior welcome animation effects, and",
         "Includes: Ultra-high- definition electronic exterior rearview mirrors, dual 6.7-inch high-definition rearview screens, front door welcome logo lights, intelligent exterior welcome",
         "Includes: Ultra-high- definition electronic exterior rearview mirrors, dual 6.7-inch high-definition rearview screens, front door welcome logo lights, intelligent exterior welcome",
         "Includes: Ultra-high- definition electronic exterior rearview mirrors, dual 6.7-inch high-definition rearview screens, front door welcome logo lights, intelligent exterior welcome"
