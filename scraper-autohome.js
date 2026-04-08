@@ -35,37 +35,44 @@ if (!existsSync(pdfPath)) {
   }
 }
 
-// ── Column layout (x-centre of each trim column) ─────────────────────────────
-// Detected from PDF: labels≈130, col1≈224, col2≈319, col3≈414, col4≈509
-const COL_LABEL_MIN  = 100;
-const COL_LABEL_MAX  = 220;
-const COL_SIDEBAR_X  = 100;   // x < this = left sidebar nav (skip)
-const COL_CENTERS    = [224, 319, 414, 509];
-const COL_HALF_WIDTH = 55;    // ±55px tolerance per column
+const COL_LABEL_MIN = 100;
+const COL_LABEL_MAX = 215;
+const COL_SIDEBAR_X = 100;
+const FOOTER_MAX_Y  = 25;
+const HEADER_MIN_Y  = 730;
 
-// Footer/header Y ranges to exclude (per page, y<25 or y>730)
-const FOOTER_MAX_Y = 25;
-const HEADER_MIN_Y = 730;
-
-// ── Helper: which column does an x value belong to (-1 = label, -2 = skip) ───
-function classifyX(x) {
-  if (x < COL_SIDEBAR_X)               return -2;  // left sidebar
-  if (x >= COL_LABEL_MIN && x <= COL_LABEL_MAX) return -1; // spec label
-  for (let i = 0; i < COL_CENTERS.length; i++) {
-    if (Math.abs(x - COL_CENTERS[i]) <= COL_HALF_WIDTH) return i;
+// ── Auto-detect data column X centres ────────────────────────────────────────
+function detectDataColumns(allItems) {
+  const xCounts = {};
+  for (const it of allItems) {
+    if (it.x <= COL_LABEL_MAX || it.x > 610) continue;
+    const b = Math.round(it.x / 3) * 3;
+    xCounts[b] = (xCounts[b] || 0) + 1;
   }
-  return -2; // unknown / UI chrome
+  const maxC  = Math.max(1, ...Object.values(xCounts));
+  const floor = Math.max(3, maxC * 0.08);
+  const xs    = Object.entries(xCounts)
+    .filter(([, c]) => c >= floor)
+    .map(([x]) => parseInt(x))
+    .sort((a, b) => a - b);
+  const clusters = [];
+  for (const x of xs) {
+    const last = clusters[clusters.length - 1];
+    if (last && x - last.sum / last.n < 22) { last.sum += x; last.n++; }
+    else clusters.push({ sum: x, n: 1 });
+  }
+  const centres = clusters.map(c => Math.round(c.sum / c.n));
+  return centres.length ? centres : [224, 319, 414, 509];
 }
 
-// ── Cluster items into rows by shared Y band ─────────────────────────────────
 function clusterRows(items, tolerance = 12) {
-  const sorted = [...items].sort((a, b) => b.y - a.y); // top of page first
+  const sorted = [...items].sort((a, b) => b.y - a.y);
   const clusters = [];
   for (const item of sorted) {
     const last = clusters[clusters.length - 1];
     if (last && Math.abs(item.y - last.y) <= tolerance) {
       last.items.push(item);
-      last.y = (last.y + item.y) / 2; // running average
+      last.y = (last.y + item.y) / 2;
     } else {
       clusters.push({ y: item.y, items: [item] });
     }
@@ -79,91 +86,85 @@ const buf = readFileSync(pdfPath);
 const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
 console.log(`[scraper] Pages: ${doc.numPages}`);
 
-let trimNames  = [];   // ['Avita 06 2025 Pro …', …]
-let trimPrices = [];   // ['209,900', …]
-let specs      = [];   // [{ section, label, values: ['val1','val2',…] }, …]
+let specs = [];
 let currentSection = '';
 
-// ── Pass 1: collect all items across all pages ─────────────────────────────
+// Pass 1: collect all items
 const allPageItems = [];
-
 for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
-  const page   = await doc.getPage(pageNum);
-  const tc     = await page.getTextContent();
-  const items  = [];
-
+  const page = await doc.getPage(pageNum);
+  const tc   = await page.getTextContent();
+  const items = [];
   for (const it of tc.items) {
     if (!it.str || !it.str.trim()) continue;
     const x = Math.round(it.transform[4]);
     const y = Math.round(it.transform[5]);
-    // Skip header/footer bands
     if (y < FOOTER_MAX_Y || y > HEADER_MIN_Y) continue;
     items.push({ s: it.str.trim(), x, y, page: pageNum });
   }
   allPageItems.push(items);
 }
 
-// ── Pass 2: extract trim names & prices from page 1 ──────────────────────────
-const page1 = allPageItems[0];
+// Detect columns dynamically (supports up to 10 trims)
+const flatItems     = allPageItems.flat();
+const COL_CENTERS   = detectDataColumns(flatItems);
+const colCount      = Math.min(COL_CENTERS.length, 10);
+const colSpacing    = colCount > 1
+  ? Math.min(...COL_CENTERS.slice(1).map((c, i) => c - COL_CENTERS[i]))
+  : 50;
+const COL_HALF_WIDTH = Math.floor(colSpacing * 0.44);
+console.log(`[scraper] Detected ${colCount} trim columns at x=[${COL_CENTERS.slice(0,colCount).join(',')}] ±${COL_HALF_WIDTH}`);
 
-// Trim names sit at y=596–620 (multi-line per column); y=634 is a UI pin element
+function classifyX(x) {
+  if (x < COL_SIDEBAR_X) return -2;
+  if (x >= COL_LABEL_MIN && x <= COL_LABEL_MAX) return -1;
+  for (let i = 0; i < colCount; i++) {
+    if (Math.abs(x - COL_CENTERS[i]) <= COL_HALF_WIDTH) return i;
+  }
+  return -2;
+}
+
+// Pass 2: trim names & prices from page 1
+const page1     = allPageItems[0];
 const nameItems = page1.filter(it => it.y >= 590 && it.y <= 622);
-const nameByCol = [{}, {}, {}, {}];
+const nameByCol = Array.from({ length: colCount }, () => ({}));
 for (const it of nameItems) {
   const col = classifyX(it.x);
-  if (col < 0) continue;
+  if (col < 0 || col >= colCount) continue;
   if (!nameByCol[col][it.y]) nameByCol[col][it.y] = [];
   nameByCol[col][it.y].push(it.s);
 }
-
-trimNames = COL_CENTERS.map((_, ci) => {
+const trimNames = COL_CENTERS.slice(0, colCount).map((_, ci) => {
   const byY = nameByCol[ci];
-  return Object.keys(byY)
-    .sort((a, b) => b - a)
-    .map(y => byY[y].join(' '))
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return Object.keys(byY).sort((a, b) => b - a).map(y => byY[y].join(' ')).join(' ').replace(/\s+/g, ' ').trim();
 });
 
-// Prices sit at y≈541–560 on page 1
+const trimPrices = Array(colCount).fill('');
 const priceItems = page1.filter(it => it.y >= 500 && it.y <= 565);
-trimPrices = COL_CENTERS.map(() => '');
 for (const it of priceItems) {
   const col = classifyX(it.x);
-  if (col < 0) continue;
-  // Match number-like price strings
-  if (/^\d[\d,]+$/.test(it.s) && !trimPrices[col]) {
-    trimPrices[col] = it.s;
-  }
+  if (col < 0 || col >= colCount) continue;
+  if (/^\d[\d,]+$/.test(it.s) && !trimPrices[col]) trimPrices[col] = it.s;
 }
 
-// ── Pass 3: extract spec rows page by page ────────────────────────────────────
-// We accumulate multi-line label text across consecutive rows until a value row appears.
+// Pass 3: spec rows
 let pendingLabel = '';
-let pendingLabelY = null;
-
 for (let pi = 0; pi < allPageItems.length; pi++) {
   const items = allPageItems[pi];
-
-  // Filter to spec-table zone: skip prices/trim-name header area on page 1
   const zoneItems = items.filter(it => {
-    if (pi === 0 && it.y >= 480) return false; // skip header section on page 1
-    const col = classifyX(it.x);
-    return col !== -2;
+    if (pi === 0 && it.y >= 480) return false;
+    return classifyX(it.x) !== -2;
   });
-
   const rows = clusterRows(zoneItems);
 
-  // Process rows top to bottom (already sorted by descending y = top first)
   for (const row of rows) {
-    const labelParts  = row.items.filter(it => classifyX(it.x) === -1).map(it => it.s);
-    const valueCells  = ['', '', '', ''];
-    let   hasValues   = false;
+    const labelParts = row.items.filter(it => classifyX(it.x) === -1).map(it => it.s);
+    const valueCells = Array(colCount).fill('');
+    let hasValues    = false;
 
     for (const it of row.items) {
       const col = classifyX(it.x);
-      if (col >= 0 && col < 4) {
+      if (col >= 0 && col < colCount) {
         valueCells[col] += (valueCells[col] ? ' ' : '') + it.s;
         hasValues = true;
       }
@@ -172,29 +173,15 @@ for (let pi = 0; pi < allPageItems.length; pi++) {
     const labelText = labelParts.join(' ').replace(/\s+/g, ' ').trim();
 
     if (!hasValues && labelText) {
-      // Accumulate multi-line label
       pendingLabel = pendingLabel ? pendingLabel + ' ' + labelText : labelText;
-      pendingLabelY = row.y;
     } else if (hasValues) {
-      const fullLabel = pendingLabel
-        ? pendingLabel + (labelText ? ' ' + labelText : '')
-        : labelText;
+      const fullLabel = pendingLabel ? pendingLabel + (labelText ? ' ' + labelText : '') : labelText;
       pendingLabel = '';
-
       if (!fullLabel) continue;
-
-      specs.push({
-        section: currentSection,
-        label:   fullLabel,
-        values:  valueCells,
-      });
-    } else if (labelText) {
-      // Section-like row with no values and not accumulating — might be a section header
-      // (These tend to be short, in title case, without numbers)
-      if (labelText.length < 60 && !/\d/.test(labelText)) {
-        currentSection = labelText;
-        pendingLabel   = '';
-      }
+      specs.push({ section: currentSection, label: fullLabel, values: valueCells });
+    } else if (labelText && labelText.length < 60 && !/\d/.test(labelText)) {
+      currentSection = labelText;
+      pendingLabel   = '';
     }
   }
 }
@@ -236,15 +223,18 @@ specs = specs
   .filter(s => s.label);
 
 // ── Build output ──────────────────────────────────────────────────────────────
+const activeCols = Array.from({ length: colCount }, (_, i) => i)
+  .filter(ci => specs.some(s => s.values[ci] && s.values[ci] !== '-'));
+
 const result = {
   scraped_at:  new Date().toISOString(),
   source:      pdfPath,
-  series_name: 'Avita 06',
-  trims: COL_CENTERS.map((_, i) => ({
-    name:  trimNames[i]  || `Trim ${i + 1}`,
-    price: trimPrices[i] || '',
+  series_name: trimNames[0] ? trimNames[0].replace(/\s+\d{4}.*/, '').trim() : 'Unknown',
+  trims: activeCols.map(ci => ({
+    name:  trimNames[ci]  || `Trim ${ci + 1}`,
+    price: trimPrices[ci] || '',
   })),
-  specs,
+  specs: specs.map(s => ({ ...s, values: activeCols.map(ci => s.values[ci] || '') })),
 };
 
 // ── Console summary ──────────────────────────────────────────────────────────
