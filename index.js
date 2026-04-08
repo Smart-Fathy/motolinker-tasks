@@ -937,28 +937,56 @@ receiver.router.post('/api/carsync/discover-fields', requireAuth, express.json()
   try {
     const base = wpUrl.replace(/\/$/, '').replace(/\/wp-admin\/?$/, '');
     const type = wpPostType || 'listing';
-
-    // Get up to 10 listings and merge all their custom_fields to build complete key picture
-    const xmlAll = await wpXmlRpc(base, 'wp.getPosts', [1, wpUsername, wpPassword, {
-      post_type: type, post_status: 'any', number: 10,
-      fields: ['post_id', 'post_title', 'custom_fields'],
-      ...(postId ? { post_id: Number(postId) } : { orderby: 'date', order: 'DESC' }),
-    }]);
-
-    // Parse ALL custom_fields from all posts, merge unique keys preferring non-empty values
     const xmlFields = {};
-    const keyRe  = /<name>key<\/name>\s*<value><string>([^<]+)<\/string>/g;
-    const valRe  = /<name>value<\/name>\s*<value><string>([^<]*)<\/string>/g;
-    const allKeys = [...xmlAll.matchAll(keyRe)].map(m => m[1]);
-    const allVals = [...xmlAll.matchAll(valRe)].map(m => m[1]);
-    allKeys.forEach((k, i) => {
-      const v = allVals[i] || '';
-      if (!(k in xmlFields) || (!xmlFields[k] || xmlFields[k] === '(empty)' || xmlFields[k] === 'N/A')) {
-        xmlFields[k] = v || '(empty)';
-      }
-    });
 
-    // Parse taxonomy slugs correctly per struct
+    const mergeKeys = (xml) => {
+      const keyRe = /<name>key<\/name>\s*<value><string>([^<]+)<\/string>/g;
+      const valRe = /<name>value<\/name>\s*<value><string>([^<]*)<\/string>/g;
+      const keys = [...xml.matchAll(keyRe)].map(m => m[1]);
+      const vals = [...xml.matchAll(valRe)].map(m => m[1]);
+      keys.forEach((k, i) => {
+        const v = vals[i] || '';
+        if (!(k in xmlFields) || !xmlFields[k] || xmlFields[k] === '(empty)' || xmlFields[k] === 'N/A') {
+          xmlFields[k] = v || '(empty)';
+        }
+      });
+    };
+
+    if (postId) {
+      // wp.getPost returns ALL custom_fields for a specific post (more than wp.getPosts)
+      const xml = await wpXmlRpc(base, 'wp.getPost', [1, wpUsername, wpPassword, Number(postId)]);
+      mergeKeys(xml);
+    } else {
+      // Scan oldest 10 listings (manually created ones have more data)
+      const xml = await wpXmlRpc(base, 'wp.getPosts', [1, wpUsername, wpPassword, {
+        post_type: type, post_status: 'any', number: 10,
+        fields: ['post_id', 'post_title', 'custom_fields'],
+        orderby: 'date', order: 'ASC',
+      }]);
+      mergeKeys(xml);
+    }
+
+    // Also try authenticated REST API with edit context — may expose more meta
+    let restMeta = {};
+    try {
+      const auth = 'Basic ' + Buffer.from(`${wpUsername}:${wpPassword}`).toString('base64');
+      const url  = postId
+        ? `${base}/wp-json/wp/v2/${type}/${postId}?context=edit`
+        : `${base}/wp-json/wp/v2/${type}?per_page=3&context=edit&orderby=date&order=asc`;
+      const r = await fetch(url, { headers: { Authorization: auth } });
+      if (r.ok) {
+        const data = await r.json();
+        const items = Array.isArray(data) ? data : [data];
+        items.forEach(item => {
+          if (item?.meta)  Object.assign(restMeta, item.meta);
+          if (item?.acf)   Object.assign(restMeta, item.acf);
+        });
+        // Filter out empty/false values to reduce noise
+        Object.keys(restMeta).forEach(k => { if (!restMeta[k] && restMeta[k] !== 0) delete restMeta[k]; });
+      }
+    } catch (_) {}
+
+    // Parse taxonomy slugs
     let taxonomies = {};
     try {
       const taxXml = await wpXmlRpc(base, 'wp.getTaxonomies', [1, wpUsername, wpPassword]);
@@ -977,7 +1005,7 @@ receiver.router.post('/api/carsync/discover-fields', requireAuth, express.json()
       }
     } catch (_) {}
 
-    res.json({ xmlFields, taxonomies });
+    res.json({ xmlFields, restMeta, taxonomies });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1090,9 +1118,12 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
 
       // Build custom_fields and terms_names from wpKeyMapping
       // "tax:slug" → terms_names (supports comma-separated multi-terms), otherwise custom_fields
-      const metaFields = ['price', 'make', 'model', 'year', 'mileage', 'color', 'vin', 'stock_number',
-                          'fuel_type', 'transmission', 'body_type', 'drive_type', 'power_train',
-                          'condition', 'category', 'features'];
+      const metaFields = [
+        'price', 'old_price', 'make', 'model', 'year', 'mileage', 'color', 'vin', 'stock_number',
+        'fuel_type', 'transmission', 'body_type', 'drive_type', 'power_train',
+        'condition', 'category', 'label', 'offer_type', 'features',
+        'seats', 'length', 'width', 'height', 'wheelbase', 'gross_weight', 'luggage_down', 'luggage_up',
+      ];
       const customFields = [];
       const termsNames   = {};
       metaFields.forEach(field => {
