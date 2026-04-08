@@ -1463,26 +1463,39 @@ function renderPreview(headers, rows) {
 }
 
 async function discoverFields() {
-  const btn = document.getElementById('wp-discover-btn');
-  const res = document.getElementById('discover-result');
+  const btn    = document.getElementById('wp-discover-btn');
+  const res    = document.getElementById('discover-result');
+  const postId = document.getElementById('discover-post-id').value.trim();
   btn.disabled = true; btn.textContent = 'Discovering…';
   res.style.display = '';
   res.textContent = 'Loading…';
   try {
-    const postId = document.getElementById('discover-post-id').value.trim();
-    const body = { wpUrl: document.getElementById('cs-wp-url').value.trim(), wpUsername: document.getElementById('cs-wp-user').value.trim(), wpPassword: document.getElementById('cs-wp-pass').value, wpPostType: document.getElementById('cs-wp-type').value.trim(), ...(postId ? { postId } : {}) };
+    const body = {
+      wpUrl:      document.getElementById('cs-wp-url').value.trim(),
+      wpUsername: document.getElementById('cs-wp-user').value.trim(),
+      wpPassword: document.getElementById('cs-wp-pass').value,
+      wpPostType: document.getElementById('cs-wp-type').value.trim(),
+      ...(postId ? { postId } : {}),
+    };
     const d = await apiFetch('/api/carsync/discover-fields', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
     if (d.error) { res.textContent = '⚠️ ' + d.error; return; }
     const xmlKeys    = Object.keys(d.xmlFields  || {});
+    const restKeys   = Object.keys(d.restMeta   || {});
     const taxEntries = Object.entries(d.taxonomies || {}).filter(([s]) => s.startsWith('listing_'));
-    let out = postId ? `Inspecting post ID ${postId}\n\n` : `Scanned up to 10 recent listings (merged keys)\n\n`;
-    out += `📋 META FIELDS — enter key directly in "WP Meta Key":\n`;
+    let out = postId ? `Inspecting post ID ${postId}\n\n` : `Scanned oldest listings (merged keys)\n\n`;
+    out += `📋 XML-RPC meta fields:\n`;
     out += xmlKeys.length ? xmlKeys.map(k => `  ${k}: ${d.xmlFields[k]}`).join('\n') : '  (none found)';
+    if (restKeys.length) {
+      out += `\n\n📋 REST API meta fields (authenticated):\n`;
+      out += restKeys.map(k => `  ${k}: ${JSON.stringify(d.restMeta[k])}`).join('\n');
+    } else {
+      out += `\n\n📋 REST API meta: (none — plugin fields not exposed via REST)`;
+    }
     out += `\n\n🏷️ TAXONOMY FIELDS — prefix with "tax:" in "WP Meta Key":\n`;
     out += taxEntries.length
       ? taxEntries.map(([slug, label]) => `  tax:${slug}   → ${label}`).join('\n')
       : '  (none found)';
-    out += `\n\n💡 Text fields → use meta key (e.g. year, price, custom-text-61)\n   Dropdowns → tax:listing_make, tax:listing_model etc.\n   Features → tax:listing_feature  (comma-separated in sheet: "360 Camera, ACC, BSM")`;
+    out += `\n\n💡 Text fields → use meta key directly (e.g. year, price, custom-text-61)\n   Dropdowns → tax:listing_make, tax:listing_model etc.\n   Features → tax:listing_feature  (comma-separated: "360 Camera, ACC, BSM")`;
     res.textContent = out;
   } catch (e) { res.textContent = '⚠️ ' + e.message; }
   finally { btn.disabled = false; btn.textContent = '🔍 Discover Fields'; }
