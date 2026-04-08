@@ -1418,21 +1418,36 @@ async function parsePdfBuffer(buffer) {
 
   const pdfjsLib = await import('./node_modules/pdfjs-dist/legacy/build/pdf.mjs');
 
-  const COL_LABEL_MIN  = 100;
-  const COL_LABEL_MAX  = 220;
-  const COL_SIDEBAR_X  = 100;
-  const COL_CENTERS    = [224, 319, 414, 509];
-  const COL_HALF_WIDTH = 55;
-  const FOOTER_MAX_Y   = 25;
-  const HEADER_MIN_Y   = 730;
+  const COL_LABEL_MIN = 100;
+  const COL_LABEL_MAX = 215;
+  const COL_SIDEBAR_X = 100;
+  const FOOTER_MAX_Y  = 25;
+  const HEADER_MIN_Y  = 730;
 
-  function classifyX(x) {
-    if (x < COL_SIDEBAR_X) return -2;
-    if (x >= COL_LABEL_MIN && x <= COL_LABEL_MAX) return -1;
-    for (let i = 0; i < COL_CENTERS.length; i++) {
-      if (Math.abs(x - COL_CENTERS[i]) <= COL_HALF_WIDTH) return i;
+  // ── Auto-detect data column X centres from item frequency ──────────────────
+  function detectDataColumns(allItems) {
+    const xCounts = {};
+    for (const it of allItems) {
+      if (it.x <= COL_LABEL_MAX || it.x > 610) continue;
+      const b = Math.round(it.x / 3) * 3;
+      xCounts[b] = (xCounts[b] || 0) + 1;
     }
-    return -2;
+    const maxC  = Math.max(1, ...Object.values(xCounts));
+    const floor = Math.max(3, maxC * 0.08);
+    const xs    = Object.entries(xCounts)
+      .filter(([, c]) => c >= floor)
+      .map(([x]) => parseInt(x))
+      .sort((a, b) => a - b);
+
+    // Merge nearby peaks into clusters
+    const clusters = [];
+    for (const x of xs) {
+      const last = clusters[clusters.length - 1];
+      if (last && x - last.sum / last.n < 22) { last.sum += x; last.n++; }
+      else clusters.push({ sum: x, n: 1 });
+    }
+    const centres = clusters.map(c => Math.round(c.sum / c.n));
+    return centres.length ? centres : [224, 319, 414, 509]; // fallback
   }
 
   function clusterRows(items, tolerance = 12) {
@@ -1452,7 +1467,7 @@ async function parsePdfBuffer(buffer) {
 
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
 
-  // Collect all items
+  // ── Collect all items ───────────────────────────────────────────────────────
   const allPageItems = [];
   for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
     const page = await doc.getPage(pageNum);
@@ -1468,31 +1483,49 @@ async function parsePdfBuffer(buffer) {
     allPageItems.push(items);
   }
 
-  // Extract trim names from page 1
-  const page1 = allPageItems[0];
+  // ── Detect column centres dynamically ──────────────────────────────────────
+  const flatItems     = allPageItems.flat();
+  const COL_CENTERS   = detectDataColumns(flatItems);
+  const colCount      = Math.min(COL_CENTERS.length, 10); // cap at 10
+  const colSpacing    = colCount > 1
+    ? Math.min(...COL_CENTERS.slice(1).map((c, i) => c - COL_CENTERS[i]))
+    : 50;
+  const COL_HALF_WIDTH = Math.floor(colSpacing * 0.44);
+
+  function classifyX(x) {
+    if (x < COL_SIDEBAR_X) return -2;
+    if (x >= COL_LABEL_MIN && x <= COL_LABEL_MAX) return -1;
+    for (let i = 0; i < colCount; i++) {
+      if (Math.abs(x - COL_CENTERS[i]) <= COL_HALF_WIDTH) return i;
+    }
+    return -2;
+  }
+
+  // ── Extract trim names from page 1 ─────────────────────────────────────────
+  const page1     = allPageItems[0];
   const nameItems = page1.filter(it => it.y >= 590 && it.y <= 622);
-  const nameByCol = [{}, {}, {}, {}];
+  const nameByCol = Array.from({ length: colCount }, () => ({}));
   for (const it of nameItems) {
     const col = classifyX(it.x);
-    if (col < 0) continue;
+    if (col < 0 || col >= colCount) continue;
     if (!nameByCol[col][it.y]) nameByCol[col][it.y] = [];
     nameByCol[col][it.y].push(it.s);
   }
-  const trimNames = COL_CENTERS.map((_, ci) => {
+  const trimNames = COL_CENTERS.slice(0, colCount).map((_, ci) => {
     const byY = nameByCol[ci];
     return Object.keys(byY).sort((a, b) => b - a).map(y => byY[y].join(' ')).join(' ').replace(/\s+/g, ' ').trim();
   });
 
-  // Extract prices from page 1
-  const trimPrices = COL_CENTERS.map(() => '');
+  // ── Extract prices ──────────────────────────────────────────────────────────
+  const trimPrices = Array(colCount).fill('');
   const priceItems = page1.filter(it => it.y >= 500 && it.y <= 565);
   for (const it of priceItems) {
     const col = classifyX(it.x);
-    if (col < 0) continue;
+    if (col < 0 || col >= colCount) continue;
     if (/^\d[\d,]+$/.test(it.s) && !trimPrices[col]) trimPrices[col] = it.s;
   }
 
-  // Extract spec rows
+  // ── Extract spec rows ───────────────────────────────────────────────────────
   let specs = [];
   let currentSection = '';
   let pendingLabel   = '';
@@ -1507,12 +1540,12 @@ async function parsePdfBuffer(buffer) {
 
     for (const row of rows) {
       const labelParts = row.items.filter(it => classifyX(it.x) === -1).map(it => it.s);
-      const valueCells = ['', '', '', ''];
+      const valueCells = Array(colCount).fill('');
       let hasValues    = false;
 
       for (const it of row.items) {
         const col = classifyX(it.x);
-        if (col >= 0 && col < 4) {
+        if (col >= 0 && col < colCount) {
           valueCells[col] += (valueCells[col] ? ' ' : '') + it.s;
           hasValues = true;
         }
@@ -1561,8 +1594,9 @@ async function parsePdfBuffer(buffer) {
     }))
     .filter(s => s.label);
 
-  // Detect number of actual trim columns (some PDFs have fewer than 4)
-  const activeCols = [0, 1, 2, 3].filter(ci => specs.some(s => s.values[ci] && s.values[ci] !== '-'));
+  // Detect which columns actually have data (filters out empty cols)
+  const activeCols = Array.from({ length: colCount }, (_, i) => i)
+    .filter(ci => specs.some(s => s.values[ci] && s.values[ci] !== '-'));
 
   return {
     scraped_at:  new Date().toISOString(),
