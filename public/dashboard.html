@@ -2303,8 +2303,24 @@ function renderPdfResults(data) {
   document.getElementById('pdf-dl-btn').style.display   = '';
 }
 
-function downloadPdfCsv() {
-  window.location.href = '/api/pdf-scraper/download';
+async function downloadPdfCsv() {
+  const btn = document.getElementById('pdf-dl-btn');
+  btn.disabled = true; btn.textContent = 'Preparing…';
+  try {
+    const res  = await apiFetch('/api/pdf-scraper/download');
+    if (!res.ok) { alert('Download failed: ' + res.status); return; }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const cd   = res.headers.get('Content-Disposition') || '';
+    const m    = cd.match(/filename="([^"]+)"/);
+    a.href     = url;
+    a.download = m ? m[1] : 'specs.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  } finally {
+    btn.disabled = false; btn.textContent = '⬇ Download CSV';
+  }
 }
 </script>
 </body>
