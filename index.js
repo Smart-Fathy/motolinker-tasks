@@ -1392,6 +1392,193 @@ receiver.router.delete('/api/dashboard/employees/:id', requireAuth, async (req, 
   res.json({ ok: true });
 });
 
+// ─── PDF Scraper ──────────────────────────────────────────────────────────────
+let lastPdfScrape = null; // { scraped_at, series_name, trims, specs }
+
+// Shared PDF parsing logic (mirrors scraper-autohome.js)
+async function parsePdfBuffer(buffer) {
+  const pdfjsLib = await import('./node_modules/pdfjs-dist/legacy/build/pdf.mjs');
+
+  const COL_LABEL_MIN  = 100;
+  const COL_LABEL_MAX  = 220;
+  const COL_SIDEBAR_X  = 100;
+  const COL_CENTERS    = [224, 319, 414, 509];
+  const COL_HALF_WIDTH = 55;
+  const FOOTER_MAX_Y   = 25;
+  const HEADER_MIN_Y   = 730;
+
+  function classifyX(x) {
+    if (x < COL_SIDEBAR_X) return -2;
+    if (x >= COL_LABEL_MIN && x <= COL_LABEL_MAX) return -1;
+    for (let i = 0; i < COL_CENTERS.length; i++) {
+      if (Math.abs(x - COL_CENTERS[i]) <= COL_HALF_WIDTH) return i;
+    }
+    return -2;
+  }
+
+  function clusterRows(items, tolerance = 12) {
+    const sorted = [...items].sort((a, b) => b.y - a.y);
+    const clusters = [];
+    for (const item of sorted) {
+      const last = clusters[clusters.length - 1];
+      if (last && Math.abs(item.y - last.y) <= tolerance) {
+        last.items.push(item);
+        last.y = (last.y + item.y) / 2;
+      } else {
+        clusters.push({ y: item.y, items: [item] });
+      }
+    }
+    return clusters;
+  }
+
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+
+  // Collect all items
+  const allPageItems = [];
+  for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+    const page = await doc.getPage(pageNum);
+    const tc   = await page.getTextContent();
+    const items = [];
+    for (const it of tc.items) {
+      if (!it.str || !it.str.trim()) continue;
+      const x = Math.round(it.transform[4]);
+      const y = Math.round(it.transform[5]);
+      if (y < FOOTER_MAX_Y || y > HEADER_MIN_Y) continue;
+      items.push({ s: it.str.trim(), x, y, page: pageNum });
+    }
+    allPageItems.push(items);
+  }
+
+  // Extract trim names from page 1
+  const page1 = allPageItems[0];
+  const nameItems = page1.filter(it => it.y >= 590 && it.y <= 622);
+  const nameByCol = [{}, {}, {}, {}];
+  for (const it of nameItems) {
+    const col = classifyX(it.x);
+    if (col < 0) continue;
+    if (!nameByCol[col][it.y]) nameByCol[col][it.y] = [];
+    nameByCol[col][it.y].push(it.s);
+  }
+  const trimNames = COL_CENTERS.map((_, ci) => {
+    const byY = nameByCol[ci];
+    return Object.keys(byY).sort((a, b) => b - a).map(y => byY[y].join(' ')).join(' ').replace(/\s+/g, ' ').trim();
+  });
+
+  // Extract prices from page 1
+  const trimPrices = COL_CENTERS.map(() => '');
+  const priceItems = page1.filter(it => it.y >= 500 && it.y <= 565);
+  for (const it of priceItems) {
+    const col = classifyX(it.x);
+    if (col < 0) continue;
+    if (/^\d[\d,]+$/.test(it.s) && !trimPrices[col]) trimPrices[col] = it.s;
+  }
+
+  // Extract spec rows
+  let specs = [];
+  let currentSection = '';
+  let pendingLabel   = '';
+
+  for (let pi = 0; pi < allPageItems.length; pi++) {
+    const items = allPageItems[pi];
+    const zoneItems = items.filter(it => {
+      if (pi === 0 && it.y >= 480) return false;
+      return classifyX(it.x) !== -2;
+    });
+    const rows = clusterRows(zoneItems);
+
+    for (const row of rows) {
+      const labelParts = row.items.filter(it => classifyX(it.x) === -1).map(it => it.s);
+      const valueCells = ['', '', '', ''];
+      let hasValues    = false;
+
+      for (const it of row.items) {
+        const col = classifyX(it.x);
+        if (col >= 0 && col < 4) {
+          valueCells[col] += (valueCells[col] ? ' ' : '') + it.s;
+          hasValues = true;
+        }
+      }
+
+      const labelText = labelParts.join(' ').replace(/\s+/g, ' ').trim();
+
+      if (!hasValues && labelText) {
+        pendingLabel = pendingLabel ? pendingLabel + ' ' + labelText : labelText;
+      } else if (hasValues) {
+        const fullLabel = pendingLabel ? pendingLabel + (labelText ? ' ' + labelText : '') : labelText;
+        pendingLabel = '';
+        if (!fullLabel) continue;
+        specs.push({ section: currentSection, label: fullLabel, values: valueCells });
+      } else if (labelText && labelText.length < 60 && !/\d/.test(labelText)) {
+        currentSection = labelText;
+        pendingLabel   = '';
+      }
+    }
+  }
+
+  // Cleanup
+  const SECTION_PREFIXES = [
+    'Basic parameters','Body','engine','electric motor','Battery/Charging','gearbox',
+    'Chassis Steering','Wheel Braking','passive safety','Active safety',
+    'Driving control','Driving hardware','Driving functions',
+    'Appearance/Anti-theft','exterior lights','Skylight/Glass',
+    'exterior rearview mirror','Interconnected/Internet of Vehicles',
+    'Steering wheel/rearview mirror','In-car charging','Seating configuration',
+    'Audio/Interior Lighting','Air conditioner/refrigerator','Special features',
+    'color','Optional Package','Standard configuration','Standard safety configuration',
+    'Standard control configuration','Standard hardware configuration',
+    'Standard functions configuration','Standard theft configuration',
+    'Standard lights configuration','Standard wheel/rearview','Standard charging configuration',
+    'Standard Package',
+  ];
+  const SECTION_RE = new RegExp('^(' + SECTION_PREFIXES.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\s*', 'i');
+  const FOOTER_RE  = new RegExp('(' + ['about Us','Contact Us','Recruiting talents','© 2004','www.autohome.com.cn','Business License','All Rights Reserved','Autohome owns all rights','App client','Mobile web version','Autohome','Feedback'].map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ').*$', 'i');
+
+  specs = specs
+    .filter(s => s.label && s.values.some(v => v && v !== '-'))
+    .map(s => ({
+      ...s,
+      label:  s.label.replace(SECTION_RE, '').replace(FOOTER_RE, '').trim(),
+      values: s.values.map(v => v.replace(FOOTER_RE, '').trim()),
+    }))
+    .filter(s => s.label);
+
+  // Detect number of actual trim columns (some PDFs have fewer than 4)
+  const activeCols = [0, 1, 2, 3].filter(ci => specs.some(s => s.values[ci] && s.values[ci] !== '-'));
+
+  return {
+    scraped_at:  new Date().toISOString(),
+    series_name: trimNames[0] ? trimNames[0].replace(/\s+\d{4}.*/, '').trim() : 'Unknown',
+    trims: activeCols.map(ci => ({ name: trimNames[ci] || `Trim ${ci + 1}`, price: trimPrices[ci] || '' })),
+    specs: specs.map(s => ({ ...s, values: activeCols.map(ci => s.values[ci] || '') })),
+  };
+}
+
+const pdfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+receiver.router.post('/api/pdf-scraper/upload', requireAuth, pdfUpload.single('pdf'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No PDF file uploaded' });
+  try {
+    const result  = await parsePdfBuffer(req.file.buffer);
+    lastPdfScrape = result;
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[pdf-scraper]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+receiver.router.get('/api/pdf-scraper/download', requireAuth, (req, res) => {
+  if (!lastPdfScrape) return res.status(404).json({ error: 'No scrape result yet' });
+  const { series_name, trims, specs } = lastPdfScrape;
+  const headers = ['Section', 'Spec', ...trims.map(t => t.name)];
+  const rows    = specs.map(s => [s.section, s.label, ...s.values]);
+  const csv     = [headers, ...rows].map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const fname   = `${series_name.replace(/[^a-z0-9_-]/gi, '_')}_specs.csv`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+  res.send('\uFEFF' + csv); // BOM for Excel UTF-8
+});
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 (async () => {
   const port = process.env.PORT || 3000;

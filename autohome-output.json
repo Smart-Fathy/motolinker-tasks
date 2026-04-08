@@ -1,0 +1,1765 @@
+{
+  "scraped_at": "2026-04-08T19:49:09.491Z",
+  "source": "/tmp/avatr06.pdf",
+  "series_name": "Avita 06",
+  "trims": [
+    {
+      "name": "Avita 06 2025 Pro Extended Range Version",
+      "price": "209,900"
+    },
+    {
+      "name": "Avita 06 2025 Elite Extended Range",
+      "price": "219,900"
+    },
+    {
+      "name": "Avita 06 2025 Max Extended Range Version",
+      "price": "239,900"
+    },
+    {
+      "name": "Avita 06 2025 Ultra Range Extender",
+      "price": "269,900"
+    }
+  ],
+  "specs": [
+    {
+      "section": "",
+      "label": "Manufacturers",
+      "values": [
+        "Avita Technology",
+        "Avita Technology",
+        "Avita Technology",
+        "Avita Technology"
+      ]
+    },
+    {
+      "section": "",
+      "label": "level",
+      "values": [
+        "mid-size car",
+        "mid-size car",
+        "mid-size car",
+        "mid-size car"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Energy type",
+      "values": [
+        "Range extender",
+        "Range extender",
+        "Range extender",
+        "Range extender"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Environmental standards",
+      "values": [
+        "National VI",
+        "National VI",
+        "National VI",
+        "National VI"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Launch date",
+      "values": [
+        "2025-04-19",
+        "2025-11-03",
+        "2025-04-19",
+        "2025-08-29"
+      ]
+    },
+    {
+      "section": "",
+      "label": "WLTC pure electric range (km)",
+      "values": [
+        "170",
+        "170",
+        "170",
+        "240"
+      ]
+    },
+    {
+      "section": "",
+      "label": "CLTC pure electric range (km)",
+      "values": [
+        "230",
+        "230",
+        "230",
+        "330"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery fast charging time (hours)",
+      "values": [
+        "0.25",
+        "0.25",
+        "0.25",
+        "0.17"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery slow charging time (hours)",
+      "values": [
+        "6",
+        "6",
+        "6",
+        "7.5"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery fast charging range (%)",
+      "values": [
+        "30-80",
+        "30-80",
+        "30-80",
+        "30-80"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery slow charge range (%)",
+      "values": [
+        "0-100",
+        "0-100",
+        "0-100",
+        "0-100"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Maximum power (kW)",
+      "values": [
+        "231",
+        "231",
+        "231",
+        "231"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Maximum torque (N·m)",
+      "values": [
+        "367",
+        "367",
+        "367",
+        "367"
+      ]
+    },
+    {
+      "section": "",
+      "label": "structure",
+      "values": [
+        "4-door, 5-seater sedan",
+        "4-door, 5-seater sedan",
+        "4-door, 5-seater sedan",
+        "4-door, 5-seater sedan"
+      ]
+    },
+    {
+      "section": "",
+      "label": "(Ps)",
+      "values": [
+        "314",
+        "314",
+        "314",
+        "314"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Official 0-100km/h acceleration (s)",
+      "values": [
+        "6.6",
+        "6.6",
+        "6.6",
+        "6.9"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Maximum speed (km/h)",
+      "values": [
+        "190",
+        "190",
+        "190",
+        "190"
+      ]
+    },
+    {
+      "section": "",
+      "label": "WLTC combined fuel consumption (L/100km)",
+      "values": [
+        "0.7",
+        "0.7",
+        "0.7",
+        "0.55"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Minimum fuel consumption under charged state",
+      "values": [
+        "5.36",
+        "5.36",
+        "5.36",
+        "5.6"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Combined fuel consumption of oil and electricity (L/100km)",
+      "values": [
+        "2.7",
+        "2.7",
+        "2.7",
+        "2.73"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Whole vehicle warranty",
+      "values": [
+        "Five years or 120,000 kilometers",
+        "Five years or 120,000 kilometers",
+        "Five years or 120,000 kilometers",
+        "Five years or 120,000 kilometers"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Curb weight (kg)",
+      "values": [
+        "2120",
+        "2120",
+        "2120",
+        "2220"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Maximum load capacity (kg)",
+      "values": [
+        "2501",
+        "2501",
+        "2501",
+        "2601"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Length (mm)",
+      "values": [
+        "4855",
+        "4855",
+        "4855",
+        "4855"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Width (mm)",
+      "values": [
+        "1960",
+        "1960",
+        "1960",
+        "1960"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Height (mm)",
+      "values": [
+        "1467",
+        "1467",
+        "1450",
+        "1450"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Wheelbase (mm)",
+      "values": [
+        "2940",
+        "2940",
+        "2940",
+        "2940"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Front track width (mm)",
+      "values": [
+        "1668",
+        "1668",
+        "1668",
+        "1668"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Rear track width (mm)",
+      "values": [
+        "1686",
+        "1686",
+        "1686",
+        "1686"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Approach angle (°)",
+      "values": [
+        "14",
+        "14",
+        "14",
+        "14"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Departure angle (°)",
+      "values": [
+        "18",
+        "18",
+        "18",
+        "18"
+      ]
+    },
+    {
+      "section": "",
+      "label": "structure",
+      "values": [
+        "sedan",
+        "sedan",
+        "sedan",
+        "sedan"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Car door opening method",
+      "values": [
+        "Hinged door",
+        "Hinged door",
+        "Hinged door",
+        "Hinged door"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of car doors",
+      "values": [
+        "4",
+        "4",
+        "4",
+        "4"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of seats",
+      "values": [
+        "5",
+        "5",
+        "5",
+        "5"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Trunk volume (L)",
+      "values": [
+        "416-1266",
+        "416-1266",
+        "416-1266",
+        "416-1266"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Engine Model",
+      "values": [
+        "JL469ZQ1",
+        "JL469ZQ1",
+        "JL469ZQ1",
+        "JL469ZQ1"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Displacement (mL)",
+      "values": [
+        "1497",
+        "1497",
+        "1497",
+        "1497"
+      ]
+    },
+    {
+      "section": "",
+      "label": "layout",
+      "values": [
+        "Horizontal",
+        "Horizontal",
+        "Horizontal",
+        "Horizontal"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Cylinder arrangement",
+      "values": [
+        "L",
+        "L",
+        "L",
+        "L"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of cylinders",
+      "values": [
+        "4",
+        "4",
+        "4",
+        "4"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of valves per cylinder",
+      "values": [
+        "4",
+        "4",
+        "4",
+        "4"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Gas distribution mechanism",
+      "values": [
+        "DOHC",
+        "DOHC",
+        "DOHC",
+        "DOHC"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Maximum horsepower (Ps)",
+      "values": [
+        "156",
+        "156",
+        "156",
+        "156"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Maximum power (kW)",
+      "values": [
+        "115",
+        "115",
+        "115",
+        "115"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Maximum net power (kW)",
+      "values": [
+        "110",
+        "110",
+        "110",
+        "110"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Energy type",
+      "values": [
+        "Range extender",
+        "Range extender",
+        "Range extender",
+        "Range extender"
+      ]
+    },
+    {
+      "section": "",
+      "label": "fuel grade",
+      "values": [
+        "No. 92",
+        "No. 92",
+        "No. 92",
+        "No. 92"
+      ]
+    },
+    {
+      "section": "",
+      "label": "fuel supply method",
+      "values": [
+        "direct injection",
+        "direct injection",
+        "direct injection",
+        "direct injection"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Cylinder head material",
+      "values": [
+        "aluminum alloy",
+        "aluminum alloy",
+        "aluminum alloy",
+        "aluminum alloy"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Cylinder block material",
+      "values": [
+        "aluminum alloy",
+        "aluminum alloy",
+        "aluminum alloy",
+        "aluminum alloy"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Environmental standards",
+      "values": [
+        "National VI",
+        "National VI",
+        "National VI",
+        "National VI"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Rear motor model",
+      "values": [
+        "ATDM01",
+        "ATDM01",
+        "ATDM01",
+        "ATDM01"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Motor type",
+      "values": [
+        "Permanent magnet/synchronous",
+        "Permanent magnet/synchronous",
+        "Permanent magnet/synchronous",
+        "Permanent magnet/synchronous"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Total power of electric motors (kW)",
+      "values": [
+        "231",
+        "231",
+        "231",
+        "231"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Total horsepower of electric motors (Ps)",
+      "values": [
+        "314",
+        "314",
+        "314",
+        "314"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Total torque of the electric motor (N·m)",
+      "values": [
+        "367",
+        "367",
+        "367",
+        "367"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Maximum power of the rear motor (kW)",
+      "values": [
+        "231",
+        "231",
+        "231",
+        "231"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Maximum torque of the rear motor (N·m)",
+      "values": [
+        "367",
+        "367",
+        "367",
+        "367"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of drive motors",
+      "values": [
+        "single motor",
+        "single motor",
+        "single motor",
+        "single motor"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Motor layout",
+      "values": [
+        "Rear",
+        "Rear",
+        "Rear",
+        "Rear"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Warranty for the three electric systems",
+      "values": [
+        "Eight years or 160,000 kilometers",
+        "Eight years or 160,000 kilometers",
+        "Eight years or 160,000 kilometers",
+        "Eight years or 160,000 kilometers"
+      ]
+    },
+    {
+      "section": "",
+      "label": "First Owner Warranty Policy for Three Key Electronics (Battery, Motor, and Electronic Controls)",
+      "values": [
+        "Lifetime warranty/Non- commercial (Liability exclusions are subject to official terms)",
+        "Lifetime warranty/Non- commercial (Liability exclusions are subject to official terms)",
+        "Lifetime warranty/Non- commercial (Liability exclusions are subject to official terms)",
+        "Lifetime warranty/Non- commercial (Liability exclusions are subject to official terms)"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery Type",
+      "values": [
+        "Lithium iron phosphate batteries",
+        "Lithium iron phosphate batteries",
+        "Lithium iron phosphate batteries",
+        "Lithium iron phosphate batteries"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery cell brands",
+      "values": [
+        "Chang'an Times",
+        "Chang'an Times",
+        "Chang'an Times",
+        "CATL"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery proprietary technology",
+      "values": [
+        "Xiaoyao Battery",
+        "Xiaoyao Battery",
+        "Xiaoyao Battery",
+        "Xiaoyao Battery"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery cooling method",
+      "values": [
+        "Liquid cooling",
+        "Liquid cooling",
+        "Liquid cooling",
+        "Liquid cooling"
+      ]
+    },
+    {
+      "section": "",
+      "label": "WLTC pure electric range (km)",
+      "values": [
+        "170",
+        "170",
+        "170",
+        "240"
+      ]
+    },
+    {
+      "section": "",
+      "label": "CLTC pure electric range (km)",
+      "values": [
+        "230",
+        "230",
+        "230",
+        "330"
+      ]
+    },
+    {
+      "section": "",
+      "label": "CLTC combined range (km)",
+      "values": [
+        "1190",
+        "1190",
+        "1190",
+        "1250"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery energy (kWh)",
+      "values": [
+        "31.7",
+        "31.7",
+        "31.7",
+        "45.06"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Energy consumption per 100 kilometers (kWh/100km)",
+      "values": [
+        "17.2",
+        "17.2",
+        "17.2",
+        "18.8"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Fast charging function",
+      "values": [
+        "support",
+        "support",
+        "support",
+        "support"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery fast charging time (hours)",
+      "values": [
+        "0.25",
+        "0.25",
+        "0.25",
+        "0.17"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery slow charging time (hours)",
+      "values": [
+        "6",
+        "6",
+        "6",
+        "7.5"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery fast charging range (%)",
+      "values": [
+        "30-80",
+        "30-80",
+        "30-80",
+        "30-80"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Battery slow charge range (%)",
+      "values": [
+        "0-100",
+        "0-100",
+        "0-100",
+        "0-100"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Fast charging port location",
+      "values": [
+        "Left rear side of the car",
+        "Left rear side of the car",
+        "Left rear side of the car",
+        "Left rear side of the car"
+      ]
+    },
+    {
+      "section": "",
+      "label": "External AC discharge power (kW)",
+      "values": [
+        "3.3",
+        "3.3",
+        "3.3",
+        "3.3"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Abbreviation",
+      "values": [
+        "Electric vehicle single- speed gearbox",
+        "Electric vehicle single- speed gearbox",
+        "Electric vehicle single- speed gearbox",
+        "Electric vehicle single- speed gearbox"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of gears",
+      "values": [
+        "1",
+        "1",
+        "1",
+        "1"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Transmission type",
+      "values": [
+        "Fixed gear ratio gearbox",
+        "Fixed gear ratio gearbox",
+        "Fixed gear ratio gearbox",
+        "Fixed gear ratio gearbox"
+      ]
+    },
+    {
+      "section": "",
+      "label": "driving method",
+      "values": [
+        "Rear-engine, rear- wheel drive",
+        "Rear-engine, rear- wheel drive",
+        "Rear-engine, rear- wheel drive",
+        "Rear-engine, rear- wheel drive"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Front suspension type",
+      "values": [
+        "Double wishbone independent suspension",
+        "Double wishbone independent suspension",
+        "Double wishbone independent suspension",
+        "Double wishbone independent suspension"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Rear suspension type",
+      "values": [
+        "Multi-link independent suspension",
+        "Multi-link independent suspension",
+        "Multi-link independent suspension",
+        "Multi-link independent suspension"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Assistance Type",
+      "values": [
+        "Electric Assist",
+        "Electric Assist",
+        "Electric Assist",
+        "Electric Assist"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Vehicle body structure",
+      "values": [
+        "Load-bearing",
+        "Load-bearing",
+        "Load-bearing",
+        "Load-bearing"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Front brake type",
+      "values": [
+        "Ventilation disc",
+        "Ventilation disc",
+        "Ventilation disc",
+        "Ventilation disc"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Rear brake type",
+      "values": [
+        "disc",
+        "disc",
+        "disc",
+        "disc"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Parking brake type",
+      "values": [
+        "Electronic parking brake",
+        "Electronic parking brake",
+        "Electronic parking brake",
+        "Electronic parking brake"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Front tire specifications",
+      "values": [
+        "255/45 R20",
+        "255/45 R20",
+        "255/45 R20",
+        "255/45 R20"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Rear tire specifications",
+      "values": [
+        "255/45 R20",
+        "255/45 R20",
+        "255/45 R20",
+        "255/45 R20"
+      ]
+    },
+    {
+      "section": "",
+      "label": "passive Standard safety configuration Driver/passenger airbags",
+      "values": [
+        "Optional host /vice",
+        "- none host /vice",
+        "host /vice",
+        "host /vice"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Front/Rear Side Airbags",
+      "values": [
+        "forward /back",
+        "forward /back",
+        "forward /back",
+        "forward /back"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Front/rear head airbags (curtains)",
+      "values": [
+        "forward /back",
+        "forward /back",
+        "forward /back",
+        "forward /back"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Front center airbag Active Standard safety configuration ABS anti-lock braking system",
+      "values": [
+        "Optional",
+        "- none",
+        "",
+        ""
+      ]
+    },
+    {
+      "section": "",
+      "label": "Brake assist (EBA/BAS/BA, etc.) Traction control (ASR/TCS/TRC, etc.) Vehicle stability control (ESC/ESP/DSC, etc.) Tire pressure monitoring function",
+      "values": [
+        "Tire pressure display",
+        "Tire pressure display",
+        "Tire pressure display",
+        "Tire pressure display"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Seatbelt reminder",
+      "values": [
+        "The whole vehicle",
+        "The whole vehicle",
+        "The whole vehicle",
+        "The whole vehicle"
+      ]
+    },
+    {
+      "section": "",
+      "label": "ISOFIX child seat anchors Lane departure warning system Active braking/active safety system Fatigue driving warning DOW Door Opening Warning Forward Collision Warning Rear Collision Warning Sentinel Mode / Clairvoyance Low speed warning Built-in dashcam Roadside assistance call Anti-rollover system Driving Standard control configuration",
+      "values": [
+        "Optional sports",
+        "- none sports",
+        "sports",
+        "sports"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Driving mode switching",
+      "values": [
+        "economy Standard/Comfort",
+        "economy Standard/Comfort",
+        "economy Standard/Comfort",
+        "economy Standard/Comfort"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Energy recovery system Automatic parking Hill Start Assist Steep slope descent Variable suspension function",
+      "values": [
+        "-",
+        "-",
+        "Suspension stiffness adjustment Suspension height adjustment",
+        "Suspension stiffness adjustment Suspension height adjustment"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Driving Standard hardware configuration Front/Rear Parking Radar",
+      "values": [
+        "Optional forward /back",
+        "- none forward /back",
+        "forward /back",
+        "forward /back"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Driving assistance imaging",
+      "values": [
+        "360-degree panoramic imaging",
+        "360-degree panoramic imaging",
+        "360-degree panoramic imaging",
+        "360-degree panoramic imaging"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Transparent chassis/540-degree imaging Forward sensing camera",
+      "values": [
+        "eyes",
+        "eyes",
+        "eyes",
+        "eyes"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of cameras",
+      "values": [
+        "10 12",
+        "11 13",
+        "11 13",
+        "11 13"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of in-car cameras",
+      "values": [
+        "1",
+        "1",
+        "1",
+        "1"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of ultrasonic radars",
+      "values": [
+        "12",
+        "12",
+        "12",
+        "12"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of millimeter- wave radars",
+      "values": [
+        "3",
+        "3",
+        "3",
+        "3"
+      ]
+    },
+    {
+      "section": "",
+      "label": "LiDAR Brands",
+      "values": [
+        "-",
+        "HUAWEI",
+        "HUAWEI",
+        "HUAWEI"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of LiDARs",
+      "values": [
+        "-",
+        "1",
+        "1",
+        "1"
+      ]
+    },
+    {
+      "section": "",
+      "label": "LiDAR Line Count",
+      "values": [
+        "-",
+        "Line 192",
+        "Line 192",
+        "Line 192"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Detection range of lidar with 10% reflectivity",
+      "values": [
+        "-",
+        "180 meters",
+        "180 meters",
+        "180 meters"
+      ]
+    },
+    {
+      "section": "",
+      "label": "LiDAR point cloud count",
+      "values": [
+        "-",
+        "1.84 million/second",
+        "1.84 million/second",
+        "1.84 million/second"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Maximum detection range ahead",
+      "values": [
+        "-",
+        "250 meters",
+        "250 meters",
+        "250 meters"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Driving Standard functions configuration Cruise system",
+      "values": [
+        "Optional Full-speed adaptive cruise control",
+        "- none Full-speed adaptive cruise control",
+        "Full-speed adaptive cruise control",
+        "Full-speed adaptive cruise control"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Assisted driving system",
+      "values": [
+        "HUAWEI ADS",
+        "HUAWEI ADS",
+        "HUAWEI ADS",
+        "HUAWEI ADS"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Assistance Level",
+      "values": [
+        "L2",
+        "L2",
+        "L2",
+        "L2"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Rear Cross Traffic Alert System Satellite navigation system Navigation traffic information display Map Brands",
+      "values": [
+        "Gaode",
+        "Gaode",
+        "Gaode",
+        "Gaode"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Steering wheel off- hand detection Assisted driving section",
+      "values": [
+        "highway section",
+        "urban road sections highway section",
+        "urban road sections highway section",
+        "urban road sections highway section"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Appearance/Anti- Standard theft configuration Exterior Kit",
+      "values": [
+        "Optional Sporty (6000 style yuan)",
+        "- none Sporty (6000 style yuan)",
+        "Sporty (6000 style yuan)",
+        "Sporty (6000 style yuan)"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Wheel material",
+      "values": [
+        "aluminum alloy",
+        "aluminum alloy",
+        "aluminum alloy",
+        "aluminum alloy"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Electric soft-close car door",
+      "values": [
+        "Front row",
+        "Front row",
+        "Front row",
+        "Front row"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Automatic opening and closing doors",
+      "values": [
+        "(8000 yuan)",
+        "(8000 yuan)",
+        "(8000 yuan)",
+        ""
+      ]
+    },
+    {
+      "section": "",
+      "label": "Frameless design car doors Electric tailgate Electric tailgate position memory Central locking Key type",
+      "values": [
+        "remote key Bluetooth key",
+        "remote key Bluetooth key",
+        "remote key Bluetooth key",
+        "remote key Bluetooth key"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Keyless start system Keyless entry function",
+      "values": [
+        "Front row",
+        "Front row",
+        "Front row",
+        "Front row"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Remote start function Battery preheating External discharge exterior Standard lights configuration Low beam light source",
+      "values": [
+        "Optional led",
+        "- none led",
+        "led",
+        "led"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Standard configuration Skylight type",
+      "values": [
+        "Optional Non-openable panoramic sunroof",
+        "- none Non-openable panoramic sunroof",
+        "Non-openable panoramic sunroof",
+        "Non-openable panoramic sunroof"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Front/Rear Electric Windows",
+      "values": [
+        "forward /back",
+        "forward /back",
+        "forward /back",
+        "forward /back"
+      ]
+    },
+    {
+      "section": "",
+      "label": "One-touch window lift function",
+      "values": [
+        "The whole vehicle",
+        "The whole vehicle",
+        "The whole vehicle",
+        "The whole vehicle"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Anti-pinch function for car windows Multi-layered soundproof glass for side windows",
+      "values": [
+        "Front row",
+        "Front row",
+        "Front row",
+        "Front row"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Car vanity mirror",
+      "values": [
+        "Driver's side + lights Passenger side + lights",
+        "Driver's side + lights Passenger side + lights",
+        "Driver's side + lights Passenger side + lights",
+        "Driver's side + lights Passenger side + lights"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Rain-sensing wiper function",
+      "values": [
+        "Rain sensor",
+        "Rain sensor",
+        "Rain sensor",
+        "Rain sensor"
+      ]
+    },
+    {
+      "section": "",
+      "label": "exterior Standard rearview configuration mirror Exterior rearview mirror function",
+      "values": [
+        "Electric adjustment Optional Electric folding Rearview mirror memory Heated rearview mirrors",
+        "Electric adjustment - none Electric folding Rearview mirror memory Heated rearview mirrors",
+        "Electric adjustment Electric folding Rearview mirror memory Heated rearview mirrors",
+        "Electric adjustment Electric folding Rearview mirror memory Heated rearview mirrors"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Electronic exterior rearview mirror function Electronic exterior rearview mirror display",
+      "values": [
+        "Dual 6.7-inch",
+        "Dual 6.7-inch",
+        "Dual 6.7-inch",
+        "Dual 6.7-inch"
+      ]
+    },
+    {
+      "section": "",
+      "label": "screen",
+      "values": [
+        "Touchscreen LCD",
+        "Touchscreen LCD",
+        "Touchscreen LCD",
+        "Touchscreen LCD"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Central control screen size",
+      "values": [
+        "15.6 inches",
+        "15.6 inches",
+        "15.6 inches",
+        "15.6 inches"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Bluetooth/Car Phone Mobile phone interconnection/mapping",
+      "values": [
+        "Supports HUAWEI HiCar",
+        "Supports HUAWEI HiCar",
+        "Supports HUAWEI HiCar",
+        "Supports HUAWEI HiCar"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Voice recognition control system",
+      "values": [
+        "Telephone air conditioner Car window",
+        "Telephone air conditioner Car window",
+        "Telephone air conditioner Car window",
+        "Telephone air conditioner Car window"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Voice assistant wake word",
+      "values": [
+        "Little Tower",
+        "Little Tower",
+        "Little Tower",
+        "Little Tower"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Voice wake-up words Voice regional wake- up recognition",
+      "values": [
+        "Four regions",
+        "Four regions",
+        "Four regions",
+        "Four regions"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Continuous speech recognition What is visible can be said Facial recognition Voiceprint recognition App Store In-vehicle intelligent system",
+      "values": [
+        "HarmonyOS",
+        "HarmonyOS",
+        "HarmonyOS",
+        "HarmonyOS"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Connected Vehicles 4G/5G networks",
+      "values": [
+        "5G",
+        "5G",
+        "5G",
+        "5G"
+      ]
+    },
+    {
+      "section": "",
+      "label": "OTA upgrade Wi-Fi hotspot In-vehicle biological monitoring system",
+      "values": [
+        "Door control Window control",
+        "Door control Window control",
+        "Door control Window control",
+        "Door control Window control"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Mobile APP remote function",
+      "values": [
+        "vehicle start Charging Management Air conditioning control",
+        "vehicle start Charging Management Air conditioning control",
+        "vehicle start Charging Management Air conditioning control",
+        "vehicle start Charging Management Air conditioning control"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Simulated sound waves Standard wheel/rearview Steering wheel configuration material mirror",
+      "values": [
+        "leather Optional Genuine Leather",
+        "leather - none Genuine Leather",
+        "leather Genuine Leather",
+        "Genuine Leather"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Steering wheel position adjustment",
+      "values": [
+        "Electric up/down and forward/backward adjustment",
+        "Electric up/down and forward/backward adjustment",
+        "Electric up/down and forward/backward adjustment",
+        "Electric up/down and forward/backward adjustment"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Gear shifting",
+      "values": [
+        "Electronic column shifter",
+        "Electronic column shifter",
+        "Electronic column shifter",
+        "Electronic column shifter"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Multi-function steering wheel Steering wheel heating Steering wheel memory Onboard computer display screen",
+      "values": [
+        "color",
+        "color",
+        "color",
+        "color"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Full LCD instrument panel LCD instrument size",
+      "values": [
+        "35.4 inches",
+        "35.4 inches",
+        "35.4 inches",
+        "35.4 inches"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Dashboard screen resolution (px)",
+      "values": [
+        "4K",
+        "4K",
+        "4K",
+        "4K"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Interior rearview mirror function",
+      "values": [
+        "Automatic anti- glare Streaming",
+        "Automatic anti- glare Streaming",
+        "Automatic anti- glare Streaming",
+        "Automatic anti- glare Streaming"
+      ]
+    },
+    {
+      "section": "",
+      "label": "In-car Standard charging configuration Multimedia/charging port",
+      "values": [
+        "Optional USB Type-C",
+        "- none USB Type-C",
+        "USB Type-C",
+        "USB Type-C"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of USB/Type- C ports",
+      "values": [
+        "2 in the front row / 1 in the back row",
+        "2 in the front row / 1 in the back row",
+        "2 in the front row / 1 in the back row",
+        "2 in the front row / 1 in the back row"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Wireless charging function for mobile phones",
+      "values": [
+        "Front row",
+        "Front row",
+        "Front row",
+        "Front row"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Wireless charging power for mobile phones",
+      "values": [
+        "50W",
+        "50W",
+        "50W",
+        "50W"
+      ]
+    },
+    {
+      "section": "",
+      "label": "12V power outlet in the trunk Seating Standard configuration configuration Seat material",
+      "values": [
+        "Optional Genuine Leather imitation leather",
+        "- none Genuine Leather imitation leather",
+        "Genuine Leather imitation leather",
+        "Genuine Leather"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Driver's seat adjustment method",
+      "values": [
+        "Backrest adjustment Height adjustment (4-way) Leg support adjustment",
+        "Backrest adjustment Height adjustment (4-way) Leg support adjustment",
+        "Backrest adjustment Height adjustment (4-way) Leg support adjustment",
+        "Backrest adjustmen Height adjustment (4-way) Leg support adjustment"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Passenger seat adjustment method",
+      "values": [
+        "Backrest adjustment Height adjustment (4-way) Leg support adjustment",
+        "Backrest adjustment Height adjustment (4-way) Leg support adjustment",
+        "Backrest adjustment Height adjustment (4-way) Leg support adjustment",
+        "Backrest adjustmen Height adjustment (4-way) Leg support adjustment"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Power-adjustable driver and passenger seats",
+      "values": [
+        "host /vice",
+        "host /vice",
+        "host /vice",
+        "host /vice"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Front seat functions",
+      "values": [
+        "heating ventilation massage",
+        "heating ventilation massage",
+        "heating ventilation massage",
+        "heating ventilation massage"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Electric seat memory function",
+      "values": [
+        "Driver's seat",
+        "Driver's seat",
+        "Driver's seat",
+        "Driver's seat"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Second-row seat functions",
+      "values": [
+        "-",
+        "-",
+        "heating",
+        "heating"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Zero Gravity Seat",
+      "values": [
+        "Driver Passenger seat",
+        "Driver Passenger seat",
+        "Driver Passenger seat",
+        "Driver Passenger seat"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Rear seat folding",
+      "values": [
+        "Proportionally down",
+        "Proportionally down",
+        "Proportionally down",
+        "Proportionally down"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Front/Rear Center Armrest",
+      "values": [
+        "forward /back",
+        "forward /back",
+        "forward /back",
+        "forward /back"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Rear cup holders Audio/Interior Standard Lighting configuration Speaker brand name",
+      "values": [
+        "Optional Meridian British Treasure",
+        "- none Meridian British Treasure",
+        "Meridian British Treasure",
+        "Meridian British Treasure"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Number of speakers",
+      "values": [
+        "16 speakers 25 (10,000 speakers yuan)",
+        "16 speakers 25 (10,000 speakers yuan)",
+        "16 speakers 25 (10,000 speakers yuan)",
+        "25 loudspeakers"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Touch reading light Ambient lighting in car interior",
+      "values": [
+        "Multicolor",
+        "Multicolor",
+        "Multicolor",
+        "Multicolor"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Active ambient lighting Air conditioner/refrigerator Air conditioning temperature control methods",
+      "values": [
+        "Standard configuration Automatic air conditioning",
+        "Optional - none Automatic air conditioning",
+        "Automatic air conditioning",
+        "Automatic air conditioning"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Air quality monitoring Special Standard features configuration HALO Interactive Screen",
+      "values": [
+        "Optional -",
+        "- none -",
+        "-",
+        "-"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Exterior color",
+      "values": [
+        "Black/Crimson Black/White ¥ Obsidian Black Yun Zi ¥ Black/Smoky ¥ Purple Obsidian Gray",
+        "¥ Obsidian Black 6000 Obsidian Gray 2500 Yun Zi ¥ Black/Crimson 6000 Black/White ¥ 6000 Black/Smoky ¥ Purple",
+        "Obsidian Gray Black/Smoky ¥ Purple 6000 ¥ Black/Crimson 6000 Yun Zi ¥ 2500 Obsidian Black 6000 Black/White ¥",
+        "Obsidian Black Yun Zi ¥ 6000 Black/Smoky ¥ ¥ Purple 6000 Obsidian Gray 6000 Black/Crimson 2500 Black/White ¥"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Interior color",
+      "values": [
+        "Twilight Purple/Smoke White Daihong ¥",
+        "Twilight Purple/Smoke White 10000 Deep purple",
+        "Twilight Purple/Smoke White Deep purple",
+        "Deep purple Twilight Purple/Smoke White"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Optional Standard Package configuration CATL 5C Snapdragon Super Plus Hybrid Battery",
+      "values": [
+        "Optional Includes: CATL 5C Snapdragon Super Plus Hybrid Battery (45.06kWh) (price Optional not equipment available)",
+        "- none Includes: CATL 5C Snapdragon Super Plus Hybrid Battery (45.06kWh) (price Optional not equipment available)",
+        "Includes: CATL 5C Snapdragon Super Plus Hybrid Battery (45.06kWh) (price Optional not equipment available)",
+        "-"
+      ]
+    },
+    {
+      "section": "",
+      "label": "Ultra-HD Electronic Exterior Rearview Mirror Kit",
+      "values": [
+        "Includes: Ultra-high- definition electronic exterior rearview mirrors, dual 6.7-inch high-definition rearview screens, front door welcome logo lights, intelligent exterior welcome",
+        "Includes: Ultra-high- definition electronic exterior rearview mirrors, dual 6.7-inch high-definition rearview screens, front door welcome logo lights, intelligent exterior welcome",
+        "Includes: Ultra-high- definition electronic exterior rearview mirrors, dual 6.7-inch high-definition rearview screens, front door welcome logo lights, intelligent exterior welcome",
+        "Includes: Ultra-high- definition electronic exterior rearview mirrors, dual 6.7-inch high-definition rearview screens, front door welcome logo lights, intelligent exterior welcome"
+      ]
+    }
+  ]
+}
