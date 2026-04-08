@@ -1340,25 +1340,41 @@ function navigate(page) {
 
 // ── Car Sync ──────────────────────────────────────────────────────────────────
 const CS_FIELDS = [
-  { key: 'title',        label: 'Car Title *' },
-  { key: 'description',  label: 'Description' },
-  { key: 'price',        label: 'Price' },
-  { key: 'status',       label: 'Status (sold/available)' },
-  { key: 'make',         label: 'Make (Brand)' },
-  { key: 'model',        label: 'Model' },
-  { key: 'year',         label: 'Year' },
-  { key: 'mileage',      label: 'Mileage' },
-  { key: 'color',        label: 'Color' },
-  { key: 'vin',          label: 'VIN' },
-  { key: 'stock_number', label: 'Stock Number' },
-  { key: 'fuel_type',    label: 'Fuel Type / Power Train' },
-  { key: 'transmission', label: 'Transmission' },
-  { key: 'body_type',    label: 'Body Type / Style' },
-  { key: 'drive_type',   label: 'Drive Type' },
-  { key: 'power_train',  label: 'Power Train (Electric/Gas)' },
-  { key: 'condition',    label: 'Condition (New/Used)' },
-  { key: 'category',     label: 'Category (e.g. SUVs)' },
-  { key: 'features',     label: 'Features (comma-separated)' },
+  // ── Taxonomy dropdowns (WP meta key pre-filled) ───────────────────────────
+  { key: 'make',         label: 'Make (Brand)',               defaultWpKey: 'tax:listing_make' },
+  { key: 'model',        label: 'Model',                      defaultWpKey: 'tax:listing_model' },
+  { key: 'category',     label: 'Category (e.g. SUVs)',       defaultWpKey: 'tax:listing_category' },
+  { key: 'condition',    label: 'Condition (New/Used)',        defaultWpKey: 'tax:listing_condition' },
+  { key: 'body_type',    label: 'Body Style',                 defaultWpKey: 'tax:listing_type' },
+  { key: 'transmission', label: 'Transmission',               defaultWpKey: 'tax:listing_transmission' },
+  { key: 'drive_type',   label: 'Drive Type',                 defaultWpKey: 'tax:listing_drive_type' },
+  { key: 'fuel_type',    label: 'Fuel Type',                  defaultWpKey: 'tax:listing_fuel_type' },
+  { key: 'power_train',  label: 'Power Train (Electric/Gas)', defaultWpKey: 'tax:listing_fuel_type' },
+  { key: 'label',        label: 'Label',                      defaultWpKey: 'tax:listing_label' },
+  { key: 'offer_type',   label: 'Offer Type',                 defaultWpKey: 'tax:listing_offer_type' },
+  // ── Features checkboxes ───────────────────────────────────────────────────
+  { key: 'features',     label: 'Features (comma-separated)', defaultWpKey: 'tax:listing_feature' },
+  // ── Text / meta fields ────────────────────────────────────────────────────
+  { key: 'year',         label: 'Year',                       defaultWpKey: 'year' },
+  { key: 'price',        label: 'Price',                      defaultWpKey: 'price' },
+  { key: 'old_price',    label: 'Old Price',                  defaultWpKey: 'old_price' },
+  { key: 'mileage',      label: 'Mileage',                    defaultWpKey: 'mileage' },
+  { key: 'color',        label: 'Color',                      defaultWpKey: 'color' },
+  { key: 'vin',          label: 'VIN',                        defaultWpKey: 'vin' },
+  { key: 'stock_number', label: 'Stock Number',               defaultWpKey: 'stock_number' },
+  // ── Dimensions & Capacity ─────────────────────────────────────────────────
+  { key: 'seats',        label: 'No. of Seats',               defaultWpKey: 'no_of_seats' },
+  { key: 'length',       label: 'Length (mm)',                 defaultWpKey: 'length' },
+  { key: 'width',        label: 'Width (mm)',                  defaultWpKey: 'width' },
+  { key: 'height',       label: 'Height (mm)',                 defaultWpKey: 'height' },
+  { key: 'wheelbase',    label: 'Wheelbase (mm)',              defaultWpKey: 'wheelbase' },
+  { key: 'gross_weight', label: 'Gross Vehicle Weight (kg)',   defaultWpKey: 'gross_vehicle_weight' },
+  { key: 'luggage_down', label: 'Luggage Seats Down (L)',      defaultWpKey: 'luggage_capacity_seats_down' },
+  { key: 'luggage_up',   label: 'Luggage Seats Up (L)',        defaultWpKey: 'luggage_capacity_seats_up' },
+  // ── Special (always at bottom, no WP key input) ───────────────────────────
+  { key: 'title',        label: 'Car Title *',  special: 'Used as post title' },
+  { key: 'description',  label: 'Description',  special: 'Used as post body' },
+  { key: 'status',       label: 'Status',       special: 'sold → draft, else publish' },
 ];
 
 let csHeaders = [];
@@ -1400,31 +1416,37 @@ function renderMapping() {
   const body = document.getElementById('mapping-body');
   if (!csHeaders.length) { body.innerHTML = '<div style="color:var(--muted);font-size:13px">No columns found in sheet.</div>'; return; }
   const options = `<option value="">— skip —</option>` + csHeaders.map((h, i) => `<option value="${i}">${esc(h)} (col ${i + 1})</option>`).join('');
+
+  // Auto-fill defaults for any field not yet explicitly set by the user
+  CS_FIELDS.forEach(f => {
+    if (f.defaultWpKey && csWpKeys[f.key] === undefined) csWpKeys[f.key] = f.defaultWpKey;
+  });
+
+  const normalFields  = CS_FIELDS.filter(f => !f.special);
+  const specialFields = CS_FIELDS.filter(f =>  f.special);
+
   body.innerHTML =
     `<div style="display:grid;grid-template-columns:max-content 1fr 1fr;gap:8px 12px;align-items:center;margin-bottom:8px">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Field</div>
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Sheet Column</div>
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">WP Meta Key <span style="font-weight:400">(e.g. custom-text-61)</span></div>` +
-    CS_FIELDS.filter(f => f.key !== 'title' && f.key !== 'description' && f.key !== 'status').map(f => `
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Field</div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Sheet Column</div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">WP Meta Key</div>` +
+    normalFields.map(f => `
       <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap">${esc(f.label)}</div>
       <select class="form-control" style="font-size:12px" id="map-${f.key}" onchange="csMapping['${f.key}']=this.value===''?undefined:+this.value">
         ${options}
       </select>
       <input class="form-control" style="font-size:12px" id="wpkey-${f.key}" placeholder="meta key or tax:slug" value="${esc(csWpKeys[f.key] || '')}" oninput="csWpKeys['${f.key}']=this.value.trim()||undefined">`).join('') +
     `</div>
-    <div style="display:grid;grid-template-columns:max-content 1fr 1fr;gap:8px 12px;align-items:center;border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
-      <div style="font-size:12px;font-weight:600;color:var(--text)">Car Title *</div>
-      <select class="form-control" style="font-size:12px" id="map-title" onchange="csMapping['title']=this.value===''?undefined:+this.value">${options}</select>
-      <div style="font-size:11px;color:var(--muted)">Used as post title</div>
-      <div style="font-size:12px;font-weight:600;color:var(--text)">Description</div>
-      <select class="form-control" style="font-size:12px" id="map-description" onchange="csMapping['description']=this.value===''?undefined:+this.value">${options}</select>
-      <div style="font-size:11px;color:var(--muted)">Used as post body</div>
-      <div style="font-size:12px;font-weight:600;color:var(--text)">Status</div>
-      <select class="form-control" style="font-size:12px" id="map-status" onchange="csMapping['status']=this.value===''?undefined:+this.value">${options}</select>
-      <div style="font-size:11px;color:var(--muted)">sold → draft, else publish</div>
-    </div>
+    <div style="display:grid;grid-template-columns:max-content 1fr 1fr;gap:8px 12px;align-items:center;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;grid-column:1/-1;margin-bottom:2px">Post Fields</div>` +
+    specialFields.map(f => `
+      <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(f.label)}</div>
+      <select class="form-control" style="font-size:12px" id="map-${f.key}" onchange="csMapping['${f.key}']=this.value===''?undefined:+this.value">${options}</select>
+      <div style="font-size:11px;color:var(--muted)">${esc(f.special)}</div>`).join('') +
+    `</div>
     <button class="btn btn-outline" style="margin-top:12px;font-size:12px" onclick="saveCarSyncConfig()">Save Mapping</button>`;
-  // Restore saved mapping
+
+  // Restore saved column mapping
   CS_FIELDS.forEach(f => {
     const el = document.getElementById('map-' + f.key);
     if (el && csMapping[f.key] !== undefined) el.value = csMapping[f.key];

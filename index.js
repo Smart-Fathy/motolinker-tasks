@@ -1090,9 +1090,12 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
 
       // Build custom_fields and terms_names from wpKeyMapping
       // "tax:slug" → terms_names (supports comma-separated multi-terms), otherwise custom_fields
-      const metaFields = ['price', 'make', 'model', 'year', 'mileage', 'color', 'vin', 'stock_number',
-                          'fuel_type', 'transmission', 'body_type', 'drive_type', 'power_train',
-                          'condition', 'category', 'features'];
+      const metaFields = [
+        'price', 'old_price', 'make', 'model', 'year', 'mileage', 'color', 'vin', 'stock_number',
+        'fuel_type', 'transmission', 'body_type', 'drive_type', 'power_train',
+        'condition', 'category', 'label', 'offer_type', 'features',
+        'seats', 'length', 'width', 'height', 'wheelbase', 'gross_weight', 'luggage_down', 'luggage_up',
+      ];
       const customFields = [];
       const termsNames   = {};
       metaFields.forEach(field => {
