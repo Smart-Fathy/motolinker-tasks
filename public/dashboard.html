@@ -1340,7 +1340,7 @@ function navigate(page) {
 
 // ── Car Sync ──────────────────────────────────────────────────────────────────
 const CS_FIELDS = [
-  // ── Taxonomy dropdowns (WP meta key pre-filled) ───────────────────────────
+  // ── Taxonomy dropdowns ────────────────────────────────────────────────────
   { key: 'make',         label: 'Make (Brand)',               defaultWpKey: 'tax:listing_make' },
   { key: 'model',        label: 'Model',                      defaultWpKey: 'tax:listing_model' },
   { key: 'category',     label: 'Category (e.g. SUVs)',       defaultWpKey: 'tax:listing_category' },
@@ -1354,24 +1354,35 @@ const CS_FIELDS = [
   { key: 'offer_type',   label: 'Offer Type',                 defaultWpKey: 'tax:listing_offer_type' },
   // ── Features checkboxes ───────────────────────────────────────────────────
   { key: 'features',     label: 'Features (comma-separated)', defaultWpKey: 'tax:listing_feature' },
-  // ── Text / meta fields ────────────────────────────────────────────────────
-  { key: 'year',         label: 'Year',                       defaultWpKey: 'year' },
-  { key: 'price',        label: 'Price',                      defaultWpKey: 'price' },
-  { key: 'old_price',    label: 'Old Price',                  defaultWpKey: 'old_price' },
-  { key: 'mileage',      label: 'Mileage',                    defaultWpKey: 'mileage' },
-  { key: 'color',        label: 'Color',                      defaultWpKey: 'color' },
-  { key: 'vin',          label: 'VIN',                        defaultWpKey: 'vin' },
-  { key: 'stock_number', label: 'Stock Number',               defaultWpKey: 'stock_number' },
+  // ── Core text / meta fields ───────────────────────────────────────────────
+  { key: 'year',         label: 'Year',                       defaultWpKey: '_listing_year' },
+  { key: 'price',        label: 'Price',                      defaultWpKey: '_listing_price' },
+  { key: 'old_price',    label: 'Old Price',                  defaultWpKey: '_listing_old_price' },
+  { key: 'mileage',      label: 'Mileage',                    defaultWpKey: '_listing_mileage' },
+  { key: 'color',        label: 'Color',                      defaultWpKey: '_listing_color' },
+  { key: 'vin',          label: 'VIN',                        defaultWpKey: '_listing_vin' },
+  { key: 'tagline',      label: 'Tagline',                    defaultWpKey: '_listing_tagline' },
+  { key: 'stock_number', label: 'Stock Number',               defaultWpKey: '_listing_stock_number' },
   // ── Dimensions & Capacity ─────────────────────────────────────────────────
-  { key: 'seats',        label: 'No. of Seats',               defaultWpKey: 'no_of_seats' },
-  { key: 'length',       label: 'Length (mm)',                 defaultWpKey: 'length' },
-  { key: 'width',        label: 'Width (mm)',                  defaultWpKey: 'width' },
-  { key: 'height',       label: 'Height (mm)',                 defaultWpKey: 'height' },
-  { key: 'wheelbase',    label: 'Wheelbase (mm)',              defaultWpKey: 'wheelbase' },
-  { key: 'gross_weight', label: 'Gross Vehicle Weight (kg)',   defaultWpKey: 'gross_vehicle_weight' },
-  { key: 'luggage_down', label: 'Luggage Seats Down (L)',      defaultWpKey: 'luggage_capacity_seats_down' },
-  { key: 'luggage_up',   label: 'Luggage Seats Up (L)',        defaultWpKey: 'luggage_capacity_seats_up' },
-  // ── Special (always at bottom, no WP key input) ───────────────────────────
+  { key: 'seats',        label: 'No. of Seats',               defaultWpKey: '_listing_number_of_seats' },
+  { key: 'length',       label: 'Length (mm)',                 defaultWpKey: '_listing_length' },
+  { key: 'width',        label: 'Width (mm)',                  defaultWpKey: '_listing_width' },
+  { key: 'height',       label: 'Height (mm)',                 defaultWpKey: '_listing_height' },
+  { key: 'wheelbase',    label: 'Wheelbase (mm)',              defaultWpKey: '_listing_wheelbase' },
+  { key: 'gross_weight', label: 'Gross Vehicle Weight (kg)',   defaultWpKey: '_listing_gross_vehicle_weight' },
+  { key: 'max_load',     label: 'Max. Loading Weight (kg)',    defaultWpKey: '_listing_max_loading_weight' },
+  { key: 'luggage_down', label: 'Luggage Seats Down (L)',      defaultWpKey: '_listing_luggage_capacity_seats_down' },
+  { key: 'luggage_up',   label: 'Luggage Seats Up (L)',        defaultWpKey: '_listing_luggage_capacity_seats_up' },
+  // ── EV / Engine fields (custom-text-N — fill in from your Fields Manager)
+  { key: 'motor_power_kw',   label: 'Motor Power (kW)',        defaultWpKey: '' },
+  { key: 'motor_power_hp',   label: 'Motor Power (HP)',        defaultWpKey: '' },
+  { key: 'max_torque',       label: 'Max Torque (N.m)',        defaultWpKey: '' },
+  { key: 'battery_capacity', label: 'Battery Capacity (kWh)', defaultWpKey: '' },
+  { key: 'ev_range',         label: 'Electric Range (km)',     defaultWpKey: '' },
+  { key: 'acceleration',     label: 'Acceleration 0-100 km/h', defaultWpKey: '' },
+  { key: 'charging_port',    label: 'Charging Port Type',      defaultWpKey: '' },
+  { key: 'fast_charge_kw',   label: 'DC Fast Charging (kW)',   defaultWpKey: '' },
+  // ── Special (always at bottom) ────────────────────────────────────────────
   { key: 'title',        label: 'Car Title *',  special: 'Used as post title' },
   { key: 'description',  label: 'Description',  special: 'Used as post body' },
   { key: 'status',       label: 'Status',       special: 'sold → draft, else publish' },

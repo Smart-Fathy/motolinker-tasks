@@ -1122,7 +1122,10 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
         'price', 'old_price', 'make', 'model', 'year', 'mileage', 'color', 'vin', 'stock_number',
         'fuel_type', 'transmission', 'body_type', 'drive_type', 'power_train',
         'condition', 'category', 'label', 'offer_type', 'features',
-        'seats', 'length', 'width', 'height', 'wheelbase', 'gross_weight', 'luggage_down', 'luggage_up',
+        'tagline',
+        'seats', 'length', 'width', 'height', 'wheelbase', 'gross_weight', 'max_load', 'luggage_down', 'luggage_up',
+        'motor_power_kw', 'motor_power_hp', 'max_torque', 'battery_capacity', 'ev_range',
+        'acceleration', 'charging_port', 'fast_charge_kw',
       ];
       const customFields = [];
       const termsNames   = {};
