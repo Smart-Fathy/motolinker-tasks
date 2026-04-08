@@ -1352,8 +1352,121 @@ const CS_FIELDS = [
   { key: 'power_train',  label: 'Power Train (Electric/Gas)', defaultWpKey: 'tax:listing_fuel_type' },
   { key: 'label',        label: 'Label',                      defaultWpKey: 'tax:listing_label' },
   { key: 'offer_type',   label: 'Offer Type',                 defaultWpKey: 'tax:listing_offer_type' },
-  // ── Features checkboxes ───────────────────────────────────────────────────
-  { key: 'features',     label: 'Features (comma-separated)', defaultWpKey: 'tax:listing_feature' },
+  // ── Features — one column per checkbox (put Y or the feature name; blank = skip) ──
+  // Driver Assistance Systems (ADAS)
+  { section: 'Features — Driver Assistance Systems (ADAS)' },
+  { key: 'feat_360_cam',      label: '360 Surround Camera',              defaultWpKey: 'tax:listing_feature', termName: '360 Surround Camera' },
+  { key: 'feat_acc',          label: 'Adaptive Cruise Control (ACC)',    defaultWpKey: 'tax:listing_feature', termName: 'Adaptive Cruise Control (ACC)' },
+  { key: 'feat_bsm',          label: 'Blind Spot Monitoring (BSM)',      defaultWpKey: 'tax:listing_feature', termName: 'Blind Spot Monitoring (BSM)' },
+  { key: 'feat_cc',           label: 'Cruise Control (CC)',              defaultWpKey: 'tax:listing_feature', termName: 'Cruise Control (CC)' },
+  { key: 'feat_front_parking',label: 'Front Parking Sensors',            defaultWpKey: 'tax:listing_feature', termName: 'Front Parking Sensors' },
+  { key: 'feat_hsa',          label: 'Hill Start Assist (HSA)',          defaultWpKey: 'tax:listing_feature', termName: 'Hill Start Assist (HSA)' },
+  { key: 'feat_ldw',          label: 'Lane Departure Warning (LDW)',     defaultWpKey: 'tax:listing_feature', termName: 'Lane Departure Warning (LDW)' },
+  { key: 'feat_lka',          label: 'Lane Keeping Assist (LKA)',        defaultWpKey: 'tax:listing_feature', termName: 'Lane Keeping Assist (LKA)' },
+  { key: 'feat_rcta',         label: 'Rear Cross Traffic Alert (RCTA)',  defaultWpKey: 'tax:listing_feature', termName: 'Rear Cross Traffic Alert (RCTA)' },
+  { key: 'feat_rear_parking', label: 'Rear Parking Sensors',             defaultWpKey: 'tax:listing_feature', termName: 'Rear Parking Sensors' },
+  { key: 'feat_tsr',          label: 'Traffic Sign Recognition (TSR)',   defaultWpKey: 'tax:listing_feature', termName: 'Traffic Sign Recognition (TSR)' },
+  // Steering, Suspension & Brakes
+  { section: 'Features — Steering, Suspension & Brakes' },
+  { key: 'feat_adaptive_susp',   label: 'Adaptive Suspension',       defaultWpKey: 'tax:listing_feature', termName: 'Adaptive Suspension' },
+  { key: 'feat_brake_booster',   label: 'Brake Booster',             defaultWpKey: 'tax:listing_feature', termName: 'Brake Booster' },
+  { key: 'feat_brake_cooling',   label: 'Brake Cooling',             defaultWpKey: 'tax:listing_feature', termName: 'Brake Cooling' },
+  { key: 'feat_self_level_susp', label: 'Self-Leveling Suspension',  defaultWpKey: 'tax:listing_feature', termName: 'Self-Leveling Suspension' },
+  // External & Lighting
+  { section: 'Features — External & Lighting' },
+  { key: 'feat_auto_fold_mirrors',    label: 'Auto Folding Mirrors',              defaultWpKey: 'tax:listing_feature', termName: 'Auto Folding Mirrors' },
+  { key: 'feat_auto_headlights',      label: 'Auto Headlights',                  defaultWpKey: 'tax:listing_feature', termName: 'Auto Headlights' },
+  { key: 'feat_fog_lamps',            label: 'Fog lamps',                        defaultWpKey: 'tax:listing_feature', termName: 'Fog lamps' },
+  { key: 'feat_heated_mirrors',       label: 'Heated Side Mirrors',              defaultWpKey: 'tax:listing_feature', termName: 'Heated Side Mirrors' },
+  { key: 'feat_led_drl',              label: 'LED Daytime running lamps',        defaultWpKey: 'tax:listing_feature', termName: 'LED Daytime running lamps' },
+  { key: 'feat_light_sensors',        label: 'Light Sensors',                    defaultWpKey: 'tax:listing_feature', termName: 'Light Sensors' },
+  { key: 'feat_mirror_turn',          label: 'Mirror Integrated Turn Signals',   defaultWpKey: 'tax:listing_feature', termName: 'Mirror Integrated Turn Signals' },
+  { key: 'feat_power_mirrors',        label: 'Power mirrors',                    defaultWpKey: 'tax:listing_feature', termName: 'Power mirrors' },
+  { key: 'feat_roof_rack',            label: 'Roof Rack',                        defaultWpKey: 'tax:listing_feature', termName: 'Roof Rack' },
+  { key: 'feat_steering_headlights',  label: 'Steering adaptive headlights',     defaultWpKey: 'tax:listing_feature', termName: 'Steering adaptive headlights' },
+  { key: 'feat_tinted_glass',         label: 'Tinted glass',                     defaultWpKey: 'tax:listing_feature', termName: 'Tinted glass' },
+  // Seats & Interior
+  { section: 'Features — Seats & Interior' },
+  { key: 'feat_back_arm_rest',     label: 'Back Arm Rest',                    defaultWpKey: 'tax:listing_feature', termName: 'Back Arm Rest' },
+  { key: 'feat_bev_cooler',        label: 'Beverage Cooler',                  defaultWpKey: 'tax:listing_feature', termName: 'Beverage Cooler' },
+  { key: 'feat_center_lock',       label: 'Center Lock',                      defaultWpKey: 'tax:listing_feature', termName: 'Center Lock' },
+  { key: 'feat_comfort_access',    label: 'Comfort Access',                   defaultWpKey: 'tax:listing_feature', termName: 'Comfort Access' },
+  { key: 'feat_elec_window',       label: 'Electronic Window',                defaultWpKey: 'tax:listing_feature', termName: 'Electronic Window' },
+  { key: 'feat_fold_rear_seats',   label: 'Folding Rear Seats',               defaultWpKey: 'tax:listing_feature', termName: 'Folding Rear Seats' },
+  { key: 'feat_lumbar',            label: 'Front Seats Lumbar Support',       defaultWpKey: 'tax:listing_feature', termName: 'Front Seats Lumbar Support' },
+  { key: 'feat_massage',           label: 'Front Seats Massage',              defaultWpKey: 'tax:listing_feature', termName: 'Front Seats Massage' },
+  { key: 'feat_height_adj_seat',   label: 'Height adjustable front seats',    defaultWpKey: 'tax:listing_feature', termName: 'Height adjustable front seats' },
+  { key: 'feat_keyless_entry',     label: 'Keyless Entry',                    defaultWpKey: 'tax:listing_feature', termName: 'Keyless Entry' },
+  { key: 'feat_keyless_start',     label: 'Keyless Start/Stop',               defaultWpKey: 'tax:listing_feature', termName: 'Keyless Start/Stop' },
+  { key: 'feat_multi_sw',          label: 'Multi function steering wheel',    defaultWpKey: 'tax:listing_feature', termName: 'Multi function steering wheel' },
+  { key: 'feat_one_touch_window',  label: 'One Touch Window Opening',         defaultWpKey: 'tax:listing_feature', termName: 'One Touch Window Opening' },
+  { key: 'feat_panoramic_roof',    label: 'Panoramic Roof',                   defaultWpKey: 'tax:listing_feature', termName: 'Panoramic Roof' },
+  { key: 'feat_power_pass_seat',   label: 'Power Passenger Seat',             defaultWpKey: 'tax:listing_feature', termName: 'Power Passenger Seat' },
+  { key: 'feat_power_tailgate',    label: 'Power Tailgate',                   defaultWpKey: 'tax:listing_feature', termName: 'Power Tailgate' },
+  { key: 'feat_rear_ac_vents',     label: 'Rear AC Vents',                    defaultWpKey: 'tax:listing_feature', termName: 'Rear AC Vents' },
+  { key: 'feat_seat_ventilation',  label: 'Seat Ventilation',                 defaultWpKey: 'tax:listing_feature', termName: 'Seat Ventilation' },
+  { key: 'feat_wireless_charger',  label: 'Wireless Charger',                 defaultWpKey: 'tax:listing_feature', termName: 'Wireless Charger' },
+  // Infotainment
+  { section: 'Features — Infotainment' },
+  { key: 'feat_bluetooth_conn',  label: 'Bluetooth Connectivity',         defaultWpKey: 'tax:listing_feature', termName: 'Bluetooth Connectivity' },
+  { key: 'feat_navigation',      label: 'Built-in Navigation System',     defaultWpKey: 'tax:listing_feature', termName: 'Built-in Navigation System' },
+  { key: 'feat_front_usb',       label: 'Front USB Ports',                defaultWpKey: 'tax:listing_feature', termName: 'Front USB Ports' },
+  { key: 'feat_hud',             label: 'Head-Up Display (HUD)',          defaultWpKey: 'tax:listing_feature', termName: 'Head-Up Display (HUD)' },
+  { key: 'feat_ota',             label: 'Over-the-Air (OTA) Updates',     defaultWpKey: 'tax:listing_feature', termName: 'Over-the-Air (OTA) Updates' },
+  { key: 'feat_rear_usb',        label: 'Rear USB Ports',                 defaultWpKey: 'tax:listing_feature', termName: 'Rear USB Ports' },
+  { key: 'feat_subwoofer',       label: 'Subwoofer',                      defaultWpKey: 'tax:listing_feature', termName: 'Subwoofer' },
+  { key: 'feat_touchscreen_func',label: 'Touchscreen Functionality',      defaultWpKey: 'tax:listing_feature', termName: 'Touchscreen Functionality' },
+  { key: 'feat_type_c',          label: 'Type-C',                         defaultWpKey: 'tax:listing_feature', termName: 'Type-C' },
+  { key: 'feat_voice_cmd',       label: 'Voice Commands',                 defaultWpKey: 'tax:listing_feature', termName: 'Voice Commands' },
+  { key: 'feat_wifi',            label: 'Wi-Fi Hotspot Capability',       defaultWpKey: 'tax:listing_feature', termName: 'Wi-Fi Hotspot Capability' },
+  { key: 'feat_wireless_pad',    label: 'Wireless Charging Pad',          defaultWpKey: 'tax:listing_feature', termName: 'Wireless Charging Pad' },
+  // Safety Systems
+  { section: 'Features — Safety Systems' },
+  { key: 'feat_3pt_seatbelts',      label: '3-Point Seatbelts',                               defaultWpKey: 'tax:listing_feature', termName: '3-Point Seatbelts' },
+  { key: 'feat_abs',                label: 'Anti-lock Braking System (ABS)',                  defaultWpKey: 'tax:listing_feature', termName: 'Anti-lock Braking System (ABS)' },
+  { key: 'feat_ba',                 label: 'Brake Assist (BA/EBA)',                           defaultWpKey: 'tax:listing_feature', termName: 'Brake Assist (BA/EBA)' },
+  { key: 'feat_ebd',                label: 'Electronic Brakeforce Distribution (EBD)',        defaultWpKey: 'tax:listing_feature', termName: 'Electronic Brakeforce Distribution (EBD)' },
+  { key: 'feat_epb',                label: 'Electronic Parking Brake EPB',                    defaultWpKey: 'tax:listing_feature', termName: 'Electronic Parking Brake EPB' },
+  { key: 'feat_esc',                label: 'Electronic Stability Control (ESC/ESP/VDC)',      defaultWpKey: 'tax:listing_feature', termName: 'Electronic Stability Control (ESC/ESP/VDC)' },
+  { key: 'feat_immobilizer',        label: 'Immobilizer Anti-Theft System',                   defaultWpKey: 'tax:listing_feature', termName: 'Immobilizer Anti-Theft System' },
+  { key: 'feat_isofix',             label: 'ISOFIX Child Seat Anchors',                       defaultWpKey: 'tax:listing_feature', termName: 'ISOFIX Child Seat Anchors' },
+  { key: 'feat_seatbelt_adj',       label: 'Seatbelt Height Adjustment (Front)',              defaultWpKey: 'tax:listing_feature', termName: 'Seatbelt Height Adjustment (Front)' },
+  { key: 'feat_seatbelt_pretens',   label: 'Seatbelt Pretensioners',                          defaultWpKey: 'tax:listing_feature', termName: 'Seatbelt Pretensioners' },
+  { key: 'feat_seatbelt_reminder',  label: 'Seatbelt Reminder System',                        defaultWpKey: 'tax:listing_feature', termName: 'Seatbelt Reminder System' },
+  { key: 'feat_tpms',               label: 'Tire Pressure Monitoring System (TPMS)',          defaultWpKey: 'tax:listing_feature', termName: 'Tire Pressure Monitoring System (TPMS)' },
+  { key: 'feat_tcs',                label: 'Traction Control System (TCS)',                   defaultWpKey: 'tax:listing_feature', termName: 'Traction Control System (TCS)' },
+  // Interior
+  { section: 'Features — Interior' },
+  { key: 'feat_ac',                 label: 'Air Conditioner',        defaultWpKey: 'tax:listing_feature', termName: 'Air Conditioner' },
+  { key: 'feat_digital_odo',        label: 'Digital Odometer',       defaultWpKey: 'tax:listing_feature', termName: 'Digital Odometer' },
+  { key: 'feat_heater',             label: 'Heater',                 defaultWpKey: 'tax:listing_feature', termName: 'Heater' },
+  { key: 'feat_leather_seats',      label: 'Leather Seats',          defaultWpKey: 'tax:listing_feature', termName: 'Leather Seats' },
+  { key: 'feat_moonroof',           label: 'Panoramic Moonroof',     defaultWpKey: 'tax:listing_feature', termName: 'Panoramic Moonroof' },
+  { key: 'feat_tachometer',         label: 'Tachometer',             defaultWpKey: 'tax:listing_feature', termName: 'Tachometer' },
+  { key: 'feat_touchscreen_display',label: 'Touchscreen Display',    defaultWpKey: 'tax:listing_feature', termName: 'Touchscreen Display' },
+  // Comfort & Convenience
+  { section: 'Features — Comfort & Convenience' },
+  { key: 'feat_android_auto',    label: 'Android Auto',     defaultWpKey: 'tax:listing_feature', termName: 'Android Auto' },
+  { key: 'feat_apple_carplay',   label: 'Apple CarPlay',    defaultWpKey: 'tax:listing_feature', termName: 'Apple CarPlay' },
+  { key: 'feat_bluetooth',       label: 'Bluetooth',        defaultWpKey: 'tax:listing_feature', termName: 'Bluetooth' },
+  { key: 'feat_homelink',        label: 'HomeLink',         defaultWpKey: 'tax:listing_feature', termName: 'HomeLink' },
+  { key: 'feat_power_steering',  label: 'Power Steering',   defaultWpKey: 'tax:listing_feature', termName: 'Power Steering' },
+  { key: 'feat_vanity_mirror',   label: 'Vanity Mirror',    defaultWpKey: 'tax:listing_feature', termName: 'Vanity Mirror' },
+  // General
+  { section: 'Features — General' },
+  { key: 'feat_anti_lock',       label: 'Anti-lock Braking',   defaultWpKey: 'tax:listing_feature', termName: 'Anti-lock Braking' },
+  { key: 'feat_brake_assist',    label: 'Brake Assist',        defaultWpKey: 'tax:listing_feature', termName: 'Brake Assist' },
+  { key: 'feat_child_locks',     label: 'Child Safety Locks',  defaultWpKey: 'tax:listing_feature', termName: 'Child Safety Locks' },
+  { key: 'feat_driver_airbag',   label: 'Driver Air Bag',      defaultWpKey: 'tax:listing_feature', termName: 'Driver Air Bag' },
+  { key: 'feat_power_door_locks',label: 'Power Door Locks',    defaultWpKey: 'tax:listing_feature', termName: 'Power Door Locks' },
+  { key: 'feat_stability_ctrl',  label: 'Stability Control',   defaultWpKey: 'tax:listing_feature', termName: 'Stability Control' },
+  { key: 'feat_traction_ctrl',   label: 'Traction Control',    defaultWpKey: 'tax:listing_feature', termName: 'Traction Control' },
+  // Exterior
+  { section: 'Features — Exterior' },
+  { key: 'feat_fog_lights_front',  label: 'Fog Lights Front',      defaultWpKey: 'tax:listing_feature', termName: 'Fog Lights Front' },
+  { key: 'feat_rain_wiper',        label: 'Rain Sensing Wiper',     defaultWpKey: 'tax:listing_feature', termName: 'Rain Sensing Wiper' },
+  { key: 'feat_rear_spoiler',      label: 'Rear Spoiler',           defaultWpKey: 'tax:listing_feature', termName: 'Rear Spoiler' },
+  { key: 'feat_elec_windows_ext',  label: 'Windows - Electric',     defaultWpKey: 'tax:listing_feature', termName: 'Windows - Electric' },
   // ── Core text / meta fields ───────────────────────────────────────────────
   { key: 'year',         label: 'Year',                       defaultWpKey: '_listing_year' },
   { key: 'price',        label: 'Price',                      defaultWpKey: '_listing_price' },
@@ -1373,15 +1486,15 @@ const CS_FIELDS = [
   { key: 'max_load',     label: 'Max. Loading Weight (kg)',    defaultWpKey: '_listing_max_loading_weight' },
   { key: 'luggage_down', label: 'Luggage Seats Down (L)',      defaultWpKey: '_listing_luggage_capacity_seats_down' },
   { key: 'luggage_up',   label: 'Luggage Seats Up (L)',        defaultWpKey: '_listing_luggage_capacity_seats_up' },
-  // ── EV / Engine fields (custom-text-N — fill in from your Fields Manager)
-  { key: 'motor_power_kw',   label: 'Motor Power (kW)',        defaultWpKey: '' },
-  { key: 'motor_power_hp',   label: 'Motor Power (HP)',        defaultWpKey: '' },
-  { key: 'max_torque',       label: 'Max Torque (N.m)',        defaultWpKey: '' },
-  { key: 'battery_capacity', label: 'Battery Capacity (kWh)', defaultWpKey: '' },
-  { key: 'ev_range',         label: 'Electric Range (km)',     defaultWpKey: '' },
-  { key: 'acceleration',     label: 'Acceleration 0-100 km/h', defaultWpKey: '' },
-  { key: 'charging_port',    label: 'Charging Port Type',      defaultWpKey: '' },
-  { key: 'fast_charge_kw',   label: 'DC Fast Charging (kW)',   defaultWpKey: '' },
+  // ── EV / Engine fields (inferred from discover-fields data)
+  { key: 'motor_power_kw',   label: 'Motor Power (kW)',        defaultWpKey: 'custom-number-65' },
+  { key: 'motor_power_hp',   label: 'Motor Power (HP)',        defaultWpKey: 'custom-number-67' },
+  { key: 'max_torque',       label: 'Max Torque (N.m)',        defaultWpKey: 'custom-number-68' },
+  { key: 'battery_capacity', label: 'Battery Capacity (kWh)', defaultWpKey: 'custom-number-70' },
+  { key: 'ev_range',         label: 'Electric Range (km)',     defaultWpKey: 'custom-number-71' },
+  { key: 'acceleration',     label: 'Acceleration 0-100 km/h', defaultWpKey: 'custom-number-90' },
+  { key: 'charging_port',    label: 'Charging Port Type',      defaultWpKey: 'custom-text-72' },
+  { key: 'fast_charge_kw',   label: 'DC Fast Charging (kW)',   defaultWpKey: 'custom-number-74' },
   // ── Special (always at bottom) ────────────────────────────────────────────
   { key: 'title',        label: 'Car Title *',  special: 'Used as post title' },
   { key: 'description',  label: 'Description',  special: 'Used as post body' },
@@ -1433,7 +1546,7 @@ function renderMapping() {
     if (f.defaultWpKey && csWpKeys[f.key] === undefined) csWpKeys[f.key] = f.defaultWpKey;
   });
 
-  const normalFields  = CS_FIELDS.filter(f => !f.special);
+  const normalFields  = CS_FIELDS.filter(f => !f.special && !f.section);
   const specialFields = CS_FIELDS.filter(f =>  f.special);
 
   body.innerHTML =
@@ -1441,12 +1554,15 @@ function renderMapping() {
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Field</div>
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Sheet Column</div>
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">WP Meta Key</div>` +
-    normalFields.map(f => `
+    CS_FIELDS.filter(f => !f.special).map(f => {
+      if (f.section) return `<div style="grid-column:1/-1;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-top:1px solid var(--border);padding-top:8px;margin-top:4px">${esc(f.section)}</div>`;
+      return `
       <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap">${esc(f.label)}</div>
       <select class="form-control" style="font-size:12px" id="map-${f.key}" onchange="csMapping['${f.key}']=this.value===''?undefined:+this.value">
         ${options}
       </select>
-      <input class="form-control" style="font-size:12px" id="wpkey-${f.key}" placeholder="meta key or tax:slug" value="${esc(csWpKeys[f.key] || '')}" oninput="csWpKeys['${f.key}']=this.value.trim()||undefined">`).join('') +
+      <input class="form-control" style="font-size:12px" id="wpkey-${f.key}" placeholder="meta key or tax:slug" value="${esc(csWpKeys[f.key] || '')}" oninput="csWpKeys['${f.key}']=this.value.trim()||undefined">`;
+    }).join('') +
     `</div>
     <div style="display:grid;grid-template-columns:max-content 1fr 1fr;gap:8px 12px;align-items:center;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;grid-column:1/-1;margin-bottom:2px">Post Fields</div>` +
@@ -1533,6 +1649,7 @@ async function saveCarSyncConfig(silent = false) {
     wpPostType:   document.getElementById('cs-wp-type').value.trim(),
     mapping:      csMapping,
     wpKeyMapping: Object.fromEntries(Object.entries(csWpKeys).filter(([,v]) => v)),
+    termNameMap:  Object.fromEntries(CS_FIELDS.filter(f => f.termName).map(f => [f.key, f.termName])),
   };
   const pass = document.getElementById('cs-wp-pass').value;
   if (pass) body.wpPassword = pass;

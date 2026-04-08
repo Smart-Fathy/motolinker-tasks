@@ -49,6 +49,7 @@ let carSyncConfig = {
   wpPostType:   process.env.CARSYNC_WP_TYPE     || 'listing',
   mapping:      {},   // { field: columnIndex }
   wpKeyMapping: {},   // { field: wpMetaKeyName } — exact WP meta key per field
+  termNameMap:  {},   // { field: termName } — for Y/N feature columns → WP term name
   lastSync:     null, // { at, created, skipped, errors }
 };
 
@@ -1010,12 +1011,12 @@ receiver.router.post('/api/carsync/discover-fields', requireAuth, express.json()
 });
 
 receiver.router.get('/api/carsync/config', requireAuth, (_req, res) => {
-  const { lastSync, mapping, wpKeyMapping, sheetId, wpUrl, wpUsername, wpPostType } = carSyncConfig;
-  res.json({ sheetId, wpUrl, wpUsername, wpPostType, mapping, wpKeyMapping, lastSync, hasPassword: !!carSyncConfig.wpPassword, driveConnected: !!driveTokens });
+  const { lastSync, mapping, wpKeyMapping, termNameMap, sheetId, wpUrl, wpUsername, wpPostType } = carSyncConfig;
+  res.json({ sheetId, wpUrl, wpUsername, wpPostType, mapping, wpKeyMapping, termNameMap, lastSync, hasPassword: !!carSyncConfig.wpPassword, driveConnected: !!driveTokens });
 });
 
 receiver.router.post('/api/carsync/config', requireAuth, express.json(), (req, res) => {
-  const { sheetId, wpUrl, wpUsername, wpPassword, wpPostType, mapping, wpKeyMapping } = req.body;
+  const { sheetId, wpUrl, wpUsername, wpPassword, wpPostType, mapping, wpKeyMapping, termNameMap } = req.body;
   if (sheetId      !== undefined) carSyncConfig.sheetId      = sheetId;
   if (wpUrl        !== undefined) carSyncConfig.wpUrl        = wpUrl.replace(/\/$/, '');
   if (wpUsername   !== undefined) carSyncConfig.wpUsername   = wpUsername;
@@ -1023,6 +1024,7 @@ receiver.router.post('/api/carsync/config', requireAuth, express.json(), (req, r
   if (wpPostType   !== undefined) carSyncConfig.wpPostType   = wpPostType || 'listing';
   if (mapping      !== undefined) carSyncConfig.mapping      = mapping;
   if (wpKeyMapping !== undefined) carSyncConfig.wpKeyMapping = wpKeyMapping;
+  if (termNameMap  !== undefined) carSyncConfig.termNameMap  = termNameMap;
   res.json({ ok: true });
 });
 
@@ -1059,7 +1061,7 @@ receiver.router.post('/api/carsync/test-wp', requireAuth, express.json(), async 
 
 receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req, res) => {
   try {
-    const { sheetId, wpUrl, wpUsername, wpPassword, wpPostType, mapping, wpKeyMapping } = carSyncConfig;
+    const { sheetId, wpUrl, wpUsername, wpPassword, wpPostType, mapping, wpKeyMapping, termNameMap } = carSyncConfig;
     if (!sheetId)    return res.status(400).json({ error: 'Sheet ID not configured' });
     if (!wpUrl)      return res.status(400).json({ error: 'WordPress URL not configured' });
     if (!wpUsername || !wpPassword) return res.status(400).json({ error: 'WordPress credentials not configured' });
@@ -1118,6 +1120,7 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
 
       // Build custom_fields and terms_names from wpKeyMapping
       // "tax:slug" → terms_names (supports comma-separated multi-terms), otherwise custom_fields
+      // Feature fields with Y/N values use termNameMap to resolve the actual WP term name
       const metaFields = [
         'price', 'old_price', 'make', 'model', 'year', 'mileage', 'color', 'vin', 'stock_number',
         'fuel_type', 'transmission', 'body_type', 'drive_type', 'power_train',
@@ -1126,20 +1129,57 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
         'seats', 'length', 'width', 'height', 'wheelbase', 'gross_weight', 'max_load', 'luggage_down', 'luggage_up',
         'motor_power_kw', 'motor_power_hp', 'max_torque', 'battery_capacity', 'ev_range',
         'acceleration', 'charging_port', 'fast_charge_kw',
+        // Driver Assistance
+        'feat_360_cam','feat_acc','feat_bsm','feat_cc','feat_front_parking','feat_hsa',
+        'feat_ldw','feat_lka','feat_rcta','feat_rear_parking','feat_tsr',
+        // Steering / Suspension
+        'feat_adaptive_susp','feat_brake_booster','feat_brake_cooling','feat_self_level_susp',
+        // External & Lighting
+        'feat_auto_fold_mirrors','feat_auto_headlights','feat_fog_lamps','feat_heated_mirrors',
+        'feat_led_drl','feat_light_sensors','feat_mirror_turn','feat_power_mirrors',
+        'feat_roof_rack','feat_steering_headlights','feat_tinted_glass',
+        // Seats & Interior
+        'feat_back_arm_rest','feat_bev_cooler','feat_center_lock','feat_comfort_access',
+        'feat_elec_window','feat_fold_rear_seats','feat_lumbar','feat_massage',
+        'feat_height_adj_seat','feat_keyless_entry','feat_keyless_start','feat_multi_sw',
+        'feat_one_touch_window','feat_panoramic_roof','feat_power_pass_seat','feat_power_tailgate',
+        'feat_rear_ac_vents','feat_seat_ventilation','feat_wireless_charger',
+        // Infotainment
+        'feat_bluetooth_conn','feat_navigation','feat_front_usb','feat_hud','feat_ota',
+        'feat_rear_usb','feat_subwoofer','feat_touchscreen_func','feat_type_c',
+        'feat_voice_cmd','feat_wifi','feat_wireless_pad',
+        // Safety Systems
+        'feat_3pt_seatbelts','feat_abs','feat_ba','feat_ebd','feat_epb','feat_esc',
+        'feat_immobilizer','feat_isofix','feat_seatbelt_adj','feat_seatbelt_pretens',
+        'feat_seatbelt_reminder','feat_tpms','feat_tcs',
+        // Interior
+        'feat_ac','feat_digital_odo','feat_heater','feat_leather_seats',
+        'feat_moonroof','feat_tachometer','feat_touchscreen_display',
+        // Comfort & Convenience
+        'feat_android_auto','feat_apple_carplay','feat_bluetooth','feat_homelink',
+        'feat_power_steering','feat_vanity_mirror',
+        // General
+        'feat_anti_lock','feat_brake_assist','feat_child_locks','feat_driver_airbag',
+        'feat_power_door_locks','feat_stability_ctrl','feat_traction_ctrl',
+        // Exterior
+        'feat_fog_lights_front','feat_rain_wiper','feat_rear_spoiler','feat_elec_windows_ext',
       ];
       const customFields = [];
       const termsNames   = {};
+      const isYesValue   = v => /^(y|yes|true|1|x|✓|✔)$/i.test(v.trim());
       metaFields.forEach(field => {
-        const v = getCol(row, field);
+        let v = getCol(row, field);
         if (!v) return;
         const mappedKey = (wpKeyMapping && wpKeyMapping[field]) ? wpKeyMapping[field] : field;
         if (mappedKey.startsWith('tax:')) {
           const taxSlug = mappedKey.slice(4).trim();
-          if (taxSlug) {
-            // Support comma-separated values for multi-term fields (e.g. features)
-            const terms = v.split(',').map(t => t.trim()).filter(Boolean);
-            termsNames[taxSlug] = terms;
-          }
+          if (!taxSlug) return;
+          // Y/N feature column → resolve actual term name from termNameMap
+          if (isYesValue(v) && termNameMap && termNameMap[field]) v = termNameMap[field];
+          // Support comma-separated values (merges with other fields targeting same taxonomy)
+          const terms = v.split(',').map(t => t.trim()).filter(Boolean);
+          if (!termsNames[taxSlug]) termsNames[taxSlug] = [];
+          termsNames[taxSlug].push(...terms);
         } else {
           customFields.push({ key: mappedKey, value: v });
         }
