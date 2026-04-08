@@ -861,7 +861,9 @@ let countdown    = 60;
 
 // All API calls go through here — adds Bearer token header automatically
 function apiFetch(path, opts = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  const headers = { ...(opts.headers || {}) };
+  // Don't set Content-Type for FormData — browser sets multipart boundary automatically
+  if (!(opts.body instanceof FormData)) headers['Content-Type'] = headers['Content-Type'] || 'application/json';
   if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
   return fetch(path, { ...opts, headers });
 }
