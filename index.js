@@ -1397,6 +1397,25 @@ let lastPdfScrape = null; // { scraped_at, series_name, trims, specs }
 
 // Shared PDF parsing logic (mirrors scraper-autohome.js)
 async function parsePdfBuffer(buffer) {
+  // pdfjs-dist uses DOMMatrix internally; polyfill it for Node.js
+  if (typeof globalThis.DOMMatrix === 'undefined') {
+    globalThis.DOMMatrix = class DOMMatrix {
+      constructor(init) {
+        const m = Array.isArray(init) ? init : [1, 0, 0, 1, 0, 0];
+        this.a = m[0]; this.b = m[1]; this.c = m[2];
+        this.d = m[3]; this.e = m[4]; this.f = m[5];
+        this.m11 = this.a; this.m12 = this.b; this.m13 = 0; this.m14 = 0;
+        this.m21 = this.c; this.m22 = this.d; this.m23 = 0; this.m24 = 0;
+        this.m31 = 0;      this.m32 = 0;      this.m33 = 1; this.m34 = 0;
+        this.m41 = this.e; this.m42 = this.f; this.m43 = 0; this.m44 = 1;
+        this.is2D = true;
+        this.isIdentity = (this.a === 1 && !this.b && !this.c && this.d === 1 && !this.e && !this.f);
+      }
+      multiply(other) { return new DOMMatrix([this.a, this.b, this.c, this.d, this.e, this.f]); }
+      inverse()       { return new DOMMatrix([this.a, this.b, this.c, this.d, -this.e, -this.f]); }
+    };
+  }
+
   const pdfjsLib = await import('./node_modules/pdfjs-dist/legacy/build/pdf.mjs');
 
   const COL_LABEL_MIN  = 100;
