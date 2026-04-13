@@ -1409,21 +1409,32 @@ let lastPdfScrape = null; // { scraped_at, series_name, trims, specs }
 function resolveSublist(conf) {
   // conf = {titleid, itemname, sublist, colorinfo, priceinfo, ...}
   const raw = conf.sublist ?? conf.subList ?? conf.value ?? conf.itemvalue;
-  if (raw === null || raw === undefined) return (conf.itemname || conf.itemName || '').trim();
-  if (typeof raw === 'string') { const s = raw.trim(); return (s === '-' || s === '—') ? '' : s; }
-  if (typeof raw === 'number') return raw === 0 ? '' : String(raw);
 
   const getField = (obj, lcNames) => {
     const found = Object.keys(obj).find(k => lcNames.includes(k.toLowerCase()));
     return found !== undefined ? obj[found] : undefined;
   };
 
+  // When sublist is null/undefined or an empty array, check for isown directly on the conf entry.
+  // Circle-only rows (ABS, ISOFIX, lane warning, etc.) have sublist:null or sublist:[]
+  // but may carry isown/hasspec directly on the conf object itself.
+  if (raw === null || raw === undefined || (Array.isArray(raw) && raw.length === 0)) {
+    const ownVal = getField(conf, ['isown','hasspec','ishave','selected','checked']);
+    if (ownVal !== undefined) {
+      return (ownVal === 1 || ownVal === true || ownVal === '1') ? 'Yes' : '';
+    }
+    // No ownership field — fall back to itemname (usually empty for these rows)
+    return (conf.itemname || conf.itemName || '').trim();
+  }
+
+  if (typeof raw === 'string') { const s = raw.trim(); return (s === '-' || s === '—') ? '' : s; }
+  if (typeof raw === 'number') return raw === 0 ? '' : String(raw);
+
   if (!Array.isArray(raw)) {
     // Single value object
     const v = getField(raw, ['showvalue','value','name','itemname','content','itemvalue']);
     return v !== undefined ? String(v).trim() : '';
   }
-  if (!raw.length) return '';
 
   const item0 = raw[0];
   if (typeof item0 !== 'object') {
