@@ -1454,11 +1454,16 @@ function tryParseAutohomeJson(json) {
   // ── Parse spec rows ───────────────────────────────────────────────────────
   const { arr: specArr, keys: rawKeys } = foundSpecArr;
 
-  // Identify which key holds the row name
+  // Identify which key holds the row name (from first item's schema)
   const nameKey = rawKeys.find(k => /paramname|specname|propname|typename|name/i.test(k)) || rawKeys[0];
-  // Identify which key holds the value array (or children)
-  const valKey  = rawKeys.find(k => /carvaluelist|specvaluelist|valuelist|carvalues|values/i.test(k));
-  const childKey = rawKeys.find(k => /paraminfolist|items|children|specs|paramlist/i.test(k));
+
+  // Per-item dynamic key finders — critical because parent and child items
+  // have different schemas (e.g. section groups have 'paraminfo', leaf rows have 'carvaluelist')
+  const findValKey   = item => Object.keys(item).find(k =>
+    /carvaluelist|specvaluelist|valuelist|carvalues|values/i.test(k));
+  const findChildKey = item => Object.keys(item).find(k =>
+    /paraminfolist|paraminfo|items|children|specs|paramlist/i.test(k));
+  const findNameKey  = item => Object.keys(item).find(k => /name/i.test(k));
 
   const specs = [];
   let currentSection = '';
@@ -1488,36 +1493,41 @@ function tryParseAutohomeJson(json) {
   };
 
   const walkRow = (item, section) => {
-    const label = String(item[nameKey] || '').trim();
+    const nk = nameKey in item ? nameKey : findNameKey(item);
+    const label = String(item[nk] || '').trim();
     if (!label) return;
 
-    // Children-only rows are section headers
-    if (childKey && item[childKey] && Array.isArray(item[childKey]) && item[childKey].length > 0 && !item[valKey]?.length) {
-      item[childKey].forEach(child => walkRow(child, label));
+    const vk = findValKey(item);
+    const ck = findChildKey(item);
+    const hasVals = vk && Array.isArray(item[vk]) && item[vk].length > 0;
+    const hasChildren = ck && Array.isArray(item[ck]) && item[ck].length > 0;
+
+    // Children-only rows are section headers — recurse, don't emit a data row
+    if (!hasVals && hasChildren) {
+      item[ck].forEach(child => walkRow(child, label));
       return;
     }
 
-    const rawVals = valKey ? item[valKey] : null;
-    if (!rawVals || !Array.isArray(rawVals)) {
-      // Might be a section header
+    if (!hasVals) {
+      // No values and no children — treat as section header
       currentSection = label;
-      if (childKey && item[childKey]) item[childKey].forEach(child => walkRow(child, label));
       return;
     }
 
-    const values = rawVals.map(resolveValue);
+    const values = item[vk].map(resolveValue);
     if (values.some(v => v)) specs.push({ section: section || currentSection, label, values });
 
-    if (childKey && item[childKey]) item[childKey].forEach(child => walkRow(child, section || currentSection));
+    if (hasChildren) item[ck].forEach(child => walkRow(child, section || currentSection));
   };
 
   specArr.forEach(item => {
+    const vk = findValKey(item);
+    const ck = findChildKey(item);
     const label = String(item[nameKey] || '').trim();
-    // Top-level items with children but no values = section headers
-    const hasVals = valKey && Array.isArray(item[valKey]) && item[valKey].length > 0;
-    if (!hasVals && childKey && item[childKey]) {
+    const hasVals = vk && Array.isArray(item[vk]) && item[vk].length > 0;
+    if (!hasVals && ck && item[ck]) {
       currentSection = label;
-      item[childKey].forEach(child => walkRow(child, label));
+      item[ck].forEach(child => walkRow(child, label));
     } else {
       walkRow(item, currentSection);
     }
