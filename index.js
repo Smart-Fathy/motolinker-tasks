@@ -1585,7 +1585,14 @@ async function scrapeAutohomeUrl(url) {
         if (json) {
           const topKeys = (typeof json === 'object' && json && !Array.isArray(json))
             ? Object.keys(json).slice(0, 12) : ['(array)'];
-          captured.push({ url: ru, json, topKeys });
+          // Drill one level deeper: show keys inside 'result' or first nested object
+          const inner = json.result || json.data || json.Result || json.Data;
+          const innerKeys = (inner && typeof inner === 'object' && !Array.isArray(inner))
+            ? Object.keys(inner).slice(0, 12) : [];
+          // For arrays directly inside result, show first item's keys
+          const innerArrKeys = (inner && Array.isArray(inner) && inner[0] && typeof inner[0] === 'object')
+            ? ['[0]:', ...Object.keys(inner[0]).slice(0, 8)] : [];
+          captured.push({ url: ru, json, topKeys, innerKeys: innerKeys.length ? innerKeys : innerArrKeys });
         }
       } catch (_) {}
     });
@@ -1776,9 +1783,10 @@ async function scrapeAutohomeUrl(url) {
     if (scraped.strategy === 'debug') {
       console.error('[url-scraper] debug snapshot:', JSON.stringify({ ...scraped, bodySnippet: undefined }, null, 2));
       const apiSummary = captured.length
-        ? captured.map(c =>
-            `  ${c.url.replace(/https?:\/\/[^/]+/, '').replace(/\?.+/,'?…')} → [${c.topKeys.join(', ')}]`
-          ).join('\n')
+        ? captured.map(c => {
+            const inner = c.innerKeys.length ? ` ⇒ result:{${c.innerKeys.join(', ')}}` : '';
+            return `  ${c.url.replace(/https?:\/\/[^/]+/, '').replace(/\?.+/,'?…')} → [${c.topKeys.join(', ')}]${inner}`;
+          }).join('\n')
         : '  (none captured)';
       throw new Error(
         `Could not extract table.\n` +
