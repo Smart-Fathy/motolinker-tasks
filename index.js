@@ -1562,16 +1562,32 @@ async function scrapeAutohomeUrl(url) {
     );
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8' });
 
-    // ── Intercept every JSON response from autohome ──────────────────────────
-    const captured = {}; // url → parsed JSON
+    // ── Intercept ALL responses from autohome, parse regardless of content-type ─
+    const captured = []; // [{url, json, topKeys}]
     await page.setRequestInterception(true);
-    page.on('request',  req  => req.continue());
+    page.on('request', req => req.continue());
     page.on('response', async resp => {
       const ru = resp.url();
       if (!ru.includes('autohome.com.cn')) return;
-      const ct = resp.headers()['content-type'] || '';
-      if (!ct.includes('json')) return;
-      try { captured[ru] = await resp.json(); } catch (_) {}
+      // Skip obvious binary/style resources
+      if (/\.(jpg|jpeg|png|gif|webp|svg|ico|css|woff2?|ttf|mp4|mp3)(\?|$)/i.test(ru)) return;
+      try {
+        const text = await resp.text();
+        if (!text || text.length < 20) return;
+        let json = null;
+        // Try direct JSON parse
+        try { json = JSON.parse(text); } catch (_) {}
+        // Try JSONP: someCallback({...}) or someCallback([...])
+        if (!json) {
+          const m = text.match(/^[a-zA-Z_$][a-zA-Z0-9_$.]*\s*\((.+)\)\s*;?\s*$/s);
+          if (m) try { json = JSON.parse(m[1]); } catch (_) {}
+        }
+        if (json) {
+          const topKeys = (typeof json === 'object' && json && !Array.isArray(json))
+            ? Object.keys(json).slice(0, 12) : ['(array)'];
+          captured.push({ url: ru, json, topKeys });
+        }
+      } catch (_) {}
     });
 
     console.log('[url-scraper] Navigating:', url);
@@ -1582,9 +1598,40 @@ async function scrapeAutohomeUrl(url) {
     await page.evaluate(() => { try { window.scrollTo(0, document.body.scrollHeight); } catch(_){} });
     await new Promise(r => setTimeout(r, 2000));
 
-    // ── Try intercepted API JSON first ───────────────────────────────────────
-    for (const [apiUrl, json] of Object.entries(captured)) {
-      console.log('[url-scraper] Trying API response:', apiUrl.replace(/https?:\/\/[^/]+/, ''));
+    // ── Try window-injected data first (SSR/hydration variables) ────────────
+    const windowJson = await page.evaluate(() => {
+      const candidates = [
+        '__INITIAL_STATE__','pageConfig','seriesSpec','configData',
+        '__CONFIG_DATA__','carConfigData','__NUXT__','__APP__','__vue_store__',
+      ];
+      for (const k of candidates) {
+        if (window[k] && typeof window[k] === 'object') {
+          try { return { key: k, data: JSON.parse(JSON.stringify(window[k])) }; } catch(_) {}
+        }
+      }
+      // Try inline script tags for assignment patterns
+      for (const s of document.querySelectorAll('script:not([src])')) {
+        const m = s.textContent.match(/window\.__[A-Z_]+__\s*=\s*(\{[\s\S]+?\});?\s*\n/);
+        if (m) try { return { key: 'inline-script', data: JSON.parse(m[1]) }; } catch(_) {}
+      }
+      return null;
+    });
+    if (windowJson) {
+      console.log('[url-scraper] Trying window.' + windowJson.key);
+      const parsed = tryParseAutohomeJson(windowJson.data);
+      if (parsed) {
+        const title = await page.evaluate(() => {
+          const og = document.querySelector('meta[property="og:title"]');
+          return (og?.content || document.title).split(/[\-_|·]/)[0].trim();
+        });
+        return { scraped_at: new Date().toISOString(), source: url, series_name: title || 'Unknown', ...parsed };
+      }
+    }
+
+    // ── Try intercepted API JSON ─────────────────────────────────────────────
+    for (const { url: apiUrl, json, topKeys } of captured) {
+      const short = apiUrl.replace(/https?:\/\/[^/]+/, '').replace(/\?.+/, '?…');
+      console.log('[url-scraper] Trying:', short, '| keys:', topKeys.join(','));
       const parsed = tryParseAutohomeJson(json);
       if (parsed) {
         console.log(`[url-scraper] JSON hit — trims:${parsed.trims.length} specs:${parsed.specs.length}`);
@@ -1727,14 +1774,18 @@ async function scrapeAutohomeUrl(url) {
     if (!scraped) throw new Error('Page evaluate returned null — possible crash');
 
     if (scraped.strategy === 'debug') {
-      const captured_urls = Object.keys(captured).map(u => u.replace(/https?:\/\/[^/]+/, ''));
       console.error('[url-scraper] debug snapshot:', JSON.stringify({ ...scraped, bodySnippet: undefined }, null, 2));
+      const apiSummary = captured.length
+        ? captured.map(c =>
+            `  ${c.url.replace(/https?:\/\/[^/]+/, '').replace(/\?.+/,'?…')} → [${c.topKeys.join(', ')}]`
+          ).join('\n')
+        : '  (none captured)';
       throw new Error(
         `Could not extract table.\n` +
         `Page title: "${scraped.title}"\n` +
-        `Config CSS classes found: ${scraped.configClasses.join(', ') || 'none'}\n` +
+        `Config CSS classes found: ${scraped.configClasses?.join(', ') || 'none'}\n` +
         `Tables on page: ${scraped.tableCount}\n` +
-        `API calls intercepted: ${captured_urls.join(', ') || 'none'}`
+        `Intercepted JSON responses:\n${apiSummary}`
       );
     }
 
