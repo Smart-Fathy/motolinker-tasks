@@ -704,15 +704,32 @@
     <div style="max-width:960px;padding:28px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
         <div>
-          <div style="font-size:20px;font-weight:700">📄 PDF Scraper</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:4px">Upload an Autohome config page saved as PDF → get a CSV spreadsheet instantly</div>
+          <div style="font-size:20px;font-weight:700">📄 Autohome Scraper</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Paste an Autohome config URL or upload a saved PDF → get a CSV spreadsheet instantly</div>
         </div>
         <button class="btn btn-outline" id="pdf-dl-btn" style="display:none" onclick="downloadPdfCsv()">⬇ Download CSV</button>
       </div>
 
+      <!-- URL scrape section -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px">🔗 Scrape directly from URL</div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <input id="scrape-url-input" type="url" placeholder="https://www.autohome.com.cn/config/series/7752.html"
+            style="flex:1;min-width:260px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none"
+            onkeydown="if(event.key==='Enter')scrapeFromUrl()"
+          >
+          <button class="btn btn-primary" id="scrape-url-btn" onclick="scrapeFromUrl()" style="white-space:nowrap">
+            ▶ Scrape
+          </button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:7px">Works for any autohome.com.cn/config/series/… page — no PDF download needed</div>
+      </div>
+
+      <div style="text-align:center;font-size:12px;color:var(--muted);margin-bottom:14px">— or upload a saved PDF —</div>
+
       <!-- Upload zone -->
       <div id="pdf-drop-zone"
-        style="border:2px dashed var(--border);border-radius:12px;padding:48px 24px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;margin-bottom:20px"
+        style="border:2px dashed var(--border);border-radius:12px;padding:36px 24px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;margin-bottom:20px"
         onclick="document.getElementById('pdf-file-input').click()"
         ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='rgba(90,103,216,.06)'"
         ondragleave="this.style.borderColor='';this.style.background=''"
@@ -2297,6 +2314,31 @@ async function deleteSubmission(id) {
 }
 
 // ── PDF Scraper ───────────────────────────────────────────────────────────────
+async function scrapeFromUrl() {
+  const input = document.getElementById('scrape-url-input');
+  const btn   = document.getElementById('scrape-url-btn');
+  const url   = (input.value || '').trim();
+  if (!url) { input.focus(); return; }
+  if (!url.includes('autohome.com.cn')) {
+    showPdfStatus('Only autohome.com.cn URLs are supported', 'error'); return;
+  }
+  btn.disabled = true; btn.textContent = '⏳ Scraping…';
+  document.getElementById('pdf-results').style.display = 'none';
+  document.getElementById('pdf-dl-btn').style.display  = 'none';
+  showPdfStatus('Loading page and extracting table… this may take 20–40 seconds', 'info');
+  try {
+    const res  = await apiFetch('/api/pdf-scraper/scrape-url', { method: 'POST', body: JSON.stringify({ url }) });
+    const data = await res.json();
+    if (!res.ok || data.error) { showPdfStatus('Error: ' + (data.error || 'Scrape failed'), 'error'); return; }
+    showPdfStatus(`Done — ${data.trims.length} trims, ${data.specs.length} spec rows`, 'ok');
+    renderPdfResults(data);
+  } catch (e) {
+    showPdfStatus('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '▶ Scrape';
+  }
+}
+
 function handlePdfDrop(e) {
   const file = e.dataTransfer.files[0];
   if (file && file.type === 'application/pdf') uploadPdf(file);
