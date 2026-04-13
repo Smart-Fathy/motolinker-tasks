@@ -1431,13 +1431,21 @@ function resolveSublist(conf) {
     return raw.map(s => String(s)).filter(s => s && s !== '0' && s !== '-').join('/');
   }
 
-  // Array of objects — handle Yes/No and display values
+  // Array of objects — handle circle indicators and display values
+  // ● isown:1 + value  → show value (e.g. "aluminum alloy", "Front row")
+  // ● isown:1 no value → "Yes"
+  // ○ isown:0 + value  → show value — it's optional, not absent! (e.g. "(8000 yuan)", "Front row")
+  // ○ isown:0 no value → "" (genuinely not available)
   const vals = raw.map(s => {
     const hasF = getField(s, ['isown','hasspec','ishave','selected','checked']);
-    if (hasF === 0 || hasF === false || hasF === '0') return '';
     const show = getField(s, ['showvalue','value','itemvalue','name','itemname','content']);
     const showStr = show !== undefined ? String(show).trim() : '';
-    if (!showStr || showStr === '-' || showStr === '—' || showStr === '0') return hasF ? 'Yes' : '';
+    const isBlank = !showStr || showStr === '-' || showStr === '—' || showStr === '0';
+    if (isBlank) {
+      // No display value: filled=Yes, empty='' (not available)
+      return (hasF === 1 || hasF === true || hasF === '1') ? 'Yes' : '';
+    }
+    // Has a display value: show it regardless of isown (○ with value = optional feature)
     return showStr;
   }).filter(Boolean);
   return vals.join('/');
