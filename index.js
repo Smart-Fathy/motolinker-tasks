@@ -1585,14 +1585,36 @@ async function scrapeAutohomeUrl(url) {
         if (json) {
           const topKeys = (typeof json === 'object' && json && !Array.isArray(json))
             ? Object.keys(json).slice(0, 12) : ['(array)'];
-          // Drill one level deeper: show keys inside 'result' or first nested object
+          // Drill into result/data object
           const inner = json.result || json.data || json.Result || json.Data;
           const innerKeys = (inner && typeof inner === 'object' && !Array.isArray(inner))
             ? Object.keys(inner).slice(0, 12) : [];
-          // For arrays directly inside result, show first item's keys
           const innerArrKeys = (inner && Array.isArray(inner) && inner[0] && typeof inner[0] === 'object')
             ? ['[0]:', ...Object.keys(inner[0]).slice(0, 8)] : [];
-          captured.push({ url: ru, json, topKeys, innerKeys: innerKeys.length ? innerKeys : innerArrKeys });
+
+          // For getParamConf and getspecinfo: drill 3 levels deep to see leaf item keys
+          let deepDrill = [];
+          if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+            for (const key of ['datalist','titlelist','list','DataList','TitleList','List']) {
+              const arr = inner[key];
+              if (Array.isArray(arr) && arr[0] && typeof arr[0] === 'object') {
+                const item0Keys = Object.keys(arr[0]).slice(0, 10);
+                deepDrill.push(`${key}[0]:{${item0Keys.join(',')}}`);
+                // One more level: show first child array's item keys
+                for (const ik of item0Keys) {
+                  const child = arr[0][ik];
+                  if (Array.isArray(child) && child[0] && typeof child[0] === 'object') {
+                    deepDrill.push(`  .${ik}[0]:{${Object.keys(child[0]).slice(0,10).join(',')}}`);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+
+          captured.push({ url: ru, json, topKeys,
+            innerKeys: innerKeys.length ? innerKeys : innerArrKeys,
+            deepDrill });
         }
       } catch (_) {}
     });
@@ -1785,7 +1807,8 @@ async function scrapeAutohomeUrl(url) {
       const apiSummary = captured.length
         ? captured.map(c => {
             const inner = c.innerKeys.length ? ` ⇒ result:{${c.innerKeys.join(', ')}}` : '';
-            return `  ${c.url.replace(/https?:\/\/[^/]+/, '').replace(/\?.+/,'?…')} → [${c.topKeys.join(', ')}]${inner}`;
+            const drill = c.deepDrill && c.deepDrill.length ? '\n    ' + c.deepDrill.join('\n    ') : '';
+            return `  ${c.url.replace(/https?:\/\/[^/]+/, '').replace(/\?.+/,'?…')} → [${c.topKeys.join(', ')}]${inner}${drill}`;
           }).join('\n')
         : '  (none captured)';
       throw new Error(
