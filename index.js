@@ -1787,8 +1787,16 @@ async function scrapeAutohomeUrl(url) {
     });
 
     console.log('[url-scraper] Navigating:', url);
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-    await new Promise(r => setTimeout(r, 3000));
+    // Use 'load' (not 'networkidle2') — autohome has persistent long-poll
+    // connections that never go idle, causing networkidle2 to always timeout.
+    try {
+      await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+    } catch (e) {
+      // Timeout is OK — the DOM and initial XHR calls are likely already done.
+      if (!e.message.includes('timeout')) throw e;
+      console.warn('[url-scraper] Navigation load-event timed out; continuing with loaded content');
+    }
+    await new Promise(r => setTimeout(r, 4000)); // let deferred XHR/JS finish
 
     // Scroll to trigger lazy-loaded sections
     await page.evaluate(() => { try { window.scrollTo(0, document.body.scrollHeight); } catch(_){} });
