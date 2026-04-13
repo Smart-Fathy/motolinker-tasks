@@ -1407,76 +1407,130 @@ let lastPdfScrape = null; // { scraped_at, series_name, trims, specs }
 function tryParseAutohomeJson(json) {
   if (!json || typeof json !== 'object') return null;
 
-  // Flatten nested wrappers: result/data/ReturnValue/…
-  let root = json;
-  for (const key of ['result','data','ReturnValue','configResult','carConfig']) {
-    if (root[key] && typeof root[key] === 'object') root = root[key];
-  }
+  // ── Recursive helpers ─────────────────────────────────────────────────────
+  // Walk any JSON tree to find arrays that look like car-trim lists or spec lists.
+  let foundTrims = null;
+  let foundSpecArr = null;
 
-  // Locate the spec/config array and car-column array
-  const specArr = root.specList || root.configList || root.carConfigList ||
-                  root.specinfo || root.specInfo || root.list || null;
-  const carArr  = root.carList  || root.cars  || root.carInfo  ||
-                  root.series   || root.seriesCarList || null;
+  const lk = s => String(s).toLowerCase(); // lowercase key helper
 
-  if (!specArr || !Array.isArray(specArr)) return null;
+  const deepSearch = (obj, depth) => {
+    if (depth > 8 || !obj || typeof obj !== 'object') return;
+    if (Array.isArray(obj)) {
+      if (!obj.length || typeof obj[0] !== 'object') return;
+      const keys = Object.keys(obj[0]).map(lk);
 
-  const trims = [];
-  if (Array.isArray(carArr)) {
-    carArr.forEach((c, i) => trims.push({
-      name:  (c.carName || c.name || c.seriesName || `Trim ${i+1}`).trim(),
-      price: String(c.minPrice || c.price || c.guidePrice || '').replace(/[^\d,万.]/g, ''),
-    }));
-  }
+      // Car/trim list: has a name-like key AND a price-like key
+      if (!foundTrims && keys.some(k => /carname|carbrand|name/.test(k)) &&
+          keys.some(k => /price|minprice|guideprice/.test(k))) {
+        foundTrims = obj.map((c, i) => {
+          const nameKey = Object.keys(c).find(k => /carname|carbrand|name/i.test(k)) || '';
+          const priceKey = Object.keys(c).find(k => /minprice|guideprice|price/i.test(k)) || '';
+          return {
+            name:  (c[nameKey] || `Trim ${i+1}`).trim(),
+            price: String(c[priceKey] || '').replace(/[^\d,万.]/g, ''),
+          };
+        });
+      }
+
+      // Spec list: has a name-like key AND a values/carvalue-like key
+      if (!foundSpecArr &&
+          keys.some(k => /paramname|specname|propname|paramtypename|typename|name/.test(k)) &&
+          keys.some(k => /carvalue|specvalue|valuelist|values|items|paraminfo/.test(k))) {
+        foundSpecArr = { arr: obj, keys: Object.keys(obj[0]) };
+      }
+
+      obj.forEach(item => deepSearch(item, depth + 1));
+    } else {
+      // Log top-level keys at depth 0 to help diagnose unknown shapes
+      Object.values(obj).forEach(v => deepSearch(v, depth + 1));
+    }
+  };
+
+  deepSearch(json, 0);
+
+  if (!foundSpecArr) return null;
+
+  // ── Parse spec rows ───────────────────────────────────────────────────────
+  const { arr: specArr, keys: rawKeys } = foundSpecArr;
+
+  // Identify which key holds the row name
+  const nameKey = rawKeys.find(k => /paramname|specname|propname|typename|name/i.test(k)) || rawKeys[0];
+  // Identify which key holds the value array (or children)
+  const valKey  = rawKeys.find(k => /carvaluelist|specvaluelist|valuelist|carvalues|values/i.test(k));
+  const childKey = rawKeys.find(k => /paraminfolist|items|children|specs|paramlist/i.test(k));
 
   const specs = [];
   let currentSection = '';
 
-  const walkSpecs = (arr) => {
-    for (const item of arr) {
-      // Section header
-      if (item.isTitle || item.type === 'title' || (item.specName && !item.specValues && !item.values)) {
-        currentSection = (item.specName || item.name || item.title || '').trim();
-        if (item.items || item.children || item.specs) {
-          walkSpecs(item.items || item.children || item.specs);
-        }
-        continue;
-      }
-      const label = (item.specName || item.name || item.label || '').trim();
-      if (!label) continue;
-
-      // Values per trim — autohome uses several field names
-      let vals = item.specValues || item.values || item.carValues || item.carSpecValues || null;
-      if (!vals && trims.length) {
-        vals = trims.map((_, i) => item[`car${i}`] || item[`value${i}`] || item[String(i)] || '');
-      }
-      if (!Array.isArray(vals)) continue;
-
-      const values = vals.map(v => {
-        if (typeof v === 'object' && v !== null) {
-          // {value:'…', isOwn:1} shape
-          const raw = String(v.value ?? v.val ?? v.content ?? '').trim();
-          if (v.isOwn === 0 || v.hasSpec === 0 || v.isHave === 0) return '';
-          if (!raw || raw === '—' || raw === '-') return v.isOwn || v.hasSpec ? 'Yes' : '';
-          return raw;
-        }
-        const s = String(v ?? '').trim();
-        return (s === '0' || s === '—' || s === '-') ? '' : s;
-      });
-
-      if (values.some(v => v)) specs.push({ section: currentSection, label, values });
+  const resolveValue = v => {
+    if (typeof v !== 'object' || v === null) {
+      const s = String(v ?? '').trim();
+      return (s === '0' || s === '—' || s === '-') ? '' : s;
     }
+    // Many shapes: {ShowValue, IsOwn}, {value, isOwn}, {val, hasSpec}, …
+    const showKeys = ['showvalue','value','val','showval','content','paramvalue'];
+    const hasKeys  = ['isown','hasspec','ishave','selected','checked'];
+    const rawVal   = showKeys.reduce((acc, k) => {
+      if (acc !== undefined) return acc;
+      const match = Object.keys(v).find(vk => vk.toLowerCase() === k);
+      return match !== undefined ? v[match] : undefined;
+    }, undefined);
+    const hasFeature = hasKeys.reduce((acc, k) => {
+      if (acc !== undefined) return acc;
+      const match = Object.keys(v).find(vk => vk.toLowerCase() === k);
+      return match !== undefined ? v[match] : undefined;
+    }, undefined);
+    const raw = rawVal !== undefined ? String(rawVal).trim() : '';
+    if (hasFeature === 0 || hasFeature === false || hasFeature === '0') return '';
+    if (!raw || raw === '—' || raw === '-' || raw === '0') return hasFeature ? 'Yes' : '';
+    return raw;
   };
 
-  walkSpecs(specArr);
+  const walkRow = (item, section) => {
+    const label = String(item[nameKey] || '').trim();
+    if (!label) return;
+
+    // Children-only rows are section headers
+    if (childKey && item[childKey] && Array.isArray(item[childKey]) && item[childKey].length > 0 && !item[valKey]?.length) {
+      item[childKey].forEach(child => walkRow(child, label));
+      return;
+    }
+
+    const rawVals = valKey ? item[valKey] : null;
+    if (!rawVals || !Array.isArray(rawVals)) {
+      // Might be a section header
+      currentSection = label;
+      if (childKey && item[childKey]) item[childKey].forEach(child => walkRow(child, label));
+      return;
+    }
+
+    const values = rawVals.map(resolveValue);
+    if (values.some(v => v)) specs.push({ section: section || currentSection, label, values });
+
+    if (childKey && item[childKey]) item[childKey].forEach(child => walkRow(child, section || currentSection));
+  };
+
+  specArr.forEach(item => {
+    const label = String(item[nameKey] || '').trim();
+    // Top-level items with children but no values = section headers
+    const hasVals = valKey && Array.isArray(item[valKey]) && item[valKey].length > 0;
+    if (!hasVals && childKey && item[childKey]) {
+      currentSection = label;
+      item[childKey].forEach(child => walkRow(child, label));
+    } else {
+      walkRow(item, currentSection);
+    }
+  });
+
   if (!specs.length) return null;
 
-  if (!trims.length) {
+  if (!foundTrims) {
     const maxCols = Math.max(...specs.map(s => s.values.length));
-    for (let i = 0; i < maxCols; i++) trims.push({ name: `Trim ${i+1}`, price: '' });
+    foundTrims = Array.from({ length: maxCols }, (_, i) => ({ name: `Trim ${i+1}`, price: '' }));
   }
 
-  return { trims, specs };
+  return { trims: foundTrims, specs };
 }
 
 async function scrapeAutohomeUrl(url) {
