@@ -1404,8 +1404,101 @@ let lastPdfScrape = null; // { scraped_at, series_name, trims, specs }
 // Try to extract trimmed spec data from an intercepted JSON API response.
 // Autohome returns several shapes depending on the API endpoint; we probe the
 // most common ones.
+
+// Helper: resolve a paramconflist entry's sublist to a display string
+function resolveSublist(conf) {
+  // conf = {titleid, itemname, sublist, colorinfo, priceinfo, ...}
+  const raw = conf.sublist ?? conf.subList ?? conf.value ?? conf.itemvalue;
+  if (raw === null || raw === undefined) return (conf.itemname || conf.itemName || '').trim();
+  if (typeof raw === 'string') { const s = raw.trim(); return (s === '-' || s === '—') ? '' : s; }
+  if (typeof raw === 'number') return raw === 0 ? '' : String(raw);
+
+  const getField = (obj, lcNames) => {
+    const found = Object.keys(obj).find(k => lcNames.includes(k.toLowerCase()));
+    return found !== undefined ? obj[found] : undefined;
+  };
+
+  if (!Array.isArray(raw)) {
+    // Single value object
+    const v = getField(raw, ['showvalue','value','name','itemname','content','itemvalue']);
+    return v !== undefined ? String(v).trim() : '';
+  }
+  if (!raw.length) return '';
+
+  const item0 = raw[0];
+  if (typeof item0 !== 'object') {
+    // Array of primitives
+    return raw.map(s => String(s)).filter(s => s && s !== '0' && s !== '-').join('/');
+  }
+
+  // Array of objects — handle Yes/No and display values
+  const vals = raw.map(s => {
+    const hasF = getField(s, ['isown','hasspec','ishave','selected','checked']);
+    if (hasF === 0 || hasF === false || hasF === '0') return '';
+    const show = getField(s, ['showvalue','value','itemvalue','name','itemname','content']);
+    const showStr = show !== undefined ? String(show).trim() : '';
+    if (!showStr || showStr === '-' || showStr === '—' || showStr === '0') return hasF ? 'Yes' : '';
+    return showStr;
+  }).filter(Boolean);
+  return vals.join('/');
+}
+
 function tryParseAutohomeJson(json) {
   if (!json || typeof json !== 'object') return null;
+
+  // ── Special case: autohome getParamConf structure ─────────────────────────
+  // Confirmed via API inspection:
+  //   result.datalist:  [{specid, specname, minprice, paramconflist:[{titleid, sublist}]}]
+  //   result.titlelist: [{groupname, items:[{titleid, itemname}]}]
+  // datalist = COLUMNS (one per trim), titlelist = ROW metadata (grouped params)
+  const res = json.result ?? json.Result ?? json.data ?? json.Data;
+  if (res && typeof res === 'object' && !Array.isArray(res)) {
+    const dl = res.datalist ?? res.DataList;
+    const tl = res.titlelist ?? res.TitleList;
+    if (Array.isArray(dl) && dl.length > 0 && Array.isArray(tl) && tl.length > 0) {
+      // Trims from datalist (columns)
+      const trims = dl.map((spec, i) => ({
+        name:  String(spec.specname || spec.specName || `Trim ${i+1}`).trim(),
+        price: String(spec.minprice || spec.dealerprice || spec.minPrice || '').replace(/[^\d,万.]/g, ''),
+      }));
+
+      // Parameter metadata: titleid → {section, label}
+      const paramMeta = new Map(); // titleid → {section, label}
+      const paramOrder = [];       // titleids in display order
+      for (const group of tl) {
+        const section = String(group.groupname || group.groupName || '').trim();
+        for (const item of (group.items || [])) {
+          const tid = item.titleid ?? item.titleId ?? item.itemid ?? item.itemId;
+          if (tid != null && !paramMeta.has(tid)) {
+            paramMeta.set(tid, { section, label: String(item.itemname || item.itemName || '').trim() });
+            paramOrder.push(tid);
+          }
+        }
+      }
+
+      // Build value lookup: trim_index → Map(titleid → sublist value)
+      const trimValues = dl.map(spec =>
+        new Map((spec.paramconflist || spec.paramConfList || []).map(p => [
+          p.titleid ?? p.titleId,
+          resolveSublist(p),
+        ]))
+      );
+
+      // Assemble rows
+      const specs = [];
+      for (const tid of paramOrder) {
+        const meta = paramMeta.get(tid);
+        if (!meta || !meta.label) continue;
+        const values = trimValues.map(m => m.get(tid) || '');
+        if (values.some(v => v)) specs.push({ section: meta.section, label: meta.label, values });
+      }
+
+      if (specs.length > 0) {
+        console.log(`[autohome-parser] getParamConf hit — trims:${trims.length} specs:${specs.length}`);
+        return { trims, specs };
+      }
+    }
+  }
 
   // ── Recursive helpers ─────────────────────────────────────────────────────
   // Walk any JSON tree to find arrays that look like car-trim lists or spec lists.
