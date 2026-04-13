@@ -1400,6 +1400,176 @@ receiver.router.delete('/api/dashboard/employees/:id', requireAuth, async (req, 
 let lastPdfScrape = null; // { scraped_at, series_name, trims, specs }
 
 // Shared PDF parsing logic (mirrors scraper-autohome.js)
+// ─── Autohome URL Scraper (Puppeteer) ────────────────────────────────────────
+async function scrapeAutohomeUrl(url) {
+  const puppeteer = require('puppeteer');
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    args: [
+      '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+      '--no-first-run', '--no-zygote', '--single-process', '--disable-gpu',
+    ],
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1600, height: 900 });
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8' });
+
+    console.log('[url-scraper] Navigating to:', url);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+
+    // Wait for content to render
+    try {
+      await page.waitForSelector(
+        '.config-main,.config-spec-body,.configlist-spec,.config-list,table', { timeout: 15000 }
+      );
+    } catch (_) {}
+    await new Promise(r => setTimeout(r, 2000));
+
+    const scraped = await page.evaluate(() => {
+      const clean = s => (s || '').replace(/\s+/g, ' ').trim();
+
+      // Detect filled (●) or empty (○) circle state from a table/list cell
+      const circleState = cell => {
+        for (const el of cell.querySelectorAll('i,em,span')) {
+          const cls = (el.className || '').toLowerCase();
+          const txt = (el.textContent || '').trim();
+          if (/\byes\b|icon-ok|circle-yes|config-y|ishas|checked/.test(cls)) return 'yes';
+          if (/\bno\b|icon-x|circle-no|config-n|nohas|unchecked/.test(cls))  return 'no';
+          if (/^[●•◉⬤✓✔]$/.test(txt)) return 'yes';
+          if (/^[○◯□☐]$/.test(txt))   return 'no';
+          // Color heuristic: very dark icon over light background = filled
+          const cs = window.getComputedStyle(el);
+          if (cs.display === 'none') continue;
+          const m = (cs.color || '').match(/\d+/g);
+          if (m && (parseInt(m[0]) + parseInt(m[1]) + parseInt(m[2])) / 3 < 80) return 'yes';
+        }
+        const t = clean(cell.textContent);
+        if (/^[●•◉]/.test(t)) return 'yes';
+        if (/^[○◯]/.test(t))  return 'no';
+        return null;
+      };
+
+      const cellValue = (cell, cs) => {
+        if (cs === 'no') return '';
+        const t = clean(cell.textContent).replace(/^[●•◉○◯\s]+/, '');
+        return (cs === 'yes' && !t) ? 'Yes' : t;
+      };
+
+      // ── Strategy A: autohome div-based layout ──────────────────────────────
+      const specBody = document.querySelector(
+        '.config-spec-body,.configlist-spec,.config-body,.config-list-body,.config-spec-list'
+      );
+      const headerCols = document.querySelectorAll(
+        '.config-car-list .config-car-hd-li,.config-car-list-hd li,' +
+        '.config-head-item,.config-header-car,.car-config-head-item,.config-one-td-main'
+      );
+      const colCount = headerCols.length;
+
+      const trims = [...headerCols].map((col, i) => ({
+        name:  clean(col.querySelector('a,.name,h3,h4,p')?.textContent || col.textContent).split('\n')[0] || `Trim ${i+1}`,
+        price: clean(col.querySelector('.price,.money,strong')?.textContent || '').replace(/[^\d,万.]/g, ''),
+      }));
+
+      if (specBody && colCount > 0) {
+        const specs = [];
+        let section = '';
+        for (const secEl of specBody.querySelectorAll(
+          '.config-spec-item,.config-spec-section,.configlist-item,.config-spec-group'
+        )) {
+          const hd = secEl.querySelector('.config-spec-hd,.config-spec-head,.configlist-hd,h2,h3');
+          if (hd) section = clean(hd.textContent);
+
+          for (const rowEl of secEl.querySelectorAll(
+            '.config-spec-li,.config-spec-row,.configlist-li,li.spec-row,.config-spec-item-li'
+          )) {
+            const labelEl = rowEl.querySelector(
+              '.config-spec-li-left,.spec-label,.config-spec-name,.config-item-name'
+            );
+            const label = labelEl ? clean(labelEl.textContent) : '';
+            if (!label) continue;
+
+            const valEls = rowEl.querySelectorAll(
+              '.config-spec-li-right li,.spec-value,.config-spec-val,.config-item-val'
+            );
+            const values = [...valEls].slice(0, colCount).map(c => cellValue(c, circleState(c)));
+            while (values.length < colCount) values.push('');
+            if (values.some(v => v)) specs.push({ section, label, values });
+          }
+        }
+        if (specs.length > 0) return { strategy: 'div', trims, specs };
+      }
+
+      // ── Strategy B: widest <table> fallback ────────────────────────────────
+      let mainTable = null, maxCols = 0;
+      for (const t of document.querySelectorAll('table')) {
+        for (const row of t.querySelectorAll('tr')) {
+          const c = row.querySelectorAll('td,th').length;
+          if (c > maxCols) { maxCols = c; mainTable = t; }
+        }
+      }
+      if (!mainTable || maxCols < 3) return null;
+
+      const tRows = [...mainTable.querySelectorAll('tr')];
+      const tTrims = [], tSpecs = [];
+      let tSection = '', tCols = 0;
+
+      for (const row of tRows) {
+        const cells = [...row.querySelectorAll('td,th')];
+        if (!cells.length) continue;
+        if (!tCols && cells.length >= 3) {
+          const hasPrice = cells.some(c => /\d{4,}|万/.test(c.textContent));
+          if (hasPrice || row.querySelectorAll('th').length > 1) {
+            tCols = cells.length - 1;
+            cells.slice(1).forEach((c, i) => tTrims.push({ name: clean(c.textContent) || `Trim ${i+1}`, price: '' }));
+            continue;
+          }
+        }
+        if (!tCols) tCols = cells.length - 1;
+        const lbl = clean(cells[0].textContent);
+        if (cells.length === 1 || (cells[0].colSpan > 2)) {
+          if (lbl && lbl.length < 60) { tSection = lbl; continue; }
+        }
+        if (!lbl) continue;
+        const vals = cells.slice(1, tCols + 1).map(c => cellValue(c, circleState(c)));
+        while (vals.length < tCols) vals.push('');
+        if (vals.some(v => v)) tSpecs.push({ section: tSection, label: lbl, values: vals });
+      }
+
+      if (tSpecs.length > 0) {
+        if (!tTrims.length) for (let i = 0; i < tCols; i++) tTrims.push({ name: `Trim ${i+1}`, price: '' });
+        return { strategy: 'table', trims: tTrims, specs: tSpecs };
+      }
+      return null;
+    });
+
+    if (!scraped) throw new Error('Could not find comparison table — page may require login or uses an unsupported layout');
+
+    const seriesName = await page.evaluate(() => {
+      const og = document.querySelector('meta[property="og:title"]');
+      return (og?.content || document.title).split(/[\-_|·]/)[0].trim();
+    });
+
+    console.log(`[url-scraper] OK — strategy:${scraped.strategy}, trims:${scraped.trims.length}, specs:${scraped.specs.length}`);
+    return {
+      scraped_at:  new Date().toISOString(),
+      source:      url,
+      series_name: seriesName || 'Unknown',
+      trims:       scraped.trims,
+      specs:       scraped.specs,
+    };
+  } finally {
+    await browser.close();
+  }
+}
+
 async function parsePdfBuffer(buffer) {
   // pdfjs-dist uses DOMMatrix internally; polyfill it for Node.js
   if (typeof globalThis.DOMMatrix === 'undefined') {
@@ -1750,6 +1920,20 @@ receiver.router.get('/api/pdf-scraper/download', requireAuth, (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
   res.send('\uFEFF' + csv); // BOM for Excel UTF-8
+});
+
+receiver.router.post('/api/pdf-scraper/scrape-url', requireAuth, express.json(), async (req, res) => {
+  const { url } = req.body || {};
+  if (!url) return res.status(400).json({ error: 'URL is required' });
+  if (!url.includes('autohome.com.cn')) return res.status(400).json({ error: 'Only autohome.com.cn URLs are supported' });
+  try {
+    const result  = await scrapeAutohomeUrl(url);
+    lastPdfScrape = result;
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[url-scraper]', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Form Submissions ─────────────────────────────────────────────────────────
