@@ -1432,7 +1432,7 @@ async function parsePdfBuffer(buffer) {
   function detectDataColumns(allItems) {
     const xCounts = {};
     for (const it of allItems) {
-      if (it.x <= COL_LABEL_MAX || it.x > 610) continue;
+      if (it.x <= COL_LABEL_MAX || it.x > 625) continue;
       const b = Math.round(it.x / 3) * 3;
       xCounts[b] = (xCounts[b] || 0) + 1;
     }
@@ -1470,9 +1470,82 @@ async function parsePdfBuffer(buffer) {
   }
 
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const { OPS } = pdfjsLib;
 
-  // ── Collect all items ───────────────────────────────────────────────────────
-  const allPageItems = [];
+  // ── Circle-indicator detector (●/○ rendered as vector paths) ───────────────
+  async function getCircleMarkersForPage(page) {
+    const { fnArray, argsArray } = await page.getOperatorList();
+    const markers = [];
+    let ctm = [1, 0, 0, 1, 0, 0];
+    const ctmStack = [];
+    let pendingBBox = null;
+
+    const tPt  = ([a,b,c,d,e,f], px, py) => [a*px+c*py+e, b*px+d*py+f];
+    const mulM  = ([a1,b1,c1,d1,e1,f1], [a2,b2,c2,d2,e2,f2]) => [
+      a1*a2+c1*b2, b1*a2+d1*b2, a1*c2+c1*d2, b1*c2+d1*d2,
+      a1*e2+c1*f2+e1, b1*e2+d1*f2+f1,
+    ];
+
+    for (let i = 0; i < fnArray.length; i++) {
+      const fn = fnArray[i], args = argsArray[i];
+      if (fn === OPS.save) {
+        ctmStack.push([...ctm]);
+      } else if (fn === OPS.restore) {
+        ctm = ctmStack.pop() || [1,0,0,1,0,0];
+      } else if (fn === OPS.transform && args) {
+        ctm = mulM(ctm, args);
+      } else if (fn === OPS.constructPath && args) {
+        const pOps = args[0] || [], coords = args[1] || [];
+        let ci = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        const addP = (px, py) => {
+          const [tx, ty] = tPt(ctm, px, py);
+          if (tx < minX) minX = tx; if (tx > maxX) maxX = tx;
+          if (ty < minY) minY = ty; if (ty > maxY) maxY = ty;
+        };
+        for (const op of pOps) {
+          if      (op === OPS.moveTo || op === OPS.lineTo)   { addP(coords[ci], coords[ci+1]); ci += 2; }
+          else if (op === OPS.curveTo)                       { addP(coords[ci+4], coords[ci+5]); ci += 6; }
+          else if (op === OPS.curveTo2 || op === OPS.curveTo3){ addP(coords[ci+2], coords[ci+3]); ci += 4; }
+          else if (op === OPS.rectangle) {
+            addP(coords[ci], coords[ci+1]);
+            addP(coords[ci]+coords[ci+2], coords[ci+1]+coords[ci+3]);
+            ci += 4;
+          }
+        }
+        pendingBBox = isFinite(minX) ? { minX, maxX, minY, maxY } : null;
+      } else if (
+        fn === OPS.fill || fn === OPS.eoFill ||
+        fn === OPS.fillStroke || fn === OPS.eoFillStroke
+      ) {
+        if (pendingBBox) {
+          const w = pendingBBox.maxX - pendingBBox.minX;
+          const h = pendingBBox.maxY - pendingBBox.minY;
+          if (w >= 3 && w <= 22 && h >= 3 && h <= 22) {
+            markers.push({ x: Math.round((pendingBBox.minX+pendingBBox.maxX)/2), y: Math.round((pendingBBox.minY+pendingBBox.maxY)/2), filled: true });
+          }
+          pendingBBox = null;
+        }
+      } else if (fn === OPS.stroke || fn === OPS.closeStroke) {
+        if (pendingBBox) {
+          const w = pendingBBox.maxX - pendingBBox.minX;
+          const h = pendingBBox.maxY - pendingBBox.minY;
+          if (w >= 3 && w <= 22 && h >= 3 && h <= 22) {
+            markers.push({ x: Math.round((pendingBBox.minX+pendingBBox.maxX)/2), y: Math.round((pendingBBox.minY+pendingBBox.maxY)/2), filled: false });
+          }
+          pendingBBox = null;
+        }
+      }
+    }
+    return markers;
+  }
+
+  // Unicode circle characters used as text glyphs in some PDFs
+  const CIRCLE_FILLED_RE = /^[\u25cf\u25c9\u2022\u2b24]/; // ● ◉ • ⬤
+  const CIRCLE_EMPTY_RE  = /^[\u25cb\u25ef\u25e6\u2218]/; // ○ ◯ ◦ ∘
+
+  // ── Collect all items + circle markers ─────────────────────────────────────
+  const allPageItems   = [];
+  const allPageCircles = [];
   for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
     const page = await doc.getPage(pageNum);
     const tc   = await page.getTextContent();
@@ -1485,6 +1558,11 @@ async function parsePdfBuffer(buffer) {
       items.push({ s: it.str.trim(), x, y, page: pageNum });
     }
     allPageItems.push(items);
+    try {
+      allPageCircles.push(await getCircleMarkersForPage(page));
+    } catch (_) {
+      allPageCircles.push([]);
+    }
   }
 
   // ── Detect column centres dynamically ──────────────────────────────────────
@@ -1537,22 +1615,60 @@ async function parsePdfBuffer(buffer) {
   for (let pi = 0; pi < allPageItems.length; pi++) {
     const items = allPageItems[pi];
     const zoneItems = items.filter(it => {
-      if (pi === 0 && it.y >= 480) return false;
+      if (pi === 0) {
+        // Skip only the trim-name zone (580–650) and price zone (490–575) on page 1.
+        // Allow spec table rows that sit below the price rows (y < 490).
+        if (it.y >= 490 && it.y <= 575) return false; // price rows
+        if (it.y >= 580) return false;                 // trim names + page header
+      }
       return classifyX(it.x) !== -2;
     });
     const rows = clusterRows(zoneItems);
 
     for (const row of rows) {
       const labelParts = row.items.filter(it => classifyX(it.x) === -1).map(it => it.s);
-      const valueCells = Array(colCount).fill('');
-      let hasValues    = false;
+      const valueCells  = Array(colCount).fill('');
+      const circleAtCol = {}; // col → true (filled) | false (empty/stroked)
+      let hasValues = false;
 
+      // Separate Unicode circle glyphs from real text values
       for (const it of row.items) {
         const col = classifyX(it.x);
-        if (col >= 0 && col < colCount) {
+        if (col < 0 || col >= colCount) continue;
+        if (CIRCLE_EMPTY_RE.test(it.s)) {
+          if (circleAtCol[col] !== true) circleAtCol[col] = false;
+        } else if (CIRCLE_FILLED_RE.test(it.s)) {
+          circleAtCol[col] = true;
+        } else {
           valueCells[col] += (valueCells[col] ? ' ' : '') + it.s;
           hasValues = true;
         }
+      }
+
+      // Augment with vector-drawn circle markers from operator list
+      const pageMarkers = allPageCircles[pi] || [];
+      const rowY = row.y;
+      for (const m of pageMarkers) {
+        if (Math.abs(m.y - rowY) > 15) continue;
+        const col = classifyX(m.x);
+        if (col < 0 || col >= colCount) continue;
+        if (circleAtCol[col] === undefined) circleAtCol[col] = m.filled;
+        else if (m.filled) circleAtCol[col] = true; // filled wins
+      }
+
+      // Apply circle decisions:
+      //  empty circle  → clear cell (feature absent for this trim)
+      //  filled circle + no text → "Yes"
+      if (Object.keys(circleAtCol).length > 0) {
+        for (let ci = 0; ci < colCount; ci++) {
+          if (circleAtCol[ci] === false) {
+            valueCells[ci] = '';
+          } else if (circleAtCol[ci] === true && !valueCells[ci]) {
+            valueCells[ci] = 'Yes';
+            hasValues = true;
+          }
+        }
+        hasValues = valueCells.some(v => v !== '');
       }
 
       const labelText = labelParts.join(' ').replace(/\s+/g, ' ').trim();
