@@ -1462,19 +1462,22 @@ function tryParseAutohomeJson(json) {
         price: String(spec.minprice || spec.dealerprice || spec.minPrice || '').replace(/[^\d,万.]/g, ''),
       }));
 
-      // Parameter metadata: titleid → {section, label}
+      // Parameter metadata: titleid → {section, label}   (from titlelist)
+      // titlelist groups provide section names and human-readable param labels.
       const paramMeta = new Map(); // titleid → {section, label}
-      const paramOrder = [];       // titleids in display order
       for (const group of tl) {
         const section = String(group.groupname || group.groupName || '').trim();
         for (const item of (group.items || [])) {
           const tid = item.titleid ?? item.titleId ?? item.itemid ?? item.itemId;
           if (tid != null && !paramMeta.has(tid)) {
             paramMeta.set(tid, { section, label: String(item.itemname || item.itemName || '').trim() });
-            paramOrder.push(tid);
           }
         }
       }
+
+      // Authoritative param ORDER comes from datalist[0].paramconflist —
+      // titlelist only covers a subset; paramconflist has every row the page shows.
+      const firstParamConf = dl[0].paramconflist || dl[0].paramConfList || [];
 
       // Build value lookup: trim_index → Map(titleid → sublist value)
       const trimValues = dl.map(spec =>
@@ -1484,13 +1487,22 @@ function tryParseAutohomeJson(json) {
         ]))
       );
 
-      // Assemble rows
+      // Assemble rows using ALL params in paramconflist order
+      let currentSection = '';
       const specs = [];
-      for (const tid of paramOrder) {
-        const meta = paramMeta.get(tid);
-        if (!meta || !meta.label) continue;
+      for (const p of firstParamConf) {
+        const tid = p.titleid ?? p.titleId;
+        let meta = paramMeta.get(tid);
+        if (!meta) {
+          // Param in paramconflist but missing from titlelist — use paramconflist label
+          const label = String(p.itemname || p.itemName || '').trim();
+          if (!label) continue;
+          meta = { section: currentSection, label };
+        }
+        if (meta.section) currentSection = meta.section;
+        if (!meta.label) continue;
         const values = trimValues.map(m => m.get(tid) || '');
-        if (values.some(v => v)) specs.push({ section: meta.section, label: meta.label, values });
+        if (values.some(v => v)) specs.push({ section: meta.section || currentSection, label: meta.label, values });
       }
 
       if (specs.length > 0) {
@@ -1636,6 +1648,60 @@ function tryParseAutohomeJson(json) {
   return { trims: foundTrims, specs };
 }
 
+// ── Translate scraped data Chinese → English ──────────────────────────────────
+// Uses the free Google Translate endpoint (no API key required).
+async function translateToEnglish(data) {
+  const hasCN = s => typeof s === 'string' && /[\u4e00-\u9fa5]/.test(s);
+
+  // Collect all unique Chinese strings
+  const strSet = new Set();
+  const add = s => { if (hasCN(s)) strSet.add(s); };
+  if (data.series_name) add(data.series_name);
+  (data.trims || []).forEach(t => add(t.name));
+  (data.specs || []).forEach(s => { add(s.section); add(s.label); s.values.forEach(add); });
+
+  if (!strSet.size) return data;
+
+  const strings = [...strSet];
+  const map = new Map();
+
+  // Translate in batches of 40 strings joined by newlines
+  const BATCH = 40;
+  for (let i = 0; i < strings.length; i += BATCH) {
+    const batch = strings.slice(i, i + BATCH);
+    const query = batch.join('\n');
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&q=${encodeURIComponent(query)}`;
+    try {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      if (!resp.ok) { console.warn('[translate] HTTP', resp.status); continue; }
+      const json = await resp.json();
+      // json[0] = array of [translated_segment, original_segment, ...]
+      const translated = (json[0] || []).map(seg => seg[0] || '').join('');
+      const lines = translated.split('\n');
+      batch.forEach((orig, idx) => {
+        const t = (lines[idx] ?? '').trim();
+        if (t) map.set(orig, t);
+      });
+    } catch (e) {
+      console.warn('[translate] batch error:', e.message);
+    }
+  }
+
+  const tr = s => (hasCN(s) ? (map.get(s) || s) : s);
+  console.log(`[translate] translated ${map.size}/${strings.size} strings`);
+  return {
+    ...data,
+    series_name: tr(data.series_name || ''),
+    trims: (data.trims || []).map(t => ({ ...t, name: tr(t.name) })),
+    specs: (data.specs || []).map(s => ({
+      ...s,
+      section: tr(s.section),
+      label:   tr(s.label),
+      values:  s.values.map(v => tr(v)),
+    })),
+  };
+}
+
 async function scrapeAutohomeUrl(url) {
   const puppeteer = require('puppeteer');
 
@@ -1738,15 +1804,18 @@ async function scrapeAutohomeUrl(url) {
       }
       return null;
     });
+    const getTitle = () => page.evaluate(() => {
+      const og = document.querySelector('meta[property="og:title"]');
+      return (og?.content || document.title).split(/[\-_|·]/)[0].trim();
+    });
+
     if (windowJson) {
       console.log('[url-scraper] Trying window.' + windowJson.key);
       const parsed = tryParseAutohomeJson(windowJson.data);
       if (parsed) {
-        const title = await page.evaluate(() => {
-          const og = document.querySelector('meta[property="og:title"]');
-          return (og?.content || document.title).split(/[\-_|·]/)[0].trim();
-        });
-        return { scraped_at: new Date().toISOString(), source: url, series_name: title || 'Unknown', ...parsed };
+        const title = await getTitle();
+        const result = { scraped_at: new Date().toISOString(), source: url, series_name: title || 'Unknown', ...parsed };
+        return await translateToEnglish(result);
       }
     }
 
@@ -1757,11 +1826,9 @@ async function scrapeAutohomeUrl(url) {
       const parsed = tryParseAutohomeJson(json);
       if (parsed) {
         console.log(`[url-scraper] JSON hit — trims:${parsed.trims.length} specs:${parsed.specs.length}`);
-        const title = await page.evaluate(() => {
-          const og = document.querySelector('meta[property="og:title"]');
-          return (og?.content || document.title).split(/[\-_|·]/)[0].trim();
-        });
-        return { scraped_at: new Date().toISOString(), source: url, series_name: title || 'Unknown', ...parsed };
+        const title = await getTitle();
+        const result = { scraped_at: new Date().toISOString(), source: url, series_name: title || 'Unknown', ...parsed };
+        return await translateToEnglish(result);
       }
     }
 
@@ -1919,13 +1986,14 @@ async function scrapeAutohomeUrl(url) {
     });
 
     console.log(`[url-scraper] HTML OK — strategy:${scraped.strategy}, trims:${scraped.trims.length}, specs:${scraped.specs.length}`);
-    return {
+    const htmlResult = {
       scraped_at:  new Date().toISOString(),
       source:      url,
       series_name: seriesName || 'Unknown',
       trims:       scraped.trims,
       specs:       scraped.specs,
     };
+    return await translateToEnglish(htmlResult);
   } finally {
     await browser.close();
   }
