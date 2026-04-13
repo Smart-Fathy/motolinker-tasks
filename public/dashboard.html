@@ -530,8 +530,9 @@
       <div class="sidebar-section-label">Management</div>
       <div class="nav-item active" onclick="navigate('tasks')"    id="nav-tasks">    <span class="nav-icon">📋</span> Tasks</div>
       <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon">👥</span> Employees</div>
-      <div class="nav-item"        onclick="navigate('requests')"  id="nav-requests"> <span class="nav-icon">📬</span> Requests</div>
-      <div class="nav-item"        onclick="navigate('hours')"     id="nav-hours">    <span class="nav-icon">⏱️</span> Hours Logs</div>
+      <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon">📬</span> Requests</div>
+      <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon">📩</span> Submissions</div>
+      <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon">⏱️</span> Hours Logs</div>
       <div class="sidebar-section-label">Integrations</div>
       <div class="nav-item"        onclick="navigate('carsync')"    id="nav-carsync">   <span class="nav-icon">🚗</span> Car Sync</div>
       <div class="nav-item"        onclick="navigate('pdfscraper')" id="nav-pdfscraper"><span class="nav-icon">📄</span> PDF Scraper</div>
@@ -667,6 +668,19 @@
     <div style="padding:0 28px 28px">
       <div id="requests-table-container" style="margin-top:18px">
         <div class="loading"><div class="spinner"></div> Loading requests…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SUBMISSIONS PAGE ─────────────────────────────── -->
+  <div id="page-submissions" class="page">
+    <div class="page-header">
+      <span class="page-title">📩 Form Submissions</span>
+      <button class="btn btn-outline" onclick="loadSubmissions()" style="font-size:13px">↺ Refresh</button>
+    </div>
+    <div style="padding:0 28px 28px">
+      <div id="submissions-table-container" style="margin-top:18px">
+        <div class="loading"><div class="spinner"></div> Loading submissions…</div>
       </div>
     </div>
   </div>
@@ -1372,7 +1386,7 @@ async function syncToSlackLists() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, carsync: loadCarSync, pdfscraper: () => {} };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, carsync: loadCarSync, pdfscraper: () => {} };
 
 function navigate(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -2224,10 +2238,63 @@ function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheet
   const ok = await checkAuth();
   if (!ok) return;
   const hash = location.hash.replace('#', '');
-  const validPages = ['tasks','employees','requests','hours','email','drive','sheets','carsync'];
+  const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','carsync'];
   if (hash && validPages.includes(hash)) navigate(hash);
   else loadDashboard();
 })();
+
+// ── Submissions ───────────────────────────────────────────────────────────────
+async function loadSubmissions() {
+  const c = document.getElementById('submissions-table-container');
+  c.innerHTML = '<div class="loading"><div class="spinner"></div> Loading submissions…</div>';
+  try {
+    const res  = await apiFetch('/api/submissions');
+    const data = await res.json();
+    if (!res.ok) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(data.error || 'Failed to load')}</div>`; return; }
+    if (!data.length) {
+      c.innerHTML = `<div style="text-align:center;padding:60px 0;color:var(--muted)">
+        <div style="font-size:40px;margin-bottom:12px">📩</div>
+        <div style="font-size:15px;font-weight:600">No submissions yet</div>
+        <div style="font-size:13px;margin-top:6px">Submissions from website forms will appear here.</div>
+      </div>`;
+      return;
+    }
+    c.innerHTML = `
+      <div style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#f7fafc">
+            <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Name</th>
+            <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Email</th>
+            <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Phone</th>
+            <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Car Interest</th>
+            <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Message</th>
+            <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Submitted</th>
+            <th style="padding:10px 16px;border-bottom:1px solid var(--border)"></th>
+          </tr></thead>
+          <tbody>${data.map(s => `
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:12px 16px;font-size:13px;font-weight:600">${esc(s.name)}</td>
+              <td style="padding:12px 16px;font-size:13px"><a href="mailto:${esc(s.email)}" style="color:var(--primary)">${esc(s.email)}</a></td>
+              <td style="padding:12px 16px;font-size:13px;color:var(--muted)">${esc(s.phone || '—')}</td>
+              <td style="padding:12px 16px;font-size:13px">${esc(s.car_interest || '—')}</td>
+              <td style="padding:12px 16px;font-size:13px;color:var(--muted);max-width:240px;white-space:pre-wrap;word-break:break-word">${esc(s.message || '—')}</td>
+              <td style="padding:12px 16px;font-size:12px;color:var(--muted);white-space:nowrap">${new Date(s.submitted_at).toLocaleString()}</td>
+              <td style="padding:12px 16px;text-align:right">
+                <button class="btn btn-outline" style="font-size:12px;padding:4px 12px;color:var(--danger);border-color:var(--danger)" onclick="deleteSubmission(${s.id})">Delete</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`; }
+}
+
+async function deleteSubmission(id) {
+  if (!confirm('Delete this submission?')) return;
+  const res = await apiFetch(`/api/submissions/${id}`, { method: 'DELETE' });
+  if (res.ok) loadSubmissions();
+  else alert('Delete failed');
+}
 
 // ── PDF Scraper ───────────────────────────────────────────────────────────────
 function handlePdfDrop(e) {

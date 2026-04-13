@@ -40,6 +40,10 @@ let driveTokens = null;
 const employeeDriveTokens = new Map();
 const pendingDriveAuth = new Map();
 
+// ─── Form Submissions (in-memory) ────────────────────────────────────────────
+let submissions = []; // { id, name, email, phone, message, car_interest, submitted_at }
+let submissionIdSeq = 1;
+
 // Car Sync config (in-memory, survives restarts via env)
 let carSyncConfig = {
   sheetId:      process.env.CARSYNC_SHEET_ID    || '',
@@ -1630,6 +1634,64 @@ receiver.router.get('/api/pdf-scraper/download', requireAuth, (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
   res.send('\uFEFF' + csv); // BOM for Excel UTF-8
+});
+
+// ─── Form Submissions ─────────────────────────────────────────────────────────
+// Public endpoint — no auth required (customers submit from the website)
+receiver.router.post('/api/submissions', express.json(), async (req, res) => {
+  const { name, email, phone, message, car_interest } = req.body || {};
+  if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
+
+  const sub = {
+    id: submissionIdSeq++,
+    name: String(name).trim(),
+    email: String(email).trim(),
+    phone: phone ? String(phone).trim() : '',
+    message: message ? String(message).trim() : '',
+    car_interest: car_interest ? String(car_interest).trim() : '',
+    submitted_at: new Date().toISOString(),
+  };
+  submissions.unshift(sub);
+
+  // Slack notification
+  if (slackClient && CHIEFS_CHANNEL_ID) {
+    try {
+      await slackClient.chat.postMessage({
+        channel: CHIEFS_CHANNEL_ID,
+        text: `📩 New website submission from *${sub.name}*`,
+        blocks: [
+          { type: 'header', text: { type: 'plain_text', text: '📩 New Form Submission' } },
+          {
+            type: 'section',
+            fields: [
+              { type: 'mrkdwn', text: `*Name:*\n${sub.name}` },
+              { type: 'mrkdwn', text: `*Email:*\n${sub.email}` },
+              { type: 'mrkdwn', text: `*Phone:*\n${sub.phone || '—'}` },
+              { type: 'mrkdwn', text: `*Car Interest:*\n${sub.car_interest || '—'}` },
+            ],
+          },
+          sub.message ? { type: 'section', text: { type: 'mrkdwn', text: `*Message:*\n${sub.message}` } } : null,
+          { type: 'context', elements: [{ type: 'mrkdwn', text: `Submitted at ${new Date(sub.submitted_at).toLocaleString()}` }] },
+        ].filter(Boolean),
+      });
+    } catch (e) { console.warn('[submissions] Slack notify failed:', e.message); }
+  }
+
+  res.json({ ok: true, id: sub.id });
+});
+
+// Admin — list all submissions
+receiver.router.get('/api/submissions', requireAuth, (_req, res) => {
+  res.json(submissions);
+});
+
+// Admin — delete a submission
+receiver.router.delete('/api/submissions/:id', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const idx = submissions.findIndex(s => s.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+  submissions.splice(idx, 1);
+  res.json({ ok: true });
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
