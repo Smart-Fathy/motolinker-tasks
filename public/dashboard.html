@@ -441,7 +441,7 @@
     .hours-card-lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
     /* ── Email page ──────────────────────────────────────────── */
-    .email-page { padding: 28px; max-width: 900px; }
+    .email-page { padding: 28px; }
     .email-connect-card {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: var(--radius); padding: 32px; text-align: center;
@@ -496,6 +496,47 @@
     .btn-danger:hover { filter: brightness(1.1); }
     .btn-success { background: var(--success); color: #fff; }
     .btn-success:hover { filter: brightness(1.1); }
+
+    /* ── Page content wrapper (fills available width) ───── */
+    .page-body { padding: 28px; width: 100%; }
+
+    /* ── Responsive sidebar ──────────────────────────────── */
+    .sidebar-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.5); z-index: 150;
+    }
+    .sidebar-overlay.visible { display: block; }
+
+    .hamburger {
+      display: none; background: none; border: none;
+      cursor: pointer; padding: 6px 8px; border-radius: 8px;
+      color: var(--text); font-size: 22px; line-height: 1;
+      margin-right: 4px;
+    }
+    .hamburger:hover { background: var(--bg); }
+
+    @media (max-width: 900px) {
+      .sidebar {
+        transform: translateX(-220px);
+        transition: transform .25s cubic-bezier(.4,0,.2,1);
+      }
+      .sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,.25); }
+      .app-content { margin-left: 0; }
+      .hamburger { display: inline-flex; align-items: center; justify-content: center; }
+    }
+
+    @media (max-width: 640px) {
+      .main { padding: 16px; }
+      .page-body { padding: 16px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .charts-grid { grid-template-columns: 1fr; }
+      .form-row { grid-template-columns: 1fr; }
+      .page-header { padding: 16px 16px 0; flex-wrap: wrap; gap: 10px; }
+      .hours-summary { padding: 16px 16px 0; }
+      .employee-grid { padding: 16px; }
+      .table-header { padding: 12px 16px; }
+      .header { padding: 0 16px; }
+    }
   </style>
 </head>
 <body>
@@ -517,8 +558,11 @@
 <div id="app" style="display:none">
   <div class="layout">
 
+  <!-- Mobile sidebar overlay -->
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
   <!-- Sidebar -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
       <div class="sidebar-logo-icon">M</div>
       <div>
@@ -552,6 +596,7 @@
   <div class="app-content">
   <header class="header">
     <div class="header-left">
+      <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu">☰</button>
       <div class="logo">M</div>
       <h1>MotoLinker</h1>
       <span class="header-badge">Admin Dashboard</span>
@@ -701,7 +746,7 @@
 
   <!-- ── PDF SCRAPER PAGE ─────────────────────────────── -->
   <div id="page-pdfscraper" class="page">
-    <div style="max-width:960px;padding:28px">
+    <div class="page-body">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
         <div>
           <div style="font-size:20px;font-weight:700">📄 Autohome Scraper</div>
@@ -767,21 +812,21 @@
 
   <!-- ── DRIVE PAGE ─────────────────────────────────────── -->
   <div id="page-drive" class="page">
-    <div id="drive-content" style="padding:28px">
+    <div id="drive-content">
       <div class="loading"><div class="spinner"></div> Loading Drive…</div>
     </div>
   </div>
 
   <!-- ── SHEETS PAGE ────────────────────────────────────── -->
   <div id="page-sheets" class="page">
-    <div id="sheets-content" style="padding:28px">
+    <div id="sheets-content">
       <div class="loading"><div class="spinner"></div> Loading Sheets…</div>
     </div>
   </div>
 
   <!-- ── CAR SYNC PAGE ────────────────────────────────────── -->
   <div id="page-carsync" class="page">
-    <div style="max-width:860px;padding:28px">
+    <div class="page-body">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
         <div>
           <div style="font-size:20px;font-weight:700">🚗 Car Stock Sync</div>
@@ -1412,6 +1457,21 @@ function navigate(page) {
   document.getElementById('nav-' + page).classList.add('active');
   currentPage = page;
   if (pageLoaders[page]) pageLoaders[page]();
+  closeSidebar(); // close on mobile after navigation
+}
+
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  const isOpen = sb.classList.toggle('open');
+  ov.classList.toggle('visible', isOpen);
+}
+
+function closeSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  sb.classList.remove('open');
+  ov.classList.remove('visible');
 }
 
 // ── Car Sync ──────────────────────────────────────────────────────────────────
@@ -2216,7 +2276,7 @@ async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, co
     }
     const files = await apiFetch(filesApi).then(r => r.json());
     c.innerHTML = `
-      <div style="max-width:900px">
+      <div class="page-body">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
           <div style="display:flex;align-items:center;gap:10px">
             <div style="width:36px;height:36px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px">${esc(status.name?.[0]||'?')}</div>
