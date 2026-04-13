@@ -1510,7 +1510,10 @@ function tryParseAutohomeJson(json) {
         if (meta.section) currentSection = meta.section;
         if (!meta.label) continue;
         const values = trimValues.map(m => m.get(tid) || '');
-        if (values.some(v => v)) specs.push({ section: meta.section || currentSection, label: meta.label, values });
+        // Include ALL rows with a valid label, even if all values are empty.
+        // Empty values = ● indicator rows (e.g. ABS, OTA, etc.) where the API
+        // returns sublist:[] but the feature is standard across all trims.
+        specs.push({ section: meta.section || currentSection, label: meta.label, values });
       }
 
       if (specs.length > 0) {
