@@ -898,7 +898,7 @@ receiver.router.get('/api/drive/sheets', requireAuth, async (_req, res) => { try
 
 // ── Car Stock Sync ────────────────────────────────────────────────────────────
 async function readSheet(sheetId, token) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values/A1:Z2000`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values/A1:ZZ10000`;
   const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const d = await r.json();
   if (d.error) throw new Error(d.error.message);
