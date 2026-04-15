@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
   <title>MotoLinker · Admin Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
@@ -537,6 +540,90 @@
       .table-header { padding: 12px 16px; }
       .header { padding: 0 16px; }
     }
+
+    /* ── Enhanced Mobile & Luxury Overrides ── */
+    .nav-icon { display:inline-flex; align-items:center; justify-content:center; width:20px; flex-shrink:0; }
+    .nav-icon svg { width:18px; height:18px; stroke-width:1.75; }
+
+    /* Smooth transitions */
+    .nav-item { transition: background .2s ease, color .2s ease; }
+    .btn { transition: all .2s ease; }
+    .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .stat-card { transition: transform .2s, box-shadow .2s; }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+    .page { animation: fadeIn .2s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+
+    /* Glassmorphism topbar on scroll */
+    .header { backdrop-filter: blur(12px); background: rgba(255,255,255,.92); }
+
+    /* Better sidebar hover */
+    .nav-item.active { background: rgba(90,103,216,.12); font-weight: 600; }
+
+    /* Better badge styling */
+    .badge { font-weight: 600; letter-spacing: .03em; }
+
+    /* Auth screen enhancement */
+    .auth-screen { background: linear-gradient(135deg, #f0f4f8 0%, #e8ecf4 100%); }
+    .auth-card { box-shadow: 0 8px 40px rgba(0,0,0,.08); }
+
+    @media (max-width: 900px) {
+      .sidebar { box-shadow: none; }
+      .sidebar.open { box-shadow: 4px 0 24px rgba(0,0,0,.25); }
+    }
+
+    @media (max-width: 640px) {
+      .btn { min-height:44px; display:inline-flex; align-items:center; justify-content:center; font-size:14px; }
+      .btn-sm { min-height:36px; font-size:12px; }
+      .form-control, .filter-input, .auth-input { font-size:16px; padding:12px 14px; border-radius:10px; }
+      .modal { max-width:100%; margin:10px; border-radius:18px; }
+      .modal-overlay { padding:10px; }
+      .modal-header { padding:18px 20px 0; }
+      .modal-body { padding:18px 20px; }
+      .modal-footer { padding:0 20px 18px; }
+      .table-filters { width:100%; flex-direction:column; }
+      .table-filters .filter-input { flex:1; min-width:0; width:100%; }
+      .search-input { min-width:0 !important; width:100%; }
+      .stat-card { padding:14px 16px; }
+      .stat-value { font-size:26px; }
+      .stat-label { font-size:10px; }
+      .progress-card { flex-direction:column; gap:10px; padding:16px 18px; }
+      .progress-label { min-width:auto; font-size:12px; }
+      .progress-pct { font-size:18px; }
+      .charts-grid { gap:12px; }
+      .chart-card { padding:16px; }
+      .card-title { font-size:12px; }
+      .table-header { flex-direction:column; align-items:flex-start; gap:10px; }
+      .table-title { font-size:13px; }
+      .bulk-bar { flex-wrap:wrap; padding:8px 16px; }
+      .header h1 { font-size:15px; }
+      .header-badge { display:none; }
+      .last-updated { display:none; }
+      .auth-card { padding:36px 28px; border-radius:18px; }
+      .auth-icon { width:52px; height:52px; border-radius:14px; }
+      .page-header { flex-direction:column; align-items:flex-start; gap:12px; }
+      .page-title { font-size:18px; }
+      .hours-summary { gap:10px; }
+      .hours-card { padding:14px 18px; min-width:0; flex:1 1 calc(50% - 5px); }
+      .hours-card-val { font-size:22px; }
+      .employee-grid { grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:12px; padding:16px; }
+      .employee-card { padding:16px; }
+      .employee-avatar { width:44px; height:44px; font-size:18px; }
+      .form-row { grid-template-columns:1fr; }
+
+      /* Make tables horizontally scrollable with momentum */
+      .table-card { overflow:hidden; }
+      table { font-size:12px; }
+      th, td { padding:10px 12px; }
+    }
+
+    @media (max-width: 380px) {
+      .stats-grid { grid-template-columns: 1fr 1fr; gap:10px; }
+      .header { height:56px; }
+      .header h1 { display:none; }
+      .refresh-indicator { display:none; }
+    }
   </style>
 </head>
 <body>
@@ -544,7 +631,7 @@
 <!-- ── Auth Screen ─────────────────────────────────────────────────────────── -->
 <div id="auth-screen" class="auth-screen" style="display:none">
   <div class="auth-card">
-    <div class="auth-icon">🔐</div>
+    <div class="auth-icon"><i data-lucide="shield-check" style="width:28px;height:28px;color:#fff"></i></div>
     <h2 class="auth-title">Admin Access</h2>
     <p class="auth-sub">Sign in with your admin credentials</p>
     <input type="text"     id="login-username" class="auth-input" placeholder="Username" autocomplete="username">
@@ -572,22 +659,22 @@
     </div>
     <nav class="sidebar-nav">
       <div class="sidebar-section-label">Management</div>
-      <div class="nav-item active" onclick="navigate('tasks')"    id="nav-tasks">    <span class="nav-icon">📋</span> Tasks</div>
-      <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon">👥</span> Employees</div>
-      <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon">📬</span> Requests</div>
-      <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon">📩</span> Submissions</div>
-      <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon">⏱️</span> Hours Logs</div>
+      <div class="nav-item active" onclick="navigate('tasks')"    id="nav-tasks">    <span class="nav-icon"><i data-lucide="clipboard-list"></i></span> Tasks</div>
+      <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon"><i data-lucide="users"></i></span> Employees</div>
+      <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon"><i data-lucide="inbox"></i></span> Requests</div>
+      <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><i data-lucide="mail"></i></span> Submissions</div>
+      <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><i data-lucide="clock"></i></span> Hours Logs</div>
       <div class="sidebar-section-label">Integrations</div>
-      <div class="nav-item"        onclick="navigate('carsync')"    id="nav-carsync">   <span class="nav-icon">🚗</span> Car Sync</div>
-      <div class="nav-item"        onclick="navigate('pdfscraper')" id="nav-pdfscraper"><span class="nav-icon">📄</span> PDF Scraper</div>
+      <div class="nav-item"        onclick="navigate('carsync')"    id="nav-carsync">   <span class="nav-icon"><i data-lucide="car"></i></span> Car Sync</div>
+      <div class="nav-item"        onclick="navigate('pdfscraper')" id="nav-pdfscraper"><span class="nav-icon"><i data-lucide="file-text"></i></span> PDF Scraper</div>
       <div class="sidebar-section-label">Account</div>
-      <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon">✉️</span> My Email</div>
-      <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon">💾</span> My Drive</div>
-      <div class="nav-item"        onclick="navigate('sheets')"    id="nav-sheets">   <span class="nav-icon">📊</span> My Sheets</div>
+      <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon"><i data-lucide="mail"></i></span> My Email</div>
+      <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon"><i data-lucide="hard-drive"></i></span> My Drive</div>
+      <div class="nav-item"        onclick="navigate('sheets')"    id="nav-sheets">   <span class="nav-icon"><i data-lucide="table"></i></span> My Sheets</div>
     </nav>
     <div class="sidebar-footer">
       <div class="logout-btn" onclick="logout()">
-        <span>🚪</span> Sign Out
+        <span><i data-lucide="log-out" style="width:16px;height:16px"></i></span> Sign Out
       </div>
     </div>
   </aside>
@@ -596,7 +683,7 @@
   <div class="app-content">
   <header class="header">
     <div class="header-left">
-      <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu">☰</button>
+      <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu"><i data-lucide="menu" style="width:22px;height:22px"></i></button>
       <div class="logo">M</div>
       <h1>MotoLinker</h1>
       <span class="header-badge">Admin Dashboard</span>
@@ -607,7 +694,7 @@
         <span id="refresh-countdown">Auto-refresh in 30s</span>
       </div>
       <span class="last-updated" id="last-updated"></span>
-      <button class="btn btn-outline" onclick="loadDashboard()">↻ Refresh</button>
+      <button class="btn btn-outline" onclick="loadDashboard()">Refresh</button>
     </div>
   </header>
 
@@ -652,20 +739,20 @@
         <span class="table-title">All Tasks</span>
         <div class="table-filters">
           <button class="btn btn-primary" onclick="openTaskModal()" style="margin-right:4px">+ Add Task</button>
-          <button class="btn btn-outline"  onclick="openCSVModal()"  style="margin-right:4px">⬆ CSV Upload</button>
-          <button class="btn btn-outline"  onclick="syncToSlackLists()" id="sync-lists-btn" style="margin-right:8px" title="Push all tasks to Slack Lists">⚡ Sync Slack Lists</button>
-          <input  type="text"   id="search"         class="filter-input search-input" placeholder="🔍  Search title or description…" oninput="filterTasks()">
+          <button class="btn btn-outline"  onclick="openCSVModal()"  style="margin-right:4px">CSV Upload</button>
+          <button class="btn btn-outline"  onclick="syncToSlackLists()" id="sync-lists-btn" style="margin-right:8px" title="Push all tasks to Slack Lists">Sync Slack Lists</button>
+          <input  type="text"   id="search"         class="filter-input search-input" placeholder="Search title or description…" oninput="filterTasks()">
           <select id="f-status"   class="filter-input" onchange="filterTasks()">
             <option value="">All Status</option>
-            <option value="todo">⏳ To Do</option>
-            <option value="in_progress">▶️ In Progress</option>
-            <option value="done">✅ Done</option>
+            <option value="todo">To Do</option>
+            <option value="in_progress">In Progress</option>
+            <option value="done">Done</option>
           </select>
           <select id="f-priority" class="filter-input" onchange="filterTasks()">
             <option value="">All Priority</option>
-            <option value="high">🔴 High</option>
-            <option value="medium">🟡 Medium</option>
-            <option value="low">🟢 Low</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
           </select>
           <select id="f-channel"  class="filter-input" onchange="filterTasks()">
             <option value="">All Channels</option>
@@ -674,9 +761,9 @@
       </div>
       <div id="bulk-bar" class="bulk-bar">
         <span id="bulk-count">0 selected</span>
-        <button class="btn btn-success" style="padding:5px 14px;font-size:12px" onclick="bulkMarkDone()">✅ Mark Done</button>
-        <button class="btn btn-danger"  style="padding:5px 14px;font-size:12px" onclick="bulkDelete()">🗑 Delete</button>
-        <button class="btn btn-outline" style="padding:5px 14px;font-size:12px" onclick="clearSelection()">✕ Clear</button>
+        <button class="btn btn-success" style="padding:5px 14px;font-size:12px" onclick="bulkMarkDone()">Mark Done</button>
+        <button class="btn btn-danger"  style="padding:5px 14px;font-size:12px" onclick="bulkDelete()">Delete</button>
+        <button class="btn btn-outline" style="padding:5px 14px;font-size:12px" onclick="clearSelection()">Clear</button>
       </div>
       <div id="table-container">
         <div class="loading"><div class="spinner"></div> Loading tasks…</div>
@@ -692,7 +779,7 @@
   <!-- ── EMPLOYEES PAGE ────────────────────────────────── -->
   <div id="page-employees" class="page">
     <div class="page-header">
-      <span class="page-title">👥 Employees</span>
+      <span class="page-title">Employees</span>
       <button class="btn btn-primary" onclick="openEmpModal()">+ Create Employee</button>
     </div>
     <div id="employee-accounts-section" style="padding:0 28px 28px">
@@ -707,7 +794,7 @@
   <!-- ── REQUESTS PAGE ─────────────────────────────────── -->
   <div id="page-requests" class="page">
     <div class="page-header">
-      <span class="page-title">📬 Requests</span>
+      <span class="page-title">Requests</span>
       <button class="btn btn-primary" onclick="openRequestModal()">+ New Request</button>
     </div>
     <div style="padding:0 28px 28px">
@@ -720,8 +807,8 @@
   <!-- ── SUBMISSIONS PAGE ─────────────────────────────── -->
   <div id="page-submissions" class="page">
     <div class="page-header">
-      <span class="page-title">📩 Form Submissions</span>
-      <button class="btn btn-outline" onclick="loadSubmissions()" style="font-size:13px">↺ Refresh</button>
+      <span class="page-title">Form Submissions</span>
+      <button class="btn btn-outline" onclick="loadSubmissions()" style="font-size:13px">Refresh</button>
     </div>
     <div style="padding:0 28px 28px">
       <div id="submissions-table-container" style="margin-top:18px">
@@ -733,7 +820,7 @@
   <!-- ── HOURS LOGS PAGE ───────────────────────────────── -->
   <div id="page-hours" class="page">
     <div class="page-header">
-      <span class="page-title">⏱️ Hours Logs</span>
+      <span class="page-title">Hours Logs</span>
       <button class="btn btn-primary" onclick="openHoursModal()">+ Log Hours</button>
     </div>
     <div class="hours-summary" id="hours-summary"></div>
@@ -749,22 +836,22 @@
     <div class="page-body">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
         <div>
-          <div style="font-size:20px;font-weight:700">📄 Autohome Scraper</div>
+          <div style="font-size:20px;font-weight:700">Autohome Scraper</div>
           <div style="font-size:13px;color:var(--muted);margin-top:4px">Paste an Autohome config URL or upload a saved PDF → get a CSV spreadsheet instantly</div>
         </div>
-        <button class="btn btn-outline" id="pdf-dl-btn" style="display:none" onclick="downloadPdfCsv()">⬇ Download CSV</button>
+        <button class="btn btn-outline" id="pdf-dl-btn" style="display:none" onclick="downloadPdfCsv()">Download CSV</button>
       </div>
 
       <!-- URL scrape section -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
-        <div style="font-size:13px;font-weight:600;margin-bottom:10px">🔗 Scrape directly from URL</div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px">Scrape directly from URL</div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <input id="scrape-url-input" type="url" placeholder="https://www.autohome.com.cn/config/series/7752.html"
             style="flex:1;min-width:260px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none"
             onkeydown="if(event.key==='Enter')scrapeFromUrl()"
           >
           <button class="btn btn-primary" id="scrape-url-btn" onclick="scrapeFromUrl()" style="white-space:nowrap">
-            ▶ Scrape
+            Scrape
           </button>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:7px">Works for any autohome.com.cn/config/series/… page — no PDF download needed</div>
@@ -779,7 +866,7 @@
         ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='rgba(90,103,216,.06)'"
         ondragleave="this.style.borderColor='';this.style.background=''"
         ondrop="event.preventDefault();this.style.borderColor='';this.style.background='';handlePdfDrop(event)">
-        <div style="font-size:36px;margin-bottom:12px">📑</div>
+        <div style="font-size:36px;margin-bottom:12px"></div>
         <div style="font-size:15px;font-weight:600;color:var(--text)">Drag & drop a PDF here</div>
         <div style="font-size:12px;color:var(--muted);margin-top:6px">or click to browse — max 20 MB</div>
         <input type="file" id="pdf-file-input" accept=".pdf,application/pdf" style="display:none" onchange="uploadPdf(this.files[0])">
@@ -832,7 +919,7 @@
           <div style="font-size:20px;font-weight:700">Car Stock Sync</div>
           <div style="font-size:13px;color:var(--muted);margin-top:4px">Import car listings from Google Sheets → WordPress automatically</div>
         </div>
-        <button class="btn btn-primary" id="sync-run-btn" onclick="runCarSync()" style="min-width:140px">▶ Run Sync Now</button>
+        <button class="btn btn-primary" id="sync-run-btn" onclick="runCarSync()" style="min-width:140px">Run Sync Now</button>
       </div>
 
       <!-- Last sync status -->
@@ -851,7 +938,7 @@
             <button class="btn btn-outline" onclick="loadSheetPreview()" style="white-space:nowrap;height:38px">Load Preview</button>
           </div>
           <div id="drive-warn" style="display:none;margin-top:12px;padding:10px 14px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;font-size:13px;color:var(--warning)">
-            ⚠️ Google Drive not connected. Go to <a href="#" onclick="navigate('drive')" style="color:var(--warning)">My Drive</a> first to connect your Google account.
+            Google Drive not connected. Go to <a href="#" onclick="navigate('drive')" style="color:var(--warning)">My Drive</a> first to connect your Google account.
           </div>
         </div>
       </div>
@@ -883,7 +970,7 @@
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
             <button class="btn btn-outline" onclick="testWpConnection()" id="wp-test-btn">Test Connection</button>
             <div style="display:flex;align-items:center;gap:6px">
-              <button class="btn btn-outline" onclick="discoverFields()" id="wp-discover-btn">🔍 Discover Fields</button>
+              <button class="btn btn-outline" onclick="discoverFields()" id="wp-discover-btn">Discover Fields</button>
               <input class="form-control" id="discover-post-id" placeholder="Post ID (optional)" style="width:160px;font-size:12px" title="Enter a specific WP post ID to inspect (e.g. 9970). Leave empty to scan recent listings.">
             </div>
             <button class="btn btn-primary" onclick="saveCarSyncConfig()">Save Settings</button>
@@ -1018,11 +1105,11 @@ function isDueSoon(d, s) {
 }
 
 function statusBadge(s) {
-  const map = { todo: '⏳ To Do', in_progress: '▶️ In Progress', done: '✅ Done' };
+  const map = { todo: 'To Do', in_progress: 'In Progress', done: 'Done' };
   return `<span class="badge badge-${s}">${map[s] || s}</span>`;
 }
 function priorityBadge(p) {
-  const map = { high: '🔴 High', medium: '🟡 Medium', low: '🟢 Low' };
+  const map = { high: 'High', medium: 'Medium', low: 'Low' };
   return `<span class="badge badge-${p}">${map[p] || p}</span>`;
 }
 
@@ -1173,7 +1260,7 @@ function renderTable(tasks) {
   if (!tasks.length) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">📭</div>
+        <div class="empty-icon" style="font-size:44px">—</div>
         <div class="empty-title">No tasks found</div>
         <div class="empty-sub">Adjust the filters or create tasks via Slack using <code>/task-create</code></div>
       </div>`;
@@ -1185,7 +1272,7 @@ function renderTable(tasks) {
     const overdue = isOverdue(t.due_date, t.status);
     const soon    = !overdue && isDueSoon(t.due_date, t.status);
     const dueCls  = overdue ? 'overdue' : (soon ? 'due-soon' : '');
-    const dueLabel = overdue ? `${t.due_date} ⚠️` : t.due_date;
+    const dueLabel = overdue ? `${t.due_date}` : t.due_date;
     const createdDate = new Date(t.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
     const isDone = t.status === 'done';
@@ -1201,11 +1288,11 @@ function renderTable(tasks) {
       <td class="due-date ${dueCls}">${dueLabel}</td>
       <td>${priorityBadge(t.priority)}</td>
       <td>${statusBadge(t.status)}</td>
-      <td>${t.milestone ? `<span class="milestone-tag">🏁 ${esc(t.milestone)}</span>` : `<span style="color:var(--muted)">—</span>`}</td>
+      <td>${t.milestone ? `<span class="milestone-tag">${esc(t.milestone)}</span>` : `<span style="color:var(--muted)">—</span>`}</td>
       <td style="font-size:12px;color:var(--muted);white-space:nowrap">${createdDate}</td>
       <td style="font-size:12px;white-space:nowrap">${t.completed_at ? `<span style="color:var(--success)">${new Date(t.completed_at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}</span>` : `<span style="color:var(--muted)">—</span>`}</td>
       <td style="white-space:nowrap">
-        ${isDone ? '' : `<button class="btn btn-success" style="padding:4px 10px;font-size:11px" onclick="quickDone(${t.id})">✓ Done</button> `}
+        ${isDone ? '' : `<button class="btn btn-success" style="padding:4px 10px;font-size:11px" onclick="quickDone(${t.id})">Done</button> `}
         <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openTaskModal(${t.id})">Edit</button>
         <button class="btn btn-danger"  style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteTask(${t.id})">Delete</button>
       </td>
@@ -1262,9 +1349,10 @@ async function loadDashboard() {
       'Updated ' + new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     startCountdown();
+    requestAnimationFrame(() => lucide.createIcons());
   } catch (err) {
     document.getElementById('error-container').innerHTML =
-      `<div class="error-msg">⚠️ ${esc(err.message)}</div>`;
+      `<div class="error-msg">${esc(err.message)}</div>`;
   }
 }
 
@@ -1366,7 +1454,7 @@ async function openTaskModal(id) {
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Status</label>
-        <select class="form-control" id="t-status">${[['todo','⏳ To Do'],['in_progress','▶️ In Progress'],['done','✅ Done']].map(([v,l])=>`<option value="${v}"${(t?.status||'todo')===v?' selected':''}>${l}</option>`).join('')}</select></div>
+        <select class="form-control" id="t-status">${[['todo','To Do'],['in_progress','In Progress'],['done','Done']].map(([v,l])=>`<option value="${v}"${(t?.status||'todo')===v?' selected':''}>${l}</option>`).join('')}</select></div>
       <div class="form-group"><label class="form-label">Milestone</label><input class="form-control" id="t-milestone" value="${esc(t?.milestone||'')}" placeholder="e.g. Sprint 3…"></div>
     </div>
   `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
@@ -1413,7 +1501,7 @@ function openCSVModal() {
     <p style="font-size:12px;color:var(--muted);margin-bottom:4px">Use <strong>#channel-name</strong> format. Get assignee IDs from the Employees page.</p>
     <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Dates accept any format: <code>2026-04-15</code>, <code>15/04/2026</code>, <code>15/4/2026</code>. Past dates are allowed.</p>
     <div style="margin-bottom:16px">
-      <button class="btn btn-outline" onclick="downloadCSVTemplate()" style="font-size:12px">⬇ Download Template</button>
+      <button class="btn btn-outline" onclick="downloadCSVTemplate()" style="font-size:12px">Download Template</button>
     </div>
     <div class="form-group"><label class="form-label">CSV File *</label><input type="file" id="csv-file" accept=".csv" class="form-control" style="padding:6px"></div>
     <div id="csv-result" style="margin-top:8px"></div>
@@ -1429,21 +1517,21 @@ async function uploadCSV() {
   const r = await fetch('/api/dashboard/tasks/bulk', { method: 'POST', headers, body: fd });
   const data = await r.json();
   const res = document.getElementById('csv-result');
-  if (data.error) { res.innerHTML = `<div class="error-msg">⚠️ ${esc(data.error)}</div>`; return; }
-  res.innerHTML = `<div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;padding:10px 14px;border-radius:8px;font-size:13px">✅ Inserted <strong>${data.inserted}</strong> task(s)${data.errors?.length ? `<br><span style="color:var(--warning)">${data.errors.join('<br>')}</span>` : ''}</div>`;
+  if (data.error) { res.innerHTML = `<div class="error-msg">${esc(data.error)}</div>`; return; }
+  res.innerHTML = `<div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;padding:10px 14px;border-radius:8px;font-size:13px">Inserted <strong>${data.inserted}</strong> task(s)${data.errors?.length ? `<br><span style="color:var(--warning)">${data.errors.join('<br>')}</span>` : ''}</div>`;
   loadDashboard();
 }
 
 async function syncToSlackLists() {
   const btn = document.getElementById('sync-lists-btn');
-  btn.disabled = true; btn.textContent = '⏳ Syncing…';
+  btn.disabled = true; btn.textContent = 'Syncing…';
   try {
     const r = await apiFetch('/api/dashboard/tasks/sync-lists', { method: 'POST' });
     const data = await r.json();
     if (data.error) { alert('Sync failed: ' + data.error); }
     else { alert(`${data.message}\n\nCheck your Slack channels — lists will appear within a minute.`); }
   } catch (e) { alert('Sync error: ' + e.message); }
-  finally { btn.disabled = false; btn.textContent = '⚡ Sync Slack Lists'; }
+  finally { btn.disabled = false; btn.textContent = 'Sync Slack Lists'; }
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -1458,6 +1546,7 @@ function navigate(page) {
   currentPage = page;
   if (pageLoaders[page]) pageLoaders[page]();
   closeSidebar(); // close on mobile after navigation
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function toggleSidebar() {
@@ -1664,12 +1753,12 @@ async function loadSheetPreview() {
   try {
     await saveCarSyncConfig(true);
     const d = await apiFetch('/api/carsync/preview').then(r => r.json());
-    if (d.error) { statusEl.innerHTML = `<span style="color:var(--danger)">⚠️ ${esc(d.error)}</span>`; return; }
+    if (d.error) { statusEl.innerHTML = `<span style="color:var(--danger)">${esc(d.error)}</span>`; return; }
     csHeaders = d.headers || [];
-    statusEl.innerHTML = `<span style="color:var(--success)">✅ ${d.rows.length} rows loaded</span>`;
+    statusEl.innerHTML = `<span style="color:var(--success)">${d.rows.length} rows loaded</span>`;
     renderMapping();
     renderPreview(d.headers, d.rows);
-  } catch (e) { statusEl.innerHTML = `<span style="color:var(--danger)">⚠️ ${esc(e.message)}</span>`; }
+  } catch (e) { statusEl.innerHTML = `<span style="color:var(--danger)">${esc(e.message)}</span>`; }
 }
 
 function renderMapping() {
@@ -1741,27 +1830,27 @@ async function discoverFields() {
       ...(postId ? { postId } : {}),
     };
     const d = await apiFetch('/api/carsync/discover-fields', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
-    if (d.error) { res.textContent = '⚠️ ' + d.error; return; }
+    if (d.error) { res.textContent = d.error; return; }
     const xmlKeys    = Object.keys(d.xmlFields  || {});
     const restKeys   = Object.keys(d.restMeta   || {});
     const taxEntries = Object.entries(d.taxonomies || {}).filter(([s]) => s.startsWith('listing_'));
     let out = postId ? `Inspecting post ID ${postId}\n\n` : `Scanned oldest listings (merged keys)\n\n`;
-    out += `📋 XML-RPC meta fields:\n`;
+    out += `XML-RPC meta fields:\n`;
     out += xmlKeys.length ? xmlKeys.map(k => `  ${k}: ${d.xmlFields[k]}`).join('\n') : '  (none found)';
     if (restKeys.length) {
-      out += `\n\n📋 REST API meta fields (authenticated):\n`;
+      out += `\n\nREST API meta fields (authenticated):\n`;
       out += restKeys.map(k => `  ${k}: ${JSON.stringify(d.restMeta[k])}`).join('\n');
     } else {
-      out += `\n\n📋 REST API meta: (none — plugin fields not exposed via REST)`;
+      out += `\n\nREST API meta: (none — plugin fields not exposed via REST)`;
     }
-    out += `\n\n🏷️ TAXONOMY FIELDS — prefix with "tax:" in "WP Meta Key":\n`;
+    out += `\n\nTAXONOMY FIELDS — prefix with "tax:" in "WP Meta Key":\n`;
     out += taxEntries.length
       ? taxEntries.map(([slug, label]) => `  tax:${slug}   → ${label}`).join('\n')
       : '  (none found)';
-    out += `\n\n💡 Text fields → use meta key directly (e.g. year, price, custom-text-61)\n   Dropdowns → tax:listing_make, tax:listing_model etc.\n   Features → tax:listing_feature  (comma-separated: "360 Camera, ACC, BSM")`;
+    out += `\n\nText fields → use meta key directly (e.g. year, price, custom-text-61)\n   Dropdowns → tax:listing_make, tax:listing_model etc.\n   Features → tax:listing_feature  (comma-separated: "360 Camera, ACC, BSM")`;
     res.textContent = out;
-  } catch (e) { res.textContent = '⚠️ ' + e.message; }
-  finally { btn.disabled = false; btn.textContent = '🔍 Discover Fields'; }
+  } catch (e) { res.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = 'Discover Fields'; }
 }
 
 async function testWpConnection() {
@@ -1771,9 +1860,9 @@ async function testWpConnection() {
   try {
     const body = { wpUrl: document.getElementById('cs-wp-url').value.trim(), wpUsername: document.getElementById('cs-wp-user').value.trim(), wpPassword: document.getElementById('cs-wp-pass').value };
     const d = await apiFetch('/api/carsync/test-wp', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
-    if (d.ok) statusEl.innerHTML = `<span style="color:var(--success)">✅ Connected to WordPress successfully</span>`;
-    else      statusEl.innerHTML = `<span style="color:var(--danger)">⚠️ ${esc(d.error)}</span>`;
-  } catch (e) { statusEl.innerHTML = `<span style="color:var(--danger)">⚠️ ${esc(e.message)}</span>`; }
+    if (d.ok) statusEl.innerHTML = `<span style="color:var(--success)">Connected to WordPress successfully</span>`;
+    else      statusEl.innerHTML = `<span style="color:var(--danger)">${esc(d.error)}</span>`;
+  } catch (e) { statusEl.innerHTML = `<span style="color:var(--danger)">${esc(e.message)}</span>`; }
   finally { btn.disabled = false; btn.textContent = 'Test Connection'; }
 }
 
@@ -1800,7 +1889,7 @@ function showSyncResult(r) {
   const color = hasErrors ? 'var(--warning)' : 'var(--success)';
   el.innerHTML = `<div style="background:rgba(34,197,94,.07);border:1px solid ${color};border-radius:10px;padding:14px 18px">
     <div style="font-weight:600;font-size:13px;margin-bottom:6px" style="color:${color}">
-      Last sync: ${new Date(r.at).toLocaleString()} — ✅ ${r.created} created${r.skipped ? `, ⏭️ ${r.skipped} skipped (already exist)` : ''}${hasErrors ? `, ⚠️ ${r.errors.length} error(s)` : ''}
+      Last sync: ${new Date(r.at).toLocaleString()} — ${r.created} created${r.skipped ? `, ${r.skipped} skipped (already exist)` : ''}${hasErrors ? `, ${r.errors.length} error(s)` : ''}
     </div>
     ${hasErrors ? `<div style="font-size:12px;color:var(--warning);margin-top:6px">${r.errors.map(e => esc(e)).join('<br>')}</div>` : ''}
   </div>`;
@@ -1808,14 +1897,14 @@ function showSyncResult(r) {
 
 async function runCarSync() {
   const btn = document.getElementById('sync-run-btn');
-  btn.disabled = true; btn.textContent = '⏳ Syncing…';
+  btn.disabled = true; btn.textContent = 'Syncing…';
   try {
     await saveCarSyncConfig(true);
     const d = await apiFetch('/api/carsync/run', { method: 'POST' }).then(r => r.json());
     if (d.error) { alert('Sync error: ' + d.error); return; }
     showSyncResult(d);
   } catch (e) { alert('Sync error: ' + e.message); }
-  finally { btn.disabled = false; btn.textContent = '▶ Run Sync Now'; }
+  finally { btn.disabled = false; btn.textContent = 'Run Sync Now'; }
 }
 
 async function logout() {
@@ -1894,9 +1983,10 @@ async function loadEmployees() {
       </div>`;
     }).join('');
   } catch (e) {
-    grid.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`;
-    tableC.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`;
+    grid.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`;
+    tableC.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`;
   }
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function openEmpModal(id) {
@@ -1942,7 +2032,7 @@ async function deleteEmployee(id) {
 // ── Requests ──────────────────────────────────────────────────────────────────
 let allRequests = [];
 const reqStatusColors = { pending: 'badge-todo', in_review: 'badge-in_progress', approved: 'badge-done', rejected: 'badge-high' };
-const reqStatusLabels = { pending: '⏳ Pending', in_review: '▶️ In Review', approved: '✅ Approved', rejected: '🚫 Rejected' };
+const reqStatusLabels = { pending: 'Pending', in_review: 'In Review', approved: 'Approved', rejected: 'Rejected' };
 
 async function loadRequests() {
   const c = document.getElementById('requests-table-container');
@@ -1950,12 +2040,13 @@ async function loadRequests() {
   try {
     const r = await apiFetch('/api/dashboard/requests'); allRequests = await r.json();
     renderRequestsTable();
-  } catch (e) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`; }
+  } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function renderRequestsTable() {
   const c = document.getElementById('requests-table-container');
-  if (!allRequests.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">No requests yet</div></div>'; return; }
+  if (!allRequests.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon" style="font-size:44px">—</div><div class="empty-title">No requests yet</div></div>'; return; }
   c.innerHTML = `<div style="overflow-x:auto"><table>
     <thead><tr><th>ID</th><th>Title</th><th>Submitted By</th><th>Priority</th><th>Status</th><th>Assigned To</th><th>Created</th><th>Actions</th></tr></thead>
     <tbody>${allRequests.map(r => `<tr>
@@ -2025,7 +2116,8 @@ async function loadHours() {
     ]);
     allHours = hours; allTasksForHours = tasks;
     renderHoursTable();
-  } catch (e) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`; }
+  } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function renderHoursTable() {
@@ -2034,7 +2126,7 @@ function renderHoursTable() {
     <div class="hours-card"><div class="hours-card-val">${total.toFixed(1)}h</div><div class="hours-card-lbl">Total Hours Logged</div></div>
     <div class="hours-card"><div class="hours-card-val" style="color:var(--success)">${allHours.length}</div><div class="hours-card-lbl">Log Entries</div></div>`;
   const c = document.getElementById('hours-table-container');
-  if (!allHours.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon">⏱️</div><div class="empty-title">No hours logged yet</div></div>'; return; }
+  if (!allHours.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon" style="font-size:44px">—</div><div class="empty-title">No hours logged yet</div></div>'; return; }
   c.innerHTML = `<div style="overflow-x:auto"><table>
     <thead><tr><th>Task</th><th>Channel</th><th>User ID</th><th>Hours</th><th>Note</th><th>Date</th><th></th></tr></thead>
     <tbody>${allHours.map(h => `<tr>
@@ -2089,14 +2181,14 @@ async function loadEmail() {
     const status = await apiFetch('/api/email/status').then(r => r.json());
     if (!status.configured) {
       c.innerHTML = `<div class="email-connect-card">
-        <div class="email-icon">📧</div><div class="email-title">Connect Gmail</div>
+        <div class="email-icon"></div><div class="email-title">Connect Gmail</div>
         <div class="email-sub">Add these env vars in Railway then redeploy:</div>
         <pre style="text-align:left;background:var(--bg);padding:12px;border-radius:8px;font-size:12px;margin-bottom:16px">GOOGLE_CLIENT_ID=...\nGOOGLE_CLIENT_SECRET=...\nAPP_URL=https://your-app.railway.app</pre>
       </div>`; return;
     }
     if (!status.connected) {
       c.innerHTML = `<div class="email-connect-card">
-        <div class="email-icon">✉️</div><div class="email-title">Connect Your Gmail</div>
+        <div class="email-icon"></div><div class="email-title">Connect Your Gmail</div>
         <div class="email-sub">Sign in with Google to view your inbox in this dashboard.</div>
         <a href="#" onclick="connectGmail()" class="btn btn-primary btn-full" style="text-decoration:none;display:inline-flex;justify-content:center">Connect Gmail</a>
       </div>`; return;
@@ -2109,20 +2201,20 @@ async function loadEmail() {
           <div><div style="font-weight:600;font-size:14px">${esc(status.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(status.email)}</div></div>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-primary" onclick="openCompose()" style="font-size:13px">✏️ Compose</button>
+          <button class="btn btn-primary" onclick="openCompose()" style="font-size:13px">Compose</button>
           <button class="btn btn-outline" onclick="disconnectEmail()" style="font-size:12px">Disconnect</button>
         </div>
       </div>
       <div style="display:flex;gap:20px;align-items:flex-start">
         <div style="flex:0 0 380px;min-width:0">
           <div class="table-card">
-            <div class="table-header"><span class="table-title">Inbox</span><button class="btn btn-outline" onclick="loadEmail()" style="font-size:11px;padding:4px 10px">↺ Refresh</button></div>
+            <div class="table-header"><span class="table-title">Inbox</span><button class="btn btn-outline" onclick="loadEmail()" style="font-size:11px;padding:4px 10px">Refresh</button></div>
             <div id="inbox-list"><div class="loading"><div class="spinner"></div></div></div>
           </div>
         </div>
         <div style="flex:1;min-width:0" id="email-view-panel">
           <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:40px;text-align:center;color:var(--muted)">
-            <div style="font-size:32px;margin-bottom:8px">✉️</div>
+            <div style="font-size:32px;margin-bottom:8px"></div>
             <div style="font-size:14px">Select an email to read it</div>
           </div>
         </div>
@@ -2130,7 +2222,8 @@ async function loadEmail() {
     const msgs = await apiFetch('/api/email/messages').then(r => r.json());
     emailInboxCache = Array.isArray(msgs) ? msgs : [];
     renderInboxList();
-  } catch (e) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`; }
+  } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function renderInboxList() {
@@ -2173,14 +2266,14 @@ async function openEmail(id) {
               <div style="color:var(--muted);font-size:12px;margin-top:4px">${new Date(msg.date).toLocaleString()}</div>
             </div>
             <div style="display:flex;gap:8px;flex-shrink:0">
-              <button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="openReply('${esc(msg.id)}','${esc(msg.threadId)}','${esc(fromEmail)}','${esc(msg.subject||'')}','${esc(msg.messageId||'')}')">↩ Reply</button>
+              <button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="openReply('${esc(msg.id)}','${esc(msg.threadId)}','${esc(fromEmail)}','${esc(msg.subject||'')}','${esc(msg.messageId||'')}')">Reply</button>
               <button class="btn btn-outline" style="font-size:12px;padding:6px 14px" onclick="openCompose('${esc(fromEmail)}')">Forward / Compose</button>
             </div>
           </div>
         </div>
         <div style="padding:${msg.isHtml?'0':'20px 24px'}">${bodyHtml}</div>
       </div>`;
-  } catch (e) { panel.innerHTML = `<div class="error-msg" style="margin:0">⚠️ ${esc(e.message)}</div>`; }
+  } catch (e) { panel.innerHTML = `<div class="error-msg" style="margin:0">${esc(e.message)}</div>`; }
 }
 
 function openReply(msgId, threadId, to, subject, messageId) {
@@ -2193,14 +2286,14 @@ function openCompose(to = '') {
 }
 
 function showEmailCompose(to, subject, body, threadId = '', inReplyTo = '') {
-  showModal('✉️ ' + (threadId ? 'Reply' : 'New Email'), `
+  showModal(threadId ? 'Reply' : 'New Email', `
     <div class="form-group"><label class="form-label">To *</label><input class="form-control" id="em-to" value="${esc(to)}" placeholder="recipient@example.com"></div>
     <div class="form-group"><label class="form-label">Subject *</label><input class="form-control" id="em-subject" value="${esc(subject)}" placeholder="Subject…"></div>
     <div class="form-group"><label class="form-label">Message *</label><textarea class="form-control" id="em-body" rows="8" placeholder="Write your message…" style="resize:vertical">${esc(body)}</textarea></div>
     <input type="hidden" id="em-thread" value="${esc(threadId)}">
     <input type="hidden" id="em-inreplyto" value="${esc(inReplyTo)}">
   `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
-      <button class="btn btn-primary" id="em-send-btn" onclick="sendEmail()">Send ✉️</button>`);
+      <button class="btn btn-primary" id="em-send-btn" onclick="sendEmail()">Send</button>`);
 }
 
 async function sendEmail() {
@@ -2217,9 +2310,9 @@ async function sendEmail() {
     const d = await r.json();
     if (d.error) { alert('Failed to send: ' + d.error); return; }
     hideModal();
-    alert('✅ Email sent successfully!');
+    alert('Email sent successfully!');
   } catch (e) { alert('Error: ' + e.message); }
-  finally { btn.disabled = false; btn.textContent = 'Send ✉️'; }
+  finally { btn.disabled = false; btn.textContent = 'Send'; }
 }
 
 async function disconnectEmail() {
@@ -2229,16 +2322,16 @@ async function disconnectEmail() {
 
 // ── Drive / Sheets ────────────────────────────────────────────────────────────
 function driveFileIcon(mimeType) {
-  if (!mimeType) return '📎';
-  if (mimeType === 'application/vnd.google-apps.folder') return '📁';
-  if (mimeType === 'application/vnd.google-apps.spreadsheet') return '📊';
-  if (mimeType === 'application/vnd.google-apps.document') return '📄';
-  if (mimeType === 'application/vnd.google-apps.presentation') return '📽️';
-  if (mimeType === 'application/pdf') return '📑';
-  if (mimeType.startsWith('image/')) return '🖼️';
-  if (mimeType.startsWith('video/')) return '🎥';
-  if (mimeType.startsWith('audio/')) return '🎵';
-  return '📎';
+  if (!mimeType) return '<i data-lucide="paperclip" style="width:16px;height:16px;vertical-align:middle"></i>';
+  if (mimeType === 'application/vnd.google-apps.folder') return '<i data-lucide="folder" style="width:16px;height:16px;vertical-align:middle"></i>';
+  if (mimeType === 'application/vnd.google-apps.spreadsheet') return '<i data-lucide="sheet" style="width:16px;height:16px;vertical-align:middle;color:var(--success)"></i>';
+  if (mimeType === 'application/vnd.google-apps.document') return '<i data-lucide="file-text" style="width:16px;height:16px;vertical-align:middle;color:var(--info)"></i>';
+  if (mimeType === 'application/vnd.google-apps.presentation') return '<i data-lucide="presentation" style="width:16px;height:16px;vertical-align:middle;color:var(--warning)"></i>';
+  if (mimeType === 'application/pdf') return '<i data-lucide="file-type" style="width:16px;height:16px;vertical-align:middle;color:var(--danger)"></i>';
+  if (mimeType.startsWith('image/')) return '<i data-lucide="image" style="width:16px;height:16px;vertical-align:middle;color:var(--primary)"></i>';
+  if (mimeType.startsWith('video/')) return '<i data-lucide="video" style="width:16px;height:16px;vertical-align:middle;color:var(--warning)"></i>';
+  if (mimeType.startsWith('audio/')) return '<i data-lucide="music" style="width:16px;height:16px;vertical-align:middle;color:var(--primary)"></i>';
+  return '<i data-lucide="paperclip" style="width:16px;height:16px;vertical-align:middle"></i>';
 }
 
 function renderDriveFiles(files, containerId, disconnectFn) {
@@ -2302,16 +2395,17 @@ async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, co
           </table>
         </div>
       </div>`;
-  } catch (e) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`; }
+  } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
 }
 
 function connectDrive()  { window.location.href = '/api/drive/connect?_t=' + encodeURIComponent(authToken || ''); }
 async function disconnectDrive()  { await apiFetch('/api/drive/disconnect', { method: 'POST' }); loadDrive(); }
-function loadDrive()  { loadDriveSection('/api/drive/status',  '/api/drive/files',  'disconnectDrive',  'drive-content',  'connectDrive',  'My Drive',   '💾'); }
-function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheets', 'disconnectDrive',  'sheets-content', 'connectDrive',  'My Sheets',  '📊'); }
+function loadDrive()  { loadDriveSection('/api/drive/status',  '/api/drive/files',  'disconnectDrive',  'drive-content',  'connectDrive',  'My Drive',   'Drive'); }
+function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheets', 'disconnectDrive',  'sheets-content', 'connectDrive',  'My Sheets',  'Sheets'); }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
+  lucide.createIcons();
   const ok = await checkAuth();
   if (!ok) return;
   const hash = location.hash.replace('#', '');
@@ -2327,10 +2421,10 @@ async function loadSubmissions() {
   try {
     const res  = await apiFetch('/api/submissions');
     const data = await res.json();
-    if (!res.ok) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(data.error || 'Failed to load')}</div>`; return; }
+    if (!res.ok) { c.innerHTML = `<div class="error-msg">${esc(data.error || 'Failed to load')}</div>`; return; }
     if (!data.length) {
       c.innerHTML = `<div style="text-align:center;padding:60px 0;color:var(--muted)">
-        <div style="font-size:40px;margin-bottom:12px">📩</div>
+        <div style="font-size:40px;margin-bottom:12px">—</div>
         <div style="font-size:15px;font-weight:600">No submissions yet</div>
         <div style="font-size:13px;margin-top:6px">Submissions from website forms will appear here.</div>
       </div>`;
@@ -2363,7 +2457,8 @@ async function loadSubmissions() {
           </tbody>
         </table>
       </div>`;
-  } catch (e) { c.innerHTML = `<div class="error-msg">⚠️ ${esc(e.message)}</div>`; }
+  } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 async function deleteSubmission(id) {
@@ -2382,7 +2477,7 @@ async function scrapeFromUrl() {
   if (!url.includes('autohome.com.cn')) {
     showPdfStatus('Only autohome.com.cn URLs are supported', 'error'); return;
   }
-  btn.disabled = true; btn.textContent = '⏳ Scraping…';
+  btn.disabled = true; btn.textContent = 'Scraping…';
   document.getElementById('pdf-results').style.display = 'none';
   document.getElementById('pdf-dl-btn').style.display  = 'none';
   showPdfStatus('Loading page and extracting table… this may take 20–40 seconds', 'info');
@@ -2395,7 +2490,7 @@ async function scrapeFromUrl() {
   } catch (e) {
     showPdfStatus('Error: ' + e.message, 'error');
   } finally {
-    btn.disabled = false; btn.textContent = '▶ Scrape';
+    btn.disabled = false; btn.textContent = 'Scrape';
   }
 }
 
@@ -2488,7 +2583,7 @@ async function downloadPdfCsv() {
     a.click();
     URL.revokeObjectURL(url);
   } finally {
-    btn.disabled = false; btn.textContent = '⬇ Download CSV';
+    btn.disabled = false; btn.textContent = 'Download CSV';
   }
 }
 </script>
