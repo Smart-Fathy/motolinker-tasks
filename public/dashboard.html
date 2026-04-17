@@ -537,6 +537,20 @@
       .table-header { padding: 12px 16px; }
       .header { padding: 0 16px; }
     }
+
+    /* ── Email mobile: stack panels, show one at a time ── */
+    .email-split { display: flex; gap: 20px; align-items: flex-start; }
+    .email-inbox-pane { flex: 0 0 380px; min-width: 0; }
+    .email-detail-pane { flex: 1; min-width: 0; }
+    @media (max-width: 700px) {
+      .email-split { display: block; }
+      .email-inbox-pane { display: block; }
+      .email-detail-pane { display: none; }
+      .email-split.show-detail .email-inbox-pane { display: none; }
+      .email-split.show-detail .email-detail-pane { display: block; }
+      .email-back-btn { display: inline-flex !important; }
+    }
+    .email-back-btn { display: none; }
   </style>
 </head>
 <body>
@@ -2113,14 +2127,14 @@ async function loadEmail() {
           <button class="btn btn-outline" onclick="disconnectEmail()" style="font-size:12px">Disconnect</button>
         </div>
       </div>
-      <div style="display:flex;gap:20px;align-items:flex-start">
-        <div style="flex:0 0 380px;min-width:0">
+      <div class="email-split" id="email-split">
+        <div class="email-inbox-pane">
           <div class="table-card">
             <div class="table-header"><span class="table-title">Inbox</span><button class="btn btn-outline" onclick="loadEmail()" style="font-size:11px;padding:4px 10px">↺ Refresh</button></div>
             <div id="inbox-list"><div class="loading"><div class="spinner"></div></div></div>
           </div>
         </div>
-        <div style="flex:1;min-width:0" id="email-view-panel">
+        <div class="email-detail-pane" id="email-view-panel">
           <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:40px;text-align:center;color:var(--muted)">
             <div style="font-size:32px;margin-bottom:8px">✉️</div>
             <div style="font-size:14px">Select an email to read it</div>
@@ -2151,9 +2165,17 @@ function renderInboxList() {
     </div>`).join('');
 }
 
+function emailGoBack() {
+  const split = document.getElementById('email-split');
+  if (split) split.classList.remove('show-detail');
+}
+
 async function openEmail(id) {
   const panel = document.getElementById('email-view-panel');
   if (!panel) return;
+  // On mobile, switch to detail view
+  const split = document.getElementById('email-split');
+  if (split) split.classList.add('show-detail');
   panel.innerHTML = '<div class="loading" style="padding:40px"><div class="spinner"></div></div>';
   try {
     const msg = await apiFetch(`/api/email/messages/${id}`).then(r => r.json());
@@ -2164,21 +2186,22 @@ async function openEmail(id) {
       : `<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;color:var(--text);line-height:1.6">${esc(msg.body||'(empty)')}</pre>`;
     panel.innerHTML = `
       <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-        <div style="padding:20px 24px;border-bottom:1px solid var(--border)">
-          <div style="font-size:16px;font-weight:700;margin-bottom:12px">${esc(msg.subject||'(no subject)')}</div>
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border)">
+          <button class="email-back-btn btn btn-outline" onclick="emailGoBack()" style="margin-bottom:14px;font-size:12px;padding:5px 12px">← Back</button>
+          <div style="font-size:16px;font-weight:700;margin-bottom:12px;word-break:break-word">${esc(msg.subject||'(no subject)')}</div>
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
-            <div style="font-size:13px">
-              <div style="color:var(--muted);margin-bottom:2px">From: <span style="color:var(--text)">${esc(msg.from)}</span></div>
-              ${msg.to ? `<div style="color:var(--muted)">To: <span style="color:var(--text)">${esc(msg.to)}</span></div>` : ''}
+            <div style="font-size:13px;min-width:0;flex:1">
+              <div style="color:var(--muted);margin-bottom:2px;word-break:break-all">From: <span style="color:var(--text)">${esc(msg.from)}</span></div>
+              ${msg.to ? `<div style="color:var(--muted);word-break:break-all">To: <span style="color:var(--text)">${esc(msg.to)}</span></div>` : ''}
               <div style="color:var(--muted);font-size:12px;margin-top:4px">${new Date(msg.date).toLocaleString()}</div>
             </div>
-            <div style="display:flex;gap:8px;flex-shrink:0">
+            <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
               <button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="openReply('${esc(msg.id)}','${esc(msg.threadId)}','${esc(fromEmail)}','${esc(msg.subject||'')}','${esc(msg.messageId||'')}')">↩ Reply</button>
-              <button class="btn btn-outline" style="font-size:12px;padding:6px 14px" onclick="openCompose('${esc(fromEmail)}')">Forward / Compose</button>
+              <button class="btn btn-outline" style="font-size:12px;padding:6px 14px" onclick="openCompose('${esc(fromEmail)}')">Forward</button>
             </div>
           </div>
         </div>
-        <div style="padding:${msg.isHtml?'0':'20px 24px'}">${bodyHtml}</div>
+        <div style="padding:${msg.isHtml?'0':'20px 24px'};max-width:100%;overflow-x:auto">${bodyHtml}</div>
       </div>`;
   } catch (e) { panel.innerHTML = `<div class="error-msg" style="margin:0">⚠️ ${esc(e.message)}</div>`; }
 }
