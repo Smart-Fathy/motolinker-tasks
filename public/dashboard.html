@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
   <title>MotoLinker · Admin Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
@@ -538,7 +541,90 @@
       .header { padding: 0 16px; }
     }
 
-    /* ── Email mobile: stack panels, show one at a time ── */
+    /* ── Enhanced Mobile & Luxury Overrides ── */
+    .nav-icon { display:inline-flex; align-items:center; justify-content:center; width:20px; flex-shrink:0; }
+    .nav-icon svg { width:18px; height:18px; stroke-width:1.75; }
+
+    /* Smooth transitions */
+    .nav-item { transition: background .2s ease, color .2s ease; }
+    .btn { transition: all .2s ease; }
+    .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .stat-card { transition: transform .2s, box-shadow .2s; }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+    .page { animation: fadeIn .2s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+
+    /* Glassmorphism topbar on scroll */
+    .header { backdrop-filter: blur(12px); background: rgba(255,255,255,.92); }
+
+    /* Better sidebar hover */
+    .nav-item.active { background: rgba(90,103,216,.12); font-weight: 600; }
+
+    /* Better badge styling */
+    .badge { font-weight: 600; letter-spacing: .03em; }
+
+    /* Auth screen enhancement */
+    .auth-screen { background: linear-gradient(135deg, #f0f4f8 0%, #e8ecf4 100%); }
+    .auth-card { box-shadow: 0 8px 40px rgba(0,0,0,.08); }
+
+    @media (max-width: 900px) {
+      .sidebar { box-shadow: none; }
+      .sidebar.open { box-shadow: 4px 0 24px rgba(0,0,0,.25); }
+    }
+
+    @media (max-width: 640px) {
+      .btn { min-height:44px; display:inline-flex; align-items:center; justify-content:center; font-size:14px; }
+      .btn-sm { min-height:36px; font-size:12px; }
+      .form-control, .filter-input, .auth-input { font-size:16px; padding:12px 14px; border-radius:10px; }
+      .modal { max-width:100%; margin:10px; border-radius:18px; }
+      .modal-overlay { padding:10px; }
+      .modal-header { padding:18px 20px 0; }
+      .modal-body { padding:18px 20px; }
+      .modal-footer { padding:0 20px 18px; }
+      .table-filters { width:100%; flex-direction:column; }
+      .table-filters .filter-input { flex:1; min-width:0; width:100%; }
+      .search-input { min-width:0 !important; width:100%; }
+      .stat-card { padding:14px 16px; }
+      .stat-value { font-size:26px; }
+      .stat-label { font-size:10px; }
+      .progress-card { flex-direction:column; gap:10px; padding:16px 18px; }
+      .progress-label { min-width:auto; font-size:12px; }
+      .progress-pct { font-size:18px; }
+      .charts-grid { gap:12px; }
+      .chart-card { padding:16px; }
+      .card-title { font-size:12px; }
+      .table-header { flex-direction:column; align-items:flex-start; gap:10px; }
+      .table-title { font-size:13px; }
+      .bulk-bar { flex-wrap:wrap; padding:8px 16px; }
+      .header h1 { font-size:15px; }
+      .header-badge { display:none; }
+      .last-updated { display:none; }
+      .auth-card { padding:36px 28px; border-radius:18px; }
+      .auth-icon { width:52px; height:52px; border-radius:14px; }
+      .page-header { flex-direction:column; align-items:flex-start; gap:12px; }
+      .page-title { font-size:18px; }
+      .hours-summary { gap:10px; }
+      .hours-card { padding:14px 18px; min-width:0; flex:1 1 calc(50% - 5px); }
+      .hours-card-val { font-size:22px; }
+      .employee-grid { grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:12px; padding:16px; }
+      .employee-card { padding:16px; }
+      .employee-avatar { width:44px; height:44px; font-size:18px; }
+      .form-row { grid-template-columns:1fr; }
+
+      /* Make tables horizontally scrollable with momentum */
+      .table-card { overflow:hidden; }
+      table { font-size:12px; }
+      th, td { padding:10px 12px; }
+    }
+
+    @media (max-width: 380px) {
+      .stats-grid { grid-template-columns: 1fr 1fr; gap:10px; }
+      .header { height:56px; }
+      .header h1 { display:none; }
+      .refresh-indicator { display:none; }
+    }
+    /* ── Email mobile: show one panel at a time ── */
     .email-split { display: flex; gap: 20px; align-items: flex-start; }
     .email-inbox-pane { flex: 0 0 380px; min-width: 0; }
     .email-detail-pane { flex: 1; min-width: 0; }
@@ -558,7 +644,7 @@
 <!-- ── Auth Screen ─────────────────────────────────────────────────────────── -->
 <div id="auth-screen" class="auth-screen" style="display:none">
   <div class="auth-card">
-    <div class="auth-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+    <div class="auth-icon"><i data-lucide="shield-check" style="width:28px;height:28px;color:#fff"></i></div>
     <h2 class="auth-title">Admin Access</h2>
     <p class="auth-sub">Sign in with your admin credentials</p>
     <input type="text"     id="login-username" class="auth-input" placeholder="Username" autocomplete="username">
@@ -586,22 +672,22 @@
     </div>
     <nav class="sidebar-nav">
       <div class="sidebar-section-label">Management</div>
-      <div class="nav-item active" onclick="navigate('tasks')"    id="nav-tasks">    <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span> Tasks</div>
-      <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span> Employees</div>
-      <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span> Requests</div>
-      <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></span> Submissions</div>
-      <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> Hours Logs</div>
+      <div class="nav-item active" onclick="navigate('tasks')"    id="nav-tasks">    <span class="nav-icon"><i data-lucide="clipboard-list"></i></span> Tasks</div>
+      <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon"><i data-lucide="users"></i></span> Employees</div>
+      <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon"><i data-lucide="inbox"></i></span> Requests</div>
+      <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><i data-lucide="mail"></i></span> Submissions</div>
+      <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><i data-lucide="clock"></i></span> Hours Logs</div>
       <div class="sidebar-section-label">Integrations</div>
-      <div class="nav-item"        onclick="navigate('carsync')"    id="nav-carsync">   <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span> Car Sync</div>
-      <div class="nav-item"        onclick="navigate('pdfscraper')" id="nav-pdfscraper"><span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span> PDF Scraper</div>
+      <div class="nav-item"        onclick="navigate('carsync')"    id="nav-carsync">   <span class="nav-icon"><i data-lucide="car"></i></span> Car Sync</div>
+      <div class="nav-item"        onclick="navigate('pdfscraper')" id="nav-pdfscraper"><span class="nav-icon"><i data-lucide="file-text"></i></span> PDF Scraper</div>
       <div class="sidebar-section-label">Account</div>
-      <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></span> My Email</div>
-      <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span> My Drive</div>
-      <div class="nav-item"        onclick="navigate('sheets')"    id="nav-sheets">   <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span> My Sheets</div>
+      <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon"><i data-lucide="mail"></i></span> My Email</div>
+      <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon"><i data-lucide="hard-drive"></i></span> My Drive</div>
+      <div class="nav-item"        onclick="navigate('sheets')"    id="nav-sheets">   <span class="nav-icon"><i data-lucide="table"></i></span> My Sheets</div>
     </nav>
     <div class="sidebar-footer">
       <div class="logout-btn" onclick="logout()">
-        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign Out
+        <span><i data-lucide="log-out" style="width:16px;height:16px"></i></span> Sign Out
       </div>
     </div>
   </aside>
@@ -610,7 +696,7 @@
   <div class="app-content">
   <header class="header">
     <div class="header-left">
-      <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+      <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu"><i data-lucide="menu" style="width:22px;height:22px"></i></button>
       <div class="logo">M</div>
       <h1>MotoLinker</h1>
       <span class="header-badge">Admin Dashboard</span>
@@ -621,7 +707,7 @@
         <span id="refresh-countdown">Auto-refresh in 30s</span>
       </div>
       <span class="last-updated" id="last-updated"></span>
-      <button class="btn btn-outline" onclick="loadDashboard()">↻ Refresh</button>
+      <button class="btn btn-outline" onclick="loadDashboard()">Refresh</button>
     </div>
   </header>
 
@@ -666,12 +752,12 @@
         <span class="table-title">All Tasks</span>
         <div class="table-filters">
           <button class="btn btn-primary" onclick="openTaskModal()" style="margin-right:4px">+ Add Task</button>
-          <button class="btn btn-outline"  onclick="openCSVModal()"  style="margin-right:4px"> CSV Upload</button>
+          <button class="btn btn-outline"  onclick="openCSVModal()"  style="margin-right:4px">CSV Upload</button>
           <button class="btn btn-outline"  onclick="syncToSlackLists()" id="sync-lists-btn" style="margin-right:8px" title="Push all tasks to Slack Lists">Sync Slack Lists</button>
           <input  type="text"   id="search"         class="filter-input search-input" placeholder="Search title or description…" oninput="filterTasks()">
           <select id="f-status"   class="filter-input" onchange="filterTasks()">
             <option value="">All Status</option>
-            <option value="todo">⏳ To Do</option>
+            <option value="todo">To Do</option>
             <option value="in_progress">In Progress</option>
             <option value="done">Done</option>
           </select>
@@ -735,7 +821,7 @@
   <div id="page-submissions" class="page">
     <div class="page-header">
       <span class="page-title">Form Submissions</span>
-      <button class="btn btn-outline" onclick="loadSubmissions()" style="font-size:13px">↺ Refresh</button>
+      <button class="btn btn-outline" onclick="loadSubmissions()" style="font-size:13px">Refresh</button>
     </div>
     <div style="padding:0 28px 28px">
       <div id="submissions-table-container" style="margin-top:18px">
@@ -766,7 +852,7 @@
           <div style="font-size:20px;font-weight:700">Autohome Scraper</div>
           <div style="font-size:13px;color:var(--muted);margin-top:4px">Paste an Autohome config URL or upload a saved PDF → get a CSV spreadsheet instantly</div>
         </div>
-        <button class="btn btn-outline" id="pdf-dl-btn" style="display:none" onclick="downloadPdfCsv()"> Download CSV</button>
+        <button class="btn btn-outline" id="pdf-dl-btn" style="display:none" onclick="downloadPdfCsv()">Download CSV</button>
       </div>
 
       <!-- URL scrape section -->
@@ -793,7 +879,7 @@
         ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='rgba(90,103,216,.06)'"
         ondragleave="this.style.borderColor='';this.style.background=''"
         ondrop="event.preventDefault();this.style.borderColor='';this.style.background='';handlePdfDrop(event)">
-        <div style="margin-bottom:12px"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+        <div style="font-size:36px;margin-bottom:12px"></div>
         <div style="font-size:15px;font-weight:600;color:var(--text)">Drag & drop a PDF here</div>
         <div style="font-size:12px;color:var(--muted);margin-top:6px">or click to browse — max 20 MB</div>
         <input type="file" id="pdf-file-input" accept=".pdf,application/pdf" style="display:none" onchange="uploadPdf(this.files[0])">
@@ -897,7 +983,7 @@
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
             <button class="btn btn-outline" onclick="testWpConnection()" id="wp-test-btn">Test Connection</button>
             <div style="display:flex;align-items:center;gap:6px">
-              <button class="btn btn-outline" onclick="discoverFields()" id="wp-discover-btn"> Discover Fields</button>
+              <button class="btn btn-outline" onclick="discoverFields()" id="wp-discover-btn">Discover Fields</button>
               <input class="form-control" id="discover-post-id" placeholder="Post ID (optional)" style="width:160px;font-size:12px" title="Enter a specific WP post ID to inspect (e.g. 9970). Leave empty to scan recent listings.">
             </div>
             <button class="btn btn-primary" onclick="saveCarSyncConfig()">Save Settings</button>
@@ -1187,7 +1273,7 @@ function renderTable(tasks) {
   if (!tasks.length) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div>
+        <div class="empty-icon" style="font-size:44px">—</div>
         <div class="empty-title">No tasks found</div>
         <div class="empty-sub">Adjust the filters or create tasks via Slack using <code>/task-create</code></div>
       </div>`;
@@ -1199,7 +1285,7 @@ function renderTable(tasks) {
     const overdue = isOverdue(t.due_date, t.status);
     const soon    = !overdue && isDueSoon(t.due_date, t.status);
     const dueCls  = overdue ? 'overdue' : (soon ? 'due-soon' : '');
-    const dueLabel = overdue ? `${t.due_date} (overdue)` : t.due_date;
+    const dueLabel = overdue ? `${t.due_date}` : t.due_date;
     const createdDate = new Date(t.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
     const isDone = t.status === 'done';
@@ -1276,6 +1362,7 @@ async function loadDashboard() {
       'Updated ' + new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     startCountdown();
+    requestAnimationFrame(() => lucide.createIcons());
   } catch (err) {
     document.getElementById('error-container').innerHTML =
       `<div class="error-msg">${esc(err.message)}</div>`;
@@ -1427,7 +1514,7 @@ function openCSVModal() {
     <p style="font-size:12px;color:var(--muted);margin-bottom:4px">Use <strong>#channel-name</strong> format. Get assignee IDs from the Employees page.</p>
     <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Dates accept any format: <code>2026-04-15</code>, <code>15/04/2026</code>, <code>15/4/2026</code>. Past dates are allowed.</p>
     <div style="margin-bottom:16px">
-      <button class="btn btn-outline" onclick="downloadCSVTemplate()" style="font-size:12px"> Download Template</button>
+      <button class="btn btn-outline" onclick="downloadCSVTemplate()" style="font-size:12px">Download Template</button>
     </div>
     <div class="form-group"><label class="form-label">CSV File *</label><input type="file" id="csv-file" accept=".csv" class="form-control" style="padding:6px"></div>
     <div id="csv-result" style="margin-top:8px"></div>
@@ -1450,7 +1537,7 @@ async function uploadCSV() {
 
 async function syncToSlackLists() {
   const btn = document.getElementById('sync-lists-btn');
-  btn.disabled = true; btn.textContent = '⏳ Syncing…';
+  btn.disabled = true; btn.textContent = 'Syncing…';
   try {
     const r = await apiFetch('/api/dashboard/tasks/sync-lists', { method: 'POST' });
     const data = await r.json();
@@ -1472,6 +1559,7 @@ function navigate(page) {
   currentPage = page;
   if (pageLoaders[page]) pageLoaders[page]();
   closeSidebar(); // close on mobile after navigation
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function toggleSidebar() {
@@ -1772,7 +1860,7 @@ async function discoverFields() {
     out += taxEntries.length
       ? taxEntries.map(([slug, label]) => `  tax:${slug}   → ${label}`).join('\n')
       : '  (none found)';
-    out += `\n\nTip: Text fields → use meta key directly (e.g. year, price, custom-text-61)\n   Dropdowns → tax:listing_make, tax:listing_model etc.\n   Features → tax:listing_feature  (comma-separated: "360 Camera, ACC, BSM")`;
+    out += `\n\nText fields → use meta key directly (e.g. year, price, custom-text-61)\n   Dropdowns → tax:listing_make, tax:listing_model etc.\n   Features → tax:listing_feature  (comma-separated: "360 Camera, ACC, BSM")`;
     res.textContent = out;
   } catch (e) { res.textContent = e.message; }
   finally { btn.disabled = false; btn.textContent = 'Discover Fields'; }
@@ -1822,7 +1910,7 @@ function showSyncResult(r) {
 
 async function runCarSync() {
   const btn = document.getElementById('sync-run-btn');
-  btn.disabled = true; btn.textContent = '⏳ Syncing…';
+  btn.disabled = true; btn.textContent = 'Syncing…';
   try {
     await saveCarSyncConfig(true);
     const d = await apiFetch('/api/carsync/run', { method: 'POST' }).then(r => r.json());
@@ -1911,6 +1999,7 @@ async function loadEmployees() {
     grid.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`;
     tableC.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`;
   }
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function openEmpModal(id) {
@@ -1965,11 +2054,12 @@ async function loadRequests() {
     const r = await apiFetch('/api/dashboard/requests'); allRequests = await r.json();
     renderRequestsTable();
   } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function renderRequestsTable() {
   const c = document.getElementById('requests-table-container');
-  if (!allRequests.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div class="empty-title">No requests yet</div></div>'; return; }
+  if (!allRequests.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon" style="font-size:44px">—</div><div class="empty-title">No requests yet</div></div>'; return; }
   c.innerHTML = `<div style="overflow-x:auto"><table>
     <thead><tr><th>ID</th><th>Title</th><th>Submitted By</th><th>Priority</th><th>Status</th><th>Assigned To</th><th>Created</th><th>Actions</th></tr></thead>
     <tbody>${allRequests.map(r => `<tr>
@@ -2040,6 +2130,7 @@ async function loadHours() {
     allHours = hours; allTasksForHours = tasks;
     renderHoursTable();
   } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function renderHoursTable() {
@@ -2048,7 +2139,7 @@ function renderHoursTable() {
     <div class="hours-card"><div class="hours-card-val">${total.toFixed(1)}h</div><div class="hours-card-lbl">Total Hours Logged</div></div>
     <div class="hours-card"><div class="hours-card-val" style="color:var(--success)">${allHours.length}</div><div class="hours-card-lbl">Log Entries</div></div>`;
   const c = document.getElementById('hours-table-container');
-  if (!allHours.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="empty-title">No hours logged yet</div></div>'; return; }
+  if (!allHours.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon" style="font-size:44px">—</div><div class="empty-title">No hours logged yet</div></div>'; return; }
   c.innerHTML = `<div style="overflow-x:auto"><table>
     <thead><tr><th>Task</th><th>Channel</th><th>User ID</th><th>Hours</th><th>Note</th><th>Date</th><th></th></tr></thead>
     <tbody>${allHours.map(h => `<tr>
@@ -2103,14 +2194,14 @@ async function loadEmail() {
     const status = await apiFetch('/api/email/status').then(r => r.json());
     if (!status.configured) {
       c.innerHTML = `<div class="email-connect-card">
-        <div class="email-icon"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><div class="email-title">Connect Gmail</div>
+        <div class="email-icon"></div><div class="email-title">Connect Gmail</div>
         <div class="email-sub">Add these env vars in Railway then redeploy:</div>
         <pre style="text-align:left;background:var(--bg);padding:12px;border-radius:8px;font-size:12px;margin-bottom:16px">GOOGLE_CLIENT_ID=...\nGOOGLE_CLIENT_SECRET=...\nAPP_URL=https://your-app.railway.app</pre>
       </div>`; return;
     }
     if (!status.connected) {
       c.innerHTML = `<div class="email-connect-card">
-        <div class="email-icon"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><div class="email-title">Connect Your Gmail</div>
+        <div class="email-icon"></div><div class="email-title">Connect Your Gmail</div>
         <div class="email-sub">Sign in with Google to view your inbox in this dashboard.</div>
         <a href="#" onclick="connectGmail()" class="btn btn-primary btn-full" style="text-decoration:none;display:inline-flex;justify-content:center">Connect Gmail</a>
       </div>`; return;
@@ -2130,13 +2221,13 @@ async function loadEmail() {
       <div class="email-split" id="email-split">
         <div class="email-inbox-pane">
           <div class="table-card">
-            <div class="table-header"><span class="table-title">Inbox</span><button class="btn btn-outline" onclick="loadEmail()" style="font-size:11px;padding:4px 10px">↺ Refresh</button></div>
+            <div class="table-header"><span class="table-title">Inbox</span><button class="btn btn-outline" onclick="loadEmail()" style="font-size:11px;padding:4px 10px">Refresh</button></div>
             <div id="inbox-list"><div class="loading"><div class="spinner"></div></div></div>
           </div>
         </div>
         <div class="email-detail-pane" id="email-view-panel">
           <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:40px;text-align:center;color:var(--muted)">
-            <div style="margin-bottom:12px"><svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+            <div style="font-size:32px;margin-bottom:8px"></div>
             <div style="font-size:14px">Select an email to read it</div>
           </div>
         </div>
@@ -2145,6 +2236,7 @@ async function loadEmail() {
     emailInboxCache = Array.isArray(msgs) ? msgs : [];
     renderInboxList();
   } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function renderInboxList() {
@@ -2173,7 +2265,6 @@ function emailGoBack() {
 async function openEmail(id) {
   const panel = document.getElementById('email-view-panel');
   if (!panel) return;
-  // On mobile, switch to detail view
   const split = document.getElementById('email-split');
   if (split) split.classList.add('show-detail');
   panel.innerHTML = '<div class="loading" style="padding:40px"><div class="spinner"></div></div>';
@@ -2196,7 +2287,7 @@ async function openEmail(id) {
               <div style="color:var(--muted);font-size:12px;margin-top:4px">${new Date(msg.date).toLocaleString()}</div>
             </div>
             <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
-              <button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="openReply('${esc(msg.id)}','${esc(msg.threadId)}','${esc(fromEmail)}','${esc(msg.subject||'')}','${esc(msg.messageId||'')}')">↩ Reply</button>
+              <button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="openReply('${esc(msg.id)}','${esc(msg.threadId)}','${esc(fromEmail)}','${esc(msg.subject||'')}','${esc(msg.messageId||'')}')">Reply</button>
               <button class="btn btn-outline" style="font-size:12px;padding:6px 14px" onclick="openCompose('${esc(fromEmail)}')">Forward</button>
             </div>
           </div>
@@ -2252,16 +2343,16 @@ async function disconnectEmail() {
 
 // ── Drive / Sheets ────────────────────────────────────────────────────────────
 function driveFileIcon(mimeType) {
-  if (!mimeType) return 'file';
-  if (mimeType === 'application/vnd.google-apps.folder') return 'folder';
-  if (mimeType === 'application/vnd.google-apps.spreadsheet') return 'sheet';
-  if (mimeType === 'application/vnd.google-apps.document') return 'doc';
-  if (mimeType === 'application/vnd.google-apps.presentation') return 'slide';
-  if (mimeType === 'application/pdf') return 'pdf';
-  if (mimeType.startsWith('image/')) return 'img';
-  if (mimeType.startsWith('video/')) return 'vid';
-  if (mimeType.startsWith('audio/')) return 'aud';
-  return 'file';
+  if (!mimeType) return '<i data-lucide="paperclip" style="width:16px;height:16px;vertical-align:middle"></i>';
+  if (mimeType === 'application/vnd.google-apps.folder') return '<i data-lucide="folder" style="width:16px;height:16px;vertical-align:middle"></i>';
+  if (mimeType === 'application/vnd.google-apps.spreadsheet') return '<i data-lucide="sheet" style="width:16px;height:16px;vertical-align:middle;color:var(--success)"></i>';
+  if (mimeType === 'application/vnd.google-apps.document') return '<i data-lucide="file-text" style="width:16px;height:16px;vertical-align:middle;color:var(--info)"></i>';
+  if (mimeType === 'application/vnd.google-apps.presentation') return '<i data-lucide="presentation" style="width:16px;height:16px;vertical-align:middle;color:var(--warning)"></i>';
+  if (mimeType === 'application/pdf') return '<i data-lucide="file-type" style="width:16px;height:16px;vertical-align:middle;color:var(--danger)"></i>';
+  if (mimeType.startsWith('image/')) return '<i data-lucide="image" style="width:16px;height:16px;vertical-align:middle;color:var(--primary)"></i>';
+  if (mimeType.startsWith('video/')) return '<i data-lucide="video" style="width:16px;height:16px;vertical-align:middle;color:var(--warning)"></i>';
+  if (mimeType.startsWith('audio/')) return '<i data-lucide="music" style="width:16px;height:16px;vertical-align:middle;color:var(--primary)"></i>';
+  return '<i data-lucide="paperclip" style="width:16px;height:16px;vertical-align:middle"></i>';
 }
 
 function renderDriveFiles(files, containerId, disconnectFn) {
@@ -2330,11 +2421,12 @@ async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, co
 
 function connectDrive()  { window.location.href = '/api/drive/connect?_t=' + encodeURIComponent(authToken || ''); }
 async function disconnectDrive()  { await apiFetch('/api/drive/disconnect', { method: 'POST' }); loadDrive(); }
-function loadDrive()  { loadDriveSection('/api/drive/status',  '/api/drive/files',  'disconnectDrive',  'drive-content',  'connectDrive',  'My Drive',   ''); }
-function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheets', 'disconnectDrive',  'sheets-content', 'connectDrive',  'My Sheets',  ''); }
+function loadDrive()  { loadDriveSection('/api/drive/status',  '/api/drive/files',  'disconnectDrive',  'drive-content',  'connectDrive',  'My Drive',   'Drive'); }
+function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheets', 'disconnectDrive',  'sheets-content', 'connectDrive',  'My Sheets',  'Sheets'); }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
+  lucide.createIcons();
   const ok = await checkAuth();
   if (!ok) return;
   const hash = location.hash.replace('#', '');
@@ -2353,7 +2445,7 @@ async function loadSubmissions() {
     if (!res.ok) { c.innerHTML = `<div class="error-msg">${esc(data.error || 'Failed to load')}</div>`; return; }
     if (!data.length) {
       c.innerHTML = `<div style="text-align:center;padding:60px 0;color:var(--muted)">
-        <div style="margin-bottom:12px"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+        <div style="font-size:40px;margin-bottom:12px">—</div>
         <div style="font-size:15px;font-weight:600">No submissions yet</div>
         <div style="font-size:13px;margin-top:6px">Submissions from website forms will appear here.</div>
       </div>`;
@@ -2387,6 +2479,7 @@ async function loadSubmissions() {
         </table>
       </div>`;
   } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 async function deleteSubmission(id) {
@@ -2405,7 +2498,7 @@ async function scrapeFromUrl() {
   if (!url.includes('autohome.com.cn')) {
     showPdfStatus('Only autohome.com.cn URLs are supported', 'error'); return;
   }
-  btn.disabled = true; btn.textContent = '⏳ Scraping…';
+  btn.disabled = true; btn.textContent = 'Scraping…';
   document.getElementById('pdf-results').style.display = 'none';
   document.getElementById('pdf-dl-btn').style.display  = 'none';
   showPdfStatus('Loading page and extracting table… this may take 20–40 seconds', 'info');
