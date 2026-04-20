@@ -1249,18 +1249,42 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json
     .insert({ title, description: description || '', priority: priority || 'medium', assigned_to: '', created_by: req.employee.username, status: 'pending', category: category || '' })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
+  // Notify chiefs channel on Slack
+  if (slackClient && CHIEFS_CHANNEL_ID && data) {
+    const prioEmoji = { high: '🔴', medium: '🟡', low: '🟢' }[priority || 'medium'] || '🟡';
+    try {
+      await slackClient.chat.postMessage({
+        channel: CHIEFS_CHANNEL_ID,
+        text: `New request from ${req.employee.name}: ${title}`,
+        blocks: [{
+          type: 'section',
+          text: { type: 'mrkdwn', text: `*New Request* from *${req.employee.name}*\n*${title}*${description ? `\n${description}` : ''}` }
+        }, {
+          type: 'context',
+          elements: [
+            { type: 'mrkdwn', text: `${prioEmoji} ${(priority||'medium').charAt(0).toUpperCase()+(priority||'medium').slice(1)} priority` },
+            ...(category ? [{ type: 'mrkdwn', text: `Category: ${category}` }] : []),
+            { type: 'mrkdwn', text: `Request #${data.id}` }
+          ]
+        }]
+      });
+    } catch (_) {}
+  }
   res.json(data);
 });
 
 // Employee auth
+const DEFAULT_PERMISSIONS = { requests: true, drive: true, sheets: true, pdfscraper: false, email: false };
+
 receiver.router.post('/api/employee/login', express.json(), async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   const { data: emp } = await supabase.from('employees').select('*').eq('username', username).single();
   if (!emp || !verifyPassword(password, emp.password_hash)) return res.status(401).json({ error: 'Invalid username or password' });
   const token = generateToken();
-  employeeSessions.set(token, { id: emp.id, name: emp.name, username: emp.username });
-  res.json({ token, name: emp.name, username: emp.username, id: emp.id });
+  const permissions = { ...DEFAULT_PERMISSIONS, ...(emp.permissions || {}) };
+  employeeSessions.set(token, { id: emp.id, name: emp.name, username: emp.username, permissions });
+  res.json({ token, name: emp.name, username: emp.username, id: emp.id, permissions });
 });
 receiver.router.get('/api/employee/check', requireEmployeeAuth, (req, res) => res.json({ ok: true, ...req.employee }));
 receiver.router.post('/api/employee/logout', requireEmployeeAuth, (req, res) => {
@@ -1366,27 +1390,29 @@ receiver.router.post('/api/employee/hours', requireEmployeeAuth, express.json(),
 
 // ── Admin: Employee management ────────────────────────────────────────────────
 receiver.router.get('/api/dashboard/employees', requireAuth, async (_req, res) => {
-  const { data, error } = await supabase.from('employees').select('id, name, username, email, slack_user_id, created_at').order('name');
+  const { data, error } = await supabase.from('employees').select('id, name, username, email, slack_user_id, permissions, created_at').order('name');
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+  res.json((data || []).map(e => ({ ...e, permissions: { ...DEFAULT_PERMISSIONS, ...(e.permissions || {}) } })));
 });
 receiver.router.post('/api/dashboard/employees', requireAuth, express.json(), async (req, res) => {
-  const { name, username, password, email, slack_user_id } = req.body;
+  const { name, username, password, email, slack_user_id, permissions } = req.body;
   if (!name || !username || !password) return res.status(400).json({ error: 'Name, username and password are required' });
   const { data: existing } = await supabase.from('employees').select('id').eq('username', username).single();
   if (existing) return res.status(409).json({ error: 'Username already taken' });
+  const perms = { ...DEFAULT_PERMISSIONS, ...(permissions || {}) };
   const { data, error } = await supabase.from('employees')
-    .insert({ name, username, password_hash: hashPassword(password), email: email || '', slack_user_id: slack_user_id || '' })
-    .select('id, name, username, email, slack_user_id, created_at').single();
+    .insert({ name, username, password_hash: hashPassword(password), email: email || '', slack_user_id: slack_user_id || '', permissions: perms })
+    .select('id, name, username, email, slack_user_id, permissions, created_at').single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 receiver.router.put('/api/dashboard/employees/:id', requireAuth, express.json(), async (req, res) => {
-  const { name, username, password, email, slack_user_id } = req.body;
+  const { name, username, password, email, slack_user_id, permissions } = req.body;
   const updates = { name, username, email: email || '', slack_user_id: slack_user_id || '', updated_at: new Date().toISOString() };
   if (password) updates.password_hash = hashPassword(password);
+  if (permissions) updates.permissions = { ...DEFAULT_PERMISSIONS, ...permissions };
   const { data, error } = await supabase.from('employees').update(updates).eq('id', req.params.id)
-    .select('id, name, username, email, slack_user_id, created_at').single();
+    .select('id, name, username, email, slack_user_id, permissions, created_at').single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
