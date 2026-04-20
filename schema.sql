@@ -119,6 +119,9 @@ ALTER TABLE hours_logs ADD COLUMN IF NOT EXISTS task_description TEXT DEFAULT ''
 ALTER TABLE hours_logs ADD COLUMN IF NOT EXISTS log_date DATE DEFAULT CURRENT_DATE;
 ALTER TABLE hours_logs ADD COLUMN IF NOT EXISTS employee_id BIGINT REFERENCES employees(id) ON DELETE SET NULL;
 
+-- Employee portal section permissions
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{"requests":true,"drive":true,"sheets":true,"pdfscraper":false,"email":false}'::jsonb;
+
 -- ============================================================
 --  Optional: Row Level Security (RLS)
 -- ============================================================

@@ -1955,19 +1955,26 @@ async function loadEmployees() {
     if (!emps.length) {
       tableC.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px">No employee portal accounts yet. Click "+ Create Employee" to add one.</div>';
     } else {
+      const permLabels = { requests: 'Requests', drive: 'Drive', sheets: 'Sheets', pdfscraper: 'PDF Scraper', email: 'Email' };
       tableC.innerHTML = `<div style="overflow-x:auto"><table>
-        <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Slack ID</th><th>Created</th><th>Actions</th></tr></thead>
-        <tbody>${emps.map(e => `<tr>
-          <td class="task-title">${esc(e.name)}</td>
-          <td><code style="font-size:12px">${esc(e.username)}</code></td>
-          <td style="font-size:12px;color:var(--muted)">${esc(e.email || '—')}</td>
-          <td style="font-size:11px;color:var(--muted);font-family:monospace">${esc(e.slack_user_id || '—')}</td>
-          <td style="font-size:12px;color:var(--muted)">${new Date(e.created_at).toLocaleDateString()}</td>
-          <td style="white-space:nowrap">
-            <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openEmpModal(${e.id})">Edit</button>
-            <button class="btn btn-danger" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteEmployee(${e.id})">Delete</button>
-          </td>
-        </tr>`).join('')}</tbody>
+        <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody>${emps.map(e => {
+          const p = e.permissions || {};
+          const badges = Object.entries(permLabels).map(([k, lbl]) =>
+            `<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;margin:1px;background:${p[k]?'rgba(99,102,241,.15)':'rgba(255,255,255,.05)'};color:${p[k]?'var(--primary)':'var(--muted)'}">${lbl}</span>`
+          ).join('');
+          return `<tr>
+            <td class="task-title">${esc(e.name)}</td>
+            <td><code style="font-size:12px">${esc(e.username)}</code></td>
+            <td style="font-size:12px;color:var(--muted)">${esc(e.email || '—')}</td>
+            <td style="max-width:200px">${badges}</td>
+            <td style="font-size:12px;color:var(--muted)">${new Date(e.created_at).toLocaleDateString()}</td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openEmpModal(${e.id})">Edit</button>
+              <button class="btn btn-danger" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteEmployee(${e.id})">Delete</button>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
       </table></div>`;
     }
 
@@ -2004,6 +2011,14 @@ async function loadEmployees() {
 
 function openEmpModal(id) {
   const e = id ? allEmployees.find(x => x.id === id) : null;
+  const p = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, ...(e?.permissions||{}) };
+  const permItems = [
+    { key:'requests',   label:'Requests',    desc:'Submit & view requests' },
+    { key:'drive',      label:'My Drive',    desc:'Browse Google Drive files' },
+    { key:'sheets',     label:'My Sheets',   desc:'Browse Google Sheets' },
+    { key:'pdfscraper', label:'PDF Scraper', desc:'Use the Autohome spec scraper' },
+    { key:'email',      label:'Email',       desc:'Access personal email' },
+  ];
   showModal(e ? 'Edit Employee' : 'Create Employee', `
     <div class="form-row">
       <div class="form-group"><label class="form-label">Full Name *</label><input class="form-control" id="em-name" value="${esc(e?.name||'')}" placeholder="e.g. Sara Ahmed"></div>
@@ -2014,6 +2029,19 @@ function openEmpModal(id) {
       <div class="form-group"><label class="form-label">Email</label><input class="form-control" id="em-email" value="${esc(e?.email||'')}" placeholder="sara@company.com"></div>
     </div>
     <div class="form-group"><label class="form-label">Slack User ID <span style="color:var(--muted);font-size:11px">(optional, e.g. U012345)</span></label><input class="form-control" id="em-slack" value="${esc(e?.slack_user_id||'')}" placeholder="U012345…"></div>
+    <div class="form-group" style="margin-top:4px">
+      <label class="form-label">Portal Permissions</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
+        ${permItems.map(item => `
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--surface);transition:border .15s" onclick="this.style.borderColor=document.getElementById('perm-${item.key}').checked?'var(--border)':'var(--primary)'">
+          <input type="checkbox" id="perm-${item.key}" ${p[item.key]?'checked':''} style="margin-top:2px;accent-color:var(--primary);width:15px;height:15px;flex-shrink:0">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text)">${item.label}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${item.desc}</div>
+          </div>
+        </label>`).join('')}
+      </div>
+    </div>
   `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEmployee(${id||'null'})">Save</button>`);
 }
@@ -2025,6 +2053,13 @@ async function saveEmployee(id) {
     password:      document.getElementById('em-password').value,
     email:         document.getElementById('em-email').value.trim(),
     slack_user_id: document.getElementById('em-slack').value.trim(),
+    permissions: {
+      requests:   document.getElementById('perm-requests')?.checked   ?? true,
+      drive:      document.getElementById('perm-drive')?.checked       ?? true,
+      sheets:     document.getElementById('perm-sheets')?.checked      ?? true,
+      pdfscraper: document.getElementById('perm-pdfscraper')?.checked  ?? false,
+      email:      document.getElementById('perm-email')?.checked       ?? false,
+    },
   };
   if (!body.name || !body.username) { alert('Name and username are required'); return; }
   if (!id && !body.password) { alert('Password is required for new employees'); return; }

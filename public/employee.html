@@ -564,6 +564,22 @@ function showLogin() {
   document.getElementById('layout').style.display = 'none';
 }
 
+// Sections that can be controlled by admin permissions
+const PERM_SECTIONS = ['requests', 'drive', 'sheets', 'pdfscraper', 'email'];
+
+function applyPermissions(permissions) {
+  const p = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, ...(permissions||{}) };
+  PERM_SECTIONS.forEach(section => {
+    const navEl   = document.getElementById('nav-' + section);
+    const bnavEl  = document.getElementById('bnav-' + section);
+    const pageEl  = document.getElementById('page-' + section);
+    const display = p[section] ? '' : 'none';
+    if (navEl)  navEl.style.display  = display;
+    if (bnavEl) bnavEl.style.display = display;
+    if (pageEl) pageEl.dataset.permitted = p[section] ? '1' : '0';
+  });
+}
+
 async function showApp() {
   document.getElementById('auth-wrap').style.display = 'none';
   document.getElementById('layout').style.display = 'flex';
@@ -571,6 +587,7 @@ async function showApp() {
   document.getElementById('user-name').textContent = name;
   document.getElementById('user-avatar').textContent = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
   document.getElementById('h-date').value = new Date().toISOString().split('T')[0];
+  applyPermissions(empInfo?.permissions);
   const hash = location.hash.replace('#', '');
   if (hash && pageTitles[hash]) navigate(hash);
   else navigate('log');
@@ -587,10 +604,13 @@ async function logout() {
 const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets' };
 const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets };
 function navigate(page) {
+  // Block navigation to sections the employee doesn't have permission for
+  const pageEl = document.getElementById('page-' + page);
+  if (pageEl && pageEl.dataset.permitted === '0') return navigate('log');
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('page-' + page).classList.add('active');
+  (pageEl || document.getElementById('page-log')).classList.add('active');
   const sideNav = document.getElementById('nav-' + page);
   if (sideNav) sideNav.classList.add('active');
   const bottomNav = document.getElementById('bnav-' + page);
