@@ -2532,6 +2532,273 @@ receiver.router.post('/api/pdf-scraper/scrape-url', requireAuth, express.json(),
   }
 });
 
+// ─── Quotation Draft ──────────────────────────────────────────────────────────
+const quotationImgUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 5 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Images only'));
+  },
+});
+
+function getIsoWeek(d) {
+  const date = new Date(d);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 4 - (date.getDay() || 7));
+  const yearStart = new Date(date.getFullYear(), 0, 1);
+  return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+}
+
+function generateQuoteId() {
+  const now  = new Date();
+  const week = String(getIsoWeek(now)).padStart(2, '0');
+  const rand = String(Math.floor(Math.random() * 90) + 10);
+  const year = String(now.getFullYear()).slice(-2);
+  return `MT${week}W${rand}Y${year}`;
+}
+
+receiver.router.get('/api/dashboard/quotation/newid', requireAuth, (_req, res) => {
+  res.json({ id: generateQuoteId() });
+});
+
+function fmtNum(n) {
+  const v = parseFloat(n);
+  if (!isFinite(v)) return '0';
+  return v.toLocaleString('en-US');
+}
+
+function calcEgp(priceUsd, units, exchange) {
+  const p = parseFloat(priceUsd);
+  const u = parseFloat(units) || 1;
+  const e = parseFloat(exchange) || 1;
+  if (!isFinite(p)) return null;
+  return Math.round(p * u * e);
+}
+
+function buildQuotationHtml(data) {
+  const { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls } = data;
+  const exRate = parseFloat(exchange) || 1;
+
+  // Calculate totals
+  let grandTotal = 0;
+  const itemRows = (items || []).map(item => {
+    const isFree  = !item.priceUsd || String(item.priceUsd).trim().toLowerCase() === 'free';
+    const egp     = isFree ? null : calcEgp(item.priceUsd, item.unit || 1, exRate);
+    if (egp !== null) grandTotal += egp;
+    return { ...item, egp };
+  });
+
+  const logisticsRows = (logistics || []).map(row => {
+    const egp = calcEgp(row.priceUsd, 1, exRate);
+    if (egp !== null) grandTotal += egp;
+    return { ...row, egp };
+  });
+
+  const GOLD   = '#c9922a';
+  const NAVY   = '#1B2D6B';
+  const LGOLD  = '#f5e9c8';
+
+  const imgSection = imageDataUrls && imageDataUrls.length
+    ? `<tr><td colspan="4" style="padding:10px 0;border:1px solid ${GOLD};border-top:none">
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          ${imageDataUrls.map(src => `<img src="${src}" style="height:130px;max-width:220px;object-fit:contain;border-radius:4px;border:1px solid ${GOLD}">`).join('')}
+        </div>
+       </td></tr>`
+    : '';
+
+  const vehicleRow = vehicleModel
+    ? `<tr><td colspan="4" style="text-align:center;font-size:17px;font-weight:700;color:#cc3300;padding:10px 8px;border:1px solid ${GOLD};border-bottom:none">${vehicleModel}</td></tr>`
+    : '';
+
+  const itemRowsHtml = itemRows.map((item, i) => {
+    const isFree = item.egp === null;
+    const bg = i % 2 === 1 ? `background:#fdfaf3` : '';
+    return `<tr style="${bg}">
+      <td style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${item.name || ''}</td>
+      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${item.unit || 1}</td>
+      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${isFree ? 'Free' : fmtNum(item.priceUsd)}</td>
+      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${isFree ? 'Free' : fmtNum(item.egp)}</td>
+    </tr>`;
+  }).join('');
+
+  const logRowsHtml = logisticsRows.map((row, i) => {
+    const bg = i % 2 === 1 ? `background:#fdfaf3` : '';
+    return `<tr style="${bg}">
+      <td colspan="2" style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${row.label}</td>
+      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${fmtNum(row.priceUsd)}</td>
+      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${fmtNum(row.egp)}</td>
+    </tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: ${NAVY}; background: #fff; padding: 0; }
+  .page { width: 794px; min-height: 1123px; padding: 24px 28px 80px; position: relative; }
+
+  .logo-text { font-size: 22px; font-weight: 900; letter-spacing: 1px; color: ${NAVY}; }
+  .logo-link { color: ${GOLD}; }
+
+  .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  .quotation-title { font-size: 24px; font-weight: 900; letter-spacing: 2px; color: ${NAVY}; text-align: center; }
+
+  .meta-table { border-collapse: collapse; width: 100%; }
+  .meta-table td { padding: 3px 8px; border: 1px solid ${GOLD}; font-size: 10px; }
+  .meta-label { font-weight: 700; color: ${NAVY}; background: ${LGOLD}; white-space: nowrap; }
+  .meta-val   { font-weight: 700; color: #cc3300; min-width: 120px; }
+
+  .section-label { font-weight: 700; font-size: 11px; color: ${NAVY}; padding: 6px 10px;
+    border: 1px solid ${GOLD}; background: #fff; margin-top: 10px; }
+
+  .main-table { width: 100%; border-collapse: collapse; }
+  .col-header { background: ${NAVY}; color: #fff; font-weight: 700; font-size: 11px;
+    padding: 7px 10px; text-align: center; border: 1px solid ${GOLD}; }
+  .col-header-left { text-align: left; }
+
+  .total-row td { font-weight: 700; color: ${NAVY}; background: ${LGOLD}; padding: 8px 10px;
+    border: 1px solid ${GOLD}; font-size: 12px; }
+
+  .key-specs-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  .ks-label { font-weight: 700; background: ${LGOLD}; padding: 6px 10px; border: 1px solid ${GOLD}; white-space: nowrap; color: ${NAVY}; }
+  .ks-val   { padding: 6px 10px; border: 1px solid ${GOLD}; color: ${NAVY}; }
+
+  .payment-box { border: 1px solid ${GOLD}; padding: 10px 14px; font-size: 10px; line-height: 1.8; color: ${NAVY}; }
+  .payment-title { font-weight: 700; margin-bottom: 4px; }
+
+  .footer { position: absolute; bottom: 16px; left: 28px; right: 28px;
+    border-top: 2px solid ${GOLD}; padding-top: 8px;
+    display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: #888; }
+  .footer-brand { font-weight: 700; color: ${NAVY}; font-size: 10px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <table class="header-table">
+    <tr>
+      <td style="width:35%;vertical-align:middle">
+        <div class="logo-text">MOT<span class="logo-link">O</span>L<span class="logo-link">|</span>NKERS</div>
+      </td>
+      <td style="width:30%;text-align:center;vertical-align:middle">
+        <div class="quotation-title">QUOTATION</div>
+      </td>
+      <td style="width:35%;vertical-align:top">
+        <table class="meta-table">
+          <tr><td class="meta-label">ID</td><td class="meta-val">${id || ''}</td></tr>
+          <tr><td class="meta-label">DATE</td><td class="meta-val">${date || ''}</td></tr>
+          <tr><td class="meta-label">VALID TO</td><td class="meta-val">${validTo || ''}</td></tr>
+          <tr><td class="meta-label">NAME</td><td class="meta-val">${name || ''}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+  <div style="border-top: 2px solid ${GOLD}; margin-bottom: 10px"></div>
+
+  <!-- VEHICLE + IMAGES -->
+  <table class="main-table">
+    ${vehicleRow}
+    ${imgSection}
+  </table>
+
+  <!-- PRICING BREAKDOWN -->
+  <div class="section-label">PRICING BREAKDOWN</div>
+  <table class="main-table">
+    <thead>
+      <tr>
+        <th class="col-header col-header-left" style="width:50%">ITEM</th>
+        <th class="col-header" style="width:10%">UNIT</th>
+        <th class="col-header" style="width:20%">PRICE USD</th>
+        <th class="col-header" style="width:20%">TOTAL EGP</th>
+      </tr>
+    </thead>
+    <tbody>${itemRowsHtml}</tbody>
+  </table>
+
+  <!-- LOGISTICS PRICING BREAKDOWN -->
+  <div class="section-label" style="margin-top:0;border-top:none">LOGISTICS PRICING BREAKDOWN</div>
+  <table class="main-table">
+    <thead>
+      <tr>
+        <th class="col-header col-header-left" colspan="2" style="width:60%">ITEM</th>
+        <th class="col-header" style="width:20%">PRICE USD</th>
+        <th class="col-header" style="width:20%">TOTAL EGP</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${logRowsHtml}
+      <tr class="total-row">
+        <td colspan="3">Total Price Breakdown in EGP</td>
+        <td style="text-align:center">${fmtNum(grandTotal)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- KEY SPECS + PAYMENT TERMS -->
+  <table style="width:100%;border-collapse:collapse;margin-top:14px">
+    <tr style="vertical-align:top">
+      <td style="width:55%;padding-right:12px">
+        <div class="section-label" style="margin-top:0">KEY SPECS</div>
+        <table class="key-specs-table">
+          <tr><td class="ks-label">Currency</td><td class="ks-val">${currency || 'EGP'}</td></tr>
+          <tr><td class="ks-label">Exchange Rate</td><td class="ks-val">1 USD = ${fmtNum(exchange)} EGP</td></tr>
+          <tr><td class="ks-label">Issued By</td><td class="ks-val">${issuer || ''}</td></tr>
+        </table>
+      </td>
+      <td style="width:45%">
+        <div class="payment-box">
+          <div class="payment-title">Payment terms:</div>
+          <div>50% Down payment operations start</div>
+          <div>30% Upon shipping from supplier</div>
+          <div>20% Upon Custom clearances</div>
+        </div>
+      </td>
+    </tr>
+  </table>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="footer-brand">MOTOLINKERS</div>
+    <div>This quotation is valid until ${validTo || '—'} | Confidential</div>
+    <div>${id || ''}</div>
+  </div>
+
+</div>
+</body></html>`;
+}
+
+receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
+  quotationImgUpload.array('images', 5), async (req, res) => {
+    try {
+      const { id, date, validTo, name, vehicleModel, items: itemsJson, logistics: logisticsJson, currency, exchange, issuer } = req.body;
+      const items     = JSON.parse(itemsJson     || '[]');
+      const logistics = JSON.parse(logisticsJson || '[]');
+      const files     = req.files || [];
+      const imageDataUrls = files.map(f => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`);
+
+      const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls });
+
+      const puppeteer = require('puppeteer');
+      const browser   = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+      const page      = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '0', bottom: '0', left: '0', right: '0' },
+      });
+      await browser.close();
+
+      res.json({ pdf: pdfBuffer.toString('base64') });
+    } catch (e) {
+      console.error('[quotation-gen]', e);
+      res.status(500).json({ error: e.message });
+    }
+  }
+);
+
 // ─── Form Submissions ─────────────────────────────────────────────────────────
 // Public endpoint — no auth required (customers submit from the website)
 receiver.router.post('/api/submissions', express.json(), async (req, res) => {

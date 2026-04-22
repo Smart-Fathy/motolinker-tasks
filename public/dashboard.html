@@ -172,13 +172,14 @@
     @media (max-width: 1100px) { .charts-grid { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 640px)  { .charts-grid { grid-template-columns: 1fr; } }
 
-    .chart-card {
+    .chart-card, .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 20px;
       box-shadow: var(--shadow);
     }
+    .card { padding: 0; overflow: hidden; }
     .card-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 16px; }
     .chart-wrap { position: relative; height: 230px; }
 
@@ -213,7 +214,7 @@
     /* row checkbox */
     input[type=checkbox].row-cb { width: 15px; height: 15px; cursor: pointer; accent-color: var(--primary); }
 
-    .filter-input {
+    .filter-input, .form-input {
       padding: 7px 12px;
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -222,8 +223,10 @@
       color: var(--text);
       outline: none;
       transition: border-color .15s, box-shadow .15s;
+      width: 100%;
+      font-family: inherit;
     }
-    .filter-input:focus {
+    .filter-input:focus, .form-input:focus {
       border-color: var(--primary);
       box-shadow: 0 0 0 3px rgba(90,103,216,.12);
     }
@@ -576,7 +579,7 @@
     @media (max-width: 640px) {
       .btn { min-height:44px; display:inline-flex; align-items:center; justify-content:center; font-size:14px; }
       .btn-sm { min-height:36px; font-size:12px; }
-      .form-control, .filter-input, .auth-input { font-size:16px; padding:12px 14px; border-radius:10px; }
+      .form-control, .filter-input, .form-input, .auth-input { font-size:16px; padding:12px 14px; border-radius:10px; }
       .modal { max-width:100%; margin:10px; border-radius:18px; }
       .modal-overlay { padding:10px; }
       .modal-header { padding:18px 20px 0; }
@@ -678,8 +681,9 @@
       <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><i data-lucide="mail"></i></span> Submissions</div>
       <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><i data-lucide="clock"></i></span> Hours Logs</div>
       <div class="sidebar-section-label">Integrations</div>
-      <div class="nav-item"        onclick="navigate('carsync')"    id="nav-carsync">   <span class="nav-icon"><i data-lucide="car"></i></span> Car Sync</div>
-      <div class="nav-item"        onclick="navigate('pdfscraper')" id="nav-pdfscraper"><span class="nav-icon"><i data-lucide="file-text"></i></span> PDF Scraper</div>
+      <div class="nav-item"        onclick="navigate('carsync')"    id="nav-carsync">      <span class="nav-icon"><i data-lucide="car"></i></span> Car Sync</div>
+      <div class="nav-item"        onclick="navigate('pdfscraper')" id="nav-pdfscraper">   <span class="nav-icon"><i data-lucide="file-text"></i></span> PDF Scraper</div>
+      <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft</div>
       <div class="sidebar-section-label">Account</div>
       <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon"><i data-lucide="mail"></i></span> My Email</div>
       <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon"><i data-lucide="hard-drive"></i></span> My Drive</div>
@@ -1006,6 +1010,156 @@
       <div class="table-card" id="preview-section" style="display:none;margin-bottom:16px">
         <div class="table-header"><span class="table-title">④ Sheet Preview</span><span id="preview-count" style="font-size:12px;color:var(--muted)"></span></div>
         <div style="overflow-x:auto" id="preview-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── QUOTATION DRAFT PAGE ─────────────────────────────── -->
+  <div id="page-quotation" class="page">
+    <div class="page-body" style="max-width:860px">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:20px;font-weight:700">Quotation Draft</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Fill in the details to generate a professional PDF quotation</div>
+        </div>
+        <button class="btn btn-primary" onclick="generateQuotation()" id="qt-generate-btn">
+          <i data-lucide="file-badge" style="width:15px;height:15px"></i> Generate PDF
+        </button>
+      </div>
+
+      <!-- ── Section 1: Document Info ── -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="table-header"><span class="table-title">① Document Info</span></div>
+        <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+          <div>
+            <label class="form-label">Quotation ID</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input class="form-input" id="qt-id" readonly style="flex:1;background:rgba(255,255,255,.03);font-family:monospace">
+              <button class="btn btn-sm btn-outline" onclick="refreshQuoteId()" title="Generate new ID">
+                <i data-lucide="refresh-cw" style="width:13px;height:13px"></i>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="form-label">Date</label>
+            <input class="form-input" id="qt-date" type="date">
+          </div>
+          <div>
+            <label class="form-label">Valid To</label>
+            <input class="form-input" id="qt-valid-to" type="date">
+          </div>
+          <div>
+            <label class="form-label">Customer Name</label>
+            <input class="form-input" id="qt-name" placeholder="e.g. Hesham Dorghamy">
+          </div>
+          <div style="grid-column:span 2">
+            <label class="form-label">Vehicle Model</label>
+            <input class="form-input" id="qt-vehicle" placeholder="e.g. Deepal S05 620 Plus">
+          </div>
+        </div>
+        <div style="padding:0 20px 20px">
+          <label class="form-label">Vehicle Images <span style="color:var(--muted);font-weight:400">(max 5)</span></label>
+          <div id="qt-img-drop"
+            style="border:2px dashed var(--border);border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:border-color .2s"
+            onclick="document.getElementById('qt-img-input').click()"
+            ondragover="event.preventDefault();this.style.borderColor='var(--primary)'"
+            ondragleave="this.style.borderColor=''"
+            ondrop="event.preventDefault();this.style.borderColor='';handleImgDrop(event)">
+            <i data-lucide="image" style="width:28px;height:28px;color:var(--muted);margin-bottom:8px"></i>
+            <div style="font-size:13px;color:var(--muted)">Drag & drop images or click to browse</div>
+            <input type="file" id="qt-img-input" accept="image/*" multiple style="display:none" onchange="handleImgSelect(this.files)">
+          </div>
+          <div id="qt-img-preview" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"></div>
+        </div>
+      </div>
+
+      <!-- ── Section 2: Pricing Breakdown ── -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="table-header" style="display:flex;align-items:center;justify-content:space-between">
+          <span class="table-title">② Pricing Breakdown</span>
+          <button class="btn btn-sm btn-outline" onclick="addPricingRow()">
+            <i data-lucide="plus" style="width:13px;height:13px"></i> Add Item
+          </button>
+        </div>
+        <div style="padding:16px 20px">
+          <div style="display:grid;grid-template-columns:1fr 80px 130px 130px 36px;gap:8px;margin-bottom:8px;padding:0 4px">
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Item</div>
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Unit</div>
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Price USD</div>
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Total EGP</div>
+            <div></div>
+          </div>
+          <div id="qt-items"></div>
+          <button class="btn btn-sm btn-outline" style="margin-top:8px;width:100%;justify-content:center" onclick="addPricingRow()">
+            <i data-lucide="plus" style="width:13px;height:13px"></i> Add Row
+          </button>
+        </div>
+      </div>
+
+      <!-- ── Section 3: Logistics Pricing ── -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="table-header"><span class="table-title">③ Logistics Pricing Breakdown</span></div>
+        <div style="padding:16px 20px">
+          <div style="display:grid;grid-template-columns:1fr 130px 130px;gap:8px;margin-bottom:8px;padding:0 4px">
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Item</div>
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Price USD</div>
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Total EGP</div>
+          </div>
+          <div id="qt-logistics"></div>
+          <div style="display:grid;grid-template-columns:1fr 130px 130px;gap:8px;margin-top:12px;padding:10px;background:rgba(124,106,255,.06);border-radius:8px;border:1px solid rgba(124,106,255,.15)">
+            <div style="font-size:13px;font-weight:700;color:var(--text)">Total Price Breakdown in EGP</div>
+            <div></div>
+            <div id="qt-grand-total" style="font-size:14px;font-weight:800;color:var(--primary);text-align:center">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Section 4: Key Specs ── -->
+      <div class="card" style="margin-bottom:24px">
+        <div class="table-header"><span class="table-title">④ Key Specs</span></div>
+        <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+          <div>
+            <label class="form-label">Currency</label>
+            <select class="form-input" id="qt-currency">
+              <option value="EGP">EGP — Egyptian Pound</option>
+              <option value="USD">USD — US Dollar</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Exchange Rate (1 USD = ? EGP)</label>
+            <input class="form-input" id="qt-exchange" type="number" min="1" step="0.01" placeholder="e.g. 55" oninput="recalcAll()">
+          </div>
+          <div>
+            <label class="form-label">Issued By</label>
+            <select class="form-input" id="qt-issuer">
+              <option value="">Loading users…</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div id="qt-error" style="display:none;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#f87171;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px"></div>
+
+    </div>
+  </div>
+
+  <!-- ── QUOTATION PREVIEW MODAL ── -->
+  <div id="qt-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto">
+    <div style="background:#1a1d35;border:1px solid rgba(255,255,255,.08);border-radius:16px;width:100%;max-width:900px;overflow:hidden">
+      <div style="padding:18px 24px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
+          <i data-lucide="file-badge" style="width:18px;height:18px"></i> Quotation Preview
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-primary btn-sm" id="qt-download-btn" onclick="downloadQuotationPdf()">
+            <i data-lucide="download" style="width:14px;height:14px"></i> Download PDF
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('qt-modal').style.display='none'">Close</button>
+        </div>
+      </div>
+      <div style="padding:20px;background:#f0f0f0;min-height:500px">
+        <iframe id="qt-preview-frame" style="width:100%;min-height:700px;border:none;border-radius:8px;background:#fff"></iframe>
       </div>
     </div>
   </div>
@@ -1549,7 +1703,7 @@ async function syncToSlackLists() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, carsync: loadCarSync, pdfscraper: () => {} };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, carsync: loadCarSync, pdfscraper: () => {}, quotation: loadQuotation };
 
 function navigate(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -2641,6 +2795,304 @@ async function downloadPdfCsv() {
   } finally {
     btn.disabled = false; btn.textContent = 'Download CSV';
   }
+}
+
+// ── Quotation Draft ────────────────────────────────────────────────────────────
+let qtImages    = []; // File objects
+let qtPdfBase64 = null;
+
+const LOGISTICS_LABELS = [
+  'Ocean Freight',
+  'THC, Documentation & Clearances',
+  'Customs Vat & Tax',
+  'Last Mile Wench to Door',
+  'Service Fees',
+];
+
+async function loadQuotation() {
+  // Load Slack users for issuer dropdown
+  try {
+    const users = await apiFetch('/api/dashboard/users');
+    const sel = document.getElementById('qt-issuer');
+    if (sel && Array.isArray(users)) {
+      sel.innerHTML = '<option value="">— Select issuer —</option>' +
+        users.filter(u => u.name && !u.deleted).map(u => `<option value="${esc(u.real_name||u.name)}">${esc(u.real_name||u.name)}</option>`).join('');
+    }
+  } catch (_) {}
+
+  // Generate ID if empty
+  if (!document.getElementById('qt-id').value) await refreshQuoteId();
+
+  // Set today + 7 days as defaults
+  const today = new Date();
+  const valid = new Date(today); valid.setDate(valid.getDate() + 7);
+  const fmt = d => d.toISOString().split('T')[0];
+  if (!document.getElementById('qt-date').value)     document.getElementById('qt-date').value     = fmt(today);
+  if (!document.getElementById('qt-valid-to').value) document.getElementById('qt-valid-to').value = fmt(valid);
+
+  // Build logistics rows if empty
+  if (!document.getElementById('qt-logistics').children.length) buildLogisticsRows();
+
+  // Build one default pricing row if empty
+  if (!document.getElementById('qt-items').children.length) addPricingRow();
+
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+async function refreshQuoteId() {
+  try {
+    const d = await apiFetch('/api/dashboard/quotation/newid');
+    document.getElementById('qt-id').value = d.id;
+  } catch (_) {}
+}
+
+function buildLogisticsRows() {
+  const container = document.getElementById('qt-logistics');
+  container.innerHTML = '';
+  LOGISTICS_LABELS.forEach((label, i) => {
+    const row = document.createElement('div');
+    row.id = `qt-log-${i}`;
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 130px 130px;gap:8px;margin-bottom:8px;align-items:center';
+    row.innerHTML = `
+      <div style="font-size:13px;color:var(--text);padding:0 4px">${esc(label)}</div>
+      <input class="form-input" id="qt-log-usd-${i}" type="number" min="0" step="0.01" placeholder="0"
+        oninput="recalcLogistics(${i})" style="text-align:center">
+      <input class="form-input" id="qt-log-egp-${i}" readonly placeholder="0"
+        style="background:rgba(255,255,255,.03);text-align:center;font-weight:600">`;
+    container.appendChild(row);
+  });
+}
+
+function addPricingRow(name='', unit=1, priceUsd='', isFree=false) {
+  const container = document.getElementById('qt-items');
+  const idx = container.children.length;
+  const row = document.createElement('div');
+  row.className = 'qt-item-row';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 80px 130px 130px 36px;gap:8px;margin-bottom:8px;align-items:center';
+  row.innerHTML = `
+    <input class="form-input" placeholder="Item name…" value="${esc(name)}" oninput="recalcItem(this)">
+    <input class="form-input" type="number" min="1" step="1" value="${unit}" placeholder="1"
+      style="text-align:center" oninput="recalcItem(this)">
+    <div style="position:relative">
+      <input class="form-input" placeholder="e.g. 22500 or Free" value="${esc(priceUsd)}"
+        oninput="recalcItem(this)" style="padding-right:50px">
+      <span onclick="toggleFreeItem(this)" title="Mark as Free"
+        style="position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;
+               cursor:pointer;padding:2px 6px;border-radius:4px;background:${isFree?'var(--primary)':'rgba(255,255,255,.08)'};
+               color:${isFree?'#fff':'var(--muted)'}">FREE</span>
+    </div>
+    <input class="form-input" readonly placeholder="Auto" style="background:rgba(255,255,255,.03);text-align:center;font-weight:600">
+    <button onclick="this.closest('.qt-item-row').remove();recalcGrandTotal()"
+      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <i data-lucide="x" style="width:13px;height:13px"></i>
+    </button>`;
+  container.appendChild(row);
+  requestAnimationFrame(() => lucide.createIcons());
+  recalcGrandTotal();
+}
+
+function toggleFreeItem(btn) {
+  const isNowFree = btn.style.background !== 'var(--primary)' && !btn.style.background.includes('124,106,255');
+  btn.style.background = isNowFree ? 'var(--primary)' : 'rgba(255,255,255,.08)';
+  btn.style.color       = isNowFree ? '#fff' : 'var(--muted)';
+  const input = btn.closest('div').querySelector('input');
+  if (isNowFree) { input.value = 'Free'; input.readOnly = true; }
+  else           { input.value = '';     input.readOnly = false; }
+  recalcItem(input);
+}
+
+function getExchange() { return parseFloat(document.getElementById('qt-exchange').value) || 0; }
+
+function recalcItem(inputEl) {
+  const row    = inputEl.closest('.qt-item-row');
+  const inputs = row.querySelectorAll('input');
+  const priceRaw  = inputs[2].value.trim();
+  const unitVal   = parseFloat(inputs[1].value) || 1;
+  const isFree    = priceRaw.toLowerCase() === 'free' || priceRaw === '';
+  const egpInput  = inputs[3];
+  if (isFree) { egpInput.value = priceRaw.toLowerCase() === 'free' ? 'Free' : ''; }
+  else {
+    const price  = parseFloat(priceRaw);
+    const exRate = getExchange();
+    egpInput.value = (isFinite(price) && exRate > 0)
+      ? Math.round(price * unitVal * exRate).toLocaleString()
+      : '';
+  }
+  recalcGrandTotal();
+}
+
+function recalcLogistics(i) {
+  const usdEl = document.getElementById(`qt-log-usd-${i}`);
+  const egpEl = document.getElementById(`qt-log-egp-${i}`);
+  if (!usdEl || !egpEl) return;
+  const usd    = parseFloat(usdEl.value) || 0;
+  const exRate = getExchange();
+  egpEl.value  = exRate > 0 ? Math.round(usd * exRate).toLocaleString() : '';
+  recalcGrandTotal();
+}
+
+function recalcAll() {
+  // Recalc all item rows
+  document.querySelectorAll('.qt-item-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    recalcItem(inputs[0]);
+  });
+  // Recalc all logistics rows
+  LOGISTICS_LABELS.forEach((_, i) => recalcLogistics(i));
+}
+
+function recalcGrandTotal() {
+  let total = 0;
+  // Items
+  document.querySelectorAll('.qt-item-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const val = inputs[3].value.replace(/,/g, '');
+    const n   = parseFloat(val);
+    if (isFinite(n)) total += n;
+  });
+  // Logistics
+  LOGISTICS_LABELS.forEach((_, i) => {
+    const egpEl = document.getElementById(`qt-log-egp-${i}`);
+    if (egpEl) {
+      const val = (egpEl.value || '').replace(/,/g, '');
+      const n   = parseFloat(val);
+      if (isFinite(n)) total += n;
+    }
+  });
+  const el = document.getElementById('qt-grand-total');
+  if (el) el.textContent = total.toLocaleString();
+}
+
+// Image handling
+function handleImgSelect(files) {
+  addImages(Array.from(files));
+}
+function handleImgDrop(e) {
+  addImages(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
+}
+function addImages(newFiles) {
+  const remaining = 5 - qtImages.length;
+  qtImages = qtImages.concat(newFiles.slice(0, remaining));
+  renderImgPreviews();
+}
+function renderImgPreviews() {
+  const container = document.getElementById('qt-img-preview');
+  container.innerHTML = '';
+  qtImages.forEach((file, i) => {
+    const url = URL.createObjectURL(file);
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;display:inline-block';
+    wrap.innerHTML = `<img src="${url}" style="height:90px;width:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+      <button onclick="removeImg(${i})"
+        style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);border:none;border-radius:50%;width:20px;height:20px;color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0">×</button>`;
+    container.appendChild(wrap);
+  });
+  const drop = document.getElementById('qt-img-drop');
+  if (drop) drop.style.display = qtImages.length >= 5 ? 'none' : '';
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function removeImg(i) { qtImages.splice(i, 1); renderImgPreviews(); }
+
+// Build payload and generate PDF
+async function generateQuotation() {
+  const btn = document.getElementById('qt-generate-btn');
+  const err = document.getElementById('qt-error');
+  err.style.display = 'none';
+
+  const id       = document.getElementById('qt-id').value.trim();
+  const date     = document.getElementById('qt-date').value;
+  const validTo  = document.getElementById('qt-valid-to').value;
+  const name     = document.getElementById('qt-name').value.trim();
+  const vehicle  = document.getElementById('qt-vehicle').value.trim();
+  const exchange = document.getElementById('qt-exchange').value;
+  const currency = document.getElementById('qt-currency').value;
+  const issuer   = document.getElementById('qt-issuer').value;
+
+  if (!id || !date || !name) {
+    err.textContent = 'Please fill in ID, Date and Customer Name.';
+    err.style.display = 'block';
+    return;
+  }
+  if (!exchange || parseFloat(exchange) <= 0) {
+    err.textContent = 'Please enter a valid Exchange Rate.';
+    err.style.display = 'block';
+    return;
+  }
+
+  // Collect pricing items
+  const items = [];
+  document.querySelectorAll('.qt-item-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const itemName = inputs[0].value.trim();
+    if (!itemName) return;
+    items.push({
+      name:     itemName,
+      unit:     inputs[1].value || '1',
+      priceUsd: inputs[2].value.trim(),
+    });
+  });
+
+  // Collect logistics
+  const logistics = LOGISTICS_LABELS.map((label, i) => ({
+    label,
+    priceUsd: document.getElementById(`qt-log-usd-${i}`)?.value || '0',
+  }));
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Generating…';
+
+  try {
+    const formData = new FormData();
+    formData.append('id',          id);
+    formData.append('date',        date);
+    formData.append('validTo',     validTo);
+    formData.append('name',        name);
+    formData.append('vehicleModel', vehicle);
+    formData.append('currency',    currency);
+    formData.append('exchange',    exchange);
+    formData.append('issuer',      issuer);
+    formData.append('items',       JSON.stringify(items));
+    formData.append('logistics',   JSON.stringify(logistics));
+    qtImages.forEach(f => formData.append('images', f));
+
+    const res = await fetch('/api/dashboard/quotation/generate', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('ml_token') },
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    qtPdfBase64 = data.pdf;
+    // Show preview modal
+    const frame = document.getElementById('qt-preview-frame');
+    frame.src = 'data:application/pdf;base64,' + qtPdfBase64;
+    const modal = document.getElementById('qt-modal');
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => lucide.createIcons());
+  } catch (e) {
+    err.textContent = 'Error: ' + e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i data-lucide="file-badge" style="width:15px;height:15px"></i> Generate PDF';
+    lucide.createIcons({ nodes: [btn] });
+  }
+}
+
+function downloadQuotationPdf() {
+  if (!qtPdfBase64) return;
+  const id = document.getElementById('qt-id').value || 'quotation';
+  const byteString = atob(qtPdfBase64);
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+  const blob = new Blob([ab], { type: 'application/pdf' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Quotation_${id}.pdf`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 </script>
 </body>
