@@ -1382,7 +1382,22 @@ receiver.router.post('/api/employee/login', express.json(), async (req, res) => 
   employeeSessions.set(token, { id: emp.id, name: emp.name, username: emp.username, permissions });
   res.json({ token, name: emp.name, username: emp.username, id: emp.id, permissions });
 });
-receiver.router.get('/api/employee/check', requireEmployeeAuth, (req, res) => res.json({ ok: true, ...req.employee }));
+receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res) => {
+  try {
+    const { data } = await supabase.from('employees').select('permissions').eq('id', req.employee.id).single();
+    if (data) {
+      const permissions = { ...DEFAULT_PERMISSIONS, ...(data.permissions || {}) };
+      req.employee.permissions = permissions;
+      // Keep session in sync
+      const token = (req.headers['authorization'] || '').slice(7);
+      if (token && employeeSessions.has(token)) {
+        const sess = employeeSessions.get(token);
+        employeeSessions.set(token, { ...sess, permissions });
+      }
+    }
+  } catch (_) {}
+  res.json({ ok: true, ...req.employee });
+});
 receiver.router.post('/api/employee/logout', requireEmployeeAuth, (req, res) => {
   const token = (req.headers['authorization'] || '').slice(7);
   employeeSessions.delete(token);
