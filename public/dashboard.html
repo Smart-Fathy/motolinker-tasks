@@ -2812,7 +2812,7 @@ const LOGISTICS_LABELS = [
 async function loadQuotation() {
   // Load Slack users for issuer dropdown
   try {
-    const users = await apiFetch('/api/dashboard/users');
+    const users = await apiFetch('/api/dashboard/users').then(r => r.json());
     const sel = document.getElementById('qt-issuer');
     if (sel && Array.isArray(users)) {
       sel.innerHTML = '<option value="">— Select issuer —</option>' +
@@ -2841,7 +2841,7 @@ async function loadQuotation() {
 
 async function refreshQuoteId() {
   try {
-    const d = await apiFetch('/api/dashboard/quotation/newid');
+    const d = await apiFetch('/api/dashboard/quotation/newid').then(r => r.json());
     document.getElementById('qt-id').value = d.id;
   } catch (_) {}
 }
@@ -3057,7 +3057,7 @@ async function generateQuotation() {
 
     const res = await fetch('/api/dashboard/quotation/generate', {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('ml_token') },
+      headers: { Authorization: 'Bearer ' + authToken },
       body: formData,
     });
     const data = await res.json();
