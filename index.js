@@ -2791,7 +2791,7 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       });
       await browser.close();
 
-      res.json({ pdf: pdfBuffer.toString('base64') });
+      res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
     } catch (e) {
       console.error('[quotation-gen]', e);
       res.status(500).json({ error: e.message });

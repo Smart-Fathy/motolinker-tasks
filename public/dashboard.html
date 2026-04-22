@@ -2812,11 +2812,12 @@ const LOGISTICS_LABELS = [
 async function loadQuotation() {
   // Load Slack users for issuer dropdown
   try {
-    const users = await apiFetch('/api/dashboard/users').then(r => r.json());
+    const usersRaw = await apiFetch('/api/dashboard/users').then(r => r.json());
+    const users = Array.isArray(usersRaw) ? usersRaw : Object.values(usersRaw || {});
     const sel = document.getElementById('qt-issuer');
-    if (sel && Array.isArray(users)) {
+    if (sel && users.length) {
       sel.innerHTML = '<option value="">— Select issuer —</option>' +
-        users.filter(u => u.name && !u.deleted).map(u => `<option value="${esc(u.real_name||u.name)}">${esc(u.real_name||u.name)}</option>`).join('');
+        users.filter(u => u.name && !u.deleted).map(u => `<option value="${esc(u.displayName||u.name)}">${esc(u.displayName||u.name)}</option>`).join('');
     }
   } catch (_) {}
 
@@ -3064,9 +3065,14 @@ async function generateQuotation() {
     if (data.error) throw new Error(data.error);
 
     qtPdfBase64 = data.pdf;
-    // Show preview modal
+    // Build a Blob URL (Chrome blocks data: URLs for PDFs in iframes)
+    const bytes = Uint8Array.from(atob(qtPdfBase64), c => c.charCodeAt(0));
+    const blob  = new Blob([bytes], { type: 'application/pdf' });
+    const blobUrl = URL.createObjectURL(blob);
     const frame = document.getElementById('qt-preview-frame');
-    frame.src = 'data:application/pdf;base64,' + qtPdfBase64;
+    if (frame._blobUrl) URL.revokeObjectURL(frame._blobUrl);
+    frame._blobUrl = blobUrl;
+    frame.src = blobUrl;
     const modal = document.getElementById('qt-modal');
     modal.style.display = 'flex';
     requestAnimationFrame(() => lucide.createIcons());
@@ -3082,17 +3088,24 @@ async function generateQuotation() {
 
 function downloadQuotationPdf() {
   if (!qtPdfBase64) return;
-  const id = document.getElementById('qt-id').value || 'quotation';
-  const byteString = atob(qtPdfBase64);
-  const ab = new ArrayBuffer(byteString.length);
-  const ia = new Uint8Array(ab);
-  for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-  const blob = new Blob([ab], { type: 'application/pdf' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `Quotation_${id}.pdf`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  const id    = document.getElementById('qt-id').value || 'quotation';
+  const frame = document.getElementById('qt-preview-frame');
+  // Reuse the already-created blob URL if available
+  const blobUrl = frame?._blobUrl;
+  if (blobUrl) {
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `Quotation_${id}.pdf`;
+    a.click();
+    return;
+  }
+  // Fallback: rebuild blob from base64
+  const bytes = Uint8Array.from(atob(qtPdfBase64), c => c.charCodeAt(0));
+  const blob  = new Blob([bytes], { type: 'application/pdf' });
+  const url   = URL.createObjectURL(blob);
+  const a     = document.createElement('a');
+  a.href = url; a.download = `Quotation_${id}.pdf`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 </script>
 </body>
