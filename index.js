@@ -37,8 +37,9 @@ const sessions         = new Map(); // admin sessions
 const employeeSessions = new Map(); // employee portal sessions
 let gmailTokens = null;
 let driveTokens = null;
-const employeeDriveTokens = new Map();
-const pendingDriveAuth = new Map();
+const employeeDriveTokens  = new Map();
+const employeeEmailTokens  = new Map();
+const pendingDriveAuth     = new Map();
 
 // ─── Form Submissions (in-memory) ────────────────────────────────────────────
 let submissions = []; // { id, name, email, phone, message, car_interest, submitted_at }
@@ -742,6 +743,10 @@ receiver.router.get('/api/email/callback', async (req, res) => {
         employeeDriveTokens.set(pending.employeeId, full);
         return res.redirect('/employee#drive');
       }
+      if (pending.type === 'employee-gmail' && pending.employeeId) {
+        employeeEmailTokens.set(pending.employeeId, full);
+        return res.redirect('/employee#email');
+      }
       driveTokens = full;
       return res.redirect('/dashboard#drive');
     } catch (e) { return res.status(500).send(`OAuth error: ${e.message}`); }
@@ -1231,6 +1236,97 @@ receiver.router.post('/api/employee/drive/disconnect', requireEmployeeAuth, (req
 receiver.router.get('/api/employee/drive/files',  requireEmployeeAuth, async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id))); } catch (e) { res.status(500).json({ error: e.message }); } });
 receiver.router.get('/api/employee/drive/sheets', requireEmployeeAuth, async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id), 'application/vnd.google-apps.spreadsheet')); } catch (e) { res.status(500).json({ error: e.message }); } });
 
+// ── Employee Email ─────────────────────────────────────────────────────────────
+const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
+
+receiver.router.get('/api/employee/email/status', requireEmployeeAuth, (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.json({ configured: false });
+  const t = employeeEmailTokens.get(req.employee.id);
+  if (!t) return res.json({ configured: true, connected: false });
+  res.json({ configured: true, connected: true, email: t.email, name: t.name });
+});
+
+receiver.router.get('/api/employee/email/connect', requireEmployeeAuth, (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.status(400).send('GOOGLE_CLIENT_ID not configured');
+  const base  = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  const state = crypto.randomBytes(16).toString('hex');
+  pendingDriveAuth.set(state, { type: 'employee-gmail', employeeId: req.employee.id });
+  const params = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: `${base}/api/email/callback`, response_type: 'code', scope: GMAIL_SCOPES, access_type: 'offline', prompt: 'consent', state });
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+receiver.router.post('/api/employee/email/disconnect', requireEmployeeAuth, (req, res) => { employeeEmailTokens.delete(req.employee.id); res.json({ ok: true }); });
+
+async function getEmployeeGmailToken(employeeId) {
+  const t = employeeEmailTokens.get(employeeId);
+  if (!t) throw new Error('Gmail not connected');
+  if (t.refresh_token && Date.now() > (t.expiry_date || 0) - 60_000) {
+    const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: t.refresh_token, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, grant_type: 'refresh_token' }) });
+    const refreshed = await r.json();
+    if (refreshed.access_token) employeeEmailTokens.set(employeeId, { ...t, ...refreshed, expiry_date: Date.now() + ((refreshed.expires_in || 3600) * 1000) });
+  }
+  return employeeEmailTokens.get(employeeId).access_token;
+}
+
+receiver.router.get('/api/employee/email/messages', requireEmployeeAuth, async (req, res) => {
+  try {
+    const token   = await getEmployeeGmailToken(req.employee.id);
+    const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&labelIds=INBOX', { headers: { Authorization: `Bearer ${token}` } });
+    const list    = await listRes.json();
+    if (!list.messages) return res.json([]);
+    const messages = await Promise.all((list.messages || []).map(async m => {
+      const r   = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, { headers: { Authorization: `Bearer ${token}` } });
+      const msg = await r.json();
+      const h   = msg.payload?.headers || [];
+      const get = n => h.find(x => x.name === n)?.value || '';
+      return { id: m.id, subject: get('Subject') || '(no subject)', from: get('From'), date: get('Date'), snippet: msg.snippet || '', unread: (msg.labelIds || []).includes('UNREAD') };
+    }));
+    res.json(messages);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+receiver.router.get('/api/employee/email/messages/:id', requireEmployeeAuth, async (req, res) => {
+  try {
+    const token = await getEmployeeGmailToken(req.employee.id);
+    const r   = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${req.params.id}?format=full`, { headers: { Authorization: `Bearer ${token}` } });
+    const msg = await r.json();
+    const headers = msg.payload?.headers || [];
+    const get = n => headers.find(h => h.name.toLowerCase() === n.toLowerCase())?.value || '';
+    res.json({ id: msg.id, threadId: msg.threadId, labelIds: msg.labelIds || [], subject: get('Subject'), from: get('From'), to: get('To'), date: get('Date'), messageId: get('Message-ID'), body: decodeGmailBody(msg.payload || {}), isHtml: !!(msg.payload?.parts?.find(p => p.mimeType === 'text/html') || msg.payload?.mimeType === 'text/html') });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+receiver.router.post('/api/employee/email/send', requireEmployeeAuth, express.json(), async (req, res) => {
+  const { to, subject, body, threadId, inReplyTo } = req.body || {};
+  if (!to || !subject || !body) return res.status(400).json({ error: 'to, subject and body are required' });
+  try {
+    const token = await getEmployeeGmailToken(req.employee.id);
+    const lines = [`To: ${to}`, `Subject: ${subject}`, 'Content-Type: text/plain; charset=utf-8'];
+    if (inReplyTo) { lines.push(`In-Reply-To: ${inReplyTo}`); lines.push(`References: ${inReplyTo}`); }
+    const raw  = Buffer.from(lines.join('\r\n') + '\r\n\r\n' + body).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const payload = { raw };
+    if (threadId) payload.threadId = threadId;
+    const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await r.json();
+    if (result.error) throw new Error(result.error.message);
+    res.json({ ok: true, id: result.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Employee PDF Scraper ───────────────────────────────────────────────────────
+receiver.router.post('/api/employee/pdf-scraper/scrape-url', requireEmployeeAuth, express.json(), async (req, res) => {
+  const { url } = req.body || {};
+  if (!url) return res.status(400).json({ error: 'URL is required' });
+  if (!url.includes('autohome.com.cn')) return res.status(400).json({ error: 'Only autohome.com.cn URLs are supported' });
+  try {
+    const result = await scrapeAutohomeUrl(url);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[emp-url-scraper]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Employee Portal ──────────────────────────────────────────────────────────
 receiver.router.get('/employee', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'employee.html')));
 
@@ -1286,7 +1382,22 @@ receiver.router.post('/api/employee/login', express.json(), async (req, res) => 
   employeeSessions.set(token, { id: emp.id, name: emp.name, username: emp.username, permissions });
   res.json({ token, name: emp.name, username: emp.username, id: emp.id, permissions });
 });
-receiver.router.get('/api/employee/check', requireEmployeeAuth, (req, res) => res.json({ ok: true, ...req.employee }));
+receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res) => {
+  try {
+    const { data } = await supabase.from('employees').select('permissions').eq('id', req.employee.id).single();
+    if (data) {
+      const permissions = { ...DEFAULT_PERMISSIONS, ...(data.permissions || {}) };
+      req.employee.permissions = permissions;
+      // Keep session in sync
+      const token = (req.headers['authorization'] || '').slice(7);
+      if (token && employeeSessions.has(token)) {
+        const sess = employeeSessions.get(token);
+        employeeSessions.set(token, { ...sess, permissions });
+      }
+    }
+  } catch (_) {}
+  res.json({ ok: true, ...req.employee });
+});
 receiver.router.post('/api/employee/logout', requireEmployeeAuth, (req, res) => {
   const token = (req.headers['authorization'] || '').slice(7);
   employeeSessions.delete(token);
