@@ -1332,8 +1332,10 @@ receiver.router.get('/employee', (_req, res) => res.sendFile(path.join(__dirname
 
 // Employee Requests
 receiver.router.get('/api/employee/requests', requireEmployeeAuth, async (req, res) => {
-  const { data, error } = await supabase.from('requests').select('*')
-    .eq('created_by', req.employee.username).order('created_at', { ascending: false });
+  const canViewAll = req.employee.permissions?.viewAllRequests === true;
+  let query = supabase.from('requests').select('*').order('created_at', { ascending: false });
+  if (!canViewAll) query = query.eq('created_by', req.employee.username);
+  const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
@@ -1370,7 +1372,7 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json
 });
 
 // Employee auth
-const DEFAULT_PERMISSIONS = { requests: true, drive: true, sheets: true, pdfscraper: false, email: false };
+const DEFAULT_PERMISSIONS = { requests: true, drive: true, sheets: true, pdfscraper: false, email: false, viewAllRequests: false };
 
 receiver.router.post('/api/employee/login', express.json(), async (req, res) => {
   const { username, password } = req.body || {};

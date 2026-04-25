@@ -2109,7 +2109,7 @@ async function loadEmployees() {
     if (!emps.length) {
       tableC.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px">No employee portal accounts yet. Click "+ Create Employee" to add one.</div>';
     } else {
-      const permLabels = { requests: 'Requests', drive: 'Drive', sheets: 'Sheets', pdfscraper: 'PDF Scraper', email: 'Email' };
+      const permLabels = { requests: 'Requests', drive: 'Drive', sheets: 'Sheets', pdfscraper: 'PDF Scraper', email: 'Email', viewAllRequests: 'View All Requests' };
       tableC.innerHTML = `<div style="overflow-x:auto"><table>
         <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>${emps.map(e => {
@@ -2165,13 +2165,14 @@ async function loadEmployees() {
 
 function openEmpModal(id) {
   const e = id ? allEmployees.find(x => x.id === id) : null;
-  const p = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, ...(e?.permissions||{}) };
+  const p = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, ...(e?.permissions||{}) };
   const permItems = [
-    { key:'requests',   label:'Requests',    desc:'Submit & view requests' },
-    { key:'drive',      label:'My Drive',    desc:'Browse Google Drive files' },
-    { key:'sheets',     label:'My Sheets',   desc:'Browse Google Sheets' },
-    { key:'pdfscraper', label:'PDF Scraper', desc:'Use the Autohome spec scraper' },
-    { key:'email',      label:'Email',       desc:'Access personal email' },
+    { key:'requests',        label:'Requests',          desc:'Submit & view own requests' },
+    { key:'viewAllRequests', label:'View All Requests',  desc:'See all requests from every employee' },
+    { key:'drive',           label:'My Drive',           desc:'Browse Google Drive files' },
+    { key:'sheets',          label:'My Sheets',          desc:'Browse Google Sheets' },
+    { key:'pdfscraper',      label:'PDF Scraper',        desc:'Use the Autohome spec scraper' },
+    { key:'email',           label:'Email',              desc:'Access personal email' },
   ];
   showModal(e ? 'Edit Employee' : 'Create Employee', `
     <div class="form-row">
@@ -2208,11 +2209,12 @@ async function saveEmployee(id) {
     email:         document.getElementById('em-email').value.trim(),
     slack_user_id: document.getElementById('em-slack').value.trim(),
     permissions: {
-      requests:   document.getElementById('perm-requests')?.checked   ?? true,
-      drive:      document.getElementById('perm-drive')?.checked       ?? true,
-      sheets:     document.getElementById('perm-sheets')?.checked      ?? true,
-      pdfscraper: document.getElementById('perm-pdfscraper')?.checked  ?? false,
-      email:      document.getElementById('perm-email')?.checked       ?? false,
+      requests:        document.getElementById('perm-requests')?.checked        ?? true,
+      viewAllRequests: document.getElementById('perm-viewAllRequests')?.checked ?? false,
+      drive:           document.getElementById('perm-drive')?.checked            ?? true,
+      sheets:          document.getElementById('perm-sheets')?.checked           ?? true,
+      pdfscraper:      document.getElementById('perm-pdfscraper')?.checked       ?? false,
+      email:           document.getElementById('perm-email')?.checked            ?? false,
     },
   };
   if (!body.name || !body.username) { alert('Name and username are required'); return; }
