@@ -378,7 +378,9 @@
 
     <!-- ── Requests Page ── -->
     <div class="page" id="page-requests">
-      <div class="page-title"><i data-lucide="inbox" class="icon-lg"></i> Requests</div>
+      <div class="page-title"><i data-lucide="inbox" class="icon-lg"></i> Requests
+        <span id="req-scope-badge" style="display:none;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:rgba(251,191,36,.1);color:#fbbf24;margin-left:8px">All Employees</span>
+      </div>
 
       <!-- Submit form -->
       <div class="card">
@@ -620,7 +622,7 @@ function showLogin() {
 const PERM_SECTIONS = ['requests', 'drive', 'sheets', 'pdfscraper', 'email'];
 
 function applyPermissions(permissions) {
-  const p = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, ...(permissions||{}) };
+  const p = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, ...(permissions||{}) };
   PERM_SECTIONS.forEach(section => {
     const navEl   = document.getElementById('nav-' + section);
     const bnavEl  = document.getElementById('bnav-' + section);
@@ -934,6 +936,10 @@ async function loadMyRequests() {
   const list = document.getElementById('my-requests-list');
   if (!list) return;
   list.innerHTML = '<div class="loading"><span class="spinner"></span> Loading…</div>';
+  const canViewAll = empInfo?.permissions?.viewAllRequests === true;
+  // Show/hide the "All Employees" badge in the page title
+  const badge = document.getElementById('req-scope-badge');
+  if (badge) badge.style.display = canViewAll ? '' : 'none';
   try {
     const requests = await ef('/api/employee/requests').then(r => r.json());
     if (!requests.length) {
@@ -942,16 +948,19 @@ async function loadMyRequests() {
     }
     list.innerHTML = `<table>
       <thead><tr>
-        <th>Title</th><th>Category</th><th>Priority</th><th>Status</th><th>Submitted</th>
+        <th>Title</th><th>Category</th><th>Priority</th><th>Status</th>
+        ${canViewAll ? '<th>By</th>' : ''}
+        <th>Submitted</th>
       </tr></thead>
       <tbody>${requests.map(r => `<tr>
-        <td style="max-width:260px">
+        <td style="max-width:220px">
           <div style="font-weight:500;font-size:13px">${esc(r.title)}</div>
-          ${r.description ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${esc(r.description)}</div>` : ''}
+          ${r.description ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${esc(r.description)}</div>` : ''}
         </td>
         <td><span style="font-size:12px;color:var(--muted)">${esc(r.category||'—')}</span></td>
         <td><span class="badge ${reqPriorityClass[r.priority]||'badge-medium'}">${r.priority||'medium'}</span></td>
         <td><span class="badge ${reqStatusClass[r.status]||'badge-todo'}">${reqStatusLabel[r.status]||r.status}</span></td>
+        ${canViewAll ? `<td style="font-size:12px;color:var(--muted)">${esc(r.created_by||'—')}</td>` : ''}
         <td style="font-size:12px;color:var(--muted);white-space:nowrap">${new Date(r.created_at).toLocaleDateString()}</td>
       </tr>`).join('')}
       </tbody>
