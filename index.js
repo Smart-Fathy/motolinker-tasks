@@ -459,7 +459,24 @@ app.command('/task-stats', async ({ command, ack, client, respond }) => {
 } // end if (app)
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ─── Admin Dashboard API ──────────────────────────────────────────────────────
+// ─── Static Assets (PWA icons, manifests, service workers) ───────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+receiver.router.use(express.static(path.join(__dirname, 'public')));
+
+receiver.router.get('/sw-employee.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.setHeader('Service-Worker-Allowed', '/employee');
+  res.sendFile(path.join(__dirname, 'public', 'sw-employee.js'));
+});
+receiver.router.get('/sw-dashboard.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.setHeader('Service-Worker-Allowed', '/dashboard');
+  res.sendFile(path.join(__dirname, 'public', 'sw-dashboard.js'));
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Admin Dashboard API ──────────────────────────────────════════════════════
 // ═══════════════════════════════════════════════════════════════════════════════
 
 receiver.router.get('/', (_req, res) => res.redirect('/dashboard'));

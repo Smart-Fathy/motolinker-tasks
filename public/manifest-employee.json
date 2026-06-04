@@ -1,0 +1,19 @@
+{
+  "name": "MotoLinker — Employee Portal",
+  "short_name": "MotoLinker",
+  "id": "/employee",
+  "start_url": "/employee",
+  "scope": "/employee",
+  "display": "standalone",
+  "display_override": ["standalone", "browser"],
+  "background_color": "#0a0b10",
+  "theme_color": "#7c6aff",
+  "orientation": "portrait-primary",
+  "description": "MotoLinker Employee Portal — tasks, hours, requests, and chat",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png",          "sizes": "192x192", "type": "image/png", "purpose": "any"      },
+    { "src": "/icons/icon-512.png",          "sizes": "512x512", "type": "image/png", "purpose": "any"      },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
