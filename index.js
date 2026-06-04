@@ -1582,7 +1582,8 @@ async function chatCreateOrGetDirect(callerKey, callerName, targetKey, targetNam
       }
     }
   }
-  const { data: room } = await supabase.from('chat_rooms').insert({ type: 'direct', name: '', created_by: callerKey }).select().single();
+  const { data: room, error: roomErr } = await supabase.from('chat_rooms').insert({ type: 'direct', name: '', created_by: callerKey }).select().single();
+  if (roomErr) throw new Error(roomErr.message);
   await supabase.from('chat_room_members').insert([
     { room_id: room.id, member_key: callerKey, member_name: callerName },
     { room_id: room.id, member_key: targetKey, member_name: targetName },
@@ -1680,7 +1681,8 @@ receiver.router.post('/api/dashboard/chat/rooms/group', requireAuth, express.jso
   const { name, memberKeys } = req.body || {};
   if (!name || !Array.isArray(memberKeys) || !memberKeys.length) return res.status(400).json({ error: 'name and memberKeys[] required' });
   try {
-    const { data: room } = await supabase.from('chat_rooms').insert({ type: 'group', name, created_by: 'admin' }).select().single();
+    const { data: room, error: roomErr } = await supabase.from('chat_rooms').insert({ type: 'group', name, created_by: 'admin' }).select().single();
+    if (roomErr) throw new Error(roomErr.message);
     const empIds = memberKeys.filter(k => k.startsWith('employee_')).map(k => parseInt(k.slice(9)));
     const { data: emps } = await supabase.from('employees').select('id, name').in('id', empIds);
     const empNameMap = {};
