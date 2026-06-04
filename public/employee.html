@@ -217,6 +217,52 @@
     .topbar-hours { display:none; }
     .auth-card { padding:32px 24px; }
   }
+  /* ── Chat ───────────────────────────────────────────── */
+  .chat-layout { display:grid; grid-template-columns:270px 1fr; height:calc(100vh - var(--topbar-h)); overflow:hidden; }
+  .chat-rooms-panel { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; background:var(--surface); }
+  .chat-rooms-header { padding:14px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+  .chat-rooms-title { font-size:13px; font-weight:700; }
+  .chat-room-list { flex:1; overflow-y:auto; padding:6px 0; }
+  .chat-room-item { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; transition:background .15s; }
+  .chat-room-item:hover { background:rgba(255,255,255,.04); }
+  .chat-room-item.active { background:rgba(99,102,241,.14); }
+  .chat-room-avatar { width:38px; height:38px; border-radius:50%; background:var(--primary); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#fff; flex-shrink:0; }
+  .chat-room-avatar.grp { border-radius:10px; }
+  .chat-room-info { flex:1; min-width:0; }
+  .chat-room-name { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-room-preview { font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; }
+  .chat-unread-dot { width:8px; height:8px; border-radius:50%; background:var(--primary); flex-shrink:0; }
+  .chat-main { display:flex; flex-direction:column; overflow:hidden; }
+  .chat-header { padding:12px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-shrink:0; background:var(--surface); }
+  .chat-header-name { font-size:14px; font-weight:700; }
+  .chat-header-meta { font-size:11px; color:var(--muted); }
+  .chat-messages { flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:3px; }
+  .chat-msg { display:flex; flex-direction:column; max-width:70%; }
+  .chat-msg.mine { align-self:flex-end; align-items:flex-end; }
+  .chat-msg.theirs { align-self:flex-start; align-items:flex-start; }
+  .chat-msg-sender { font-size:10px; color:var(--muted); margin-bottom:3px; font-weight:600; }
+  .chat-msg-bubble { padding:8px 13px; border-radius:18px; font-size:13px; line-height:1.45; max-width:100%; word-break:break-word; }
+  .chat-msg.mine .chat-msg-bubble { background:var(--primary); color:#fff; border-bottom-right-radius:4px; }
+  .chat-msg.theirs .chat-msg-bubble { background:var(--surface); border:1px solid var(--border); border-bottom-left-radius:4px; }
+  .chat-msg-time { font-size:10px; color:var(--muted); margin-top:2px; }
+  .chat-date-divider { text-align:center; font-size:10px; color:var(--muted); margin:10px 0 3px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+  .chat-composer { padding:12px 14px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:flex-end; background:var(--surface); flex-shrink:0; }
+  .chat-input { flex:1; padding:9px 13px; border-radius:20px; border:1px solid var(--border); background:rgba(255,255,255,.05); color:var(--text); font-size:13px; font-family:inherit; outline:none; resize:none; max-height:110px; overflow-y:auto; line-height:1.4; transition:border-color .2s; }
+  .chat-input:focus { border-color:var(--primary); }
+  .chat-send-btn { width:36px; height:36px; border-radius:50%; background:var(--primary); border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; color:#fff; transition:opacity .15s,transform .1s; }
+  .chat-send-btn:hover { opacity:.85; }
+  .chat-send-btn:active { transform:scale(.93); }
+  .chat-send-btn:disabled { opacity:.4; cursor:not-allowed; }
+  .chat-empty-state { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); font-size:13px; gap:10px; text-align:center; }
+  @media (max-width:700px) {
+    .chat-layout { grid-template-columns:1fr; }
+    .chat-rooms-panel { display:none; }
+    .chat-rooms-panel.mob-show { display:flex; }
+    .chat-main { display:none; }
+    .chat-main.mob-show { display:flex; }
+    .chat-back-btn { display:flex !important; }
+  }
+  .chat-back-btn { display:none; background:none; border:none; color:var(--text); cursor:pointer; padding:4px; border-radius:6px; }
 </style>
 </head>
 <body>
@@ -287,6 +333,10 @@
       <div class="sidebar-section-label" id="nav-label-tools" style="display:none">Tools</div>
       <button class="nav-item"        id="nav-pdfscraper" onclick="navigate('pdfscraper')" style="display:none">
         <span class="nav-icon"><i data-lucide="file-text"></i></span> PDF Scraper
+      </button>
+      <div class="sidebar-section-label">Chat</div>
+      <button class="nav-item" id="nav-chat" onclick="navigate('chat')">
+        <span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat
       </button>
     </nav>
     <div class="sidebar-footer">
@@ -481,6 +531,29 @@
               <thead id="emp-scrape-thead" style="position:sticky;top:0;z-index:1"></thead>
               <tbody id="emp-scrape-tbody"></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Chat Page ── -->
+    <div class="page" id="page-chat" style="padding:0">
+      <div class="chat-layout" id="chat-layout">
+        <div class="chat-rooms-panel" id="chat-rooms-panel">
+          <div class="chat-rooms-header">
+            <span class="chat-rooms-title">Messages</span>
+            <button class="btn btn-sm btn-outline" onclick="showNewDmModal()" title="New message" style="padding:5px 8px">
+              <i data-lucide="edit" style="width:13px;height:13px"></i>
+            </button>
+          </div>
+          <div class="chat-room-list" id="chat-room-list">
+            <div class="loading"><span class="spinner"></span></div>
+          </div>
+        </div>
+        <div class="chat-main" id="chat-main">
+          <div class="chat-empty-state">
+            <i data-lucide="message-circle" style="width:40px;height:40px;opacity:.25"></i>
+            <div>Select a conversation or start a new one</div>
           </div>
         </div>
       </div>
@@ -1302,6 +1375,249 @@ function empDownloadCsv() {
 // Initialize Lucide icons
 lucide.createIcons();
 checkAuth();
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+let chatRooms        = [];
+let activeChatRoomId = null;
+let chatMessages     = [];
+let chatSse          = null;
+let chatPeople       = [];
+let chatUnread       = new Set();
+let chatCurrentPage  = '';
+
+function myChatKey() { return `employee_${empInfo.id}`; }
+
+function openChatSse() {
+  if (chatSse) { chatSse.close(); chatSse = null; }
+  chatSse = new EventSource(`/api/employee/chat/events?_t=${encodeURIComponent(empToken)}`);
+  chatSse.addEventListener('message', e => {
+    try {
+      const { roomId, message } = JSON.parse(e.data);
+      if (roomId === activeChatRoomId) {
+        chatAppendMessage(message);
+        chatScrollBottom();
+      } else {
+        chatUnread.add(roomId);
+        chatMarkUnread(roomId);
+      }
+      chatUpdatePreview(roomId, message);
+    } catch (_) {}
+  });
+}
+
+function closeChatSse() {
+  if (chatSse) { chatSse.close(); chatSse = null; }
+  activeChatRoomId = null;
+}
+
+async function loadChat() {
+  openChatSse();
+  const r = await ef('/api/employee/chat/rooms');
+  if (!r.ok) return;
+  chatRooms = await r.json();
+  chatRenderRoomList();
+  // Mobile: show room list panel
+  document.getElementById('chat-rooms-panel')?.classList.add('mob-show');
+  document.getElementById('chat-main')?.classList.remove('mob-show');
+}
+
+function chatRenderRoomList() {
+  const el = document.getElementById('chat-room-list');
+  if (!el) return;
+  if (!chatRooms.length) {
+    el.innerHTML = '<div style="padding:28px 16px;font-size:12px;color:var(--muted);text-align:center">No conversations yet.<br>Tap the edit icon to start one.</div>';
+    return;
+  }
+  el.innerHTML = chatRooms.map(room => {
+    const myKey  = myChatKey();
+    const other  = room.type === 'direct' ? (room.members || []).find(m => m.member_key !== myKey) : null;
+    const name   = room.type === 'group' ? room.name : (other?.member_name || 'Unknown');
+    const init   = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    const prev   = room.lastMessage ? room.lastMessage.body.slice(0,55) : 'No messages yet';
+    const unread = chatUnread.has(room.id) ? '<div class="chat-unread-dot"></div>' : '';
+    return `<div class="chat-room-item${activeChatRoomId === room.id ? ' active' : ''}" onclick="chatOpenRoom(${room.id})" data-room="${room.id}">
+      <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${esc(init)}</div>
+      <div class="chat-room-info">
+        <div class="chat-room-name">${esc(name)}</div>
+        <div class="chat-room-preview">${esc(prev)}</div>
+      </div>${unread}
+    </div>`;
+  }).join('');
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+async function chatOpenRoom(roomId) {
+  activeChatRoomId = roomId;
+  chatUnread.delete(roomId);
+  document.querySelectorAll('.chat-room-item').forEach(el => el.classList.toggle('active', parseInt(el.dataset.room) === roomId));
+  document.querySelector(`[data-room="${roomId}"] .chat-unread-dot`)?.remove();
+
+  const room = chatRooms.find(r => r.id === roomId);
+  const myKey = myChatKey();
+  const name = room?.type === 'group' ? room.name : (room?.members || []).find(m => m.member_key !== myKey)?.member_name || 'Chat';
+
+  // Mobile: swap panels
+  document.getElementById('chat-rooms-panel')?.classList.remove('mob-show');
+  const main = document.getElementById('chat-main');
+  main.classList.add('mob-show');
+  main.innerHTML = `
+    <div class="chat-header">
+      <button class="chat-back-btn" onclick="chatBackToRooms()" title="Back"><i data-lucide="arrow-left" style="width:18px;height:18px"></i></button>
+      <div class="chat-room-avatar${room?.type === 'group' ? ' grp' : ''}" style="width:32px;height:32px;font-size:12px">${esc(name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}</div>
+      <div>
+        <div class="chat-header-name">${esc(name)}</div>
+        <div class="chat-header-meta">${room?.type === 'group' ? `${(room.members||[]).length} members` : 'Direct message'}</div>
+      </div>
+    </div>
+    <div class="chat-messages" id="chat-messages"><div class="loading"><span class="spinner"></span></div></div>
+    <div class="chat-composer">
+      <textarea class="chat-input" id="chat-input" rows="1" placeholder="Message ${esc(name)}…" onkeydown="chatHandleKey(event)" oninput="chatAutoGrow(this)"></textarea>
+      <button class="chat-send-btn" id="chat-send-btn" onclick="chatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
+    </div>`;
+  requestAnimationFrame(() => lucide.createIcons());
+
+  const r = await ef(`/api/employee/chat/rooms/${roomId}/messages`);
+  if (!r.ok) return;
+  chatMessages = await r.json();
+  chatRenderMessages();
+  chatScrollBottom();
+}
+
+function chatBackToRooms() {
+  activeChatRoomId = null;
+  document.getElementById('chat-rooms-panel')?.classList.add('mob-show');
+  document.getElementById('chat-main')?.classList.remove('mob-show');
+}
+
+function chatRenderMessages() {
+  const el = document.getElementById('chat-messages');
+  if (!el) return;
+  const myKey = myChatKey();
+  let lastDate = '';
+  el.innerHTML = chatMessages.map(msg => {
+    const mine    = msg.sender_key === myKey;
+    const d       = new Date(msg.created_at);
+    const dateStr = d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+    const timeStr = d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+    let div = '';
+    if (dateStr !== lastDate) { lastDate = dateStr; div = `<div class="chat-date-divider">${dateStr}</div>`; }
+    return `${div}<div class="chat-msg ${mine ? 'mine' : 'theirs'}">
+      ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
+      <div class="chat-msg-bubble">${esc(msg.body)}</div>
+      <div class="chat-msg-time">${timeStr}</div>
+    </div>`;
+  }).join('');
+}
+
+function chatAppendMessage(msg) {
+  chatMessages.push(msg);
+  const el = document.getElementById('chat-messages');
+  if (!el) return;
+  const mine    = msg.sender_key === myChatKey();
+  const timeStr = new Date(msg.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+  el.insertAdjacentHTML('beforeend', `<div class="chat-msg ${mine ? 'mine' : 'theirs'}">
+    ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
+    <div class="chat-msg-bubble">${esc(msg.body)}</div>
+    <div class="chat-msg-time">${timeStr}</div>
+  </div>`);
+}
+
+function chatScrollBottom() {
+  const el = document.getElementById('chat-messages');
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+async function chatSend() {
+  const input = document.getElementById('chat-input');
+  if (!input || !activeChatRoomId) return;
+  const body = input.value.trim();
+  if (!body) return;
+  input.value = '';
+  chatAutoGrow(input);
+  const btn = document.getElementById('chat-send-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await ef(`/api/employee/chat/rooms/${activeChatRoomId}/messages`, { method:'POST', body:JSON.stringify({ body }) });
+    if (r.ok) {
+      const msg = await r.json();
+      chatAppendMessage(msg);
+      chatScrollBottom();
+      chatUpdatePreview(activeChatRoomId, msg);
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+    input.focus();
+  }
+}
+
+function chatHandleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatSend(); } }
+function chatAutoGrow(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 110) + 'px'; }
+
+function chatUpdatePreview(roomId, message) {
+  const room = chatRooms.find(r => r.id === roomId);
+  if (room) room.lastMessage = message;
+  const el = document.querySelector(`[data-room="${roomId}"] .chat-room-preview`);
+  if (el) el.textContent = message.body.slice(0, 55);
+}
+
+function chatMarkUnread(roomId) {
+  const el = document.querySelector(`[data-room="${roomId}"]`);
+  if (el && !el.querySelector('.chat-unread-dot')) el.insertAdjacentHTML('beforeend', '<div class="chat-unread-dot"></div>');
+}
+
+async function showNewDmModal() {
+  if (!chatPeople.length) {
+    const r = await ef('/api/employee/chat/people');
+    chatPeople = r.ok ? await r.json() : [];
+  }
+  const sel = document.getElementById('dm-target-select');
+  if (!sel) return;
+  sel.innerHTML = chatPeople.map(p => `<option value="${esc(p.key)}" data-name="${esc(p.name)}">${esc(p.name)} (${esc(p.role)})</option>`).join('');
+  document.getElementById('new-dm-modal').style.display = 'flex';
+}
+
+function closeNewDmModal() { document.getElementById('new-dm-modal').style.display = 'none'; }
+
+async function startDm() {
+  const sel = document.getElementById('dm-target-select');
+  const targetKey  = sel.value;
+  const targetName = sel.options[sel.selectedIndex]?.dataset.name || targetKey;
+  closeNewDmModal();
+  const r = await ef('/api/employee/chat/rooms/direct', { method:'POST', body:JSON.stringify({ targetKey, targetName }) });
+  if (!r.ok) return;
+  const room = await r.json();
+  if (!chatRooms.find(rr => rr.id === room.id)) { chatRooms.unshift(room); chatRenderRoomList(); }
+  chatOpenRoom(room.id);
+}
+
+pageTitles['chat'] = 'Chat';
+pageLoaders['chat'] = loadChat;
+
+// Hook navigate to close SSE when leaving chat
+const _origNavigate = navigate;
+function navigate(page) {
+  if (chatCurrentPage === 'chat' && page !== 'chat') closeChatSse();
+  chatCurrentPage = page;
+  _origNavigate(page);
+}
 </script>
+
+<!-- ── New DM Modal ── -->
+<div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:380px;overflow:hidden">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:15px;font-weight:700">New Message</span>
+      <button onclick="closeNewDmModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div style="padding:16px 20px">
+      <label class="form-label">Send to</label>
+      <select class="form-control" id="dm-target-select"></select>
+    </div>
+    <div style="padding:0 20px 16px;display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="closeNewDmModal()">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="startDm()">Open Chat</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
