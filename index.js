@@ -1605,15 +1605,48 @@ async function chatGetMessages(req, res, callerKey) {
 
 async function chatSendMessage(req, res, callerKey, callerName) {
   const roomId = parseInt(req.params.roomId);
-  const { body } = req.body || {};
-  if (!body?.trim()) return res.status(400).json({ error: 'Message body required' });
+  const { body, file_url, file_name, file_size, file_type } = req.body || {};
+  if (!body?.trim() && !file_url) return res.status(400).json({ error: 'Message body or file required' });
   const { data: member } = await supabase.from('chat_room_members').select('room_id').eq('room_id', roomId).eq('member_key', callerKey).single();
   if (!member) return res.status(403).json({ error: 'Not a member of this room' });
-  const { data: msg, error } = await supabase.from('chat_messages').insert({ room_id: roomId, sender_key: callerKey, sender_name: callerName, body: body.trim() }).select().single();
+  const insert = { room_id: roomId, sender_key: callerKey, sender_name: callerName, body: body?.trim() || '' };
+  if (file_url)  { insert.file_url = file_url; insert.file_name = file_name || ''; insert.file_size = file_size || null; insert.file_type = file_type || ''; }
+  const { data: msg, error } = await supabase.from('chat_messages').insert(insert).select().single();
   if (error) return res.status(500).json({ error: error.message });
   const { data: members } = await supabase.from('chat_room_members').select('member_key').eq('room_id', roomId);
-  chatBroadcast((members || []).map(m => m.member_key), 'message', { roomId, message: msg });
+  // Exclude sender from broadcast — sender already has the message from the HTTP response
+  chatBroadcast((members || []).map(m => m.member_key).filter(k => k !== callerKey), 'message', { roomId, message: msg });
   res.json(msg);
+}
+
+async function chatEditMsg(req, res, callerKey) {
+  const roomId = parseInt(req.params.roomId);
+  const msgId  = parseInt(req.params.msgId);
+  const { body } = req.body || {};
+  if (!body?.trim()) return res.status(400).json({ error: 'Body required' });
+  const { data: msg } = await supabase.from('chat_messages').select('*').eq('id', msgId).eq('room_id', roomId).single();
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+  if (msg.sender_key !== callerKey) return res.status(403).json({ error: 'Not your message' });
+  const { data: updated, error } = await supabase.from('chat_messages').update({ body: body.trim(), edited_at: new Date().toISOString() }).eq('id', msgId).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  const { data: members } = await supabase.from('chat_room_members').select('member_key').eq('room_id', roomId);
+  chatBroadcast((members || []).map(m => m.member_key), 'edit', { roomId, message: updated });
+  res.json(updated);
+}
+
+async function chatDeleteMsg(req, res, callerKey) {
+  const roomId = parseInt(req.params.roomId);
+  const msgId  = parseInt(req.params.msgId);
+  const { data: msg } = await supabase.from('chat_messages').select('*').eq('id', msgId).eq('room_id', roomId).single();
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+  if (msg.sender_key !== callerKey) return res.status(403).json({ error: 'Not your message' });
+  const ageMins = (Date.now() - new Date(msg.created_at).getTime()) / 60000;
+  if (ageMins > 5) return res.status(403).json({ error: 'Cannot delete messages older than 5 minutes' });
+  const { error } = await supabase.from('chat_messages').delete().eq('id', msgId);
+  if (error) return res.status(500).json({ error: error.message });
+  const { data: members } = await supabase.from('chat_room_members').select('member_key').eq('room_id', roomId);
+  chatBroadcast((members || []).map(m => m.member_key), 'delete', { roomId, msgId });
+  res.json({ ok: true });
 }
 
 // SSE — Admin
@@ -1705,6 +1738,28 @@ receiver.router.get('/api/dashboard/chat/rooms/:roomId/messages', requireAuth, (
 receiver.router.get('/api/employee/chat/rooms/:roomId/messages', requireEmployeeAuth, (req, res) => chatGetMessages(req, res, `employee_${req.employee.id}`));
 receiver.router.post('/api/dashboard/chat/rooms/:roomId/messages', requireAuth, express.json(), (req, res) => chatSendMessage(req, res, 'admin', 'Admin'));
 receiver.router.post('/api/employee/chat/rooms/:roomId/messages', requireEmployeeAuth, express.json(), (req, res) => chatSendMessage(req, res, `employee_${req.employee.id}`, req.employee.name));
+// Edit
+receiver.router.patch('/api/dashboard/chat/rooms/:roomId/messages/:msgId', requireAuth, express.json(), (req, res) => chatEditMsg(req, res, 'admin'));
+receiver.router.patch('/api/employee/chat/rooms/:roomId/messages/:msgId', requireEmployeeAuth, express.json(), (req, res) => chatEditMsg(req, res, `employee_${req.employee.id}`));
+// Delete
+receiver.router.delete('/api/dashboard/chat/rooms/:roomId/messages/:msgId', requireAuth, (req, res) => chatDeleteMsg(req, res, 'admin'));
+receiver.router.delete('/api/employee/chat/rooms/:roomId/messages/:msgId', requireEmployeeAuth, (req, res) => chatDeleteMsg(req, res, `employee_${req.employee.id}`));
+
+// File upload
+const chatUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+async function handleChatUpload(req, res) {
+  if (!req.file) return res.status(400).json({ error: 'No file provided' });
+  const ext  = req.file.originalname.split('.').pop().toLowerCase();
+  const path = `chat/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+  const { data, error } = await supabase.storage.from('chat-files').upload(path, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+  if (error) return res.status(500).json({ error: error.message });
+  const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(data.path);
+  res.json({ url: urlData.publicUrl, name: req.file.originalname, size: req.file.size, type: req.file.mimetype });
+}
+
+receiver.router.post('/api/dashboard/chat/upload', requireAuth, chatUpload.single('file'), handleChatUpload);
+receiver.router.post('/api/employee/chat/upload',  requireEmployeeAuth, chatUpload.single('file'), handleChatUpload);
 
 // ─── PDF Scraper ──────────────────────────────────────────────────────────────
 let lastPdfScrape = null; // { scraped_at, series_name, trims, specs }

@@ -677,6 +677,33 @@
   .chat-send-btn:active { transform:scale(.93); }
   .chat-send-btn:disabled { opacity:.4; cursor:not-allowed; }
   .chat-empty-state { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); font-size:13px; gap:10px; text-align:center; }
+  .chat-msg { position:relative; }
+  .chat-msg-actions { display:none; position:absolute; top:-26px; gap:2px; }
+  .chat-msg.mine .chat-msg-actions { right:0; }
+  .chat-msg.theirs .chat-msg-actions { left:0; }
+  .chat-msg:hover .chat-msg-actions { display:flex; }
+  .chat-action-btn { background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:3px 6px; font-size:12px; cursor:pointer; color:var(--text); line-height:1; }
+  .chat-action-btn:hover { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chat-edited { font-size:9px; color:var(--muted); margin-left:4px; font-style:italic; }
+  .chat-deleted { font-size:12px; color:var(--muted); font-style:italic; padding:6px 10px; border:1px dashed var(--border); border-radius:12px; }
+  .chat-edit-input { width:100%; padding:6px 10px; border-radius:12px; border:1px solid var(--primary); background:rgba(255,255,255,.07); color:var(--text); font-size:13px; font-family:inherit; outline:none; resize:none; min-height:40px; }
+  .chat-edit-actions { display:flex; gap:6px; margin-top:4px; justify-content:flex-end; }
+  .chat-file-attach { display:flex; align-items:center; gap:8px; padding:7px 12px; background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:12px; font-size:12px; margin-top:4px; }
+  .chat-file-attach a { color:var(--primary); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px; }
+  .chat-file-attach a:hover { text-decoration:underline; }
+  .chat-img-thumb { max-width:220px; max-height:180px; border-radius:10px; cursor:pointer; margin-top:4px; display:block; }
+  .chat-attach-preview { display:flex; align-items:center; gap:8px; padding:6px 12px; background:rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.3); border-radius:8px; font-size:12px; margin:0 14px 6px; }
+  .chat-attach-preview-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-attach-remove { background:none; border:none; color:var(--muted); cursor:pointer; font-size:16px; line-height:1; padding:0 2px; }
+  .chat-attach-btn { width:30px; height:30px; border-radius:50%; background:none; border:1px solid var(--border); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:16px; flex-shrink:0; transition:color .15s,border-color .15s; }
+  .chat-attach-btn:hover { color:var(--primary); border-color:var(--primary); }
+  .chat-emoji-btn { width:30px; height:30px; border-radius:50%; background:none; border:1px solid var(--border); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; transition:border-color .15s; }
+  .chat-emoji-btn:hover { border-color:var(--primary); }
+  .chat-emoji-wrap { position:absolute; bottom:58px; right:14px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:8px; z-index:50; width:280px; box-shadow:0 4px 24px rgba(0,0,0,.3); display:none; }
+  .chat-emoji-wrap.open { display:block; }
+  .chat-emoji-grid { display:flex; flex-wrap:wrap; gap:2px; }
+  .chat-emoji-grid button { background:none; border:none; font-size:20px; cursor:pointer; padding:3px 4px; border-radius:6px; line-height:1; }
+  .chat-emoji-grid button:hover { background:rgba(255,255,255,.08); }
   </style>
 </head>
 <body>
@@ -2756,6 +2783,27 @@ function adminOpenChatSse() {
       adminChatUpdatePreview(roomId, message);
     } catch (_) {}
   });
+  adminChatSse.addEventListener('edit', e => {
+    try {
+      const { roomId, message } = JSON.parse(e.data);
+      if (roomId === adminActiveChatRoom) {
+        const el = document.querySelector(`[data-msg-id="${message.id}"]`);
+        if (el) {
+          const bubble = el.querySelector('.chat-msg-bubble');
+          if (bubble) bubble.innerHTML = esc(message.body) + '<span class="chat-edited">(edited)</span>';
+        }
+      }
+    } catch (_) {}
+  });
+  adminChatSse.addEventListener('delete', e => {
+    try {
+      const { roomId, msgId } = JSON.parse(e.data);
+      if (roomId === adminActiveChatRoom) {
+        const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+        if (el) el.outerHTML = '<div class="chat-deleted">Message deleted</div>';
+      }
+    } catch (_) {}
+  });
 }
 
 function adminCloseChatSse() {
@@ -2814,7 +2862,17 @@ async function adminChatOpenRoom(roomId) {
       </div>
     </div>
     <div class="chat-messages" id="admin-chat-messages"><div class="loading"><div class="spinner"></div></div></div>
-    <div class="chat-composer">
+    <div class="chat-composer" style="position:relative">
+      <div class="chat-emoji-wrap" id="admin-emoji-wrap">
+        <div class="chat-emoji-grid" id="admin-emoji-grid"></div>
+      </div>
+      <div class="chat-attach-preview" id="admin-attach-preview" style="display:none">
+        <span id="admin-attach-name"></span>
+        <button type="button" onclick="adminChatRemoveAttach()">✕</button>
+      </div>
+      <input type="file" id="admin-file-input" style="display:none" onchange="adminChatFileSelected(this)">
+      <button class="chat-attach-btn" onclick="document.getElementById('admin-file-input').click()" title="Attach file">📎</button>
+      <button class="chat-emoji-btn" onclick="adminChatToggleEmoji()" title="Emoji">😊</button>
       <textarea class="chat-input" id="admin-chat-input" rows="1" placeholder="Message ${esc(name)}…" onkeydown="adminChatHandleKey(event)" oninput="adminChatAutoGrow(this)"></textarea>
       <button class="chat-send-btn" id="admin-chat-send-btn" onclick="adminChatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
     </div>`;
@@ -2827,22 +2885,38 @@ async function adminChatOpenRoom(roomId) {
   adminChatScrollBottom();
 }
 
+function adminChatMsgHTML(msg) {
+  const mine    = msg.sender_key === 'admin';
+  const timeStr = new Date(msg.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+  const canDel  = mine && (Date.now() - new Date(msg.created_at).getTime()) < 5 * 60 * 1000;
+  const actions = mine ? `<div class="chat-msg-actions">
+    <button class="chat-action-btn" onclick="adminChatStartEdit(${msg.id})" title="Edit">✏️</button>
+    ${canDel ? `<button class="chat-action-btn" onclick="adminChatDeleteMsg(${msg.id})" title="Delete">🗑️</button>` : ''}
+  </div>` : '';
+  const fileHTML = msg.file_url ? (
+    msg.file_type?.startsWith('image/')
+      ? `<img src="${esc(msg.file_url)}" class="chat-img-thumb" onclick="window.open('${esc(msg.file_url)}','_blank')" loading="lazy">`
+      : `<div class="chat-file-attach">📎 <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span></div>`
+  ) : '';
+  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}">
+    ${actions}
+    ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
+    ${msg.body ? `<div class="chat-msg-bubble">${esc(msg.body)}${msg.edited_at ? '<span class="chat-edited">(edited)</span>' : ''}</div>` : ''}
+    ${fileHTML}
+    <div class="chat-msg-time">${timeStr}</div>
+  </div>`;
+}
+
 function adminChatRenderMessages() {
   const el = document.getElementById('admin-chat-messages');
   if (!el) return;
   let lastDate = '';
   el.innerHTML = adminChatMessages.map(msg => {
-    const mine    = msg.sender_key === 'admin';
     const d       = new Date(msg.created_at);
     const dateStr = d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
-    const timeStr = d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
     let div = '';
     if (dateStr !== lastDate) { lastDate = dateStr; div = `<div class="chat-date-divider">${dateStr}</div>`; }
-    return `${div}<div class="chat-msg ${mine ? 'mine' : 'theirs'}">
-      ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
-      <div class="chat-msg-bubble">${esc(msg.body)}</div>
-      <div class="chat-msg-time">${timeStr}</div>
-    </div>`;
+    return div + adminChatMsgHTML(msg);
   }).join('');
 }
 
@@ -2850,13 +2924,7 @@ function adminChatAppendMessage(msg) {
   adminChatMessages.push(msg);
   const el = document.getElementById('admin-chat-messages');
   if (!el) return;
-  const mine    = msg.sender_key === 'admin';
-  const timeStr = new Date(msg.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
-  el.insertAdjacentHTML('beforeend', `<div class="chat-msg ${mine ? 'mine' : 'theirs'}">
-    ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
-    <div class="chat-msg-bubble">${esc(msg.body)}</div>
-    <div class="chat-msg-time">${timeStr}</div>
-  </div>`);
+  el.insertAdjacentHTML('beforeend', adminChatMsgHTML(msg));
 }
 
 function adminChatScrollBottom() {
@@ -2864,17 +2932,46 @@ function adminChatScrollBottom() {
   if (el) el.scrollTop = el.scrollHeight;
 }
 
+let adminChatPendingFile = null;
+
+async function adminChatFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  if (file.size > 10 * 1024 * 1024) { alert('File must be under 10 MB'); return; }
+  const btn = document.getElementById('admin-chat-send-btn');
+  if (btn) btn.disabled = true;
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const r = await apiFetch('/api/dashboard/chat/upload', { method:'POST', body: fd, headers: {} });
+    const d = await r.json();
+    if (d.error) { alert('Upload failed: ' + d.error); return; }
+    adminChatPendingFile = d;
+    document.getElementById('admin-attach-name').textContent = d.name;
+    document.getElementById('admin-attach-preview').style.display = 'flex';
+  } catch (e) { alert('Upload failed: ' + e.message); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+function adminChatRemoveAttach() {
+  adminChatPendingFile = null;
+  document.getElementById('admin-attach-preview').style.display = 'none';
+}
+
 async function adminChatSend() {
   const input = document.getElementById('admin-chat-input');
   if (!input || !adminActiveChatRoom) return;
   const body = input.value.trim();
-  if (!body) return;
+  if (!body && !adminChatPendingFile) return;
   input.value = '';
   adminChatAutoGrow(input);
+  const payload = { body };
+  if (adminChatPendingFile) { payload.file_url = adminChatPendingFile.url; payload.file_name = adminChatPendingFile.name; payload.file_size = adminChatPendingFile.size; payload.file_type = adminChatPendingFile.type; }
+  adminChatRemoveAttach();
   const btn = document.getElementById('admin-chat-send-btn');
   if (btn) btn.disabled = true;
   try {
-    const r = await apiFetch(`/api/dashboard/chat/rooms/${adminActiveChatRoom}/messages`, { method:'POST', body:JSON.stringify({ body }) });
+    const r = await apiFetch(`/api/dashboard/chat/rooms/${adminActiveChatRoom}/messages`, { method:'POST', body:JSON.stringify(payload) });
     if (r.ok) {
       const msg = await r.json();
       adminChatAppendMessage(msg);
@@ -2889,6 +2986,80 @@ async function adminChatSend() {
 
 function adminChatHandleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); adminChatSend(); } }
 function adminChatAutoGrow(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 110) + 'px'; }
+
+// ── Admin Edit / Delete ───────────────────────────────────────────────────────
+function adminChatStartEdit(msgId) {
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (!el) return;
+  const bubble = el.querySelector('.chat-msg-bubble');
+  const orig   = adminChatMessages.find(m => m.id === msgId)?.body || '';
+  bubble.innerHTML = `<textarea class="chat-edit-input" id="admin-edit-input-${msgId}" rows="1">${esc(orig)}</textarea>
+    <div class="chat-edit-actions">
+      <button class="btn btn-sm btn-outline" onclick="adminChatCancelEdit(${msgId}, ${JSON.stringify(orig)})">Cancel</button>
+      <button class="btn btn-sm btn-primary" onclick="adminChatSaveEdit(${msgId})">Save</button>
+    </div>`;
+  const ta = document.getElementById(`admin-edit-input-${msgId}`);
+  if (ta) { ta.style.height = ta.scrollHeight + 'px'; ta.focus(); ta.selectionStart = ta.value.length; }
+}
+
+function adminChatCancelEdit(msgId, orig) {
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (!el) return;
+  const msg = adminChatMessages.find(m => m.id === msgId);
+  const bubble = el.querySelector('.chat-msg-bubble');
+  if (bubble) bubble.innerHTML = esc(orig) + (msg?.edited_at ? '<span class="chat-edited">(edited)</span>' : '');
+}
+
+async function adminChatSaveEdit(msgId) {
+  const ta = document.getElementById(`admin-edit-input-${msgId}`);
+  if (!ta) return;
+  const body = ta.value.trim();
+  if (!body) return;
+  const r = await apiFetch(`/api/dashboard/chat/rooms/${adminActiveChatRoom}/messages/${msgId}`, { method:'PATCH', body:JSON.stringify({ body }) });
+  if (!r.ok) { alert('Edit failed'); return; }
+  const updated = await r.json();
+  const idx = adminChatMessages.findIndex(m => m.id === msgId);
+  if (idx >= 0) adminChatMessages[idx] = updated;
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (el) {
+    const bubble = el.querySelector('.chat-msg-bubble');
+    if (bubble) bubble.innerHTML = esc(updated.body) + '<span class="chat-edited">(edited)</span>';
+  }
+}
+
+async function adminChatDeleteMsg(msgId) {
+  if (!confirm('Delete this message?')) return;
+  const r = await apiFetch(`/api/dashboard/chat/rooms/${adminActiveChatRoom}/messages/${msgId}`, { method:'DELETE' });
+  if (!r.ok) { const d = await r.json(); alert(d.error || 'Delete failed'); return; }
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (el) el.innerHTML = '<div class="chat-deleted">Message deleted</div>';
+  const idx = adminChatMessages.findIndex(m => m.id === msgId);
+  if (idx >= 0) adminChatMessages.splice(idx, 1);
+}
+
+// ── Admin Emoji picker ────────────────────────────────────────────────────────
+const ADMIN_CHAT_EMOJIS = ['😀','😂','😍','😎','🥳','😢','😡','🤔','👍','👎','👏','🙏','🔥','❤️','💯','✅','❌','⚠️','🎉','🎊','💪','🤝','👀','💬','📎','📁','🚀','⏰','📌','🔗','😊','🥰','😇','🤩','😏','😤','🤣','😅','😬','🤐','😴','🤮','💀','👻','🤖','🎯','💡','📊','🛠️','🔑'];
+
+function adminChatInitEmoji() {
+  const grid = document.getElementById('admin-emoji-grid');
+  if (!grid || grid.childElementCount) return;
+  grid.innerHTML = ADMIN_CHAT_EMOJIS.map(e => `<button type="button" onclick="adminChatInsertEmoji('${e}')">${e}</button>`).join('');
+}
+
+function adminChatToggleEmoji() {
+  adminChatInitEmoji();
+  document.getElementById('admin-emoji-wrap')?.classList.toggle('open');
+}
+
+function adminChatInsertEmoji(e) {
+  const ta = document.getElementById('admin-chat-input');
+  if (!ta) return;
+  const s = ta.selectionStart, end = ta.selectionEnd;
+  ta.value = ta.value.slice(0, s) + e + ta.value.slice(end);
+  ta.selectionStart = ta.selectionEnd = s + e.length;
+  ta.focus();
+  adminChatAutoGrow(ta);
+}
 
 function adminChatUpdatePreview(roomId, message) {
   const room = adminChatRooms.find(r => r.id === roomId);
@@ -2920,6 +3091,10 @@ async function adminStartDm() {
   const r = await apiFetch('/api/dashboard/chat/rooms/direct', { method:'POST', body:JSON.stringify({ targetKey, targetName }) });
   if (!r.ok) return;
   const room = await r.json();
+  room.members = [
+    { member_key: 'admin', member_name: 'Admin' },
+    { member_key: targetKey, member_name: targetName }
+  ];
   if (!adminChatRooms.find(rr => rr.id === room.id)) { adminChatRooms.unshift(room); adminChatRenderRoomList(); }
   adminChatOpenRoom(room.id);
 }

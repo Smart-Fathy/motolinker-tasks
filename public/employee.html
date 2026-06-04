@@ -263,6 +263,33 @@
     .chat-back-btn { display:flex !important; }
   }
   .chat-back-btn { display:none; background:none; border:none; color:var(--text); cursor:pointer; padding:4px; border-radius:6px; }
+  .chat-msg { position:relative; }
+  .chat-msg-actions { display:none; position:absolute; top:-26px; gap:2px; }
+  .chat-msg.mine .chat-msg-actions { right:0; }
+  .chat-msg.theirs .chat-msg-actions { left:0; }
+  .chat-msg:hover .chat-msg-actions { display:flex; }
+  .chat-action-btn { background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:3px 6px; font-size:12px; cursor:pointer; color:var(--text); line-height:1; }
+  .chat-action-btn:hover { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .chat-edited { font-size:9px; color:var(--muted); margin-left:4px; font-style:italic; }
+  .chat-deleted { font-size:12px; color:var(--muted); font-style:italic; padding:6px 10px; border:1px dashed var(--border); border-radius:12px; }
+  .chat-edit-input { width:100%; padding:6px 10px; border-radius:12px; border:1px solid var(--primary); background:rgba(255,255,255,.07); color:var(--text); font-size:13px; font-family:inherit; outline:none; resize:none; min-height:40px; }
+  .chat-edit-actions { display:flex; gap:6px; margin-top:4px; justify-content:flex-end; }
+  .chat-file-attach { display:flex; align-items:center; gap:8px; padding:7px 12px; background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:12px; font-size:12px; margin-top:4px; }
+  .chat-file-attach a { color:var(--primary); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px; }
+  .chat-file-attach a:hover { text-decoration:underline; }
+  .chat-img-thumb { max-width:220px; max-height:180px; border-radius:10px; cursor:pointer; margin-top:4px; display:block; }
+  .chat-attach-preview { display:flex; align-items:center; gap:8px; padding:6px 12px; background:rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.3); border-radius:8px; font-size:12px; margin:0 14px 6px; }
+  .chat-attach-preview-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-attach-remove { background:none; border:none; color:var(--muted); cursor:pointer; font-size:16px; line-height:1; padding:0 2px; }
+  .chat-attach-btn { width:30px; height:30px; border-radius:50%; background:none; border:1px solid var(--border); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:16px; flex-shrink:0; transition:color .15s,border-color .15s; }
+  .chat-attach-btn:hover { color:var(--primary); border-color:var(--primary); }
+  .chat-emoji-btn { width:30px; height:30px; border-radius:50%; background:none; border:1px solid var(--border); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; transition:border-color .15s; }
+  .chat-emoji-btn:hover { border-color:var(--primary); }
+  .chat-emoji-wrap { position:absolute; bottom:58px; right:14px; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:8px; z-index:50; width:280px; box-shadow:0 4px 24px rgba(0,0,0,.3); display:none; }
+  .chat-emoji-wrap.open { display:block; }
+  .chat-emoji-grid { display:flex; flex-wrap:wrap; gap:2px; }
+  .chat-emoji-grid button { background:none; border:none; font-size:20px; cursor:pointer; padding:3px 4px; border-radius:6px; line-height:1; }
+  .chat-emoji-grid button:hover { background:rgba(255,255,255,.08); }
 </style>
 </head>
 <body>
@@ -1406,6 +1433,26 @@ function openChatSse() {
       chatUpdatePreview(roomId, message);
     } catch (_) {}
   });
+  chatSse.addEventListener('edit', e => {
+    try {
+      const { message } = JSON.parse(e.data);
+      const el = document.querySelector(`[data-msg-id="${message.id}"]`);
+      if (!el) return;
+      const bubble = el.querySelector('.chat-msg-bubble');
+      if (bubble) bubble.innerHTML = esc(message.body) + '<span class="chat-edited">(edited)</span>';
+      const idx = chatMessages.findIndex(m => m.id === message.id);
+      if (idx >= 0) chatMessages[idx] = message;
+    } catch (_) {}
+  });
+  chatSse.addEventListener('delete', e => {
+    try {
+      const { msgId } = JSON.parse(e.data);
+      const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+      if (el) el.innerHTML = '<div class="chat-deleted">Message deleted</div>';
+      const idx = chatMessages.findIndex(m => m.id === msgId);
+      if (idx >= 0) chatMessages.splice(idx, 1);
+    } catch (_) {}
+  });
 }
 
 function closeChatSse() {
@@ -1473,7 +1520,17 @@ async function chatOpenRoom(roomId) {
       </div>
     </div>
     <div class="chat-messages" id="chat-messages"><div class="loading"><span class="spinner"></span></div></div>
-    <div class="chat-composer">
+    <div id="chat-attach-preview" style="display:none" class="chat-attach-preview">
+      <span>📎</span><span class="chat-attach-preview-name" id="chat-attach-name"></span>
+      <button class="chat-attach-remove" onclick="chatRemoveAttach()" title="Remove">×</button>
+    </div>
+    <div class="chat-composer" style="position:relative">
+      <div class="chat-emoji-wrap" id="chat-emoji-wrap">
+        <div class="chat-emoji-grid" id="chat-emoji-grid"></div>
+      </div>
+      <input type="file" id="chat-file-input" style="display:none" onchange="chatFileSelected(this)">
+      <button class="chat-attach-btn" onclick="document.getElementById('chat-file-input').click()" title="Attach file">📎</button>
+      <button class="chat-emoji-btn" onclick="chatToggleEmoji()" title="Emoji">😊</button>
       <textarea class="chat-input" id="chat-input" rows="1" placeholder="Message ${esc(name)}…" onkeydown="chatHandleKey(event)" oninput="chatAutoGrow(this)"></textarea>
       <button class="chat-send-btn" id="chat-send-btn" onclick="chatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
     </div>`;
@@ -1492,23 +1549,39 @@ function chatBackToRooms() {
   document.getElementById('chat-main')?.classList.remove('mob-show');
 }
 
+function chatMsgHTML(msg, myKey) {
+  const mine    = msg.sender_key === myKey;
+  const timeStr = new Date(msg.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+  const canDel  = mine && (Date.now() - new Date(msg.created_at).getTime()) < 5 * 60 * 1000;
+  const actions = mine ? `<div class="chat-msg-actions">
+    <button class="chat-action-btn" onclick="chatStartEdit(${msg.id})" title="Edit">✏️</button>
+    ${canDel ? `<button class="chat-action-btn" onclick="chatDeleteMsg(${msg.id})" title="Delete">🗑️</button>` : ''}
+  </div>` : '';
+  const fileHTML = msg.file_url ? (
+    msg.file_type?.startsWith('image/')
+      ? `<img src="${esc(msg.file_url)}" class="chat-img-thumb" onclick="window.open('${esc(msg.file_url)}','_blank')" loading="lazy">`
+      : `<div class="chat-file-attach">📎 <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span></div>`
+  ) : '';
+  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}">
+    ${actions}
+    ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
+    ${msg.body ? `<div class="chat-msg-bubble">${esc(msg.body)}${msg.edited_at ? '<span class="chat-edited">(edited)</span>' : ''}</div>` : ''}
+    ${fileHTML}
+    <div class="chat-msg-time">${timeStr}</div>
+  </div>`;
+}
+
 function chatRenderMessages() {
   const el = document.getElementById('chat-messages');
   if (!el) return;
   const myKey = myChatKey();
   let lastDate = '';
   el.innerHTML = chatMessages.map(msg => {
-    const mine    = msg.sender_key === myKey;
     const d       = new Date(msg.created_at);
     const dateStr = d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
-    const timeStr = d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
     let div = '';
     if (dateStr !== lastDate) { lastDate = dateStr; div = `<div class="chat-date-divider">${dateStr}</div>`; }
-    return `${div}<div class="chat-msg ${mine ? 'mine' : 'theirs'}">
-      ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
-      <div class="chat-msg-bubble">${esc(msg.body)}</div>
-      <div class="chat-msg-time">${timeStr}</div>
-    </div>`;
+    return div + chatMsgHTML(msg, myKey);
   }).join('');
 }
 
@@ -1516,13 +1589,7 @@ function chatAppendMessage(msg) {
   chatMessages.push(msg);
   const el = document.getElementById('chat-messages');
   if (!el) return;
-  const mine    = msg.sender_key === myChatKey();
-  const timeStr = new Date(msg.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
-  el.insertAdjacentHTML('beforeend', `<div class="chat-msg ${mine ? 'mine' : 'theirs'}">
-    ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
-    <div class="chat-msg-bubble">${esc(msg.body)}</div>
-    <div class="chat-msg-time">${timeStr}</div>
-  </div>`);
+  el.insertAdjacentHTML('beforeend', chatMsgHTML(msg, myChatKey()));
 }
 
 function chatScrollBottom() {
@@ -1530,17 +1597,46 @@ function chatScrollBottom() {
   if (el) el.scrollTop = el.scrollHeight;
 }
 
+let chatPendingFile = null; // { url, name, size, type }
+
+async function chatFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  if (file.size > 10 * 1024 * 1024) { alert('File must be under 10 MB'); return; }
+  const btn = document.getElementById('chat-send-btn');
+  if (btn) btn.disabled = true;
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const r = await fetch('/api/employee/chat/upload', { method:'POST', body: fd, headers: { 'Authorization': 'Bearer ' + empToken } });
+    const d = await r.json();
+    if (d.error) { alert('Upload failed: ' + d.error); return; }
+    chatPendingFile = d;
+    document.getElementById('chat-attach-name').textContent = d.name;
+    document.getElementById('chat-attach-preview').style.display = 'flex';
+  } catch (e) { alert('Upload failed: ' + e.message); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+function chatRemoveAttach() {
+  chatPendingFile = null;
+  document.getElementById('chat-attach-preview').style.display = 'none';
+}
+
 async function chatSend() {
   const input = document.getElementById('chat-input');
   if (!input || !activeChatRoomId) return;
   const body = input.value.trim();
-  if (!body) return;
+  if (!body && !chatPendingFile) return;
   input.value = '';
   chatAutoGrow(input);
+  const payload = { body };
+  if (chatPendingFile) { payload.file_url = chatPendingFile.url; payload.file_name = chatPendingFile.name; payload.file_size = chatPendingFile.size; payload.file_type = chatPendingFile.type; }
+  chatRemoveAttach();
   const btn = document.getElementById('chat-send-btn');
   if (btn) btn.disabled = true;
   try {
-    const r = await ef(`/api/employee/chat/rooms/${activeChatRoomId}/messages`, { method:'POST', body:JSON.stringify({ body }) });
+    const r = await ef(`/api/employee/chat/rooms/${activeChatRoomId}/messages`, { method:'POST', body:JSON.stringify(payload) });
     if (r.ok) {
       const msg = await r.json();
       chatAppendMessage(msg);
@@ -1589,8 +1685,84 @@ async function startDm() {
   const r = await ef('/api/employee/chat/rooms/direct', { method:'POST', body:JSON.stringify({ targetKey, targetName }) });
   if (!r.ok) return;
   const room = await r.json();
+  // Attach members so name resolves correctly before rooms are re-fetched
+  room.members = [{ member_key: myChatKey(), member_name: empInfo.name }, { member_key: targetKey, member_name: targetName }];
   if (!chatRooms.find(rr => rr.id === room.id)) { chatRooms.unshift(room); chatRenderRoomList(); }
   chatOpenRoom(room.id);
+}
+
+// ── Edit / Delete ─────────────────────────────────────────────────────────────
+function chatStartEdit(msgId) {
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (!el) return;
+  const bubble = el.querySelector('.chat-msg-bubble');
+  const orig   = chatMessages.find(m => m.id === msgId)?.body || '';
+  bubble.innerHTML = `<textarea class="chat-edit-input" id="edit-input-${msgId}" rows="1">${esc(orig)}</textarea>
+    <div class="chat-edit-actions">
+      <button class="btn btn-sm btn-outline" onclick="chatCancelEdit(${msgId}, ${JSON.stringify(orig)})">Cancel</button>
+      <button class="btn btn-sm btn-primary" onclick="chatSaveEdit(${msgId})">Save</button>
+    </div>`;
+  const ta = document.getElementById(`edit-input-${msgId}`);
+  if (ta) { ta.style.height = ta.scrollHeight + 'px'; ta.focus(); ta.selectionStart = ta.value.length; }
+}
+
+function chatCancelEdit(msgId, orig) {
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (!el) return;
+  const msg = chatMessages.find(m => m.id === msgId);
+  const bubble = el.querySelector('.chat-msg-bubble');
+  if (bubble) bubble.innerHTML = esc(orig) + (msg?.edited_at ? '<span class="chat-edited">(edited)</span>' : '');
+}
+
+async function chatSaveEdit(msgId) {
+  const ta = document.getElementById(`edit-input-${msgId}`);
+  if (!ta) return;
+  const body = ta.value.trim();
+  if (!body) return;
+  const r = await ef(`/api/employee/chat/rooms/${activeChatRoomId}/messages/${msgId}`, { method:'PATCH', body:JSON.stringify({ body }) });
+  if (!r.ok) { alert('Edit failed'); return; }
+  const updated = await r.json();
+  const idx = chatMessages.findIndex(m => m.id === msgId);
+  if (idx >= 0) chatMessages[idx] = updated;
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (el) {
+    const bubble = el.querySelector('.chat-msg-bubble');
+    if (bubble) bubble.innerHTML = esc(updated.body) + '<span class="chat-edited">(edited)</span>';
+  }
+}
+
+async function chatDeleteMsg(msgId) {
+  if (!confirm('Delete this message?')) return;
+  const r = await ef(`/api/employee/chat/rooms/${activeChatRoomId}/messages/${msgId}`, { method:'DELETE' });
+  if (!r.ok) { const d = await r.json(); alert(d.error || 'Delete failed'); return; }
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (el) el.innerHTML = '<div class="chat-deleted">Message deleted</div>';
+  const idx = chatMessages.findIndex(m => m.id === msgId);
+  if (idx >= 0) chatMessages.splice(idx, 1);
+}
+
+// ── Emoji picker ──────────────────────────────────────────────────────────────
+const CHAT_EMOJIS = ['😀','😂','😍','😎','🥳','😢','😡','🤔','👍','👎','👏','🙏','🔥','❤️','💯','✅','❌','⚠️','🎉','🎊','💪','🤝','👀','💬','📎','📁','🚀','⏰','📌','🔗','😊','🥰','😇','🤩','😏','😤','🤣','😅','😬','🤐','😴','🤮','💀','👻','🤖','🎯','💡','📊','🛠️','🔑'];
+
+function chatInitEmoji() {
+  const grid = document.getElementById('chat-emoji-grid');
+  if (!grid || grid.childElementCount) return;
+  grid.innerHTML = CHAT_EMOJIS.map(e => `<button type="button" onclick="chatInsertEmoji('${e}')">${e}</button>`).join('');
+}
+
+function chatToggleEmoji() {
+  chatInitEmoji();
+  document.getElementById('chat-emoji-wrap')?.classList.toggle('open');
+}
+
+function chatInsertEmoji(e) {
+  const ta = document.getElementById('chat-input');
+  if (!ta) return;
+  const s = ta.selectionStart, end = ta.selectionEnd;
+  ta.value = ta.value.slice(0, s) + e + ta.value.slice(end);
+  ta.selectionStart = ta.selectionEnd = s + e.length;
+  ta.focus();
+  chatAutoGrow(ta);
 }
 
 pageTitles['chat'] = 'Chat';
