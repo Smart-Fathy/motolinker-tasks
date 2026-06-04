@@ -1605,12 +1605,13 @@ async function chatGetMessages(req, res, callerKey) {
 
 async function chatSendMessage(req, res, callerKey, callerName) {
   const roomId = parseInt(req.params.roomId);
-  const { body, file_url, file_name, file_size, file_type } = req.body || {};
+  const { body, file_url, file_name, file_size, file_type, reply_to_id, reply_to_sender, reply_to_body } = req.body || {};
   if (!body?.trim() && !file_url) return res.status(400).json({ error: 'Message body or file required' });
   const { data: member } = await supabase.from('chat_room_members').select('room_id').eq('room_id', roomId).eq('member_key', callerKey).single();
   if (!member) return res.status(403).json({ error: 'Not a member of this room' });
   const insert = { room_id: roomId, sender_key: callerKey, sender_name: callerName, body: body?.trim() || '' };
   if (file_url)  { insert.file_url = file_url; insert.file_name = file_name || ''; insert.file_size = file_size || null; insert.file_type = file_type || ''; }
+  if (reply_to_id) { insert.reply_to_id = reply_to_id; insert.reply_to_sender = reply_to_sender || ''; insert.reply_to_body = (reply_to_body || '').slice(0, 200); }
   const { data: msg, error } = await supabase.from('chat_messages').insert(insert).select().single();
   if (error) return res.status(500).json({ error: error.message });
   const { data: members } = await supabase.from('chat_room_members').select('member_key').eq('room_id', roomId);

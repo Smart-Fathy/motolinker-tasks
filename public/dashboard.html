@@ -708,6 +708,15 @@
   .chat-emoji-grid { display:flex; flex-wrap:wrap; gap:2px; }
   .chat-emoji-grid button { background:none; border:none; font-size:20px; cursor:pointer; padding:3px 4px; border-radius:6px; line-height:1; }
   .chat-emoji-grid button:hover { background:rgba(255,255,255,.08); }
+  /* Reply / forward / download / nav badge */
+  .chat-reply-quote { border-left:3px solid var(--primary); padding:4px 10px; border-radius:6px; background:rgba(90,103,216,.14); font-size:11px; margin-bottom:5px; max-width:100%; overflow:hidden; cursor:pointer; }
+  .chat-reply-quote-sender { font-weight:700; color:var(--primary); margin-bottom:1px; }
+  .chat-reply-quote-body { color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chat-reply-bar { display:none; align-items:center; gap:8px; padding:6px 14px; background:rgba(90,103,216,.12); border-top:1px solid rgba(90,103,216,.3); font-size:12px; flex-shrink:0; }
+  .chat-reply-bar.visible { display:flex; }
+  .chat-download-btn { background:none; border:none; cursor:pointer; font-size:14px; padding:2px 4px; opacity:.7; }
+  .chat-download-btn:hover { opacity:1; }
+  .chat-nav-badge { margin-left:auto; background:var(--danger); color:#fff; font-size:10px; font-weight:700; min-width:18px; height:18px; border-radius:9px; padding:0 5px; display:flex; align-items:center; justify-content:center; line-height:1; }
   @media (max-width:700px) {
     .chat-layout { grid-template-columns:1fr; height:calc(100vh - 64px); height:calc(100dvh - 64px); }
     .chat-rooms-panel { display:none; }
@@ -767,7 +776,7 @@
       <div class="nav-item"        onclick="navigate('pdfscraper')" id="nav-pdfscraper">   <span class="nav-icon"><i data-lucide="file-text"></i></span> PDF Scraper</div>
       <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft</div>
       <div class="sidebar-section-label">Chat</div>
-      <div class="nav-item" onclick="navigate('chat')" id="nav-chat"><span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat</div>
+      <div class="nav-item" onclick="navigate('chat')" id="nav-chat"><span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat<span class="chat-nav-badge" id="chat-nav-badge" style="display:none">0</span></div>
       <div class="sidebar-section-label">Account</div>
       <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon"><i data-lucide="mail"></i></span> My Email</div>
       <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon"><i data-lucide="hard-drive"></i></span> My Drive</div>
@@ -1326,6 +1335,16 @@
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="document.getElementById('admin-group-modal').style.display='none'">Cancel</button>
       <button class="btn btn-primary" onclick="adminCreateGroup()">Create Group</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Forward Modal ── -->
+<div id="admin-forward-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:300;align-items:center;justify-content:center;padding:20px">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Forward to…</span><button class="modal-close" onclick="document.getElementById('admin-forward-modal').style.display='none'">×</button></div>
+    <div class="modal-body">
+      <div style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px" id="admin-forward-room-list"></div>
     </div>
   </div>
 </div>
@@ -2784,6 +2803,8 @@ let adminChatMessages    = [];
 let adminChatSse         = null;
 let adminChatPeople      = [];
 let adminChatUnread      = new Set();
+let adminChatReplyingTo  = null; // { id, sender, body }
+let adminChatForwardData = null; // { body, file_url, file_name, file_size, file_type }
 
 function adminOpenChatSse() {
   if (adminChatSse) { adminChatSse.close(); adminChatSse = null; }
@@ -2797,6 +2818,9 @@ function adminOpenChatSse() {
       } else {
         adminChatUnread.add(roomId);
         adminChatMarkUnread(roomId);
+        adminChatUpdateNavBadge();
+        adminChatPlayNotifSound();
+        adminChatShowNotification(message.sender_name, message.body, roomId);
       }
       adminChatUpdatePreview(roomId, message);
     } catch (_) {}
@@ -2830,11 +2854,13 @@ function adminCloseChatSse() {
 }
 
 async function loadAdminChat() {
+  adminChatRequestNotifPermission();
   adminOpenChatSse();
   const r = await apiFetch('/api/dashboard/chat/rooms');
   if (!r.ok) return;
   adminChatRooms = await r.json();
   adminChatRenderRoomList();
+  adminChatUpdateNavBadge();
   // Mobile: show room list panel
   document.getElementById('admin-chat-rooms-panel')?.classList.add('mob-show');
   document.getElementById('admin-chat-main')?.classList.remove('mob-show');
@@ -2872,7 +2898,9 @@ function adminChatRenderRoomList() {
 
 async function adminChatOpenRoom(roomId) {
   adminActiveChatRoom = roomId;
+  adminChatReplyingTo = null;
   adminChatUnread.delete(roomId);
+  adminChatUpdateNavBadge();
   document.querySelectorAll('.chat-room-item').forEach(el => el.classList.toggle('active', parseInt(el.dataset.room) === roomId));
   document.querySelector(`[data-room="${roomId}"] .chat-unread-dot`)?.remove();
 
@@ -2893,6 +2921,14 @@ async function adminChatOpenRoom(roomId) {
       </div>
     </div>
     <div class="chat-messages" id="admin-chat-messages"><div class="loading"><div class="spinner"></div></div></div>
+    <div class="chat-reply-bar" id="admin-reply-bar">
+      <span style="color:var(--primary)">↩️</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:11px" id="admin-reply-sender"></div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="admin-reply-body"></div>
+      </div>
+      <button onclick="adminChatClearReply()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button>
+    </div>
     <div class="chat-composer" style="position:relative">
       <div class="chat-emoji-wrap" id="admin-emoji-wrap">
         <div class="chat-emoji-grid" id="admin-emoji-grid"></div>
@@ -2917,28 +2953,45 @@ async function adminChatOpenRoom(roomId) {
 }
 
 function adminChatToggleActions(e) {
-  if (e.target.closest('a, button, textarea, img')) return; // don't hijack links/edit/buttons
+  if (e.target.closest('a, button, textarea, img, .chat-reply-quote')) return; // don't hijack links/edit/buttons/quote
   const m = e.currentTarget;
   document.querySelectorAll('.chat-msg.show-actions').forEach(x => { if (x !== m) x.classList.remove('show-actions'); });
   m.classList.toggle('show-actions');
+}
+
+function adminChatScrollToMsg(msgId) {
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (!el) return;
+  el.scrollIntoView({ behavior:'smooth', block:'center' });
+  el.style.transition = 'background .3s';
+  el.style.background = 'rgba(90,103,216,.15)';
+  setTimeout(() => { el.style.background = ''; }, 900);
 }
 
 function adminChatMsgHTML(msg) {
   const mine    = msg.sender_key === 'admin';
   const timeStr = new Date(msg.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
   const canDel  = mine && (Date.now() - new Date(msg.created_at).getTime()) < 5 * 60 * 1000;
-  const actions = mine ? `<div class="chat-msg-actions">
-    <button class="chat-action-btn" onclick="adminChatStartEdit(${msg.id})" title="Edit">✏️</button>
-    ${canDel ? `<button class="chat-action-btn" onclick="adminChatDeleteMsg(${msg.id})" title="Delete">🗑️</button>` : ''}
+  const actions = `<div class="chat-msg-actions">
+    <button class="chat-action-btn" onclick="adminChatSetReply(${msg.id})" title="Reply">↩️</button>
+    <button class="chat-action-btn" onclick="adminChatForwardMsg(${msg.id})" title="Forward">↪️</button>
+    ${mine ? `<button class="chat-action-btn" onclick="adminChatStartEdit(${msg.id})" title="Edit">✏️</button>` : ''}
+    ${mine && canDel ? `<button class="chat-action-btn" onclick="adminChatDeleteMsg(${msg.id})" title="Delete">🗑️</button>` : ''}
+  </div>`;
+  const replyHTML = msg.reply_to_body ? `<div class="chat-reply-quote" onclick="adminChatScrollToMsg(${msg.reply_to_id})">
+    <div class="chat-reply-quote-sender">${esc(msg.reply_to_sender || '')}</div>
+    <div class="chat-reply-quote-body">${esc(msg.reply_to_body)}</div>
   </div>` : '';
+  const dlBtn = msg.file_url ? `<button class="chat-download-btn" onclick="adminChatDownloadFile(${msg.id})" title="Download">⬇️</button>` : '';
   const fileHTML = msg.file_url ? (
     msg.file_type?.startsWith('image/')
-      ? `<img src="${esc(msg.file_url)}" class="chat-img-thumb" onclick="window.open('${esc(msg.file_url)}','_blank')" loading="lazy">`
-      : `<div class="chat-file-attach">📎 <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span></div>`
+      ? `<div><img src="${esc(msg.file_url)}" class="chat-img-thumb" onclick="window.open('${esc(msg.file_url)}','_blank')" loading="lazy"><div style="text-align:right">${dlBtn}</div></div>`
+      : `<div class="chat-file-attach">📎 <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
   ) : '';
-  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}"${mine ? ' onclick="adminChatToggleActions(event)"' : ''}>
+  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}" onclick="adminChatToggleActions(event)">
     ${actions}
     ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
+    ${replyHTML}
     ${msg.body ? `<div class="chat-msg-bubble">${esc(msg.body)}${msg.edited_at ? '<span class="chat-edited">(edited)</span>' : ''}</div>` : ''}
     ${fileHTML}
     <div class="chat-msg-time">${timeStr}</div>
@@ -3005,7 +3058,9 @@ async function adminChatSend() {
   adminChatAutoGrow(input);
   const payload = { body };
   if (adminChatPendingFile) { payload.file_url = adminChatPendingFile.url; payload.file_name = adminChatPendingFile.name; payload.file_size = adminChatPendingFile.size; payload.file_type = adminChatPendingFile.type; }
+  if (adminChatReplyingTo) { payload.reply_to_id = adminChatReplyingTo.id; payload.reply_to_sender = adminChatReplyingTo.sender; payload.reply_to_body = adminChatReplyingTo.body; }
   adminChatRemoveAttach();
+  adminChatClearReply();
   const btn = document.getElementById('admin-chat-send-btn');
   if (btn) btn.disabled = true;
   try {
@@ -3109,6 +3164,100 @@ function adminChatUpdatePreview(roomId, message) {
 function adminChatMarkUnread(roomId) {
   const el = document.querySelector(`[data-room="${roomId}"]`);
   if (el && !el.querySelector('.chat-unread-dot')) el.insertAdjacentHTML('beforeend', '<div class="chat-unread-dot"></div>');
+  adminChatUpdateNavBadge();
+}
+
+function adminChatUpdateNavBadge() {
+  const el = document.getElementById('chat-nav-badge');
+  if (!el) return;
+  const count = adminChatUnread.size;
+  el.textContent = count > 99 ? '99+' : String(count);
+  el.style.display = count > 0 ? 'flex' : 'none';
+}
+
+// ── Admin Reply ───────────────────────────────────────────────────────────────
+function adminChatSetReply(msgId) {
+  const msg = adminChatMessages.find(m => m.id === msgId);
+  if (!msg) return;
+  const body = (msg.body || (msg.file_url ? (msg.file_name || 'Attachment') : '')).slice(0, 80);
+  adminChatReplyingTo = { id: msg.id, sender: msg.sender_name, body };
+  document.getElementById('admin-reply-sender').textContent = msg.sender_name;
+  document.getElementById('admin-reply-body').textContent = body;
+  document.getElementById('admin-reply-bar')?.classList.add('visible');
+  document.getElementById('admin-chat-input')?.focus();
+}
+
+function adminChatClearReply() {
+  adminChatReplyingTo = null;
+  document.getElementById('admin-reply-bar')?.classList.remove('visible');
+}
+
+// ── Admin Download ────────────────────────────────────────────────────────────
+async function adminChatDownloadFile(msgId) {
+  const msg = adminChatMessages.find(m => m.id === msgId);
+  if (!msg || !msg.file_url) return;
+  const url = msg.file_url, name = msg.file_name || 'file';
+  try {
+    const r = await fetch(url);
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } catch (_) { window.open(url, '_blank'); }
+}
+
+// ── Admin Forward ─────────────────────────────────────────────────────────────
+function adminChatForwardMsg(msgId) {
+  const msg = adminChatMessages.find(m => m.id === msgId);
+  if (!msg) return;
+  adminChatForwardData = { body: msg.body, file_url: msg.file_url, file_name: msg.file_name, file_size: msg.file_size, file_type: msg.file_type };
+  const list = document.getElementById('admin-forward-room-list');
+  list.innerHTML = adminChatRooms.filter(r => r.id !== adminActiveChatRoom).map(r => {
+    const name = r.type === 'group' ? r.name : (r.members||[]).find(m => m.member_key !== 'admin')?.member_name || 'Chat';
+    return `<button class="btn btn-outline" style="justify-content:flex-start;text-align:left;width:100%" onclick="adminChatForwardTo(${r.id})">${esc(name)}</button>`;
+  }).join('');
+  if (!list.innerHTML) list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0">No other conversations yet.</div>';
+  document.getElementById('admin-forward-modal').style.display = 'flex';
+}
+
+async function adminChatForwardTo(roomId) {
+  document.getElementById('admin-forward-modal').style.display = 'none';
+  if (!adminChatForwardData) return;
+  const payload = { body: adminChatForwardData.body ? `↪ ${adminChatForwardData.body}` : '' };
+  if (adminChatForwardData.file_url) { payload.file_url = adminChatForwardData.file_url; payload.file_name = adminChatForwardData.file_name; payload.file_size = adminChatForwardData.file_size; payload.file_type = adminChatForwardData.file_type; }
+  adminChatForwardData = null;
+  const r = await apiFetch(`/api/dashboard/chat/rooms/${roomId}/messages`, { method:'POST', body:JSON.stringify(payload) });
+  if (r.ok && roomId === adminActiveChatRoom) { const msg = await r.json(); adminChatAppendMessage(msg); adminChatScrollBottom(); adminChatUpdatePreview(roomId, msg); }
+}
+
+// ── Admin Notifications ───────────────────────────────────────────────────────
+function adminChatRequestNotifPermission() {
+  if ('Notification' in window && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (_) {} }
+}
+
+function adminChatPlayNotifSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
+  } catch (_) {}
+}
+
+function adminChatShowNotification(senderName, body, roomId) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!document.hidden) return; // only when tab is in background
+  try {
+    const n = new Notification(senderName || 'New message', { body: (body || '').slice(0, 80) || '📎 Attachment' });
+    n.onclick = () => { window.focus(); navigate('chat'); adminChatOpenRoom(roomId); n.close(); };
+  } catch (_) {}
 }
 
 async function adminShowDmModal() {

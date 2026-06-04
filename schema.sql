@@ -129,6 +129,11 @@ ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS file_name  TEXT DEFAULT NULL;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS file_size  INT  DEFAULT NULL;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS file_type  TEXT DEFAULT NULL;
 
+-- Chat reply (quoted message) support
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to_id     BIGINT REFERENCES chat_messages(id) ON DELETE SET NULL;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to_sender TEXT DEFAULT '';
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to_body   TEXT DEFAULT '';
+
 -- ============================================================
 --  Chat
 -- ============================================================
