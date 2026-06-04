@@ -255,19 +255,32 @@
   .chat-send-btn:disabled { opacity:.4; cursor:not-allowed; }
   .chat-empty-state { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); font-size:13px; gap:10px; text-align:center; }
   @media (max-width:700px) {
-    .chat-layout { grid-template-columns:1fr; }
+    .chat-layout {
+      grid-template-columns:1fr;
+      height:calc(100vh - var(--topbar-h) - var(--bottomnav-h));
+      height:calc(100dvh - var(--topbar-h) - var(--bottomnav-h) - env(safe-area-inset-bottom));
+    }
     .chat-rooms-panel { display:none; }
     .chat-rooms-panel.mob-show { display:flex; }
     .chat-main { display:none; }
     .chat-main.mob-show { display:flex; }
     .chat-back-btn { display:flex !important; }
+    .chat-msg        { max-width:88%; }
+    .chat-messages   { padding:14px; }
+    .chat-input      { font-size:16px; }
+    .chat-action-btn { padding:7px 11px; font-size:15px; }
+    .chat-emoji-wrap { left:12px; right:12px; width:auto; }
+    .chat-emoji-grid { max-height:200px; overflow-y:auto; }
   }
   .chat-back-btn { display:none; background:none; border:none; color:var(--text); cursor:pointer; padding:4px; border-radius:6px; }
   .chat-msg { position:relative; padding-top:28px; }
   .chat-msg-actions { display:none; position:absolute; top:2px; gap:2px; }
   .chat-msg.mine .chat-msg-actions { right:0; }
   .chat-msg.theirs .chat-msg-actions { left:0; }
-  .chat-msg:hover .chat-msg-actions { display:flex; }
+  .chat-msg.show-actions .chat-msg-actions { display:flex; }
+  @media (hover:hover) and (pointer:fine) {
+    .chat-msg:hover .chat-msg-actions { display:flex; }
+  }
   .chat-action-btn { background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:3px 6px; font-size:12px; cursor:pointer; color:var(--text); line-height:1; }
   .chat-action-btn:hover { background:var(--primary); color:#fff; border-color:var(--primary); }
   .chat-edited { font-size:9px; color:var(--muted); margin-left:4px; font-style:italic; }
@@ -1549,6 +1562,13 @@ function chatBackToRooms() {
   document.getElementById('chat-main')?.classList.remove('mob-show');
 }
 
+function chatToggleActions(e) {
+  if (e.target.closest('a, button, textarea, img')) return; // don't hijack links/edit/buttons
+  const m = e.currentTarget;
+  document.querySelectorAll('.chat-msg.show-actions').forEach(x => { if (x !== m) x.classList.remove('show-actions'); });
+  m.classList.toggle('show-actions');
+}
+
 function chatMsgHTML(msg, myKey) {
   const mine    = msg.sender_key === myKey;
   const timeStr = new Date(msg.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
@@ -1562,7 +1582,7 @@ function chatMsgHTML(msg, myKey) {
       ? `<img src="${esc(msg.file_url)}" class="chat-img-thumb" onclick="window.open('${esc(msg.file_url)}','_blank')" loading="lazy">`
       : `<div class="chat-file-attach">📎 <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span></div>`
   ) : '';
-  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}">
+  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}"${mine ? ' onclick="chatToggleActions(event)"' : ''}>
     ${actions}
     ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
     ${msg.body ? `<div class="chat-msg-bubble">${esc(msg.body)}${msg.edited_at ? '<span class="chat-edited">(edited)</span>' : ''}</div>` : ''}
