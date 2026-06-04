@@ -303,6 +303,15 @@
   .chat-emoji-grid { display:flex; flex-wrap:wrap; gap:2px; }
   .chat-emoji-grid button { background:none; border:none; font-size:20px; cursor:pointer; padding:3px 4px; border-radius:6px; line-height:1; }
   .chat-emoji-grid button:hover { background:rgba(255,255,255,.08); }
+  /* Reply / forward / download / nav badge */
+  .chat-reply-quote { border-left:3px solid var(--primary); padding:4px 10px; border-radius:6px; background:rgba(124,106,255,.14); font-size:11px; margin-bottom:5px; max-width:100%; overflow:hidden; cursor:pointer; }
+  .chat-reply-quote-sender { font-weight:700; color:var(--primary); margin-bottom:1px; }
+  .chat-reply-quote-body { color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chat-reply-bar { display:none; align-items:center; gap:8px; padding:6px 14px; background:rgba(124,106,255,.12); border-top:1px solid rgba(124,106,255,.3); font-size:12px; flex-shrink:0; }
+  .chat-reply-bar.visible { display:flex; }
+  .chat-download-btn { background:none; border:none; cursor:pointer; font-size:14px; padding:2px 4px; opacity:.7; }
+  .chat-download-btn:hover { opacity:1; }
+  .chat-nav-badge { margin-left:auto; background:var(--danger); color:#fff; font-size:10px; font-weight:700; min-width:18px; height:18px; border-radius:9px; padding:0 5px; display:flex; align-items:center; justify-content:center; line-height:1; }
 </style>
 </head>
 <body>
@@ -377,6 +386,7 @@
       <div class="sidebar-section-label">Chat</div>
       <button class="nav-item" id="nav-chat" onclick="navigate('chat')">
         <span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat
+        <span class="chat-nav-badge" id="chat-nav-badge" style="display:none">0</span>
       </button>
     </nav>
     <div class="sidebar-footer">
@@ -1427,6 +1437,8 @@ let chatMessages     = [];
 let chatSse          = null;
 let chatPeople       = [];
 let chatUnread       = new Set();
+let chatReplyingTo   = null; // { id, sender, body }
+let chatForwardData  = null; // { body, file_url, file_name, file_size, file_type }
 
 function myChatKey() { return `employee_${empInfo.id}`; }
 
@@ -1442,6 +1454,9 @@ function openChatSse() {
       } else {
         chatUnread.add(roomId);
         chatMarkUnread(roomId);
+        chatUpdateNavBadge();
+        chatPlayNotifSound();
+        chatShowNotification(message.sender_name, message.body, roomId);
       }
       chatUpdatePreview(roomId, message);
     } catch (_) {}
@@ -1474,11 +1489,13 @@ function closeChatSse() {
 }
 
 async function loadChat() {
+  chatRequestNotifPermission();
   openChatSse();
   const r = await ef('/api/employee/chat/rooms');
   if (!r.ok) return;
   chatRooms = await r.json();
   chatRenderRoomList();
+  chatUpdateNavBadge();
   // Mobile: show room list panel
   document.getElementById('chat-rooms-panel')?.classList.add('mob-show');
   document.getElementById('chat-main')?.classList.remove('mob-show');
@@ -1511,7 +1528,9 @@ function chatRenderRoomList() {
 
 async function chatOpenRoom(roomId) {
   activeChatRoomId = roomId;
+  chatReplyingTo = null;
   chatUnread.delete(roomId);
+  chatUpdateNavBadge();
   document.querySelectorAll('.chat-room-item').forEach(el => el.classList.toggle('active', parseInt(el.dataset.room) === roomId));
   document.querySelector(`[data-room="${roomId}"] .chat-unread-dot`)?.remove();
 
@@ -1536,6 +1555,14 @@ async function chatOpenRoom(roomId) {
     <div id="chat-attach-preview" style="display:none" class="chat-attach-preview">
       <span>📎</span><span class="chat-attach-preview-name" id="chat-attach-name"></span>
       <button class="chat-attach-remove" onclick="chatRemoveAttach()" title="Remove">×</button>
+    </div>
+    <div class="chat-reply-bar" id="chat-reply-bar">
+      <span style="color:var(--primary)">↩️</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:11px" id="chat-reply-sender"></div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="chat-reply-body"></div>
+      </div>
+      <button onclick="chatClearReply()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button>
     </div>
     <div class="chat-composer" style="position:relative">
       <div class="chat-emoji-wrap" id="chat-emoji-wrap">
@@ -1563,7 +1590,7 @@ function chatBackToRooms() {
 }
 
 function chatToggleActions(e) {
-  if (e.target.closest('a, button, textarea, img')) return; // don't hijack links/edit/buttons
+  if (e.target.closest('a, button, textarea, img, .chat-reply-quote')) return; // don't hijack links/edit/buttons/quote
   const m = e.currentTarget;
   document.querySelectorAll('.chat-msg.show-actions').forEach(x => { if (x !== m) x.classList.remove('show-actions'); });
   m.classList.toggle('show-actions');
@@ -1573,22 +1600,39 @@ function chatMsgHTML(msg, myKey) {
   const mine    = msg.sender_key === myKey;
   const timeStr = new Date(msg.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
   const canDel  = mine && (Date.now() - new Date(msg.created_at).getTime()) < 5 * 60 * 1000;
-  const actions = mine ? `<div class="chat-msg-actions">
-    <button class="chat-action-btn" onclick="chatStartEdit(${msg.id})" title="Edit">✏️</button>
-    ${canDel ? `<button class="chat-action-btn" onclick="chatDeleteMsg(${msg.id})" title="Delete">🗑️</button>` : ''}
+  const actions = `<div class="chat-msg-actions">
+    <button class="chat-action-btn" onclick="chatSetReply(${msg.id})" title="Reply">↩️</button>
+    <button class="chat-action-btn" onclick="chatForwardMsg(${msg.id})" title="Forward">↪️</button>
+    ${mine ? `<button class="chat-action-btn" onclick="chatStartEdit(${msg.id})" title="Edit">✏️</button>` : ''}
+    ${mine && canDel ? `<button class="chat-action-btn" onclick="chatDeleteMsg(${msg.id})" title="Delete">🗑️</button>` : ''}
+  </div>`;
+  const replyHTML = msg.reply_to_body ? `<div class="chat-reply-quote" onclick="chatScrollToMsg(${msg.reply_to_id})">
+    <div class="chat-reply-quote-sender">${esc(msg.reply_to_sender || '')}</div>
+    <div class="chat-reply-quote-body">${esc(msg.reply_to_body)}</div>
   </div>` : '';
+  const dlBtn = msg.file_url ? `<button class="chat-download-btn" onclick="chatDownloadFile(${msg.id})" title="Download">⬇️</button>` : '';
   const fileHTML = msg.file_url ? (
     msg.file_type?.startsWith('image/')
-      ? `<img src="${esc(msg.file_url)}" class="chat-img-thumb" onclick="window.open('${esc(msg.file_url)}','_blank')" loading="lazy">`
-      : `<div class="chat-file-attach">📎 <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span></div>`
+      ? `<div><img src="${esc(msg.file_url)}" class="chat-img-thumb" onclick="window.open('${esc(msg.file_url)}','_blank')" loading="lazy"><div style="text-align:right">${dlBtn}</div></div>`
+      : `<div class="chat-file-attach">📎 <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
   ) : '';
-  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}"${mine ? ' onclick="chatToggleActions(event)"' : ''}>
+  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}" onclick="chatToggleActions(event)">
     ${actions}
     ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
+    ${replyHTML}
     ${msg.body ? `<div class="chat-msg-bubble">${esc(msg.body)}${msg.edited_at ? '<span class="chat-edited">(edited)</span>' : ''}</div>` : ''}
     ${fileHTML}
     <div class="chat-msg-time">${timeStr}</div>
   </div>`;
+}
+
+function chatScrollToMsg(msgId) {
+  const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+  if (!el) return;
+  el.scrollIntoView({ behavior:'smooth', block:'center' });
+  el.style.transition = 'background .3s';
+  el.style.background = 'rgba(124,106,255,.15)';
+  setTimeout(() => { el.style.background = ''; }, 900);
 }
 
 function chatRenderMessages() {
@@ -1652,7 +1696,9 @@ async function chatSend() {
   chatAutoGrow(input);
   const payload = { body };
   if (chatPendingFile) { payload.file_url = chatPendingFile.url; payload.file_name = chatPendingFile.name; payload.file_size = chatPendingFile.size; payload.file_type = chatPendingFile.type; }
+  if (chatReplyingTo) { payload.reply_to_id = chatReplyingTo.id; payload.reply_to_sender = chatReplyingTo.sender; payload.reply_to_body = chatReplyingTo.body; }
   chatRemoveAttach();
+  chatClearReply();
   const btn = document.getElementById('chat-send-btn');
   if (btn) btn.disabled = true;
   try {
@@ -1682,6 +1728,102 @@ function chatUpdatePreview(roomId, message) {
 function chatMarkUnread(roomId) {
   const el = document.querySelector(`[data-room="${roomId}"]`);
   if (el && !el.querySelector('.chat-unread-dot')) el.insertAdjacentHTML('beforeend', '<div class="chat-unread-dot"></div>');
+  chatUpdateNavBadge();
+}
+
+function chatUpdateNavBadge() {
+  const el = document.getElementById('chat-nav-badge');
+  if (!el) return;
+  const count = chatUnread.size;
+  el.textContent = count > 99 ? '99+' : String(count);
+  el.style.display = count > 0 ? 'flex' : 'none';
+}
+
+// ── Reply ─────────────────────────────────────────────────────────────────────
+function chatSetReply(msgId) {
+  const msg = chatMessages.find(m => m.id === msgId);
+  if (!msg) return;
+  const body = (msg.body || (msg.file_url ? (msg.file_name || 'Attachment') : '')).slice(0, 80);
+  chatReplyingTo = { id: msg.id, sender: msg.sender_name, body };
+  document.getElementById('chat-reply-sender').textContent = msg.sender_name;
+  document.getElementById('chat-reply-body').textContent = body;
+  document.getElementById('chat-reply-bar')?.classList.add('visible');
+  document.getElementById('chat-input')?.focus();
+}
+
+function chatClearReply() {
+  chatReplyingTo = null;
+  document.getElementById('chat-reply-bar')?.classList.remove('visible');
+}
+
+// ── Download ──────────────────────────────────────────────────────────────────
+async function chatDownloadFile(msgId) {
+  const msg = chatMessages.find(m => m.id === msgId);
+  if (!msg || !msg.file_url) return;
+  const url = msg.file_url, name = msg.file_name || 'file';
+  try {
+    const r = await fetch(url);
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } catch (_) { window.open(url, '_blank'); }
+}
+
+// ── Forward ───────────────────────────────────────────────────────────────────
+function chatForwardMsg(msgId) {
+  const msg = chatMessages.find(m => m.id === msgId);
+  if (!msg) return;
+  chatForwardData = { body: msg.body, file_url: msg.file_url, file_name: msg.file_name, file_size: msg.file_size, file_type: msg.file_type };
+  const list = document.getElementById('chat-forward-room-list');
+  const myKey = myChatKey();
+  list.innerHTML = chatRooms.filter(r => r.id !== activeChatRoomId).map(r => {
+    const name = r.type === 'group' ? r.name : (r.members||[]).find(m => m.member_key !== myKey)?.member_name || 'Chat';
+    return `<button class="btn btn-outline" style="justify-content:flex-start;text-align:left;width:100%" onclick="chatForwardTo(${r.id})">${esc(name)}</button>`;
+  }).join('');
+  if (!list.innerHTML) list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0">No other conversations yet.</div>';
+  document.getElementById('chat-forward-modal').style.display = 'flex';
+}
+
+async function chatForwardTo(roomId) {
+  document.getElementById('chat-forward-modal').style.display = 'none';
+  if (!chatForwardData) return;
+  const payload = { body: chatForwardData.body ? `↪ ${chatForwardData.body}` : '' };
+  if (chatForwardData.file_url) { payload.file_url = chatForwardData.file_url; payload.file_name = chatForwardData.file_name; payload.file_size = chatForwardData.file_size; payload.file_type = chatForwardData.file_type; }
+  const fwd = chatForwardData;
+  chatForwardData = null;
+  const r = await ef(`/api/employee/chat/rooms/${roomId}/messages`, { method:'POST', body:JSON.stringify(payload) });
+  if (r.ok && roomId === activeChatRoomId) { const msg = await r.json(); chatAppendMessage(msg); chatScrollBottom(); chatUpdatePreview(roomId, msg); }
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+function chatRequestNotifPermission() {
+  if ('Notification' in window && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (_) {} }
+}
+
+function chatPlayNotifSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
+  } catch (_) {}
+}
+
+function chatShowNotification(senderName, body, roomId) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!document.hidden) return; // only when tab is in background
+  try {
+    const n = new Notification(senderName || 'New message', { body: (body || '').slice(0, 80) || '📎 Attachment' });
+    n.onclick = () => { window.focus(); navigate('chat'); chatOpenRoom(roomId); n.close(); };
+  } catch (_) {}
 }
 
 async function showNewDmModal() {
@@ -1804,6 +1946,17 @@ pageLoaders['chat'] = loadChat;
       <button class="btn btn-outline btn-sm" onclick="closeNewDmModal()">Cancel</button>
       <button class="btn btn-primary btn-sm" onclick="startDm()">Open Chat</button>
     </div>
+  </div>
+</div>
+
+<!-- ── Forward Modal ── -->
+<div id="chat-forward-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:380px;overflow:hidden">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:15px;font-weight:700">Forward to…</span>
+      <button onclick="document.getElementById('chat-forward-modal').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div style="padding:16px 20px;max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px" id="chat-forward-room-list"></div>
   </div>
 </div>
 </body>
