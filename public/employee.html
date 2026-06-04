@@ -726,6 +726,7 @@ async function showApp() {
 }
 
 async function logout() {
+  closeChatSse();
   try { await ef('/api/employee/logout', { method: 'POST' }); } catch (_) {}
   localStorage.removeItem('ml_emp_token'); empToken = null; showLogin();
 }
@@ -733,7 +734,10 @@ async function logout() {
 /* ── Navigation ── */
 const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', pdfscraper: 'PDF Scraper' };
 const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail };
+let _currentEmpPage = 'log';
 function navigate(page) {
+  if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
+  _currentEmpPage = page;
   // Block navigation to sections the employee doesn't have permission for
   const pageEl = document.getElementById('page-' + page);
   if (pageEl && pageEl.dataset.permitted === '0') return navigate('log');
@@ -1383,7 +1387,6 @@ let chatMessages     = [];
 let chatSse          = null;
 let chatPeople       = [];
 let chatUnread       = new Set();
-let chatCurrentPage  = '';
 
 function myChatKey() { return `employee_${empInfo.id}`; }
 
@@ -1592,14 +1595,6 @@ async function startDm() {
 
 pageTitles['chat'] = 'Chat';
 pageLoaders['chat'] = loadChat;
-
-// Hook navigate to close SSE when leaving chat
-const _origNavigate = navigate;
-function navigate(page) {
-  if (chatCurrentPage === 'chat' && page !== 'chat') closeChatSse();
-  chatCurrentPage = page;
-  _origNavigate(page);
-}
 </script>
 
 <!-- ── New DM Modal ── -->
