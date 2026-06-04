@@ -1535,6 +1535,175 @@ receiver.router.delete('/api/dashboard/employees/:id', requireAuth, async (req, 
   res.json({ ok: true });
 });
 
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+const chatSseClients = new Map(); // key: 'admin' | 'employee_<id>'
+
+function chatBroadcast(memberKeys, eventName, payload) {
+  const data = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
+  memberKeys.forEach(key => {
+    const res = chatSseClients.get(key);
+    if (res) try { res.write(data); } catch (_) {}
+  });
+}
+
+function chatCallerIdentity(req) {
+  if (req.employee) return { key: `employee_${req.employee.id}`, name: req.employee.name };
+  return { key: 'admin', name: 'Admin' };
+}
+
+async function chatListRooms(callerKey) {
+  const { data: membership } = await supabase.from('chat_room_members').select('room_id').eq('member_key', callerKey);
+  if (!membership?.length) return [];
+  const roomIds = membership.map(m => m.room_id);
+  const [{ data: rooms }, { data: allMembers }, { data: recentMsgs }] = await Promise.all([
+    supabase.from('chat_rooms').select('*').in('id', roomIds).order('updated_at', { ascending: false }),
+    supabase.from('chat_room_members').select('*').in('room_id', roomIds),
+    supabase.from('chat_messages').select('*').in('room_id', roomIds).order('created_at', { ascending: false }).limit(roomIds.length * 3),
+  ]);
+  const membersByRoom = {};
+  (allMembers || []).forEach(m => {
+    if (!membersByRoom[m.room_id]) membersByRoom[m.room_id] = [];
+    membersByRoom[m.room_id].push(m);
+  });
+  const lastMsgByRoom = {};
+  (recentMsgs || []).forEach(m => { if (!lastMsgByRoom[m.room_id]) lastMsgByRoom[m.room_id] = m; });
+  return (rooms || []).map(r => ({ ...r, members: membersByRoom[r.id] || [], lastMessage: lastMsgByRoom[r.id] || null }));
+}
+
+async function chatCreateOrGetDirect(callerKey, callerName, targetKey, targetName) {
+  const { data: callerRooms } = await supabase.from('chat_room_members').select('room_id').eq('member_key', callerKey);
+  if (callerRooms?.length) {
+    const callerRoomIds = callerRooms.map(r => r.room_id);
+    const { data: shared } = await supabase.from('chat_room_members').select('room_id').eq('member_key', targetKey).in('room_id', callerRoomIds);
+    if (shared?.length) {
+      for (const s of shared) {
+        const { data: room } = await supabase.from('chat_rooms').select('*').eq('id', s.room_id).eq('type', 'direct').single();
+        if (room) return room;
+      }
+    }
+  }
+  const { data: room } = await supabase.from('chat_rooms').insert({ type: 'direct', name: '', created_by: callerKey }).select().single();
+  await supabase.from('chat_room_members').insert([
+    { room_id: room.id, member_key: callerKey, member_name: callerName },
+    { room_id: room.id, member_key: targetKey, member_name: targetName },
+  ]);
+  return room;
+}
+
+async function chatGetMessages(req, res, callerKey) {
+  const roomId = parseInt(req.params.roomId);
+  const { data: member } = await supabase.from('chat_room_members').select('room_id').eq('room_id', roomId).eq('member_key', callerKey).single();
+  if (!member) return res.status(403).json({ error: 'Not a member of this room' });
+  const before = req.query.before;
+  let query = supabase.from('chat_messages').select('*').eq('room_id', roomId).order('created_at', { ascending: false }).limit(50);
+  if (before) query = query.lt('created_at', before);
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json((data || []).reverse());
+}
+
+async function chatSendMessage(req, res, callerKey, callerName) {
+  const roomId = parseInt(req.params.roomId);
+  const { body } = req.body || {};
+  if (!body?.trim()) return res.status(400).json({ error: 'Message body required' });
+  const { data: member } = await supabase.from('chat_room_members').select('room_id').eq('room_id', roomId).eq('member_key', callerKey).single();
+  if (!member) return res.status(403).json({ error: 'Not a member of this room' });
+  const { data: msg, error } = await supabase.from('chat_messages').insert({ room_id: roomId, sender_key: callerKey, sender_name: callerName, body: body.trim() }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  const { data: members } = await supabase.from('chat_room_members').select('member_key').eq('room_id', roomId);
+  chatBroadcast((members || []).map(m => m.member_key), 'message', { roomId, message: msg });
+  res.json(msg);
+}
+
+// SSE — Admin
+receiver.router.get('/api/dashboard/chat/events', requireAuth, (req, res) => {
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders();
+  res.write(':ok\n\n');
+  chatSseClients.set('admin', res);
+  const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
+  req.on('close', () => { clearInterval(ka); chatSseClients.delete('admin'); });
+});
+
+// SSE — Employee
+receiver.router.get('/api/employee/chat/events', requireEmployeeAuth, (req, res) => {
+  const key = `employee_${req.employee.id}`;
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders();
+  res.write(':ok\n\n');
+  chatSseClients.set(key, res);
+  const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
+  req.on('close', () => { clearInterval(ka); chatSseClients.delete(key); });
+});
+
+// People lists
+receiver.router.get('/api/dashboard/chat/people', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('employees').select('id, name').order('name');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json((data || []).map(e => ({ key: `employee_${e.id}`, name: e.name, role: 'Employee' })));
+});
+
+receiver.router.get('/api/employee/chat/people', requireEmployeeAuth, async (req, res) => {
+  const { data, error } = await supabase.from('employees').select('id, name').order('name');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json([
+    { key: 'admin', name: 'Admin', role: 'Admin' },
+    ...(data || []).filter(e => e.id !== req.employee.id).map(e => ({ key: `employee_${e.id}`, name: e.name, role: 'Employee' })),
+  ]);
+});
+
+// Rooms — list
+receiver.router.get('/api/dashboard/chat/rooms', requireAuth, async (_req, res) => {
+  try { res.json(await chatListRooms('admin')); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+receiver.router.get('/api/employee/chat/rooms', requireEmployeeAuth, async (req, res) => {
+  try { res.json(await chatListRooms(`employee_${req.employee.id}`)); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Rooms — direct
+receiver.router.post('/api/dashboard/chat/rooms/direct', requireAuth, express.json(), async (req, res) => {
+  const { targetKey, targetName } = req.body || {};
+  if (!targetKey || !targetName) return res.status(400).json({ error: 'targetKey and targetName required' });
+  try { res.json(await chatCreateOrGetDirect('admin', 'Admin', targetKey, targetName)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+receiver.router.post('/api/employee/chat/rooms/direct', requireEmployeeAuth, express.json(), async (req, res) => {
+  const { targetKey, targetName } = req.body || {};
+  if (!targetKey || !targetName) return res.status(400).json({ error: 'targetKey and targetName required' });
+  const { key, name } = chatCallerIdentity(req);
+  try { res.json(await chatCreateOrGetDirect(key, name, targetKey, targetName)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Rooms — group (admin only)
+receiver.router.post('/api/dashboard/chat/rooms/group', requireAuth, express.json(), async (req, res) => {
+  const { name, memberKeys } = req.body || {};
+  if (!name || !Array.isArray(memberKeys) || !memberKeys.length) return res.status(400).json({ error: 'name and memberKeys[] required' });
+  try {
+    const { data: room } = await supabase.from('chat_rooms').insert({ type: 'group', name, created_by: 'admin' }).select().single();
+    const empIds = memberKeys.filter(k => k.startsWith('employee_')).map(k => parseInt(k.slice(9)));
+    const { data: emps } = await supabase.from('employees').select('id, name').in('id', empIds);
+    const empNameMap = {};
+    (emps || []).forEach(e => { empNameMap[e.id] = e.name; });
+    const insertMembers = [
+      { room_id: room.id, member_key: 'admin', member_name: 'Admin' },
+      ...memberKeys.filter(k => k !== 'admin').map(k => ({
+        room_id: room.id,
+        member_key: k,
+        member_name: k.startsWith('employee_') ? (empNameMap[parseInt(k.slice(9))] || k) : k,
+      })),
+    ];
+    await supabase.from('chat_room_members').insert(insertMembers);
+    res.json(room);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Messages
+receiver.router.get('/api/dashboard/chat/rooms/:roomId/messages', requireAuth, (req, res) => chatGetMessages(req, res, 'admin'));
+receiver.router.get('/api/employee/chat/rooms/:roomId/messages', requireEmployeeAuth, (req, res) => chatGetMessages(req, res, `employee_${req.employee.id}`));
+receiver.router.post('/api/dashboard/chat/rooms/:roomId/messages', requireAuth, express.json(), (req, res) => chatSendMessage(req, res, 'admin', 'Admin'));
+receiver.router.post('/api/employee/chat/rooms/:roomId/messages', requireEmployeeAuth, express.json(), (req, res) => chatSendMessage(req, res, `employee_${req.employee.id}`, req.employee.name));
+
 // ─── PDF Scraper ──────────────────────────────────────────────────────────────
 let lastPdfScrape = null; // { scraped_at, series_name, trims, specs }
 

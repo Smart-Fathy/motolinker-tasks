@@ -640,6 +640,43 @@
       .email-back-btn { display: inline-flex !important; }
     }
     .email-back-btn { display: none; }
+  /* ── Chat ───────────────────────────────────────────── */
+  .chat-layout { display:grid; grid-template-columns:270px 1fr; height:calc(100vh - 64px); overflow:hidden; }
+  .chat-rooms-panel { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; background:var(--surface); }
+  .chat-rooms-header { padding:14px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+  .chat-rooms-title { font-size:13px; font-weight:700; }
+  .chat-room-list { flex:1; overflow-y:auto; padding:6px 0; }
+  .chat-room-item { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; transition:background .15s; }
+  .chat-room-item:hover { background:rgba(255,255,255,.04); }
+  .chat-room-item.active { background:rgba(99,102,241,.14); }
+  .chat-room-avatar { width:38px; height:38px; border-radius:50%; background:var(--primary); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#fff; flex-shrink:0; }
+  .chat-room-avatar.grp { border-radius:10px; }
+  .chat-room-info { flex:1; min-width:0; }
+  .chat-room-name { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-room-preview { font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; }
+  .chat-unread-dot { width:8px; height:8px; border-radius:50%; background:var(--primary); flex-shrink:0; }
+  .chat-main { display:flex; flex-direction:column; overflow:hidden; }
+  .chat-header { padding:12px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-shrink:0; background:var(--surface); }
+  .chat-header-name { font-size:14px; font-weight:700; }
+  .chat-header-meta { font-size:11px; color:var(--muted); }
+  .chat-messages { flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:3px; }
+  .chat-msg { display:flex; flex-direction:column; max-width:70%; }
+  .chat-msg.mine { align-self:flex-end; align-items:flex-end; }
+  .chat-msg.theirs { align-self:flex-start; align-items:flex-start; }
+  .chat-msg-sender { font-size:10px; color:var(--muted); margin-bottom:3px; font-weight:600; }
+  .chat-msg-bubble { padding:8px 13px; border-radius:18px; font-size:13px; line-height:1.45; max-width:100%; word-break:break-word; }
+  .chat-msg.mine .chat-msg-bubble { background:var(--primary); color:#fff; border-bottom-right-radius:4px; }
+  .chat-msg.theirs .chat-msg-bubble { background:rgba(255,255,255,.07); border:1px solid var(--border); border-bottom-left-radius:4px; }
+  .chat-msg-time { font-size:10px; color:var(--muted); margin-top:2px; }
+  .chat-date-divider { text-align:center; font-size:10px; color:var(--muted); margin:10px 0 3px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+  .chat-composer { padding:12px 14px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:flex-end; background:var(--surface); flex-shrink:0; }
+  .chat-input { flex:1; padding:9px 13px; border-radius:20px; border:1px solid var(--border); background:rgba(255,255,255,.05); color:var(--text); font-size:13px; font-family:inherit; outline:none; resize:none; max-height:110px; overflow-y:auto; line-height:1.4; transition:border-color .2s; }
+  .chat-input:focus { border-color:var(--primary); }
+  .chat-send-btn { width:36px; height:36px; border-radius:50%; background:var(--primary); border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; color:#fff; transition:opacity .15s,transform .1s; }
+  .chat-send-btn:hover { opacity:.85; }
+  .chat-send-btn:active { transform:scale(.93); }
+  .chat-send-btn:disabled { opacity:.4; cursor:not-allowed; }
+  .chat-empty-state { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); font-size:13px; gap:10px; text-align:center; }
   </style>
 </head>
 <body>
@@ -684,6 +721,8 @@
       <div class="nav-item"        onclick="navigate('carsync')"    id="nav-carsync">      <span class="nav-icon"><i data-lucide="car"></i></span> Car Sync</div>
       <div class="nav-item"        onclick="navigate('pdfscraper')" id="nav-pdfscraper">   <span class="nav-icon"><i data-lucide="file-text"></i></span> PDF Scraper</div>
       <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft</div>
+      <div class="sidebar-section-label">Chat</div>
+      <div class="nav-item" onclick="navigate('chat')" id="nav-chat"><span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat</div>
       <div class="sidebar-section-label">Account</div>
       <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon"><i data-lucide="mail"></i></span> My Email</div>
       <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon"><i data-lucide="hard-drive"></i></span> My Drive</div>
@@ -1164,6 +1203,34 @@
     </div>
   </div>
 
+  <!-- ── Chat Page ── -->
+  <div id="page-chat" class="page" style="padding:0">
+    <div class="chat-layout" id="admin-chat-layout">
+      <div class="chat-rooms-panel" id="admin-chat-rooms-panel">
+        <div class="chat-rooms-header">
+          <span class="chat-rooms-title">Messages</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm btn-outline" onclick="adminShowGroupModal()" title="New group" style="padding:5px 8px">
+              <i data-lucide="users" style="width:13px;height:13px"></i>
+            </button>
+            <button class="btn btn-sm btn-outline" onclick="adminShowDmModal()" title="New DM" style="padding:5px 8px">
+              <i data-lucide="edit" style="width:13px;height:13px"></i>
+            </button>
+          </div>
+        </div>
+        <div class="chat-room-list" id="admin-chat-room-list">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+      <div class="chat-main" id="admin-chat-main">
+        <div class="chat-empty-state">
+          <i data-lucide="message-circle" style="width:44px;height:44px;opacity:.25"></i>
+          <div>Select a conversation to start chatting</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   </div><!-- /app-content -->
   </div><!-- /layout -->
 </div><!-- /app -->
@@ -1177,6 +1244,44 @@
     </div>
     <div class="modal-body" id="modal-body"></div>
     <div class="modal-footer" id="modal-footer"></div>
+  </div>
+</div>
+
+<!-- ── Chat: New DM Modal ── -->
+<div id="admin-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:300;align-items:center;justify-content:center;padding:20px">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">New Direct Message</span><button class="modal-close" onclick="document.getElementById('admin-dm-modal').style.display='none'">×</button></div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Select employee</label>
+        <select class="form-control" id="admin-dm-target"></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="document.getElementById('admin-dm-modal').style.display='none'">Cancel</button>
+      <button class="btn btn-primary" onclick="adminStartDm()">Open Chat</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Chat: New Group Modal ── -->
+<div id="admin-group-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:300;align-items:center;justify-content:center;padding:20px">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Create Group Chat</span><button class="modal-close" onclick="document.getElementById('admin-group-modal').style.display='none'">×</button></div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Group Name *</label>
+        <input class="form-control" id="admin-group-name" placeholder="e.g. Sales Team">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Members (hold Ctrl/Cmd to select multiple)</label>
+        <select class="form-control" id="admin-group-members" multiple style="height:150px"></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="document.getElementById('admin-group-modal').style.display='none'">Cancel</button>
+      <button class="btn btn-primary" onclick="adminCreateGroup()">Create Group</button>
+    </div>
   </div>
 </div>
 
@@ -1703,9 +1808,10 @@ async function syncToSlackLists() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, carsync: loadCarSync, pdfscraper: () => {}, quotation: loadQuotation };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, carsync: loadCarSync, pdfscraper: () => {}, quotation: loadQuotation, chat: loadAdminChat };
 
 function navigate(page) {
+  if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
@@ -2621,10 +2727,228 @@ function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheet
   const ok = await checkAuth();
   if (!ok) return;
   const hash = location.hash.replace('#', '');
-  const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','carsync'];
+  const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','carsync','chat'];
   if (hash && validPages.includes(hash)) navigate(hash);
   else loadDashboard();
 })();
+
+// ── Admin Chat ────────────────────────────────────────────────────────────────
+let adminChatRooms       = [];
+let adminActiveChatRoom  = null;
+let adminChatMessages    = [];
+let adminChatSse         = null;
+let adminChatPeople      = [];
+let adminChatUnread      = new Set();
+
+function adminOpenChatSse() {
+  if (adminChatSse) { adminChatSse.close(); adminChatSse = null; }
+  adminChatSse = new EventSource(`/api/dashboard/chat/events?_t=${encodeURIComponent(authToken)}`);
+  adminChatSse.addEventListener('message', e => {
+    try {
+      const { roomId, message } = JSON.parse(e.data);
+      if (roomId === adminActiveChatRoom) {
+        adminChatAppendMessage(message);
+        adminChatScrollBottom();
+      } else {
+        adminChatUnread.add(roomId);
+        adminChatMarkUnread(roomId);
+      }
+      adminChatUpdatePreview(roomId, message);
+    } catch (_) {}
+  });
+}
+
+function adminCloseChatSse() {
+  if (adminChatSse) { adminChatSse.close(); adminChatSse = null; }
+  adminActiveChatRoom = null;
+}
+
+async function loadAdminChat() {
+  adminOpenChatSse();
+  const r = await apiFetch('/api/dashboard/chat/rooms');
+  if (!r.ok) return;
+  adminChatRooms = await r.json();
+  adminChatRenderRoomList();
+}
+
+function adminChatRenderRoomList() {
+  const el = document.getElementById('admin-chat-room-list');
+  if (!el) return;
+  if (!adminChatRooms.length) {
+    el.innerHTML = '<div style="padding:28px 16px;font-size:12px;color:var(--muted);text-align:center">No conversations yet.<br>Use the buttons above to start one.</div>';
+    return;
+  }
+  el.innerHTML = adminChatRooms.map(room => {
+    const other  = room.type === 'direct' ? (room.members || []).find(m => m.member_key !== 'admin') : null;
+    const name   = room.type === 'group' ? room.name : (other?.member_name || 'Unknown');
+    const init   = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    const prev   = room.lastMessage ? room.lastMessage.body.slice(0,55) : 'No messages yet';
+    const unread = adminChatUnread.has(room.id) ? '<div class="chat-unread-dot"></div>' : '';
+    return `<div class="chat-room-item${adminActiveChatRoom === room.id ? ' active' : ''}" onclick="adminChatOpenRoom(${room.id})" data-room="${room.id}">
+      <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${esc(init)}</div>
+      <div class="chat-room-info">
+        <div class="chat-room-name">${esc(name)}</div>
+        <div class="chat-room-preview">${esc(prev)}</div>
+      </div>${unread}
+    </div>`;
+  }).join('');
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+async function adminChatOpenRoom(roomId) {
+  adminActiveChatRoom = roomId;
+  adminChatUnread.delete(roomId);
+  document.querySelectorAll('.chat-room-item').forEach(el => el.classList.toggle('active', parseInt(el.dataset.room) === roomId));
+  document.querySelector(`[data-room="${roomId}"] .chat-unread-dot`)?.remove();
+
+  const room = adminChatRooms.find(r => r.id === roomId);
+  const name = room?.type === 'group' ? room.name : (room?.members || []).find(m => m.member_key !== 'admin')?.member_name || 'Chat';
+
+  const main = document.getElementById('admin-chat-main');
+  main.innerHTML = `
+    <div class="chat-header">
+      <div class="chat-room-avatar${room?.type === 'group' ? ' grp' : ''}" style="width:32px;height:32px;font-size:12px">${esc(name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}</div>
+      <div>
+        <div class="chat-header-name">${esc(name)}</div>
+        <div class="chat-header-meta">${room?.type === 'group' ? `${(room.members||[]).length} members` : 'Direct message'}</div>
+      </div>
+    </div>
+    <div class="chat-messages" id="admin-chat-messages"><div class="loading"><div class="spinner"></div></div></div>
+    <div class="chat-composer">
+      <textarea class="chat-input" id="admin-chat-input" rows="1" placeholder="Message ${esc(name)}…" onkeydown="adminChatHandleKey(event)" oninput="adminChatAutoGrow(this)"></textarea>
+      <button class="chat-send-btn" id="admin-chat-send-btn" onclick="adminChatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
+    </div>`;
+  requestAnimationFrame(() => lucide.createIcons());
+
+  const r = await apiFetch(`/api/dashboard/chat/rooms/${roomId}/messages`);
+  if (!r.ok) return;
+  adminChatMessages = await r.json();
+  adminChatRenderMessages();
+  adminChatScrollBottom();
+}
+
+function adminChatRenderMessages() {
+  const el = document.getElementById('admin-chat-messages');
+  if (!el) return;
+  let lastDate = '';
+  el.innerHTML = adminChatMessages.map(msg => {
+    const mine    = msg.sender_key === 'admin';
+    const d       = new Date(msg.created_at);
+    const dateStr = d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+    const timeStr = d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+    let div = '';
+    if (dateStr !== lastDate) { lastDate = dateStr; div = `<div class="chat-date-divider">${dateStr}</div>`; }
+    return `${div}<div class="chat-msg ${mine ? 'mine' : 'theirs'}">
+      ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
+      <div class="chat-msg-bubble">${esc(msg.body)}</div>
+      <div class="chat-msg-time">${timeStr}</div>
+    </div>`;
+  }).join('');
+}
+
+function adminChatAppendMessage(msg) {
+  adminChatMessages.push(msg);
+  const el = document.getElementById('admin-chat-messages');
+  if (!el) return;
+  const mine    = msg.sender_key === 'admin';
+  const timeStr = new Date(msg.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+  el.insertAdjacentHTML('beforeend', `<div class="chat-msg ${mine ? 'mine' : 'theirs'}">
+    ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
+    <div class="chat-msg-bubble">${esc(msg.body)}</div>
+    <div class="chat-msg-time">${timeStr}</div>
+  </div>`);
+}
+
+function adminChatScrollBottom() {
+  const el = document.getElementById('admin-chat-messages');
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+async function adminChatSend() {
+  const input = document.getElementById('admin-chat-input');
+  if (!input || !adminActiveChatRoom) return;
+  const body = input.value.trim();
+  if (!body) return;
+  input.value = '';
+  adminChatAutoGrow(input);
+  const btn = document.getElementById('admin-chat-send-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await apiFetch(`/api/dashboard/chat/rooms/${adminActiveChatRoom}/messages`, { method:'POST', body:JSON.stringify({ body }) });
+    if (r.ok) {
+      const msg = await r.json();
+      adminChatAppendMessage(msg);
+      adminChatScrollBottom();
+      adminChatUpdatePreview(adminActiveChatRoom, msg);
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+    input.focus();
+  }
+}
+
+function adminChatHandleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); adminChatSend(); } }
+function adminChatAutoGrow(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 110) + 'px'; }
+
+function adminChatUpdatePreview(roomId, message) {
+  const room = adminChatRooms.find(r => r.id === roomId);
+  if (room) room.lastMessage = message;
+  const el = document.querySelector(`[data-room="${roomId}"] .chat-room-preview`);
+  if (el) el.textContent = message.body.slice(0, 55);
+}
+
+function adminChatMarkUnread(roomId) {
+  const el = document.querySelector(`[data-room="${roomId}"]`);
+  if (el && !el.querySelector('.chat-unread-dot')) el.insertAdjacentHTML('beforeend', '<div class="chat-unread-dot"></div>');
+}
+
+async function adminShowDmModal() {
+  if (!adminChatPeople.length) {
+    const r = await apiFetch('/api/dashboard/chat/people');
+    adminChatPeople = r.ok ? await r.json() : [];
+  }
+  const sel = document.getElementById('admin-dm-target');
+  sel.innerHTML = adminChatPeople.map(p => `<option value="${esc(p.key)}" data-name="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+  document.getElementById('admin-dm-modal').style.display = 'flex';
+}
+
+async function adminStartDm() {
+  const sel = document.getElementById('admin-dm-target');
+  const targetKey  = sel.value;
+  const targetName = sel.options[sel.selectedIndex]?.dataset.name || targetKey;
+  document.getElementById('admin-dm-modal').style.display = 'none';
+  const r = await apiFetch('/api/dashboard/chat/rooms/direct', { method:'POST', body:JSON.stringify({ targetKey, targetName }) });
+  if (!r.ok) return;
+  const room = await r.json();
+  if (!adminChatRooms.find(rr => rr.id === room.id)) { adminChatRooms.unshift(room); adminChatRenderRoomList(); }
+  adminChatOpenRoom(room.id);
+}
+
+async function adminShowGroupModal() {
+  if (!adminChatPeople.length) {
+    const r = await apiFetch('/api/dashboard/chat/people');
+    adminChatPeople = r.ok ? await r.json() : [];
+  }
+  const sel = document.getElementById('admin-group-members');
+  sel.innerHTML = adminChatPeople.map(p => `<option value="${esc(p.key)}">${esc(p.name)}</option>`).join('');
+  document.getElementById('admin-group-name').value = '';
+  document.getElementById('admin-group-modal').style.display = 'flex';
+}
+
+async function adminCreateGroup() {
+  const name = document.getElementById('admin-group-name').value.trim();
+  if (!name) { alert('Group name is required'); return; }
+  const sel = document.getElementById('admin-group-members');
+  const memberKeys = [...sel.selectedOptions].map(o => o.value);
+  if (!memberKeys.length) { alert('Select at least one member'); return; }
+  document.getElementById('admin-group-modal').style.display = 'none';
+  const r = await apiFetch('/api/dashboard/chat/rooms/group', { method:'POST', body:JSON.stringify({ name, memberKeys }) });
+  if (!r.ok) { alert('Failed to create group'); return; }
+  const room = await r.json();
+  adminChatRooms.unshift(room);
+  adminChatRenderRoomList();
+  adminChatOpenRoom(room.id);
+}
 
 // ── Submissions ───────────────────────────────────────────────────────────────
 async function loadSubmissions() {

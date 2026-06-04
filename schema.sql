@@ -123,6 +123,55 @@ ALTER TABLE hours_logs ADD COLUMN IF NOT EXISTS employee_id BIGINT REFERENCES em
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{"requests":true,"drive":true,"sheets":true,"pdfscraper":false,"email":false,"viewAllRequests":false}'::jsonb;
 
 -- ============================================================
+--  Chat
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS chat_rooms (
+  id         BIGSERIAL PRIMARY KEY,
+  type       TEXT NOT NULL CHECK (type IN ('direct','group')),
+  name       TEXT DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_rooms_updated ON chat_rooms(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS chat_room_members (
+  room_id     BIGINT NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  member_key  TEXT NOT NULL,
+  member_name TEXT NOT NULL,
+  joined_at   TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (room_id, member_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_room_members_key ON chat_room_members(member_key);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id          BIGSERIAL PRIMARY KEY,
+  room_id     BIGINT NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  sender_key  TEXT NOT NULL,
+  sender_name TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_room ON chat_messages(room_id, created_at DESC);
+
+CREATE OR REPLACE FUNCTION chat_room_touch()
+RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE chat_rooms SET updated_at = NOW() WHERE id = NEW.room_id;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS chat_messages_touch ON chat_messages;
+CREATE TRIGGER chat_messages_touch
+  AFTER INSERT ON chat_messages
+  FOR EACH ROW EXECUTE FUNCTION chat_room_touch();
+
+-- ============================================================
 --  Optional: Row Level Security (RLS)
 -- ============================================================
 
