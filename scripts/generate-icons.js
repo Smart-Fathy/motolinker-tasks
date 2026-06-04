@@ -1,60 +1,108 @@
 // Run once after placing public/01 _ Onyx.png:
+//   npm install sharp
 //   node scripts/generate-icons.js
 // Then commit the generated files in public/icons/
+//
+// The source image is app-icon artwork (gold monogram on a black rounded
+// square) with a caption line beneath it. This script auto-detects the dark
+// square's bounding box (ignoring the caption text and white margins), crops
+// to it, and renders the required PWA icon sizes on a matching dark field.
 
-const puppeteer = require('puppeteer');
-const path = require('path');
-const fs   = require('fs');
+const sharp = require('sharp');
+const path  = require('path');
+const fs    = require('fs');
 
 const logoPath = path.join(__dirname, '..', 'public', '01 _ Onyx.png');
 const outDir   = path.join(__dirname, '..', 'public', 'icons');
 
 if (!fs.existsSync(logoPath)) {
   console.error(`Logo not found: ${logoPath}`);
-  console.error('Please commit public/01 _ Onyx.png first.');
   process.exit(1);
 }
-
 fs.mkdirSync(outDir, { recursive: true });
 
-const sizes = [
+const targets = [
   { file: 'icon-192.png',          size: 192, maskable: false },
   { file: 'icon-512.png',          size: 512, maskable: false },
   { file: 'icon-maskable-512.png', size: 512, maskable: true  },
   { file: 'apple-touch-icon.png',  size: 180, maskable: false },
 ];
 
-async function generate() {
-  console.log('Launching browser…');
-  const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-  const page    = await browser.newPage();
-  const logoB64 = fs.readFileSync(logoPath).toString('base64');
+async function run() {
+  const { data, info } = await sharp(logoPath)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const { width: W, height: H, channels } = info;
 
-  for (const { file, size, maskable } of sizes) {
-    const pad     = maskable ? Math.round(size * 0.12) : Math.round(size * 0.06);
-    const imgSize = size - pad * 2;
-    const html = `<!DOCTYPE html><html><head><style>
-      * { margin:0; padding:0; box-sizing:border-box; }
-      body {
-        width:${size}px; height:${size}px; background:#0a0b10;
-        display:flex; align-items:center; justify-content:center;
-        border-radius:${maskable ? 0 : Math.round(size * 0.18)}px;
-        overflow:hidden;
-      }
-      img { width:${imgSize}px; height:${imgSize}px; object-fit:contain; }
-    </style></head><body>
-      <img src="data:image/png;base64,${logoB64}">
-    </body></html>`;
+  const lum = (i) => 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  const DARK = 70;
 
-    await page.setViewport({ width: size, height: size, deviceScaleFactor: 1 });
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    await page.screenshot({ path: path.join(outDir, file), type: 'png' });
+  // Vertical extent of the big dark blob (rows with many dark px = the square).
+  let top = -1, bottom = -1;
+  const rowMin = W * 0.30;
+  for (let y = 0; y < H; y++) {
+    let count = 0;
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * channels;
+      if (data[i + 3] > 200 && lum(i) < DARK) count++;
+    }
+    if (count > rowMin) {
+      if (top === -1) top = y;
+      bottom = y;
+    } else if (top !== -1 && y - bottom > H * 0.04) {
+      break; // gap after the square = caption begins
+    }
+  }
+
+  // Horizontal extent within [top, bottom].
+  let left = -1, right = -1;
+  const colMin = (bottom - top) * 0.30;
+  for (let x = 0; x < W; x++) {
+    let count = 0;
+    for (let y = top; y <= bottom; y++) {
+      const i = (y * W + x) * channels;
+      if (data[i + 3] > 200 && lum(i) < DARK) count++;
+    }
+    if (count > colMin) {
+      if (left === -1) left = x;
+      right = x;
+    }
+  }
+
+  // Sample square fill color at top-center edge.
+  const sx = Math.round((left + right) / 2), sy = top + 6;
+  const si = (sy * W + sx) * channels;
+  const bg = { r: data[si], g: data[si + 1], b: data[si + 2], alpha: 1 };
+
+  const cropW = right - left, cropH = bottom - top;
+  console.log('Detected square bbox:', { left, top, cropW, cropH, bg });
+
+  for (const { file, size, maskable } of targets) {
+    const inner = maskable ? Math.round(size * 0.80) : size;
+
+    const square = await sharp(logoPath)
+      .extract({ left, top, width: cropW, height: cropH })
+      .resize(inner, inner, { fit: 'cover' })
+      .png()
+      .toBuffer();
+
+    let out = sharp({
+      create: { width: size, height: size, channels: 4, background: bg },
+    }).composite([{ input: square, gravity: 'centre' }]);
+
+    await out.png().toFile(path.join(outDir, file));
     console.log(`  ✓ ${file} (${size}×${size}${maskable ? ' maskable' : ''})`);
   }
 
-  await browser.close();
+  // Favicon
+  await sharp(path.join(outDir, 'icon-192.png'))
+    .resize(48, 48)
+    .png()
+    .toFile(path.join(outDir, 'favicon.png'));
+  console.log('  ✓ favicon.png (48×48)');
+
   console.log('\nAll icons generated in public/icons/');
-  console.log('Commit them: git add public/icons && git commit -m "Add PWA icons"');
 }
 
-generate().catch(e => { console.error(e); process.exit(1); });
+run().catch(e => { console.error(e); process.exit(1); });
