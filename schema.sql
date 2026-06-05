@@ -184,6 +184,34 @@ CREATE TRIGGER chat_messages_touch
   FOR EACH ROW EXECUTE FUNCTION chat_room_touch();
 
 -- ============================================================
+--  Push Subscriptions (web push — one row per device per user)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id         BIGSERIAL PRIMARY KEY,
+  member_key TEXT NOT NULL,
+  endpoint   TEXT NOT NULL,
+  p256dh     TEXT NOT NULL,
+  auth_key   TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (member_key, endpoint)
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_member_key ON push_subscriptions (member_key);
+
+-- ============================================================
+--  Presence (heartbeat-based; "online" = last_seen < 45 s ago)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS presence (
+  member_key TEXT PRIMARY KEY,
+  last_seen  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Voice duration column on messages
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS voice_duration INT DEFAULT NULL;
+
+-- ============================================================
 --  Optional: Row Level Security (RLS)
 -- ============================================================
 

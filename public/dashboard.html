@@ -745,6 +745,24 @@
   .chat-download-btn { background:none; border:none; cursor:pointer; font-size:14px; padding:2px 4px; opacity:.7; }
   .chat-download-btn:hover { opacity:1; }
   .chat-nav-badge { margin-left:auto; background:var(--danger); color:#fff; font-size:10px; font-weight:700; min-width:18px; height:18px; border-radius:9px; padding:0 5px; display:flex; align-items:center; justify-content:center; line-height:1; }
+  /* Presence */
+  .chat-room-avatar-wrap { position:relative; display:inline-flex; flex-shrink:0; }
+  .presence-dot { position:absolute; bottom:1px; right:1px; width:9px; height:9px; border-radius:50%; border:2px solid var(--surface); background:var(--muted); transition:background .3s; }
+  .presence-dot.online { background:var(--success); }
+  /* Typing indicator */
+  .chat-typing-bar { min-height:18px; padding:2px 16px 4px; font-size:11px; color:var(--muted); font-style:italic; flex-shrink:0; }
+  /* Voice recorder */
+  .chat-voice-btn { background:none; border:none; cursor:pointer; font-size:18px; padding:6px; opacity:.7; }
+  .chat-voice-btn:hover { opacity:1; }
+  .chat-voice-btn.recording { color:var(--danger); animation:pulse-rec .8s ease-in-out infinite; }
+  @keyframes pulse-rec { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .chat-recording-bar { display:none; align-items:center; gap:8px; padding:6px 14px; background:rgba(248,113,113,.1); border-top:1px solid rgba(248,113,113,.25); font-size:12px; flex-shrink:0; }
+  .chat-recording-bar.active { display:flex; }
+  .chat-rec-timer { font-weight:700; color:var(--danger); font-variant-numeric:tabular-nums; }
+  /* Voice message bubble */
+  .chat-voice-msg { display:flex; align-items:center; gap:8px; padding:6px 4px; flex-wrap:wrap; }
+  .chat-voice-msg audio { height:32px; max-width:200px; }
+  .chat-voice-dur { font-size:11px; color:var(--muted); white-space:nowrap; }
   @media (max-width:700px) {
     .chat-layout { grid-template-columns:1fr; height:calc(100vh - 64px); height:calc(100dvh - 64px); }
     .chat-rooms-panel { display:none; }
@@ -2818,6 +2836,7 @@ function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheet
   lucide.createIcons();
   const ok = await checkAuth();
   if (!ok) return;
+  adminStartPresenceHeartbeat();
   const hash = location.hash.replace('#', '');
   const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','carsync','chat'];
   if (hash && validPages.includes(hash)) navigate(hash);
@@ -2825,14 +2844,22 @@ function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheet
 })();
 
 // ── Admin Chat ────────────────────────────────────────────────────────────────
-let adminChatRooms       = [];
-let adminActiveChatRoom  = null;
-let adminChatMessages    = [];
-let adminChatSse         = null;
-let adminChatPeople      = [];
-let adminChatUnread      = new Set();
-let adminChatReplyingTo  = null; // { id, sender, body }
-let adminChatForwardData = null; // { body, file_url, file_name, file_size, file_type }
+let adminChatRooms            = [];
+let adminActiveChatRoom       = null;
+let adminChatMessages         = [];
+let adminChatSse              = null;
+let adminChatPeople           = [];
+let adminChatUnread           = new Set();
+let adminChatReplyingTo       = null;
+let adminChatForwardData      = null;
+let adminChatPushSubscription = null;
+let adminChatTypingTimers     = {};
+let adminChatHeartbeatTimer   = null;
+let adminChatPresenceTimer    = null;
+let adminChatVoiceRecorder    = null;
+let adminChatVoiceChunks      = [];
+let adminChatVoiceTimer       = null;
+let adminChatVoiceSeconds     = 0;
 
 function adminOpenChatSse() {
   if (adminChatSse) { adminChatSse.close(); adminChatSse = null; }
@@ -2874,6 +2901,16 @@ function adminOpenChatSse() {
       }
     } catch (_) {}
   });
+  adminChatSse.addEventListener('typing', e => {
+    try {
+      const { roomId, senderName } = JSON.parse(e.data);
+      if (roomId !== adminActiveChatRoom) return;
+      const bar = document.getElementById('admin-chat-typing-bar');
+      if (bar) bar.textContent = `${senderName} is typing…`;
+      clearTimeout(adminChatTypingTimers[roomId]);
+      adminChatTypingTimers[roomId] = setTimeout(() => { if (bar) bar.textContent = ''; }, 3500);
+    } catch (_) {}
+  });
 }
 
 function adminCloseChatSse() {
@@ -2895,6 +2932,7 @@ async function loadAdminChat() {
 }
 
 function adminChatBackToRooms() {
+  if (adminChatPresenceTimer) { clearInterval(adminChatPresenceTimer); adminChatPresenceTimer = null; }
   adminActiveChatRoom = null;
   document.getElementById('admin-chat-rooms-panel')?.classList.add('mob-show');
   document.getElementById('admin-chat-main')?.classList.remove('mob-show');
@@ -2914,7 +2952,10 @@ function adminChatRenderRoomList() {
     const prev   = room.lastMessage ? room.lastMessage.body.slice(0,55) : 'No messages yet';
     const unread = adminChatUnread.has(room.id) ? '<div class="chat-unread-dot"></div>' : '';
     return `<div class="chat-room-item${adminActiveChatRoom === room.id ? ' active' : ''}" onclick="adminChatOpenRoom(${room.id})" data-room="${room.id}">
-      <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${esc(init)}</div>
+      <div class="chat-room-avatar-wrap">
+        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${esc(init)}</div>
+        ${room.type === 'direct' ? `<div class="presence-dot" id="presence-dot-${room.id}"></div>` : ''}
+      </div>
       <div class="chat-room-info">
         <div class="chat-room-name">${esc(name)}</div>
         <div class="chat-room-preview">${esc(prev)}</div>
@@ -2945,10 +2986,22 @@ async function adminChatOpenRoom(roomId) {
       <div class="chat-room-avatar${room?.type === 'group' ? ' grp' : ''}" style="width:32px;height:32px;font-size:12px">${esc(name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}</div>
       <div>
         <div class="chat-header-name">${esc(name)}</div>
-        <div class="chat-header-meta">${room?.type === 'group' ? `${(room.members||[]).length} members` : 'Direct message'}</div>
+        <div class="chat-header-meta" id="admin-chat-header-meta">${room?.type === 'group' ? `${(room.members||[]).length} members` : 'Direct message'}</div>
       </div>
     </div>
     <div class="chat-messages" id="admin-chat-messages"><div class="loading"><div class="spinner"></div></div></div>
+    <div class="chat-attach-preview" id="admin-attach-preview" style="display:none">
+      <span>📎</span><span id="admin-attach-name"></span>
+      <button type="button" onclick="adminChatRemoveAttach()">✕</button>
+    </div>
+    <div class="chat-typing-bar" id="admin-chat-typing-bar"></div>
+    <div class="chat-recording-bar" id="admin-chat-recording-bar">
+      <span style="color:var(--danger);font-size:16px">⏺</span>
+      <span id="admin-chat-rec-timer" class="chat-rec-timer">00:00</span>
+      <span style="flex:1;color:var(--muted);font-size:11px">Recording…</span>
+      <button onclick="adminChatCancelRecording()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:4px">✕ Cancel</button>
+      <button onclick="adminChatStopRecording()" class="btn btn-primary btn-sm">Send ✓</button>
+    </div>
     <div class="chat-reply-bar" id="admin-reply-bar">
       <span style="color:var(--primary)">↩️</span>
       <div style="flex:1;min-width:0">
@@ -2961,14 +3014,11 @@ async function adminChatOpenRoom(roomId) {
       <div class="chat-emoji-wrap" id="admin-emoji-wrap">
         <div class="chat-emoji-grid" id="admin-emoji-grid"></div>
       </div>
-      <div class="chat-attach-preview" id="admin-attach-preview" style="display:none">
-        <span id="admin-attach-name"></span>
-        <button type="button" onclick="adminChatRemoveAttach()">✕</button>
-      </div>
       <input type="file" id="admin-file-input" style="display:none" onchange="adminChatFileSelected(this)">
       <button class="chat-attach-btn" onclick="document.getElementById('admin-file-input').click()" title="Attach file">📎</button>
       <button class="chat-emoji-btn" onclick="adminChatToggleEmoji()" title="Emoji">😊</button>
-      <textarea class="chat-input" id="admin-chat-input" rows="1" placeholder="Message ${esc(name)}…" onkeydown="adminChatHandleKey(event)" oninput="adminChatAutoGrow(this)"></textarea>
+      <textarea class="chat-input" id="admin-chat-input" rows="1" placeholder="Message ${esc(name)}…" onkeydown="adminChatHandleKey(event)" oninput="adminChatHandleInput()"></textarea>
+      <button class="chat-voice-btn" id="admin-chat-voice-btn" onclick="adminChatStartRecording()" title="Voice message">🎤</button>
       <button class="chat-send-btn" id="admin-chat-send-btn" onclick="adminChatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
     </div>`;
   requestAnimationFrame(() => lucide.createIcons());
@@ -2978,6 +3028,13 @@ async function adminChatOpenRoom(roomId) {
   adminChatMessages = await r.json();
   adminChatRenderMessages();
   adminChatScrollBottom();
+  // Presence refresh for DMs
+  if (adminChatPresenceTimer) { clearInterval(adminChatPresenceTimer); adminChatPresenceTimer = null; }
+  const openedRoom = adminChatRooms.find(rr => rr.id === roomId);
+  if (openedRoom?.type === 'direct') {
+    adminChatRefreshPresence();
+    adminChatPresenceTimer = setInterval(adminChatRefreshPresence, 30000);
+  }
 }
 
 function adminChatToggleActions(e) {
@@ -3014,7 +3071,9 @@ function adminChatMsgHTML(msg) {
   const fileHTML = msg.file_url ? (
     msg.file_type?.startsWith('image/')
       ? `<div><img src="${esc(msg.file_url)}" class="chat-img-thumb" onclick="window.open('${esc(msg.file_url)}','_blank')" loading="lazy"><div style="text-align:right">${dlBtn}</div></div>`
-      : `<div class="chat-file-attach">📎 <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
+      : msg.file_type?.startsWith('audio/')
+        ? `<div class="chat-voice-msg"><audio controls src="${esc(msg.file_url)}" preload="none"></audio>${msg.voice_duration ? `<span class="chat-voice-dur">${String(Math.floor(msg.voice_duration/60)).padStart(2,'0')}:${String(msg.voice_duration%60).padStart(2,'0')}</span>` : ''}${dlBtn}</div>`
+        : `<div class="chat-file-attach">📎 <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
   ) : '';
   return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}" onclick="adminChatToggleActions(event)">
     ${actions}
@@ -3107,6 +3166,14 @@ async function adminChatSend() {
 
 function adminChatHandleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); adminChatSend(); } }
 function adminChatAutoGrow(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 110) + 'px'; }
+function adminChatHandleInput() {
+  const el = document.getElementById('admin-chat-input');
+  if (el) adminChatAutoGrow(el);
+  if (!adminActiveChatRoom) return;
+  if (adminChatHandleInput._t) return;
+  adminChatHandleInput._t = setTimeout(() => { adminChatHandleInput._t = null; }, 2000);
+  apiFetch(`/api/dashboard/chat/rooms/${adminActiveChatRoom}/typing`, { method:'POST' }).catch(() => {});
+}
 
 // ── Admin Edit / Delete ───────────────────────────────────────────────────────
 function adminChatStartEdit(msgId) {
@@ -3261,8 +3328,12 @@ async function adminChatForwardTo(roomId) {
 }
 
 // ── Admin Notifications ───────────────────────────────────────────────────────
-function adminChatRequestNotifPermission() {
-  if ('Notification' in window && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (_) {} }
+async function adminChatRequestNotifPermission() {
+  if (!('Notification' in window) || Notification.permission !== 'default') return;
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted' && _adminSwReg) adminChatSubscribePush(_adminSwReg);
+  } catch (_) {}
 }
 
 function adminChatPlayNotifSound() {
@@ -3835,11 +3906,147 @@ function downloadQuotationPdf() {
 })();
 
 // ── PWA: Service Worker ────────────────────────────────────────────────────
+let _adminSwReg = null;
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw-dashboard.js', { scope: '/dashboard' })
-      .catch(err => console.warn('SW registration failed:', err));
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw-dashboard.js', { scope: '/dashboard' });
+      _adminSwReg = reg;
+      adminChatSubscribePush(reg);
+    } catch (err) { console.warn('SW registration failed:', err); }
   });
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data?.type === 'open_chat_room') { navigate('chat'); adminChatOpenRoom(e.data.roomId); }
+  });
+}
+
+async function adminChatSubscribePush(reg) {
+  try {
+    if (!('PushManager' in window)) return;
+    const res = await fetch('/api/push/vapid-public-key');
+    const { key } = await res.json();
+    if (!key) return;
+    const existing = await reg.pushManager.getSubscription();
+    const sub = existing || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: adminUrlBase64ToUint8Array(key) });
+    adminChatPushSubscription = sub;
+    await apiFetch('/api/dashboard/push/subscribe', { method:'POST', body:JSON.stringify(sub.toJSON()) });
+  } catch (_) {}
+}
+
+function adminUrlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+// ── Admin Presence heartbeat ───────────────────────────────────────────────
+function adminStartPresenceHeartbeat() {
+  if (adminChatHeartbeatTimer) return;
+  apiFetch('/api/dashboard/presence/heartbeat', { method:'POST' }).catch(() => {});
+  adminChatHeartbeatTimer = setInterval(() => {
+    apiFetch('/api/dashboard/presence/heartbeat', { method:'POST' }).catch(() => {});
+  }, 30000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearInterval(adminChatHeartbeatTimer); adminChatHeartbeatTimer = null;
+  } else {
+    adminStartPresenceHeartbeat();
+  }
+});
+
+async function adminChatRefreshPresence() {
+  if (!adminActiveChatRoom) return;
+  const room = adminChatRooms.find(r => r.id === adminActiveChatRoom);
+  if (!room || room.type !== 'direct') return;
+  const otherKey = (room.members || []).find(m => m.member_key !== 'admin')?.member_key;
+  if (!otherKey) return;
+  try {
+    const data = await (await apiFetch(`/api/dashboard/presence?keys=${encodeURIComponent(otherKey)}`)).json();
+    const p = data.find(d => d.member_key === otherKey);
+    const isOnline = p && (Date.now() - new Date(p.last_seen).getTime()) < 45000;
+    const meta = document.getElementById('admin-chat-header-meta');
+    if (meta) meta.textContent = p ? (isOnline ? 'Online' : 'Last seen ' + adminChatRelativeTime(new Date(p.last_seen))) : 'Direct message';
+    const dot = document.getElementById(`presence-dot-${adminActiveChatRoom}`);
+    if (dot) dot.classList.toggle('online', isOnline);
+  } catch (_) {}
+}
+
+function adminChatRelativeTime(d) {
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+
+// ── Admin Voice recorder ───────────────────────────────────────────────────
+async function adminChatStartRecording() {
+  if (adminChatVoiceRecorder) { adminChatStopRecording(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    adminChatVoiceChunks = [];
+    adminChatVoiceRecorder = new MediaRecorder(stream);
+    adminChatVoiceRecorder.ondataavailable = e => { if (e.data.size > 0) adminChatVoiceChunks.push(e.data); };
+    adminChatVoiceRecorder.onstop = adminChatVoiceUploadAndSend;
+    adminChatVoiceRecorder.start(250);
+    adminChatVoiceSeconds = 0;
+    document.getElementById('admin-chat-voice-btn')?.classList.add('recording');
+    document.getElementById('admin-chat-recording-bar')?.classList.add('active');
+    adminChatVoiceTimer = setInterval(() => {
+      adminChatVoiceSeconds++;
+      const m = String(Math.floor(adminChatVoiceSeconds / 60)).padStart(2, '0');
+      const s = String(adminChatVoiceSeconds % 60).padStart(2, '0');
+      const el = document.getElementById('admin-chat-rec-timer');
+      if (el) el.textContent = m + ':' + s;
+      if (adminChatVoiceSeconds >= 300) adminChatStopRecording();
+    }, 1000);
+  } catch (_) { alert('Microphone access denied.'); }
+}
+
+function adminChatStopRecording() {
+  if (!adminChatVoiceRecorder) return;
+  clearInterval(adminChatVoiceTimer);
+  adminChatVoiceRecorder.stream.getTracks().forEach(t => t.stop());
+  adminChatVoiceRecorder.stop();
+  adminChatVoiceRecorder = null;
+  document.getElementById('admin-chat-voice-btn')?.classList.remove('recording');
+  document.getElementById('admin-chat-recording-bar')?.classList.remove('active');
+}
+
+function adminChatCancelRecording() {
+  if (!adminChatVoiceRecorder) return;
+  clearInterval(adminChatVoiceTimer);
+  adminChatVoiceRecorder.stream.getTracks().forEach(t => t.stop());
+  adminChatVoiceRecorder.onstop = null;
+  adminChatVoiceRecorder.stop();
+  adminChatVoiceRecorder = null;
+  adminChatVoiceChunks = [];
+  document.getElementById('admin-chat-voice-btn')?.classList.remove('recording');
+  document.getElementById('admin-chat-recording-bar')?.classList.remove('active');
+}
+
+async function adminChatVoiceUploadAndSend() {
+  if (!adminChatVoiceChunks.length) return;
+  const mimeType = adminChatVoiceChunks[0]?.type || 'audio/webm';
+  const blob = new Blob(adminChatVoiceChunks, { type: mimeType });
+  const ext = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+  const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: mimeType });
+  const fd = new FormData(); fd.append('file', file);
+  const duration = adminChatVoiceSeconds;
+  adminChatVoiceChunks = [];
+  try {
+    const r = await apiFetch('/api/dashboard/chat/upload', { method:'POST', body:fd, headers:{} });
+    const d = await r.json();
+    if (d.error) { alert('Upload failed'); return; }
+    const payload = { body: '', file_url: d.url, file_name: d.name, file_size: d.size, file_type: d.type, voice_duration: duration };
+    const msgR = await apiFetch(`/api/dashboard/chat/rooms/${adminActiveChatRoom}/messages`, { method:'POST', body:JSON.stringify(payload) });
+    if (msgR.ok) { const msg = await msgR.json(); adminChatAppendMessage(msg); adminChatScrollBottom(); adminChatUpdatePreview(adminActiveChatRoom, msg); }
+  } catch (_) { alert('Failed to send voice message'); }
 }
 
 // ── PWA: Install prompt (Android/Chrome) ───────────────────────────────────

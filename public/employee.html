@@ -343,6 +343,24 @@
   .chat-download-btn { background:none; border:none; cursor:pointer; font-size:14px; padding:2px 4px; opacity:.7; }
   .chat-download-btn:hover { opacity:1; }
   .chat-nav-badge { margin-left:auto; background:var(--danger); color:#fff; font-size:10px; font-weight:700; min-width:18px; height:18px; border-radius:9px; padding:0 5px; display:flex; align-items:center; justify-content:center; line-height:1; }
+  /* Presence */
+  .chat-room-avatar-wrap { position:relative; display:inline-flex; flex-shrink:0; }
+  .presence-dot { position:absolute; bottom:1px; right:1px; width:9px; height:9px; border-radius:50%; border:2px solid var(--surface); background:var(--muted); transition:background .3s; }
+  .presence-dot.online { background:var(--success); }
+  /* Typing indicator */
+  .chat-typing-bar { min-height:18px; padding:2px 16px 4px; font-size:11px; color:var(--muted); font-style:italic; flex-shrink:0; }
+  /* Voice recorder */
+  .chat-voice-btn { background:none; border:none; cursor:pointer; font-size:18px; padding:6px; opacity:.7; }
+  .chat-voice-btn:hover { opacity:1; }
+  .chat-voice-btn.recording { color:var(--danger); animation:pulse-rec .8s ease-in-out infinite; }
+  @keyframes pulse-rec { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .chat-recording-bar { display:none; align-items:center; gap:8px; padding:6px 14px; background:rgba(248,113,113,.1); border-top:1px solid rgba(248,113,113,.25); font-size:12px; flex-shrink:0; }
+  .chat-recording-bar.active { display:flex; }
+  .chat-rec-timer { font-weight:700; color:var(--danger); font-variant-numeric:tabular-nums; }
+  /* Voice message bubble */
+  .chat-voice-msg { display:flex; align-items:center; gap:8px; padding:6px 4px; flex-wrap:wrap; }
+  .chat-voice-msg audio { height:32px; max-width:200px; }
+  .chat-voice-dur { font-size:11px; color:var(--muted); white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -799,6 +817,7 @@ async function showApp() {
   document.getElementById('user-avatar').textContent = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
   document.getElementById('h-date').value = new Date().toISOString().split('T')[0];
   applyPermissions(empInfo?.permissions);
+  startPresenceHeartbeat();
   const hash = location.hash.replace('#', '');
   if (hash && pageTitles[hash]) navigate(hash);
   else navigate('log');
@@ -1470,6 +1489,14 @@ let chatPeople       = [];
 let chatUnread       = new Set();
 let chatReplyingTo   = null; // { id, sender, body }
 let chatForwardData  = null; // { body, file_url, file_name, file_size, file_type }
+let chatPushSubscription = null;
+let chatTypingTimers     = {};
+let chatHeartbeatTimer   = null;
+let chatPresenceTimer    = null;
+let chatVoiceRecorder    = null;
+let chatVoiceChunks      = [];
+let chatVoiceTimer       = null;
+let chatVoiceSeconds     = 0;
 
 function myChatKey() { return `employee_${empInfo.id}`; }
 
@@ -1512,6 +1539,16 @@ function openChatSse() {
       if (idx >= 0) chatMessages.splice(idx, 1);
     } catch (_) {}
   });
+  chatSse.addEventListener('typing', e => {
+    try {
+      const { roomId, senderName } = JSON.parse(e.data);
+      if (roomId !== activeChatRoomId) return;
+      const bar = document.getElementById('chat-typing-bar');
+      if (bar) bar.textContent = `${senderName} is typing…`;
+      clearTimeout(chatTypingTimers[roomId]);
+      chatTypingTimers[roomId] = setTimeout(() => { if (bar) bar.textContent = ''; }, 3500);
+    } catch (_) {}
+  });
 }
 
 function closeChatSse() {
@@ -1547,7 +1584,10 @@ function chatRenderRoomList() {
     const prev   = room.lastMessage ? room.lastMessage.body.slice(0,55) : 'No messages yet';
     const unread = chatUnread.has(room.id) ? '<div class="chat-unread-dot"></div>' : '';
     return `<div class="chat-room-item${activeChatRoomId === room.id ? ' active' : ''}" onclick="chatOpenRoom(${room.id})" data-room="${room.id}">
-      <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${esc(init)}</div>
+      <div class="chat-room-avatar-wrap">
+        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${esc(init)}</div>
+        ${room.type === 'direct' ? `<div class="presence-dot" id="presence-dot-${room.id}"></div>` : ''}
+      </div>
       <div class="chat-room-info">
         <div class="chat-room-name">${esc(name)}</div>
         <div class="chat-room-preview">${esc(prev)}</div>
@@ -1579,13 +1619,21 @@ async function chatOpenRoom(roomId) {
       <div class="chat-room-avatar${room?.type === 'group' ? ' grp' : ''}" style="width:32px;height:32px;font-size:12px">${esc(name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}</div>
       <div>
         <div class="chat-header-name">${esc(name)}</div>
-        <div class="chat-header-meta">${room?.type === 'group' ? `${(room.members||[]).length} members` : 'Direct message'}</div>
+        <div class="chat-header-meta" id="chat-header-meta">${room?.type === 'group' ? `${(room.members||[]).length} members` : 'Direct message'}</div>
       </div>
     </div>
     <div class="chat-messages" id="chat-messages"><div class="loading"><span class="spinner"></span></div></div>
     <div id="chat-attach-preview" style="display:none" class="chat-attach-preview">
       <span>📎</span><span class="chat-attach-preview-name" id="chat-attach-name"></span>
       <button class="chat-attach-remove" onclick="chatRemoveAttach()" title="Remove">×</button>
+    </div>
+    <div class="chat-typing-bar" id="chat-typing-bar"></div>
+    <div class="chat-recording-bar" id="chat-recording-bar">
+      <span style="color:var(--danger);font-size:16px">⏺</span>
+      <span id="chat-rec-timer" class="chat-rec-timer">00:00</span>
+      <span style="flex:1;color:var(--muted);font-size:11px">Recording…</span>
+      <button onclick="chatCancelRecording()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:4px">✕ Cancel</button>
+      <button onclick="chatStopRecording()" class="btn btn-primary btn-sm">Send ✓</button>
     </div>
     <div class="chat-reply-bar" id="chat-reply-bar">
       <span style="color:var(--primary)">↩️</span>
@@ -1602,7 +1650,8 @@ async function chatOpenRoom(roomId) {
       <input type="file" id="chat-file-input" style="display:none" onchange="chatFileSelected(this)">
       <button class="chat-attach-btn" onclick="document.getElementById('chat-file-input').click()" title="Attach file">📎</button>
       <button class="chat-emoji-btn" onclick="chatToggleEmoji()" title="Emoji">😊</button>
-      <textarea class="chat-input" id="chat-input" rows="1" placeholder="Message ${esc(name)}…" onkeydown="chatHandleKey(event)" oninput="chatAutoGrow(this)"></textarea>
+      <textarea class="chat-input" id="chat-input" rows="1" placeholder="Message ${esc(name)}…" onkeydown="chatHandleKey(event)" oninput="chatHandleInput()"></textarea>
+      <button class="chat-voice-btn" id="chat-voice-btn" onclick="chatStartRecording()" title="Voice message">🎤</button>
       <button class="chat-send-btn" id="chat-send-btn" onclick="chatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
     </div>`;
   requestAnimationFrame(() => lucide.createIcons());
@@ -1612,9 +1661,17 @@ async function chatOpenRoom(roomId) {
   chatMessages = await r.json();
   chatRenderMessages();
   chatScrollBottom();
+  // Presence refresh for DMs
+  if (chatPresenceTimer) { clearInterval(chatPresenceTimer); chatPresenceTimer = null; }
+  const openedRoom = chatRooms.find(rr => rr.id === roomId);
+  if (openedRoom?.type === 'direct') {
+    chatRefreshPresence();
+    chatPresenceTimer = setInterval(chatRefreshPresence, 30000);
+  }
 }
 
 function chatBackToRooms() {
+  if (chatPresenceTimer) { clearInterval(chatPresenceTimer); chatPresenceTimer = null; }
   activeChatRoomId = null;
   document.getElementById('chat-rooms-panel')?.classList.add('mob-show');
   document.getElementById('chat-main')?.classList.remove('mob-show');
@@ -1645,7 +1702,9 @@ function chatMsgHTML(msg, myKey) {
   const fileHTML = msg.file_url ? (
     msg.file_type?.startsWith('image/')
       ? `<div><img src="${esc(msg.file_url)}" class="chat-img-thumb" onclick="window.open('${esc(msg.file_url)}','_blank')" loading="lazy"><div style="text-align:right">${dlBtn}</div></div>`
-      : `<div class="chat-file-attach">📎 <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
+      : msg.file_type?.startsWith('audio/')
+        ? `<div class="chat-voice-msg"><audio controls src="${esc(msg.file_url)}" preload="none"></audio>${msg.voice_duration ? `<span class="chat-voice-dur">${String(Math.floor(msg.voice_duration/60)).padStart(2,'0')}:${String(msg.voice_duration%60).padStart(2,'0')}</span>` : ''}${dlBtn}</div>`
+        : `<div class="chat-file-attach">📎 <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
   ) : '';
   return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}" onclick="chatToggleActions(event)">
     ${actions}
@@ -1748,6 +1807,14 @@ async function chatSend() {
 
 function chatHandleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatSend(); } }
 function chatAutoGrow(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 110) + 'px'; }
+function chatHandleInput() {
+  const el = document.getElementById('chat-input');
+  if (el) chatAutoGrow(el);
+  if (!activeChatRoomId) return;
+  if (chatHandleInput._t) return;
+  chatHandleInput._t = setTimeout(() => { chatHandleInput._t = null; }, 2000);
+  ef(`/api/employee/chat/rooms/${activeChatRoomId}/typing`, { method:'POST' }).catch(() => {});
+}
 
 function chatUpdatePreview(roomId, message) {
   const room = chatRooms.find(r => r.id === roomId);
@@ -1830,8 +1897,12 @@ async function chatForwardTo(roomId) {
 }
 
 // ── Notifications ─────────────────────────────────────────────────────────────
-function chatRequestNotifPermission() {
-  if ('Notification' in window && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (_) {} }
+async function chatRequestNotifPermission() {
+  if (!('Notification' in window) || Notification.permission !== 'default') return;
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted' && _swReg) chatSubscribePush(_swReg);
+  } catch (_) {}
 }
 
 function chatPlayNotifSound() {
@@ -1972,11 +2043,148 @@ pageLoaders['chat'] = loadChat;
 })();
 
 // ── PWA: Service Worker ────────────────────────────────────────────────────
+let _swReg = null;
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw-employee.js', { scope: '/employee' })
-      .catch(err => console.warn('SW registration failed:', err));
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw-employee.js', { scope: '/employee' });
+      _swReg = reg;
+      chatSubscribePush(reg);
+    } catch (err) { console.warn('SW registration failed:', err); }
   });
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data?.type === 'open_chat_room') { navigate('chat'); chatOpenRoom(e.data.roomId); }
+  });
+}
+
+async function chatSubscribePush(reg) {
+  try {
+    if (!('PushManager' in window)) return;
+    const res = await fetch('/api/push/vapid-public-key');
+    const { key } = await res.json();
+    if (!key) return;
+    const existing = await reg.pushManager.getSubscription();
+    const sub = existing || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) });
+    chatPushSubscription = sub;
+    await ef('/api/employee/push/subscribe', { method:'POST', body:JSON.stringify(sub.toJSON()) });
+  } catch (_) {}
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+// ── Presence heartbeat ─────────────────────────────────────────────────────
+function startPresenceHeartbeat() {
+  if (chatHeartbeatTimer) return;
+  ef('/api/employee/presence/heartbeat', { method:'POST' }).catch(() => {});
+  chatHeartbeatTimer = setInterval(() => {
+    ef('/api/employee/presence/heartbeat', { method:'POST' }).catch(() => {});
+  }, 30000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearInterval(chatHeartbeatTimer); chatHeartbeatTimer = null;
+  } else {
+    startPresenceHeartbeat();
+  }
+});
+
+async function chatRefreshPresence() {
+  if (!activeChatRoomId) return;
+  const room = chatRooms.find(r => r.id === activeChatRoomId);
+  if (!room || room.type !== 'direct') return;
+  const myKey = myChatKey();
+  const otherKey = (room.members || []).find(m => m.member_key !== myKey)?.member_key;
+  if (!otherKey) return;
+  try {
+    const data = await (await ef(`/api/employee/presence?keys=${encodeURIComponent(otherKey)}`)).json();
+    const p = data.find(d => d.member_key === otherKey);
+    const isOnline = p && (Date.now() - new Date(p.last_seen).getTime()) < 45000;
+    const meta = document.getElementById('chat-header-meta');
+    if (meta) meta.textContent = p ? (isOnline ? 'Online' : 'Last seen ' + chatRelativeTime(new Date(p.last_seen))) : 'Direct message';
+    const dot = document.getElementById(`presence-dot-${activeChatRoomId}`);
+    if (dot) dot.classList.toggle('online', isOnline);
+  } catch (_) {}
+}
+
+function chatRelativeTime(d) {
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+
+// ── Voice recorder ─────────────────────────────────────────────────────────
+async function chatStartRecording() {
+  if (chatVoiceRecorder) { chatStopRecording(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    chatVoiceChunks = [];
+    chatVoiceRecorder = new MediaRecorder(stream);
+    chatVoiceRecorder.ondataavailable = e => { if (e.data.size > 0) chatVoiceChunks.push(e.data); };
+    chatVoiceRecorder.onstop = chatVoiceUploadAndSend;
+    chatVoiceRecorder.start(250);
+    chatVoiceSeconds = 0;
+    document.getElementById('chat-voice-btn')?.classList.add('recording');
+    document.getElementById('chat-recording-bar')?.classList.add('active');
+    chatVoiceTimer = setInterval(() => {
+      chatVoiceSeconds++;
+      const m = String(Math.floor(chatVoiceSeconds / 60)).padStart(2, '0');
+      const s = String(chatVoiceSeconds % 60).padStart(2, '0');
+      const el = document.getElementById('chat-rec-timer');
+      if (el) el.textContent = m + ':' + s;
+      if (chatVoiceSeconds >= 300) chatStopRecording();
+    }, 1000);
+  } catch (_) { alert('Microphone access denied.'); }
+}
+
+function chatStopRecording() {
+  if (!chatVoiceRecorder) return;
+  clearInterval(chatVoiceTimer);
+  chatVoiceRecorder.stream.getTracks().forEach(t => t.stop());
+  chatVoiceRecorder.stop();
+  chatVoiceRecorder = null;
+  document.getElementById('chat-voice-btn')?.classList.remove('recording');
+  document.getElementById('chat-recording-bar')?.classList.remove('active');
+}
+
+function chatCancelRecording() {
+  if (!chatVoiceRecorder) return;
+  clearInterval(chatVoiceTimer);
+  chatVoiceRecorder.stream.getTracks().forEach(t => t.stop());
+  chatVoiceRecorder.onstop = null;
+  chatVoiceRecorder.stop();
+  chatVoiceRecorder = null;
+  chatVoiceChunks = [];
+  document.getElementById('chat-voice-btn')?.classList.remove('recording');
+  document.getElementById('chat-recording-bar')?.classList.remove('active');
+}
+
+async function chatVoiceUploadAndSend() {
+  if (!chatVoiceChunks.length) return;
+  const mimeType = chatVoiceChunks[0]?.type || 'audio/webm';
+  const blob = new Blob(chatVoiceChunks, { type: mimeType });
+  const ext = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+  const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: mimeType });
+  const fd = new FormData(); fd.append('file', file);
+  const duration = chatVoiceSeconds;
+  chatVoiceChunks = [];
+  try {
+    const r = await fetch('/api/employee/chat/upload', { method:'POST', body:fd, headers:{ 'Authorization':'Bearer '+empToken } });
+    const d = await r.json();
+    if (d.error) { alert('Upload failed'); return; }
+    const payload = { body: '', file_url: d.url, file_name: d.name, file_size: d.size, file_type: d.type, voice_duration: duration };
+    const msgR = await ef(`/api/employee/chat/rooms/${activeChatRoomId}/messages`, { method:'POST', body:JSON.stringify(payload) });
+    if (msgR.ok) { const msg = await msgR.json(); chatAppendMessage(msg); chatScrollBottom(); chatUpdatePreview(activeChatRoomId, msg); }
+  } catch (_) { alert('Failed to send voice message'); }
 }
 
 // ── PWA: Install prompt (Android/Chrome) ───────────────────────────────────

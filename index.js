@@ -5,6 +5,7 @@ const crypto  = require('crypto');
 const path    = require('path');
 const express = require('express');
 const multer  = require('multer');
+const webpush = require('web-push');
 
 // ─── App Init ─────────────────────────────────────────────────────────────────
 const receiver = new ExpressReceiver({
@@ -23,6 +24,15 @@ if (process.env.SLACK_BOT_TOKEN) {
 }
 
 const supabase    = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+// ─── VAPID (Web Push) ─────────────────────────────────────────────────────────
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    'mailto:admin@motolinker.com',
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+}
 const slackClient = process.env.SLACK_BOT_TOKEN ? new WebClient(process.env.SLACK_BOT_TOKEN) : null;
 const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -1568,6 +1578,24 @@ function chatCallerIdentity(req) {
   return { key: 'admin', name: 'Admin' };
 }
 
+async function sendPushToOfflineMembers(memberKeys, payload) {
+  if (!process.env.VAPID_PUBLIC_KEY) return;
+  const offlineKeys = memberKeys.filter(k => !chatSseClients.has(k));
+  if (!offlineKeys.length) return;
+  const { data: subs } = await supabase.from('push_subscriptions').select('*').in('member_key', offlineKeys);
+  const pushPayload = JSON.stringify(payload);
+  for (const sub of subs || []) {
+    webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth_key } },
+      pushPayload
+    ).catch(async err => {
+      if (err.statusCode === 410 || err.statusCode === 404) {
+        await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+      }
+    });
+  }
+}
+
 async function chatListRooms(callerKey) {
   const { data: membership } = await supabase.from('chat_room_members').select('room_id').eq('member_key', callerKey);
   if (!membership?.length) return [];
@@ -1622,18 +1650,26 @@ async function chatGetMessages(req, res, callerKey) {
 
 async function chatSendMessage(req, res, callerKey, callerName) {
   const roomId = parseInt(req.params.roomId);
-  const { body, file_url, file_name, file_size, file_type, reply_to_id, reply_to_sender, reply_to_body } = req.body || {};
+  const { body, file_url, file_name, file_size, file_type, reply_to_id, reply_to_sender, reply_to_body, voice_duration } = req.body || {};
   if (!body?.trim() && !file_url) return res.status(400).json({ error: 'Message body or file required' });
   const { data: member } = await supabase.from('chat_room_members').select('room_id').eq('room_id', roomId).eq('member_key', callerKey).single();
   if (!member) return res.status(403).json({ error: 'Not a member of this room' });
   const insert = { room_id: roomId, sender_key: callerKey, sender_name: callerName, body: body?.trim() || '' };
   if (file_url)  { insert.file_url = file_url; insert.file_name = file_name || ''; insert.file_size = file_size || null; insert.file_type = file_type || ''; }
   if (reply_to_id) { insert.reply_to_id = reply_to_id; insert.reply_to_sender = reply_to_sender || ''; insert.reply_to_body = (reply_to_body || '').slice(0, 200); }
+  if (voice_duration) insert.voice_duration = parseInt(voice_duration);
   const { data: msg, error } = await supabase.from('chat_messages').insert(insert).select().single();
   if (error) return res.status(500).json({ error: error.message });
   const { data: members } = await supabase.from('chat_room_members').select('member_key').eq('room_id', roomId);
+  const recipientKeys = (members || []).map(m => m.member_key).filter(k => k !== callerKey);
   // Exclude sender from broadcast — sender already has the message from the HTTP response
-  chatBroadcast((members || []).map(m => m.member_key).filter(k => k !== callerKey), 'message', { roomId, message: msg });
+  chatBroadcast(recipientKeys, 'message', { roomId, message: msg });
+  // Push to members not connected via SSE (app closed / backgrounded)
+  sendPushToOfflineMembers(recipientKeys, {
+    type: 'chat_message', roomId,
+    senderName: callerName,
+    body: (msg.file_url && !msg.body) ? '📎 Attachment' : (msg.body || '').slice(0, 80),
+  });
   res.json(msg);
 }
 
@@ -1778,6 +1814,75 @@ async function handleChatUpload(req, res) {
 
 receiver.router.post('/api/dashboard/chat/upload', requireAuth, chatUpload.single('file'), handleChatUpload);
 receiver.router.post('/api/employee/chat/upload',  requireEmployeeAuth, chatUpload.single('file'), handleChatUpload);
+
+// ─── Typing indicator ─────────────────────────────────────────────────────────
+async function handleTyping(req, res, callerKey, callerName, roomId) {
+  const { data: member } = await supabase.from('chat_room_members').select('room_id').eq('room_id', roomId).eq('member_key', callerKey).single();
+  if (!member) return res.status(403).json({ error: 'Not a member' });
+  const { data: members } = await supabase.from('chat_room_members').select('member_key').eq('room_id', roomId);
+  chatBroadcast((members || []).map(m => m.member_key).filter(k => k !== callerKey), 'typing', { roomId, senderKey: callerKey, senderName: callerName });
+  res.json({ ok: true });
+}
+receiver.router.post('/api/dashboard/chat/rooms/:roomId/typing', requireAuth, (req, res) => handleTyping(req, res, 'admin', 'Admin', parseInt(req.params.roomId)));
+receiver.router.post('/api/employee/chat/rooms/:roomId/typing', requireEmployeeAuth, (req, res) => handleTyping(req, res, `employee_${req.employee.id}`, req.employee.name, parseInt(req.params.roomId)));
+
+// ─── Presence ─────────────────────────────────────────────────────────────────
+receiver.router.post('/api/employee/presence/heartbeat', requireEmployeeAuth, async (req, res) => {
+  const { key } = chatCallerIdentity(req);
+  await supabase.from('presence').upsert({ member_key: key, last_seen: new Date().toISOString() });
+  res.json({ ok: true });
+});
+receiver.router.get('/api/employee/presence', requireEmployeeAuth, async (req, res) => {
+  const keys = (req.query.keys || '').split(',').filter(Boolean);
+  if (!keys.length) return res.json([]);
+  const { data } = await supabase.from('presence').select('member_key,last_seen').in('member_key', keys);
+  res.json(data || []);
+});
+receiver.router.post('/api/dashboard/presence/heartbeat', requireAuth, async (req, res) => {
+  await supabase.from('presence').upsert({ member_key: 'admin', last_seen: new Date().toISOString() });
+  res.json({ ok: true });
+});
+receiver.router.get('/api/dashboard/presence', requireAuth, async (req, res) => {
+  const keys = (req.query.keys || '').split(',').filter(Boolean);
+  if (!keys.length) return res.json([]);
+  const { data } = await supabase.from('presence').select('member_key,last_seen').in('member_key', keys);
+  res.json(data || []);
+});
+
+// ─── Push subscriptions ───────────────────────────────────────────────────────
+receiver.router.get('/api/push/vapid-public-key', (req, res) => {
+  res.json({ key: process.env.VAPID_PUBLIC_KEY || '' });
+});
+receiver.router.post('/api/employee/push/subscribe', requireEmployeeAuth, express.json(), async (req, res) => {
+  const { key: callerKey } = chatCallerIdentity(req);
+  const { endpoint, keys } = req.body || {};
+  if (!endpoint || !keys?.p256dh || !keys?.auth) return res.status(400).json({ error: 'Invalid subscription' });
+  await supabase.from('push_subscriptions').upsert(
+    { member_key: callerKey, endpoint, p256dh: keys.p256dh, auth_key: keys.auth },
+    { onConflict: 'member_key,endpoint' }
+  );
+  res.json({ ok: true });
+});
+receiver.router.delete('/api/employee/push/subscribe', requireEmployeeAuth, express.json(), async (req, res) => {
+  const { key: callerKey } = chatCallerIdentity(req);
+  const { endpoint } = req.body || {};
+  if (endpoint) await supabase.from('push_subscriptions').delete().eq('member_key', callerKey).eq('endpoint', endpoint);
+  res.json({ ok: true });
+});
+receiver.router.post('/api/dashboard/push/subscribe', requireAuth, express.json(), async (req, res) => {
+  const { endpoint, keys } = req.body || {};
+  if (!endpoint || !keys?.p256dh || !keys?.auth) return res.status(400).json({ error: 'Invalid subscription' });
+  await supabase.from('push_subscriptions').upsert(
+    { member_key: 'admin', endpoint, p256dh: keys.p256dh, auth_key: keys.auth },
+    { onConflict: 'member_key,endpoint' }
+  );
+  res.json({ ok: true });
+});
+receiver.router.delete('/api/dashboard/push/subscribe', requireAuth, express.json(), async (req, res) => {
+  const { endpoint } = req.body || {};
+  if (endpoint) await supabase.from('push_subscriptions').delete().eq('member_key', 'admin').eq('endpoint', endpoint);
+  res.json({ ok: true });
+});
 
 // ─── PDF Scraper ──────────────────────────────────────────────────────────────
 let lastPdfScrape = null; // { scraped_at, series_name, trims, specs }

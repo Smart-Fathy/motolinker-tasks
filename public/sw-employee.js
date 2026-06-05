@@ -1,4 +1,4 @@
-const CACHE = 'motolinker-emp-v1';
+const CACHE = 'motolinker-emp-v2';
 const SHELL = ['/employee', '/manifest-employee.json'];
 const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com'];
 
@@ -68,4 +68,39 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
+});
+
+// ── Push notification received ────────────────────────────────────────────────
+self.addEventListener('push', e => {
+  if (!e.data) return;
+  try {
+    const { senderName, body, roomId } = e.data.json();
+    e.waitUntil(
+      self.registration.showNotification(senderName || 'MotoLinker', {
+        body: body || 'New message',
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        tag: `chat-room-${roomId}`,
+        renotify: true,
+        data: { roomId },
+      })
+    );
+  } catch (_) {}
+});
+
+// ── Notification tapped → open/focus the app and go to that chat room ─────────
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const roomId = e.notification.data?.roomId;
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const client of list) {
+        if (client.url.includes('/employee') && 'focus' in client) {
+          client.postMessage({ type: 'open_chat_room', roomId });
+          return client.focus();
+        }
+      }
+      return clients.openWindow('/employee?chat=' + roomId);
+    })
+  );
 });
