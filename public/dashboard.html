@@ -2,11 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#1e2130">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ML Admin">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/manifest-dashboard.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="/icons/favicon.png">
+  <title>MotoLinker · Admin Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
-  <title>MotoLinker · Admin Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -29,11 +37,31 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: none;
     }
+
+    /* ── PWA standalone safe-area ── */
+    body.standalone .sidebar { padding-top: env(safe-area-inset-top); }
+    body.standalone .header  { padding-top: env(safe-area-inset-top); height: calc(64px + env(safe-area-inset-top)); }
+    body.standalone .app-content { padding-top: env(safe-area-inset-top); }
+
+    /* ── Native touch feel ── */
+    *, *::before, *::after { -webkit-tap-highlight-color: transparent; }
+    html { -webkit-text-size-adjust: 100%; }
+    button, .nav-item, [role="button"] { -webkit-touch-callout: none; user-select: none; }
+
+    /* ── Press states ── */
+    .btn:active { transform: scale(0.97); transition: transform .1s; }
+    .nav-item:active { background: rgba(90,103,216,.2) !important; }
+    .stat-card:active { transform: translateY(-1px); }
 
     /* ── Header ─────────────────────────────────────────────── */
     .header {
@@ -3795,6 +3823,87 @@ function downloadQuotationPdf() {
   a.href = url; a.download = `Quotation_${id}.pdf`; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
+
+// ── PWA: Standalone detection ──────────────────────────────────────────────
+(function detectStandalone() {
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                    || window.navigator.standalone === true;
+  if (isStandalone) document.body.classList.add('standalone');
+  window.matchMedia('(display-mode: standalone)').addEventListener('change', e => {
+    document.body.classList.toggle('standalone', e.matches);
+  });
+})();
+
+// ── PWA: Service Worker ────────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw-dashboard.js', { scope: '/dashboard' })
+      .catch(err => console.warn('SW registration failed:', err));
+  });
+}
+
+// ── PWA: Install prompt (Android/Chrome) ───────────────────────────────────
+let _installPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _installPrompt = e;
+  if (!localStorage.getItem('pwaAdminInstallDismissed')) _showAdminInstallBanner();
+});
+
+function _showAdminInstallBanner() {
+  const banner = document.getElementById('pwa-install-banner');
+  if (banner) banner.style.display = 'flex';
+}
+
+function triggerAdminInstall() {
+  if (!_installPrompt) return;
+  _installPrompt.prompt();
+  _installPrompt.userChoice.then(() => { _installPrompt = null; });
+  document.getElementById('pwa-install-banner').style.display = 'none';
+}
+
+function dismissAdminInstallBanner() {
+  localStorage.setItem('pwaAdminInstallDismissed', '1');
+  document.getElementById('pwa-install-banner').style.display = 'none';
+}
+
+// ── PWA: iOS add-to-home-screen hint ──────────────────────────────────────
+(function iosInstallHint() {
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (!isIOS || window.navigator.standalone === true) return;
+  if (localStorage.getItem('iosAdminHintDismissed')) return;
+  const hint = document.getElementById('pwa-ios-hint');
+  if (hint) setTimeout(() => { hint.style.display = 'flex'; }, 2500);
+})();
+
+function dismissAdminIOSHint() {
+  localStorage.setItem('iosAdminHintDismissed', '1');
+  document.getElementById('pwa-ios-hint').style.display = 'none';
+}
 </script>
+
+<!-- ── PWA Install Banner (Android/Chrome) ── -->
+<div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
+  <img src="/icons/icon-192.png" style="width:40px;height:40px;border-radius:10px;flex-shrink:0" alt="" onerror="this.style.display='none'">
+  <div style="flex:1;min-width:0">
+    <div style="font-weight:700;font-size:14px;color:var(--text)">Install Admin Dashboard</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:2px">Add to your home screen for the full app experience</div>
+  </div>
+  <button onclick="triggerAdminInstall()" style="flex-shrink:0;padding:8px 16px;font-size:13px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">Install</button>
+  <button onclick="dismissAdminInstallBanner()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;padding:4px 6px;flex-shrink:0;line-height:1">×</button>
+</div>
+
+<!-- ── PWA iOS Hint ── -->
+<div id="pwa-ios-hint" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:flex-start;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
+  <div style="font-size:24px;flex-shrink:0;line-height:1.2">📲</div>
+  <div style="flex:1;min-width:0">
+    <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:var(--text)">Install Admin Dashboard</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.6">
+      Tap the <strong>Share</strong> button <span style="font-size:13px">⎙</span> in Safari,
+      then tap <strong>"Add to Home Screen"</strong>
+    </div>
+  </div>
+  <button onclick="dismissAdminIOSHint()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;padding:4px 6px;flex-shrink:0;line-height:1">×</button>
+</div>
 </body>
 </html>
