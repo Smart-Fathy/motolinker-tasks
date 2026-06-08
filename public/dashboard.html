@@ -1276,6 +1276,13 @@
             </select>
           </div>
         </div>
+        <div style="padding:0 20px 20px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Custom Specs</div>
+          <div id="qt-custom-specs"></div>
+          <button class="btn btn-outline btn-sm" style="margin-top:4px" onclick="addCustomSpecRow('qt-custom-specs')">
+            <i data-lucide="plus" style="width:13px;height:13px"></i> Add Custom Spec
+          </button>
+        </div>
       </div>
 
       <div id="qt-error" style="display:none;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#f87171;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px"></div>
@@ -2381,7 +2388,7 @@ async function loadEmployees() {
 
 function openEmpModal(id) {
   const e = id ? allEmployees.find(x => x.id === id) : null;
-  const p = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, ...(e?.permissions||{}) };
+  const p = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, quotation:false, ...(e?.permissions||{}) };
   const permItems = [
     { key:'requests',        label:'Requests',          desc:'Submit & view own requests' },
     { key:'viewAllRequests', label:'View All Requests',  desc:'See all requests from every employee' },
@@ -2389,6 +2396,7 @@ function openEmpModal(id) {
     { key:'sheets',          label:'My Sheets',          desc:'Browse Google Sheets' },
     { key:'pdfscraper',      label:'PDF Scraper',        desc:'Use the Autohome spec scraper' },
     { key:'email',           label:'Email',              desc:'Access personal email' },
+    { key:'quotation',       label:'Quotation Draft',    desc:'Create quotation drafts and generate PDFs' },
   ];
   showModal(e ? 'Edit Employee' : 'Create Employee', `
     <div class="form-row">
@@ -2431,6 +2439,7 @@ async function saveEmployee(id) {
       sheets:          document.getElementById('perm-sheets')?.checked           ?? true,
       pdfscraper:      document.getElementById('perm-pdfscraper')?.checked       ?? false,
       email:           document.getElementById('perm-email')?.checked            ?? false,
+      quotation:       document.getElementById('perm-quotation')?.checked        ?? false,
     },
   };
   if (!body.name || !body.username) { alert('Name and username are required'); return; }
@@ -3729,6 +3738,23 @@ function recalcAll() {
   LOGISTICS_LABELS.forEach((_, i) => recalcLogistics(i));
 }
 
+function addCustomSpecRow(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const row = document.createElement('div');
+  row.className = 'qt-custom-spec-row';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 36px;gap:8px;margin-bottom:8px;align-items:center';
+  row.innerHTML = `
+    <input class="form-input" placeholder="Field name (e.g. Incoterms)">
+    <input class="form-input" placeholder="Value (e.g. CIF)">
+    <button onclick="this.closest('.qt-custom-spec-row').remove()"
+      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <i data-lucide="x" style="width:13px;height:13px"></i>
+    </button>`;
+  container.appendChild(row);
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
 function recalcGrandTotal() {
   let total = 0;
   // Items
@@ -3826,6 +3852,15 @@ async function generateQuotation() {
     priceUsd: document.getElementById(`qt-log-usd-${i}`)?.value || '0',
   }));
 
+  // Collect custom specs
+  const customSpecs = [];
+  document.querySelectorAll('#qt-custom-specs .qt-custom-spec-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const key = inputs[0]?.value.trim();
+    const val = inputs[1]?.value.trim();
+    if (key) customSpecs.push({ key, val: val || '' });
+  });
+
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Generating…';
 
@@ -3841,6 +3876,7 @@ async function generateQuotation() {
     formData.append('issuer',      issuer);
     formData.append('items',       JSON.stringify(items));
     formData.append('logistics',   JSON.stringify(logistics));
+    formData.append('customSpecs', JSON.stringify(customSpecs));
     qtImages.forEach(f => formData.append('images', f));
 
     const res = await fetch('/api/dashboard/quotation/generate', {

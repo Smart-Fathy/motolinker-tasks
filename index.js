@@ -2928,7 +2928,7 @@ function calcEgp(priceUsd, units, exchange) {
 }
 
 function buildQuotationHtml(data) {
-  const { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls } = data;
+  const { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs } = data;
   const exRate = parseFloat(exchange) || 1;
 
   // Calculate totals
@@ -3096,6 +3096,7 @@ function buildQuotationHtml(data) {
           <tr><td class="ks-label">Currency</td><td class="ks-val">${currency || 'EGP'}</td></tr>
           <tr><td class="ks-label">Exchange Rate</td><td class="ks-val">1 USD = ${fmtNum(exchange)} EGP</td></tr>
           <tr><td class="ks-label">Issued By</td><td class="ks-val">${issuer || ''}</td></tr>
+          ${(customSpecs || []).map(s => `<tr><td class="ks-label">${s.key || ''}</td><td class="ks-val">${s.val || ''}</td></tr>`).join('')}
         </table>
       </td>
       <td style="width:45%">
@@ -3116,6 +3117,18 @@ function buildQuotationHtml(data) {
     <div>${id || ''}</div>
   </div>
 
+  <!-- COMPANY CONTACT FOOTER -->
+  <div style="border:2px solid ${NAVY};border-radius:8px;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:16px">
+    <div style="display:flex;flex-direction:column;gap:3px;font-size:9px;color:#333;line-height:1.5">
+      <div><strong>Address:</strong> Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo</div>
+      <div><strong>Email:</strong> info@motolinkers.com &nbsp;|&nbsp; <strong>Website:</strong> Motolinkers.com &nbsp;|&nbsp; <strong>Phone:</strong> +2 010 000 78104</div>
+      <div><strong>TAX ID:</strong> 773934006 &nbsp;|&nbsp; <strong>Registration No:</strong> 282378</div>
+    </div>
+    <div style="font-size:18px;font-weight:900;color:${NAVY};white-space:nowrap;letter-spacing:1px;margin-left:20px">
+      MOT<span style="color:${GOLD}">O</span>L<span style="color:${GOLD}">|</span>NKERS
+    </div>
+  </div>
+
 </div>
 </body></html>`;
 }
@@ -3123,13 +3136,14 @@ function buildQuotationHtml(data) {
 receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
   quotationImgUpload.array('images', 5), async (req, res) => {
     try {
-      const { id, date, validTo, name, vehicleModel, items: itemsJson, logistics: logisticsJson, currency, exchange, issuer } = req.body;
-      const items     = JSON.parse(itemsJson     || '[]');
-      const logistics = JSON.parse(logisticsJson || '[]');
-      const files     = req.files || [];
+      const { id, date, validTo, name, vehicleModel, items: itemsJson, logistics: logisticsJson, currency, exchange, issuer, customSpecs: customSpecsJson } = req.body;
+      const items       = JSON.parse(itemsJson       || '[]');
+      const logistics   = JSON.parse(logisticsJson   || '[]');
+      const customSpecs = JSON.parse(customSpecsJson || '[]');
+      const files       = req.files || [];
       const imageDataUrls = files.map(f => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`);
 
-      const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls });
+      const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs });
 
       const puppeteer = require('puppeteer');
       const browser   = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
@@ -3145,6 +3159,42 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
     } catch (e) {
       console.error('[quotation-gen]', e);
+      res.status(500).json({ error: e.message });
+    }
+  }
+);
+
+// ─── Employee Quotation Draft ──────────────────────────────────────────────────
+receiver.router.get('/api/employee/quotation/newid', requireEmployeeAuth, (_req, res) => {
+  res.json({ id: generateQuoteId() });
+});
+
+receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
+  quotationImgUpload.array('images', 5), async (req, res) => {
+    try {
+      const { id, date, validTo, name, vehicleModel, items: itemsJson, logistics: logisticsJson, currency, exchange, issuer, customSpecs: customSpecsJson } = req.body;
+      const items       = JSON.parse(itemsJson       || '[]');
+      const logistics   = JSON.parse(logisticsJson   || '[]');
+      const customSpecs = JSON.parse(customSpecsJson || '[]');
+      const files       = req.files || [];
+      const imageDataUrls = files.map(f => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`);
+
+      const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs });
+
+      const puppeteer = require('puppeteer');
+      const browser   = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+      const page      = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '0', bottom: '0', left: '0', right: '0' },
+      });
+      await browser.close();
+
+      res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
+    } catch (e) {
+      console.error('[emp-quotation-gen]', e);
       res.status(500).json({ error: e.message });
     }
   }
