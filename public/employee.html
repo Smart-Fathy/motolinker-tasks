@@ -107,6 +107,7 @@
   .page.active { display:block; animation:fadeIn .2s cubic-bezier(.16,1,.3,1); }
   @keyframes fadeIn { from { opacity:0; transform:translateY(8px) scale(0.99); } to { opacity:1; transform:translateY(0) scale(1); } }
   .page-title { font-size:20px; font-weight:700; margin-bottom:24px; display:flex; align-items:center; gap:10px; }
+  .page-body { width:100%; }
 
   /* Stats row */
   .stats-row { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:24px; }
@@ -432,6 +433,9 @@
       <button class="nav-item"        id="nav-pdfscraper" onclick="navigate('pdfscraper')" style="display:none">
         <span class="nav-icon"><i data-lucide="file-text"></i></span> PDF Scraper
       </button>
+      <button class="nav-item"        id="nav-quotation" onclick="navigate('quotation')" style="display:none">
+        <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft
+      </button>
       <div class="sidebar-section-label">Chat</div>
       <button class="nav-item" id="nav-chat" onclick="navigate('chat')">
         <span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat
@@ -635,6 +639,161 @@
       </div>
     </div>
 
+    <!-- ── Quotation Draft Page ── -->
+    <div class="page" id="page-quotation">
+      <div class="page-body" style="max-width:860px">
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-size:20px;font-weight:700">Quotation Draft</div>
+            <div style="font-size:13px;color:var(--muted);margin-top:4px">Fill in the details to generate a professional PDF quotation</div>
+          </div>
+          <button class="btn btn-primary" onclick="empGenerateQuotation()" id="emp-qt-generate-btn">
+            <i data-lucide="file-badge" style="width:15px;height:15px"></i> Generate PDF
+          </button>
+        </div>
+
+        <!-- Section 1: Document Info -->
+        <div class="card" style="margin-bottom:20px">
+          <div class="table-header"><span class="table-title">① Document Info</span></div>
+          <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+            <div>
+              <label class="form-label">Quotation ID</label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input class="form-input" id="emp-qt-id" readonly style="flex:1;background:rgba(255,255,255,.03);font-family:monospace">
+                <button class="btn btn-sm btn-outline" onclick="empRefreshQuoteId()" title="Generate new ID">
+                  <i data-lucide="refresh-cw" style="width:13px;height:13px"></i>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="form-label">Date</label>
+              <input class="form-input" id="emp-qt-date" type="date">
+            </div>
+            <div>
+              <label class="form-label">Valid To</label>
+              <input class="form-input" id="emp-qt-valid-to" type="date">
+            </div>
+            <div>
+              <label class="form-label">Customer Name</label>
+              <input class="form-input" id="emp-qt-name" placeholder="e.g. Hesham Dorghamy">
+            </div>
+            <div style="grid-column:span 2">
+              <label class="form-label">Vehicle Model</label>
+              <input class="form-input" id="emp-qt-vehicle" placeholder="e.g. Deepal S05 620 Plus">
+            </div>
+          </div>
+          <div style="padding:0 20px 20px">
+            <label class="form-label">Vehicle Images <span style="color:var(--muted);font-weight:400">(max 5)</span></label>
+            <div id="emp-qt-img-drop"
+              style="border:2px dashed var(--border);border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:border-color .2s"
+              onclick="document.getElementById('emp-qt-img-input').click()"
+              ondragover="event.preventDefault();this.style.borderColor='var(--primary)'"
+              ondragleave="this.style.borderColor=''"
+              ondrop="event.preventDefault();this.style.borderColor='';empHandleImgDrop(event)">
+              <i data-lucide="image" style="width:28px;height:28px;color:var(--muted);margin-bottom:8px"></i>
+              <div style="font-size:13px;color:var(--muted)">Drag & drop images or click to browse</div>
+              <input type="file" id="emp-qt-img-input" accept="image/*" multiple style="display:none" onchange="empHandleImgSelect(this.files)">
+            </div>
+            <div id="emp-qt-img-preview" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"></div>
+          </div>
+        </div>
+
+        <!-- Section 2: Pricing Breakdown -->
+        <div class="card" style="margin-bottom:20px">
+          <div class="table-header" style="display:flex;align-items:center;justify-content:space-between">
+            <span class="table-title">② Pricing Breakdown</span>
+            <button class="btn btn-sm btn-outline" onclick="empAddPricingRow()">
+              <i data-lucide="plus" style="width:13px;height:13px"></i> Add Item
+            </button>
+          </div>
+          <div style="padding:16px 20px">
+            <div style="display:grid;grid-template-columns:1fr 80px 130px 130px 36px;gap:8px;margin-bottom:8px;padding:0 4px">
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Item</div>
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Unit</div>
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Price USD</div>
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Total EGP</div>
+              <div></div>
+            </div>
+            <div id="emp-qt-items"></div>
+            <button class="btn btn-sm btn-outline" style="margin-top:8px;width:100%;justify-content:center" onclick="empAddPricingRow()">
+              <i data-lucide="plus" style="width:13px;height:13px"></i> Add Row
+            </button>
+          </div>
+        </div>
+
+        <!-- Section 3: Logistics Pricing -->
+        <div class="card" style="margin-bottom:20px">
+          <div class="table-header"><span class="table-title">③ Logistics Pricing Breakdown</span></div>
+          <div style="padding:16px 20px">
+            <div style="display:grid;grid-template-columns:1fr 130px 130px;gap:8px;margin-bottom:8px;padding:0 4px">
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Item</div>
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Price USD</div>
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Total EGP</div>
+            </div>
+            <div id="emp-qt-logistics"></div>
+            <div style="display:grid;grid-template-columns:1fr 130px 130px;gap:8px;margin-top:12px;padding:10px;background:rgba(124,106,255,.06);border-radius:8px;border:1px solid rgba(124,106,255,.15)">
+              <div style="font-size:13px;font-weight:700;color:var(--text)">Total Price Breakdown in EGP</div>
+              <div></div>
+              <div id="emp-qt-grand-total" style="font-size:14px;font-weight:800;color:var(--primary);text-align:center">0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 4: Key Specs -->
+        <div class="card" style="margin-bottom:24px">
+          <div class="table-header"><span class="table-title">④ Key Specs</span></div>
+          <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+            <div>
+              <label class="form-label">Currency</label>
+              <select class="form-input" id="emp-qt-currency">
+                <option value="EGP">EGP — Egyptian Pound</option>
+                <option value="USD">USD — US Dollar</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Exchange Rate (1 USD = ? EGP)</label>
+              <input class="form-input" id="emp-qt-exchange" type="number" min="1" step="0.01" placeholder="e.g. 55" oninput="empRecalcAll()">
+            </div>
+            <div>
+              <label class="form-label">Issued By</label>
+              <input class="form-input" id="emp-qt-issuer" placeholder="Your name">
+            </div>
+          </div>
+          <div style="padding:0 20px 20px">
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Custom Specs</div>
+            <div id="emp-qt-custom-specs"></div>
+            <button class="btn btn-outline btn-sm" style="margin-top:4px" onclick="addCustomSpecRow('emp-qt-custom-specs')">
+              <i data-lucide="plus" style="width:13px;height:13px"></i> Add Custom Spec
+            </button>
+          </div>
+        </div>
+
+        <div id="emp-qt-error" style="display:none;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#f87171;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px"></div>
+
+      </div>
+    </div>
+
+    <!-- ── EMPLOYEE QUOTATION PREVIEW MODAL ── -->
+    <div id="emp-qt-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto">
+      <div style="background:#1a1d35;border:1px solid rgba(255,255,255,.08);border-radius:16px;width:100%;max-width:900px;overflow:hidden">
+        <div style="padding:18px 24px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
+            <i data-lucide="file-badge" style="width:18px;height:18px"></i> Quotation Preview
+          </div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-primary btn-sm" id="emp-qt-download-btn" onclick="empDownloadQuotationPdf()">
+              <i data-lucide="download" style="width:14px;height:14px"></i> Download PDF
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('emp-qt-modal').style.display='none'">Close</button>
+          </div>
+        </div>
+        <div style="padding:20px;background:#f0f0f0;min-height:500px">
+          <iframe id="emp-qt-preview-frame" style="width:100%;min-height:700px;border:none;border-radius:8px;background:#fff"></iframe>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Chat Page ── -->
     <div class="page" id="page-chat" style="padding:0">
       <div class="chat-layout" id="chat-layout">
@@ -791,10 +950,10 @@ function showLogin() {
 }
 
 // Sections that can be controlled by admin permissions
-const PERM_SECTIONS = ['requests', 'drive', 'sheets', 'pdfscraper', 'email'];
+const PERM_SECTIONS = ['requests', 'drive', 'sheets', 'pdfscraper', 'email', 'quotation'];
 
 function applyPermissions(permissions) {
-  const p = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, ...(permissions||{}) };
+  const p = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, quotation:false, ...(permissions||{}) };
   PERM_SECTIONS.forEach(section => {
     const navEl   = document.getElementById('nav-' + section);
     const bnavEl  = document.getElementById('bnav-' + section);
@@ -832,8 +991,8 @@ async function logout() {
 }
 
 /* ── Navigation ── */
-const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', pdfscraper: 'PDF Scraper' };
-const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail };
+const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', pdfscraper: 'PDF Scraper', quotation: 'Quotation Draft' };
+const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation };
 let _currentEmpPage = 'log';
 function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
@@ -1412,6 +1571,288 @@ async function empEmailDisconnect() {
   await ef('/api/employee/email/disconnect', { method: 'POST' });
   emailConnected = false;
   loadEmail();
+}
+
+/* ── Quotation Draft ── */
+const EMP_LOGISTICS_LABELS = [
+  'Ocean Freight',
+  'THC, Documentation & Clearances',
+  'Customs Vat & Tax',
+  'Last Mile Wench to Door',
+  'Service Fees',
+];
+let empQtImages    = [];
+let empQtPdfBase64 = null;
+
+async function loadEmpQuotation() {
+  if (!document.getElementById('emp-qt-id').value) await empRefreshQuoteId();
+  const today = new Date();
+  const valid = new Date(today); valid.setDate(valid.getDate() + 7);
+  const fmt = d => d.toISOString().split('T')[0];
+  if (!document.getElementById('emp-qt-date').value)     document.getElementById('emp-qt-date').value     = fmt(today);
+  if (!document.getElementById('emp-qt-valid-to').value) document.getElementById('emp-qt-valid-to').value = fmt(valid);
+  if (!document.getElementById('emp-qt-logistics').children.length) empBuildLogisticsRows();
+  if (!document.getElementById('emp-qt-items').children.length) empAddPricingRow();
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+async function empRefreshQuoteId() {
+  try {
+    const d = await ef('/api/employee/quotation/newid').then(r => r.json());
+    document.getElementById('emp-qt-id').value = d.id;
+  } catch (_) {}
+}
+
+function empBuildLogisticsRows() {
+  const container = document.getElementById('emp-qt-logistics');
+  container.innerHTML = '';
+  EMP_LOGISTICS_LABELS.forEach((label, i) => {
+    const row = document.createElement('div');
+    row.id = `emp-qt-log-${i}`;
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 130px 130px;gap:8px;margin-bottom:8px;align-items:center';
+    row.innerHTML = `
+      <div style="font-size:13px;color:var(--text);padding:0 4px">${label}</div>
+      <input class="form-input" id="emp-qt-log-usd-${i}" type="number" min="0" step="0.01" placeholder="0"
+        oninput="empRecalcLogistics(${i})" style="text-align:center">
+      <input class="form-input" id="emp-qt-log-egp-${i}" readonly placeholder="0"
+        style="background:rgba(255,255,255,.03);text-align:center;font-weight:600">`;
+    container.appendChild(row);
+  });
+}
+
+function empAddPricingRow(name='', unit=1, priceUsd='', isFree=false) {
+  const container = document.getElementById('emp-qt-items');
+  const row = document.createElement('div');
+  row.className = 'emp-qt-item-row';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 80px 130px 130px 36px;gap:8px;margin-bottom:8px;align-items:center';
+  row.innerHTML = `
+    <input class="form-input" placeholder="Item name…" value="${name}" oninput="empRecalcItem(this)">
+    <input class="form-input" type="number" min="1" step="1" value="${unit}" placeholder="1"
+      style="text-align:center" oninput="empRecalcItem(this)">
+    <div style="position:relative">
+      <input class="form-input" placeholder="e.g. 22500 or Free" value="${priceUsd}"
+        oninput="empRecalcItem(this)" style="padding-right:50px">
+      <span onclick="empToggleFreeItem(this)" title="Mark as Free"
+        style="position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;
+               cursor:pointer;padding:2px 6px;border-radius:4px;background:${isFree?'var(--primary)':'rgba(255,255,255,.08)'};
+               color:${isFree?'#fff':'var(--muted)'}">FREE</span>
+    </div>
+    <input class="form-input" readonly placeholder="Auto" style="background:rgba(255,255,255,.03);text-align:center;font-weight:600">
+    <button onclick="this.closest('.emp-qt-item-row').remove();empRecalcGrandTotal()"
+      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <i data-lucide="x" style="width:13px;height:13px"></i>
+    </button>`;
+  container.appendChild(row);
+  requestAnimationFrame(() => lucide.createIcons());
+  empRecalcGrandTotal();
+}
+
+function empToggleFreeItem(btn) {
+  const isNowFree = btn.style.background !== 'var(--primary)' && !btn.style.background.includes('124,106,255');
+  btn.style.background = isNowFree ? 'var(--primary)' : 'rgba(255,255,255,.08)';
+  btn.style.color       = isNowFree ? '#fff' : 'var(--muted)';
+  const input = btn.closest('div').querySelector('input');
+  if (isNowFree) { input.value = 'Free'; input.readOnly = true; }
+  else           { input.value = '';     input.readOnly = false; }
+  empRecalcItem(input);
+}
+
+function empGetExchange() { return parseFloat(document.getElementById('emp-qt-exchange').value) || 0; }
+
+function empRecalcItem(inputEl) {
+  const row    = inputEl.closest('.emp-qt-item-row');
+  const inputs = row.querySelectorAll('input');
+  const priceRaw = inputs[2].value.trim();
+  const unitVal  = parseFloat(inputs[1].value) || 1;
+  const isFree   = priceRaw.toLowerCase() === 'free' || priceRaw === '';
+  const egpInput = inputs[3];
+  if (isFree) { egpInput.value = priceRaw.toLowerCase() === 'free' ? 'Free' : ''; }
+  else {
+    const price  = parseFloat(priceRaw);
+    const exRate = empGetExchange();
+    egpInput.value = (isFinite(price) && exRate > 0)
+      ? Math.round(price * unitVal * exRate).toLocaleString()
+      : '';
+  }
+  empRecalcGrandTotal();
+}
+
+function empRecalcLogistics(i) {
+  const usdEl = document.getElementById(`emp-qt-log-usd-${i}`);
+  const egpEl = document.getElementById(`emp-qt-log-egp-${i}`);
+  if (!usdEl || !egpEl) return;
+  const usd    = parseFloat(usdEl.value) || 0;
+  const exRate = empGetExchange();
+  egpEl.value  = exRate > 0 ? Math.round(usd * exRate).toLocaleString() : '';
+  empRecalcGrandTotal();
+}
+
+function empRecalcAll() {
+  document.querySelectorAll('.emp-qt-item-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    empRecalcItem(inputs[0]);
+  });
+  EMP_LOGISTICS_LABELS.forEach((_, i) => empRecalcLogistics(i));
+}
+
+function empRecalcGrandTotal() {
+  let total = 0;
+  document.querySelectorAll('.emp-qt-item-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const val = inputs[3].value.replace(/,/g, '');
+    const n   = parseFloat(val);
+    if (isFinite(n)) total += n;
+  });
+  EMP_LOGISTICS_LABELS.forEach((_, i) => {
+    const egpEl = document.getElementById(`emp-qt-log-egp-${i}`);
+    if (egpEl) {
+      const val = (egpEl.value || '').replace(/,/g, '');
+      const n   = parseFloat(val);
+      if (isFinite(n)) total += n;
+    }
+  });
+  const el = document.getElementById('emp-qt-grand-total');
+  if (el) el.textContent = total.toLocaleString();
+}
+
+function empHandleImgSelect(files) { empAddImages(Array.from(files)); }
+function empHandleImgDrop(e) {
+  empAddImages(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
+}
+function empAddImages(newFiles) {
+  const remaining = 5 - empQtImages.length;
+  empQtImages = empQtImages.concat(newFiles.slice(0, remaining));
+  empRenderImgPreviews();
+}
+function empRenderImgPreviews() {
+  const preview = document.getElementById('emp-qt-img-preview');
+  if (!preview) return;
+  preview.innerHTML = empQtImages.map((f, i) => {
+    const url = URL.createObjectURL(f);
+    return `<div style="position:relative;display:inline-flex">
+      <img src="${url}" style="height:72px;width:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+      <button onclick="empRemoveImg(${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--danger);border:none;color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>`;
+  }).join('');
+}
+function empRemoveImg(i) { empQtImages.splice(i, 1); empRenderImgPreviews(); }
+
+async function empGenerateQuotation() {
+  const btn = document.getElementById('emp-qt-generate-btn');
+  const err = document.getElementById('emp-qt-error');
+  err.style.display = 'none';
+
+  const id       = document.getElementById('emp-qt-id').value.trim();
+  const date     = document.getElementById('emp-qt-date').value;
+  const validTo  = document.getElementById('emp-qt-valid-to').value;
+  const name     = document.getElementById('emp-qt-name').value.trim();
+  const vehicle  = document.getElementById('emp-qt-vehicle').value.trim();
+  const exchange = document.getElementById('emp-qt-exchange').value;
+  const currency = document.getElementById('emp-qt-currency').value;
+  const issuer   = document.getElementById('emp-qt-issuer').value.trim();
+
+  if (!id || !date || !name) {
+    err.textContent = 'Please fill in ID, Date and Customer Name.';
+    err.style.display = 'block'; return;
+  }
+  if (!exchange || parseFloat(exchange) <= 0) {
+    err.textContent = 'Please enter a valid Exchange Rate.';
+    err.style.display = 'block'; return;
+  }
+
+  const items = [];
+  document.querySelectorAll('.emp-qt-item-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const itemName = inputs[0].value.trim();
+    if (!itemName) return;
+    items.push({ name: itemName, unit: inputs[1].value || '1', priceUsd: inputs[2].value.trim() });
+  });
+
+  const logistics = EMP_LOGISTICS_LABELS.map((label, i) => ({
+    label,
+    priceUsd: document.getElementById(`emp-qt-log-usd-${i}`)?.value || '0',
+  }));
+
+  const customSpecs = [];
+  document.querySelectorAll('#emp-qt-custom-specs .qt-custom-spec-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const key = inputs[0]?.value.trim();
+    const val = inputs[1]?.value.trim();
+    if (key) customSpecs.push({ key, val: val || '' });
+  });
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Generating…';
+
+  try {
+    const formData = new FormData();
+    formData.append('id',           id);
+    formData.append('date',         date);
+    formData.append('validTo',      validTo);
+    formData.append('name',         name);
+    formData.append('vehicleModel', vehicle);
+    formData.append('currency',     currency);
+    formData.append('exchange',     exchange);
+    formData.append('issuer',       issuer);
+    formData.append('items',        JSON.stringify(items));
+    formData.append('logistics',    JSON.stringify(logistics));
+    formData.append('customSpecs',  JSON.stringify(customSpecs));
+    empQtImages.forEach(f => formData.append('images', f));
+
+    const res = await fetch('/api/employee/quotation/generate', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + empToken },
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    empQtPdfBase64 = data.pdf;
+    const bytes  = Uint8Array.from(atob(empQtPdfBase64), c => c.charCodeAt(0));
+    const blob   = new Blob([bytes], { type: 'application/pdf' });
+    const blobUrl = URL.createObjectURL(blob);
+    const frame  = document.getElementById('emp-qt-preview-frame');
+    if (frame._blobUrl) URL.revokeObjectURL(frame._blobUrl);
+    frame._blobUrl = blobUrl;
+    frame.src = blobUrl;
+    const modal = document.getElementById('emp-qt-modal');
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => lucide.createIcons());
+  } catch (e) {
+    err.textContent = 'Error: ' + e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i data-lucide="file-badge" style="width:15px;height:15px"></i> Generate PDF';
+    requestAnimationFrame(() => lucide.createIcons());
+  }
+}
+
+function empDownloadQuotationPdf() {
+  if (!empQtPdfBase64) return;
+  const bytes = Uint8Array.from(atob(empQtPdfBase64), c => c.charCodeAt(0));
+  const blob  = new Blob([bytes], { type: 'application/pdf' });
+  const a     = document.createElement('a');
+  a.href      = URL.createObjectURL(blob);
+  a.download  = `quotation-${document.getElementById('emp-qt-id').value || 'draft'}.pdf`;
+  a.click();
+}
+
+function addCustomSpecRow(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const row = document.createElement('div');
+  row.className = 'qt-custom-spec-row';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 36px;gap:8px;margin-bottom:8px;align-items:center';
+  row.innerHTML = `
+    <input class="form-input" placeholder="Field name (e.g. Incoterms)">
+    <input class="form-input" placeholder="Value (e.g. CIF)">
+    <button onclick="this.closest('.qt-custom-spec-row').remove()"
+      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <i data-lucide="x" style="width:13px;height:13px"></i>
+    </button>`;
+  container.appendChild(row);
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 /* ── PDF Scraper ── */
