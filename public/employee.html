@@ -375,16 +375,84 @@
       <p>MotoLinker · Log hours &amp; track tasks</p>
     </div>
     <div class="auth-err" id="auth-err"></div>
-    <div class="form-group">
-      <label class="form-label">Username</label>
-      <input class="form-control" id="login-user" placeholder="Your username" autocomplete="username">
+
+    <!-- Standard login form -->
+    <div id="login-form-panel">
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input class="form-control" id="login-user" placeholder="Your username" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-control" id="login-pass" type="password" placeholder="Your password"
+          onkeydown="if(event.key==='Enter')submitLogin()">
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" id="login-btn" onclick="submitLogin()">Sign In</button>
+      <div style="text-align:center;margin-top:12px">
+        <a href="#" onclick="showForgotPassword();return false;" style="font-size:12px;color:var(--muted);text-decoration:none">Forgot password?</a>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin:16px 0">
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <span style="font-size:11px;color:var(--muted)">or</span>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+      <a href="/api/employee/auth/google" class="btn btn-outline" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;font-size:13px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+        Sign in with Google
+      </a>
     </div>
-    <div class="form-group">
-      <label class="form-label">Password</label>
-      <input class="form-control" id="login-pass" type="password" placeholder="Your password"
-        onkeydown="if(event.key==='Enter')submitLogin()">
+
+    <!-- Forgot password form -->
+    <div id="forgot-form-panel" style="display:none">
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px">Reset Password</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Enter your email address and we'll send you a reset link.</div>
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <input class="form-control" id="forgot-email" type="email" placeholder="you@example.com"
+          onkeydown="if(event.key==='Enter')submitForgotPassword()">
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" id="forgot-btn" onclick="submitForgotPassword()">Send Reset Link</button>
+      <div style="text-align:center;margin-top:12px">
+        <a href="#" onclick="showLoginForm();return false;" style="font-size:12px;color:var(--muted);text-decoration:none">← Back to login</a>
+      </div>
     </div>
-    <button class="btn btn-primary" style="width:100%;margin-top:8px" id="login-btn" onclick="submitLogin()">Sign In</button>
+
+    <!-- Reset password form (shown when ?reset=TOKEN in URL) -->
+    <div id="reset-form-panel" style="display:none">
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px">Set New Password</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Enter your new password below.</div>
+      <div class="form-group">
+        <label class="form-label">New Password</label>
+        <input class="form-control" id="reset-pass" type="password" placeholder="At least 8 characters"
+          onkeydown="if(event.key==='Enter')submitResetPassword()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm New Password</label>
+        <input class="form-control" id="reset-pass2" type="password" placeholder="Repeat password"
+          onkeydown="if(event.key==='Enter')submitResetPassword()">
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" id="reset-btn" onclick="submitResetPassword()">Set Password</button>
+      <div style="text-align:center;margin-top:12px">
+        <a href="#" onclick="showLoginForm();return false;" style="font-size:12px;color:var(--muted);text-decoration:none">← Back to login</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Change Password Modal ── -->
+<div id="change-pass-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:380px;margin:20px">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">Change Password</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:20px">Update your portal password</div>
+    <div id="chpass-err" style="display:none;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:var(--danger);padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:14px"></div>
+    <div id="chpass-ok"  style="display:none;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25);color:var(--success);padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:14px"></div>
+    <div class="form-group"><label class="form-label">Current Password</label><input class="form-control" id="chpass-current" type="password" placeholder="Your current password"></div>
+    <div class="form-group"><label class="form-label">New Password</label><input class="form-control" id="chpass-new" type="password" placeholder="At least 8 characters"></div>
+    <div class="form-group"><label class="form-label">Confirm New Password</label><input class="form-control" id="chpass-confirm" type="password" placeholder="Repeat new password"></div>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button class="btn btn-outline" style="flex:1" onclick="document.getElementById('change-pass-modal').style.display='none'">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" id="chpass-btn" onclick="submitChangePassword()">Update Password</button>
+    </div>
   </div>
 </div>
 
@@ -429,6 +497,15 @@
       <button class="nav-item"        id="nav-email"  onclick="navigate('email')" style="display:none">
         <span class="nav-icon"><i data-lucide="mail"></i></span> My Email
       </button>
+      <button class="nav-item"        id="nav-calendar" onclick="navigate('calendar')">
+        <span class="nav-icon"><i data-lucide="calendar"></i></span> Calendar
+      </button>
+      <button class="nav-item"        id="nav-meet"     onclick="navigate('meet')">
+        <span class="nav-icon"><i data-lucide="video"></i></span> Meet
+      </button>
+      <button class="nav-item"        id="nav-gchat"    onclick="navigate('gchat')">
+        <span class="nav-icon"><i data-lucide="message-square"></i></span> Google Chat
+      </button>
       <div class="sidebar-section-label" id="nav-label-tools" style="display:none">Tools</div>
       <button class="nav-item"        id="nav-pdfscraper" onclick="navigate('pdfscraper')" style="display:none">
         <span class="nav-icon"><i data-lucide="file-text"></i></span> PDF Scraper
@@ -450,6 +527,9 @@
           <div class="user-role">Employee</div>
         </div>
       </div>
+      <button class="btn btn-outline" style="width:100%;font-size:12px;padding:9px;margin-bottom:6px" onclick="document.getElementById('change-pass-modal').style.display='flex';document.getElementById('chpass-current').value='';document.getElementById('chpass-new').value='';document.getElementById('chpass-confirm').value='';document.getElementById('chpass-err').style.display='none';document.getElementById('chpass-ok').style.display='none'">
+        <i data-lucide="key" style="width:14px;height:14px"></i> Change Password
+      </button>
       <button class="btn btn-outline" style="width:100%;font-size:12px;padding:9px" onclick="logout()"><i data-lucide="log-out" style="width:14px;height:14px"></i> Sign Out</button>
     </div>
   </div>
@@ -598,6 +678,75 @@
     <div class="page" id="page-email">
       <div id="email-content" style="padding:28px">
         <div class="loading"><span class="spinner"></span> Loading email…</div>
+      </div>
+    </div>
+
+    <!-- ── Google Calendar Page ── -->
+    <div class="page" id="page-calendar" style="padding:0;display:flex;flex-direction:column">
+      <div style="padding:20px 28px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="font-size:18px;font-weight:700;margin-bottom:4px">Google Calendar</div>
+        <div style="font-size:12px;color:var(--muted)">Your calendar — make sure you're signed into Google in this browser.</div>
+      </div>
+      <div style="flex:1;min-height:0;padding:16px">
+        <iframe id="calendar-frame"
+          src="https://calendar.google.com/calendar/embed?showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&showTz=1&mode=WEEK"
+          style="width:100%;height:100%;min-height:600px;border:none;border-radius:10px;background:#fff"
+          frameborder="0" scrolling="no"></iframe>
+      </div>
+    </div>
+
+    <!-- ── Google Meet Page ── -->
+    <div class="page" id="page-meet">
+      <div style="padding:28px">
+        <div style="font-size:20px;font-weight:700;margin-bottom:6px">Google Meet</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:28px">Start or join a video meeting instantly.</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;max-width:640px">
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
+            <div style="width:52px;height:52px;background:rgba(52,211,153,.1);border-radius:50%;display:flex;align-items:center;justify-content:center">
+              <i data-lucide="video" style="width:24px;height:24px;color:var(--success)"></i>
+            </div>
+            <div>
+              <div style="font-weight:700;margin-bottom:4px">New Meeting</div>
+              <div style="font-size:12px;color:var(--muted)">Start an instant meeting and share the link with others.</div>
+            </div>
+            <a href="https://meet.google.com/new" target="_blank" rel="noopener" class="btn btn-primary" style="width:100%;text-decoration:none;text-align:center">
+              <i data-lucide="video" style="width:14px;height:14px"></i> Start Meeting
+            </a>
+          </div>
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
+            <div style="width:52px;height:52px;background:rgba(124,106,255,.1);border-radius:50%;display:flex;align-items:center;justify-content:center">
+              <i data-lucide="link" style="width:24px;height:24px;color:var(--primary)"></i>
+            </div>
+            <div>
+              <div style="font-weight:700;margin-bottom:4px">Join a Meeting</div>
+              <div style="font-size:12px;color:var(--muted)">Enter a meeting code to join an existing meeting.</div>
+            </div>
+            <div style="display:flex;gap:8px;width:100%">
+              <input id="meet-code" class="form-control" placeholder="abc-defg-hij" style="flex:1;text-transform:lowercase" onkeydown="if(event.key==='Enter')joinMeeting()">
+              <button class="btn btn-outline" onclick="joinMeeting()">Join</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Google Chat Page ── -->
+    <div class="page" id="page-gchat">
+      <div style="padding:28px">
+        <div style="font-size:20px;font-weight:700;margin-bottom:6px">Google Chat</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:28px">Open Google Chat to message your team.</div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:32px;max-width:420px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center">
+          <div style="width:60px;height:60px;background:rgba(66,133,244,.12);border-radius:50%;display:flex;align-items:center;justify-content:center">
+            <i data-lucide="message-square" style="width:28px;height:28px;color:#4285F4"></i>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:16px;margin-bottom:6px">Open Google Chat</div>
+            <div style="font-size:13px;color:var(--muted)">Google Chat opens in a new tab. Make sure you're signed in with your Google Workspace account.</div>
+          </div>
+          <a href="https://chat.google.com" target="_blank" rel="noopener" class="btn btn-primary" style="text-decoration:none;padding:10px 28px">
+            <i data-lucide="external-link" style="width:14px;height:14px"></i> Open Google Chat
+          </a>
+        </div>
       </div>
     </div>
 
@@ -991,7 +1140,7 @@ async function logout() {
 }
 
 /* ── Navigation ── */
-const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', pdfscraper: 'PDF Scraper', quotation: 'Quotation Draft' };
+const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', pdfscraper: 'PDF Scraper', quotation: 'Quotation Draft', calendar: 'Calendar', meet: 'Meet', gchat: 'Google Chat' };
 const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation };
 let _currentEmpPage = 'log';
 function navigate(page) {
@@ -1917,8 +2066,119 @@ function empDownloadCsv() {
   a.click();
 }
 
+// ── Auth helpers: forgot / reset password, Google login handling ───────────────
+function showForgotPassword() {
+  document.getElementById('login-form-panel').style.display = 'none';
+  document.getElementById('forgot-form-panel').style.display = '';
+  document.getElementById('reset-form-panel').style.display = 'none';
+  document.getElementById('auth-err').style.display = 'none';
+}
+function showLoginForm() {
+  document.getElementById('login-form-panel').style.display = '';
+  document.getElementById('forgot-form-panel').style.display = 'none';
+  document.getElementById('reset-form-panel').style.display = 'none';
+  document.getElementById('auth-err').style.display = 'none';
+}
+async function submitForgotPassword() {
+  const btn = document.getElementById('forgot-btn');
+  const err = document.getElementById('auth-err');
+  err.style.display = 'none';
+  const email = document.getElementById('forgot-email').value.trim();
+  if (!email) { err.textContent = 'Please enter your email.'; err.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const r = await fetch('/api/employee/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+    const d = await r.json();
+    if (d.error) { err.textContent = d.error; err.style.display = 'block'; return; }
+    err.style.cssText = 'display:block;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25);color:var(--success);padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px';
+    err.textContent = 'If an account with that email exists, a reset link has been sent.';
+  } catch (e) { err.textContent = 'Connection error'; err.style.display = 'block'; }
+  finally { btn.disabled = false; btn.textContent = 'Send Reset Link'; }
+}
+function showResetPasswordForm(token) {
+  window._resetToken = token;
+  document.getElementById('login-form-panel').style.display = 'none';
+  document.getElementById('forgot-form-panel').style.display = 'none';
+  document.getElementById('reset-form-panel').style.display = '';
+}
+async function submitResetPassword() {
+  const btn = document.getElementById('reset-btn');
+  const err = document.getElementById('auth-err');
+  err.style.display = 'none';
+  const newPassword  = document.getElementById('reset-pass').value;
+  const confirmPass  = document.getElementById('reset-pass2').value;
+  if (!newPassword || newPassword.length < 8) { err.textContent = 'Password must be at least 8 characters.'; err.style.display = 'block'; return; }
+  if (newPassword !== confirmPass) { err.textContent = 'Passwords do not match.'; err.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Updating…';
+  try {
+    const r = await fetch('/api/employee/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: window._resetToken, newPassword }) });
+    const d = await r.json();
+    if (d.error) { err.textContent = d.error; err.style.display = 'block'; return; }
+    err.style.cssText = 'display:block;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25);color:var(--success);padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px';
+    err.textContent = 'Password updated! You can now sign in.';
+    setTimeout(showLoginForm, 2000);
+    history.replaceState({}, '', '/employee');
+  } catch (e) { err.textContent = 'Connection error'; err.style.display = 'block'; }
+  finally { btn.disabled = false; btn.textContent = 'Set Password'; }
+}
+
+// ── Change password (inside the app) ─────────────────────────────────────────
+async function submitChangePassword() {
+  const btn = document.getElementById('chpass-btn');
+  const err = document.getElementById('chpass-err');
+  const ok  = document.getElementById('chpass-ok');
+  err.style.display = 'none'; ok.style.display = 'none';
+  const currentPassword = document.getElementById('chpass-current').value;
+  const newPassword     = document.getElementById('chpass-new').value;
+  const confirmPass     = document.getElementById('chpass-confirm').value;
+  if (!currentPassword) { err.textContent = 'Enter your current password.'; err.style.display = 'block'; return; }
+  if (!newPassword || newPassword.length < 8) { err.textContent = 'New password must be at least 8 characters.'; err.style.display = 'block'; return; }
+  if (newPassword !== confirmPass) { err.textContent = 'New passwords do not match.'; err.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Updating…';
+  try {
+    const r = await ef('/api/employee/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+    const d = await r.json();
+    if (d.error) { err.textContent = d.error; err.style.display = 'block'; return; }
+    ok.textContent = 'Password updated successfully!'; ok.style.display = 'block';
+    document.getElementById('chpass-current').value = '';
+    document.getElementById('chpass-new').value = '';
+    document.getElementById('chpass-confirm').value = '';
+  } catch (e) { err.textContent = 'Connection error'; err.style.display = 'block'; }
+  finally { btn.disabled = false; btn.textContent = 'Update Password'; }
+}
+
+// ── Google Meet helper ────────────────────────────────────────────────────────
+function joinMeeting() {
+  const code = document.getElementById('meet-code').value.trim().replace(/\s/g, '');
+  if (!code) return;
+  window.open('https://meet.google.com/' + code, '_blank', 'noopener');
+}
+
 // Initialize Lucide icons
 lucide.createIcons();
+
+// Handle URL params for Google login redirect and password reset
+(function handleUrlParams() {
+  const params = new URLSearchParams(location.search);
+  const empToken_ = params.get('emp_token');
+  const resetToken = params.get('reset');
+  const googleErr = params.get('google_login_error');
+  if (empToken_) {
+    empToken = empToken_;
+    localStorage.setItem('ml_emp_token', empToken);
+    history.replaceState({}, '', '/employee');
+  }
+  if (googleErr) {
+    history.replaceState({}, '', '/employee');
+    document.getElementById('auth-err').textContent = decodeURIComponent(googleErr);
+    document.getElementById('auth-err').style.display = 'block';
+  }
+  if (resetToken) {
+    history.replaceState({}, '', '/employee');
+    showResetPasswordForm(resetToken);
+  }
+})();
+
 checkAuth();
 
 // ── Chat ──────────────────────────────────────────────────────────────────────

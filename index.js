@@ -1,11 +1,12 @@
 const { App, ExpressReceiver, LogLevel } = require('@slack/bolt');
 const { createClient } = require('@supabase/supabase-js');
 const { WebClient }    = require('@slack/web-api');
-const crypto  = require('crypto');
-const path    = require('path');
-const express = require('express');
-const multer  = require('multer');
-const webpush = require('web-push');
+const crypto     = require('crypto');
+const path       = require('path');
+const express    = require('express');
+const multer     = require('multer');
+const webpush    = require('web-push');
+const nodemailer = require('nodemailer');
 
 // ─── App Init ─────────────────────────────────────────────────────────────────
 const receiver = new ExpressReceiver({
@@ -42,6 +43,21 @@ const ADMIN_PASSWORD       = process.env.ADMIN_PASSWORD;
 const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587');
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const SMTP_FROM = process.env.SMTP_FROM || process.env.SMTP_USER;
+
+function createMailer() {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
+  return nodemailer.createTransport({
+    host: SMTP_HOST, port: SMTP_PORT,
+    secure: SMTP_PORT === 465,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+  });
+}
+
 // ─── Session Store ────────────────────────────────────────────────────────────
 const sessions         = new Map(); // admin sessions
 const employeeSessions = new Map(); // employee portal sessions
@@ -50,6 +66,34 @@ let driveTokens = null;
 const employeeDriveTokens  = new Map();
 const employeeEmailTokens  = new Map();
 const pendingDriveAuth     = new Map();
+
+// ─── Google Token Persistence ─────────────────────────────────────────────────
+async function loadGoogleTokens() {
+  try {
+    const { data } = await supabase.from('google_tokens').select('user_key, tokens');
+    if (!data) return;
+    for (const row of data) {
+      const t = row.tokens;
+      if (row.user_key === 'admin_gmail') gmailTokens = t;
+      else if (row.user_key === 'admin_drive') driveTokens = t;
+      else if (row.user_key.endsWith('_drive')) {
+        const id = parseInt(row.user_key);
+        if (!isNaN(id)) employeeDriveTokens.set(id, t);
+      } else if (row.user_key.endsWith('_gmail')) {
+        const id = parseInt(row.user_key);
+        if (!isNaN(id)) employeeEmailTokens.set(id, t);
+      }
+    }
+    if (data.length) console.log(`[tokens] Loaded ${data.length} Google token(s) from DB`);
+  } catch (e) { console.warn('[tokens] Could not load from DB:', e.message); }
+}
+
+async function saveGoogleToken(userKey, tokens) {
+  try {
+    await supabase.from('google_tokens')
+      .upsert({ user_key: userKey, tokens, updated_at: new Date().toISOString() }, { onConflict: 'user_key' });
+  } catch (e) { console.warn('[tokens] Could not save to DB:', e.message); }
+}
 
 // ─── Form Submissions (in-memory) ────────────────────────────────────────────
 let submissions = []; // { id, name, email, phone, message, car_interest, submitted_at }
@@ -766,15 +810,27 @@ receiver.router.get('/api/email/callback', async (req, res) => {
       const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
       const profile = await profileRes.json();
       const full = { ...tokens, email: profile.email, name: profile.name, expiry_date: Date.now() + ((tokens.expires_in || 3600) * 1000) };
+      if (pending.type === 'employee-login') {
+        // Google login for employee portal — match by email
+        const { data: emp } = await supabase.from('employees').select('id,name,username,permissions').eq('email', profile.email).single();
+        if (!emp) return res.redirect('/employee?google_login_error=' + encodeURIComponent('No account linked to this Google address. Contact your admin.'));
+        const sessionToken = generateToken();
+        const permissions = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, quotation:false, ...(emp.permissions || {}) };
+        employeeSessions.set(sessionToken, { id: emp.id, name: emp.name, username: emp.username, permissions });
+        return res.redirect('/employee?emp_token=' + sessionToken);
+      }
       if (pending.type === 'employee' && pending.employeeId) {
         employeeDriveTokens.set(pending.employeeId, full);
+        saveGoogleToken(`${pending.employeeId}_drive`, full);
         return res.redirect('/employee#drive');
       }
       if (pending.type === 'employee-gmail' && pending.employeeId) {
         employeeEmailTokens.set(pending.employeeId, full);
+        saveGoogleToken(`${pending.employeeId}_gmail`, full);
         return res.redirect('/employee#email');
       }
       driveTokens = full;
+      saveGoogleToken('admin_drive', full);
       return res.redirect('/dashboard#drive');
     } catch (e) { return res.status(500).send(`OAuth error: ${e.message}`); }
   }
@@ -791,6 +847,7 @@ receiver.router.get('/api/email/callback', async (req, res) => {
     const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
     const profile = await profileRes.json();
     gmailTokens = { ...tokens, email: profile.email, name: profile.name, expiry_date: Date.now() + ((tokens.expires_in || 3600) * 1000) };
+    saveGoogleToken('admin_gmail', gmailTokens);
     res.redirect('/dashboard#email');
   } catch (e) { res.status(500).send(`OAuth error: ${e.message}`); }
 });
@@ -829,7 +886,10 @@ async function getGmailToken() {
   if (gmailTokens.refresh_token && Date.now() > (gmailTokens.expiry_date || 0) - 60_000) {
     const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: gmailTokens.refresh_token, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, grant_type: 'refresh_token' }) });
     const refreshed = await r.json();
-    if (refreshed.access_token) gmailTokens = { ...gmailTokens, ...refreshed, expiry_date: Date.now() + ((refreshed.expires_in || 3600) * 1000) };
+    if (refreshed.access_token) {
+      gmailTokens = { ...gmailTokens, ...refreshed, expiry_date: Date.now() + ((refreshed.expires_in || 3600) * 1000) };
+      saveGoogleToken('admin_gmail', gmailTokens);
+    }
   }
   return gmailTokens.access_token;
 }
@@ -886,18 +946,21 @@ receiver.router.post('/api/email/send', requireAuth, express.json(), async (req,
 // ── Google Drive / Sheets ─────────────────────────────────────────────────────
 const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 
-async function getDriveToken(tokens) {
+async function getDriveToken(tokens, userKey) {
   if (!tokens) throw new Error('Drive not connected');
   if (tokens.refresh_token && Date.now() > (tokens.expiry_date || 0) - 60_000) {
     const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: tokens.refresh_token, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, grant_type: 'refresh_token' }) });
     const refreshed = await r.json();
-    if (refreshed.access_token) Object.assign(tokens, refreshed, { expiry_date: Date.now() + ((refreshed.expires_in || 3600) * 1000) });
+    if (refreshed.access_token) {
+      Object.assign(tokens, refreshed, { expiry_date: Date.now() + ((refreshed.expires_in || 3600) * 1000) });
+      if (userKey) saveGoogleToken(userKey, tokens);
+    }
   }
   return tokens.access_token;
 }
 
-async function listDriveFiles(tokens, mimeType) {
-  const token = await getDriveToken(tokens);
+async function listDriveFiles(tokens, mimeType, userKey) {
+  const token = await getDriveToken(tokens, userKey);
   const q = mimeType ? `mimeType='${mimeType}' and trashed=false` : 'trashed=false';
   const fields = 'files(id,name,mimeType,modifiedTime,webViewLink,iconLink,size)';
   const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&orderBy=modifiedTime+desc&pageSize=50&fields=${encodeURIComponent(fields)}`;
@@ -1068,7 +1131,7 @@ receiver.router.get('/api/carsync/preview', requireAuth, async (_req, res) => {
   try {
     if (!carSyncConfig.sheetId) return res.status(400).json({ error: 'Sheet ID not configured' });
     if (!driveTokens) return res.status(400).json({ error: 'Google Drive not connected' });
-    const token = await getDriveToken(driveTokens);
+    const token = await getDriveToken(driveTokens, 'admin_drive');
     const rows = await readSheet(carSyncConfig.sheetId, token);
     if (!rows.length) return res.json({ headers: [], rows: [] });
     const [headers, ...data] = rows;
@@ -1105,7 +1168,7 @@ receiver.router.post('/api/carsync/run', requireAuth, express.json(), async (req
 
     const base  = wpUrl.replace(/\/$/, '').replace(/\/wp-admin\/?$/, '');
     const type  = wpPostType || 'listing';
-    const token = await getDriveToken(driveTokens);
+    const token = await getDriveToken(driveTokens, 'admin_drive');
     const rows  = await readSheet(sheetId, token);
     if (rows.length < 2) return res.json({ created: 0, updated: 0, skipped: 0, errors: [] });
 
@@ -1260,8 +1323,8 @@ receiver.router.get('/api/employee/drive/connect', requireEmployeeAuth, (req, re
 
 receiver.router.post('/api/employee/drive/disconnect', requireEmployeeAuth, (req, res) => { employeeDriveTokens.delete(req.employee.id); res.json({ ok: true }); });
 
-receiver.router.get('/api/employee/drive/files',  requireEmployeeAuth, async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id))); } catch (e) { res.status(500).json({ error: e.message }); } });
-receiver.router.get('/api/employee/drive/sheets', requireEmployeeAuth, async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id), 'application/vnd.google-apps.spreadsheet')); } catch (e) { res.status(500).json({ error: e.message }); } });
+receiver.router.get('/api/employee/drive/files',  requireEmployeeAuth, async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id), null, `${req.employee.id}_drive`)); } catch (e) { res.status(500).json({ error: e.message }); } });
+receiver.router.get('/api/employee/drive/sheets', requireEmployeeAuth, async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id), 'application/vnd.google-apps.spreadsheet', `${req.employee.id}_drive`)); } catch (e) { res.status(500).json({ error: e.message }); } });
 
 // ── Employee Email ─────────────────────────────────────────────────────────────
 const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
@@ -1290,7 +1353,11 @@ async function getEmployeeGmailToken(employeeId) {
   if (t.refresh_token && Date.now() > (t.expiry_date || 0) - 60_000) {
     const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: t.refresh_token, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, grant_type: 'refresh_token' }) });
     const refreshed = await r.json();
-    if (refreshed.access_token) employeeEmailTokens.set(employeeId, { ...t, ...refreshed, expiry_date: Date.now() + ((refreshed.expires_in || 3600) * 1000) });
+    if (refreshed.access_token) {
+      const updated = { ...t, ...refreshed, expiry_date: Date.now() + ((refreshed.expires_in || 3600) * 1000) };
+      employeeEmailTokens.set(employeeId, updated);
+      saveGoogleToken(`${employeeId}_gmail`, updated);
+    }
   }
   return employeeEmailTokens.get(employeeId).access_token;
 }
@@ -1399,7 +1466,24 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json
 });
 
 // Employee auth
-const DEFAULT_PERMISSIONS = { requests: true, drive: true, sheets: true, pdfscraper: false, email: false, viewAllRequests: false };
+const DEFAULT_PERMISSIONS = { requests: true, drive: true, sheets: true, pdfscraper: false, email: false, viewAllRequests: false, quotation: false };
+
+// Google login for employee portal
+receiver.router.get('/api/employee/auth/google', (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.status(400).send('Google login not configured');
+  const base  = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  const state = crypto.randomBytes(16).toString('hex');
+  pendingDriveAuth.set(state, { type: 'employee-login' });
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: `${base}/api/email/callback`,
+    response_type: 'code',
+    scope: 'openid email profile',
+    access_type: 'offline',
+    state,
+  });
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
 
 receiver.router.post('/api/employee/login', express.json(), async (req, res) => {
   const { username, password } = req.body || {};
@@ -1430,6 +1514,56 @@ receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res)
 receiver.router.post('/api/employee/logout', requireEmployeeAuth, (req, res) => {
   const token = (req.headers['authorization'] || '').slice(7);
   employeeSessions.delete(token);
+  res.json({ ok: true });
+});
+
+// Change password (authenticated)
+receiver.router.post('/api/employee/change-password', requireEmployeeAuth, express.json(), async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords required' });
+  if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  const { data: emp } = await supabase.from('employees').select('password_hash').eq('id', req.employee.id).single();
+  if (!emp || !verifyPassword(currentPassword, emp.password_hash)) return res.status(401).json({ error: 'Current password is incorrect' });
+  const { error } = await supabase.from('employees').update({ password_hash: hashPassword(newPassword) }).eq('id', req.employee.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// Forgot password — send reset link via email
+receiver.router.post('/api/employee/forgot-password', express.json(), async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+  const { data: emp } = await supabase.from('employees').select('id,name,email').eq('email', email.toLowerCase().trim()).single();
+  // Always respond OK to avoid email enumeration
+  if (!emp) return res.json({ ok: true });
+  const mailer = createMailer();
+  if (!mailer) return res.status(503).json({ error: 'Email service not configured. Contact your admin.' });
+  const token = generateToken();
+  const expiresAt = new Date(Date.now() + 3600_000); // 1 hour
+  await supabase.from('password_reset_tokens').insert({ employee_id: emp.id, token, expires_at: expiresAt.toISOString() });
+  const base = process.env.APP_URL || 'https://your-app-url.com';
+  const resetUrl = `${base}/employee?reset=${token}`;
+  try {
+    await mailer.sendMail({
+      from: SMTP_FROM,
+      to: emp.email,
+      subject: 'MotoLinker — Password Reset',
+      html: `<p>Hi ${emp.name},</p><p>Click the link below to reset your password. This link expires in 1 hour.</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>If you didn't request this, ignore this email.</p>`,
+    });
+  } catch (e) { return res.status(500).json({ error: 'Failed to send email: ' + e.message }); }
+  res.json({ ok: true });
+});
+
+// Reset password via token
+receiver.router.post('/api/employee/reset-password', express.json(), async (req, res) => {
+  const { token, newPassword } = req.body || {};
+  if (!token || !newPassword) return res.status(400).json({ error: 'Token and new password required' });
+  if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  const { data: row } = await supabase.from('password_reset_tokens')
+    .select('id,employee_id,expires_at,used').eq('token', token).single();
+  if (!row || row.used || new Date(row.expires_at) < new Date()) return res.status(400).json({ error: 'Invalid or expired reset link' });
+  await supabase.from('employees').update({ password_hash: hashPassword(newPassword) }).eq('id', row.employee_id);
+  await supabase.from('password_reset_tokens').update({ used: true }).eq('id', row.id);
   res.json({ ok: true });
 });
 
@@ -3260,6 +3394,7 @@ receiver.router.delete('/api/submissions/:id', requireAuth, (req, res) => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 (async () => {
+  await loadGoogleTokens();
   const port = process.env.PORT || 3000;
   if (app) {
     await app.start(port);
