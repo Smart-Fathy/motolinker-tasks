@@ -212,6 +212,28 @@ CREATE TABLE IF NOT EXISTS presence (
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS voice_duration INT DEFAULT NULL;
 
 -- ============================================================
+--  Password Reset Tokens
+-- ============================================================
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id          BIGSERIAL PRIMARY KEY,
+  employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  token       TEXT NOT NULL UNIQUE,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  used        BOOLEAN DEFAULT FALSE,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_prt_token ON password_reset_tokens (token);
+
+-- ============================================================
+--  Google OAuth Tokens (persisted across server restarts)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS google_tokens (
+  user_key   TEXT PRIMARY KEY,
+  tokens     JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
 --  Optional: Row Level Security (RLS)
 -- ============================================================
 
