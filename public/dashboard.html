@@ -427,7 +427,8 @@
     /* ── Page visibility ─────────────────────────────────────── */
     .page { display: none; }
     .page.active { display: block; }
-    #page-email.active { display: flex; flex-direction: column; padding: 0; height: calc(100vh - 64px); }
+    #page-email.active    { display: flex; flex-direction: column; padding: 0; height: calc(100vh - 64px); }
+    #page-calendar.active { display: flex !important; flex-direction: column; padding: 0; }
 
     /* ── Employees page ──────────────────────────────────────── */
     .employee-grid {
@@ -823,6 +824,10 @@
       <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft</div>
       <div class="sidebar-section-label">Chat</div>
       <div class="nav-item" onclick="navigate('chat')" id="nav-chat"><span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat<span class="chat-nav-badge" id="chat-nav-badge" style="display:none">0</span></div>
+      <div class="sidebar-section-label">Google</div>
+      <div class="nav-item" onclick="navigate('calendar')" id="nav-calendar"><span class="nav-icon"><i data-lucide="calendar"></i></span> Calendar</div>
+      <div class="nav-item" onclick="navigate('meet')"     id="nav-meet">    <span class="nav-icon"><i data-lucide="video"></i></span> Meet</div>
+      <div class="nav-item" onclick="navigate('gchat')"    id="nav-gchat">   <span class="nav-icon"><i data-lucide="message-square"></i></span> Google Chat</div>
       <div class="sidebar-section-label">Account</div>
       <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon"><i data-lucide="mail"></i></span> My Email</div>
       <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon"><i data-lucide="hard-drive"></i></span> My Drive</div>
@@ -1064,6 +1069,71 @@
   <div id="page-sheets" class="page">
     <div id="sheets-content">
       <div class="loading"><div class="spinner"></div> Loading Sheets…</div>
+    </div>
+  </div>
+
+  <!-- ── GOOGLE CALENDAR PAGE ────────────────────────────── -->
+  <div id="page-calendar" class="page">
+    <div style="padding:20px 28px 12px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:4px">Google Calendar</div>
+        <div style="font-size:12px;color:var(--muted)">Your calendar — make sure you're signed into Google in this browser.</div>
+      </div>
+      <a href="https://calendar.google.com/calendar/r/eventedit" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="text-decoration:none;flex-shrink:0">
+        <i data-lucide="plus" style="width:13px;height:13px"></i> New Event
+      </a>
+    </div>
+    <div style="flex:1;min-height:0;padding:16px">
+      <iframe src="https://calendar.google.com/calendar/embed?showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&showTz=1&mode=WEEK"
+        style="width:100%;height:100%;min-height:600px;border:none;border-radius:10px;background:#fff"
+        frameborder="0" scrolling="no"></iframe>
+    </div>
+  </div>
+
+  <!-- ── GOOGLE MEET PAGE ────────────────────────────────── -->
+  <div id="page-meet" class="page">
+    <div class="page-body">
+      <div style="font-size:20px;font-weight:700;margin-bottom:6px">Google Meet</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:28px">Start or join a video meeting instantly.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;max-width:640px">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
+          <div style="width:52px;height:52px;background:rgba(52,211,153,.1);border-radius:50%;display:flex;align-items:center;justify-content:center">
+            <i data-lucide="video" style="width:24px;height:24px;color:var(--success)"></i>
+          </div>
+          <div><div style="font-weight:700;margin-bottom:4px">New Meeting</div><div style="font-size:12px;color:var(--muted)">Start an instant meeting and share the link with others.</div></div>
+          <a href="https://meet.google.com/new" target="_blank" rel="noopener" class="btn btn-primary" style="width:100%;text-decoration:none;text-align:center">
+            <i data-lucide="video" style="width:14px;height:14px"></i> Start Meeting
+          </a>
+        </div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
+          <div style="width:52px;height:52px;background:rgba(124,106,255,.1);border-radius:50%;display:flex;align-items:center;justify-content:center">
+            <i data-lucide="link" style="width:24px;height:24px;color:var(--primary)"></i>
+          </div>
+          <div><div style="font-weight:700;margin-bottom:4px">Join a Meeting</div><div style="font-size:12px;color:var(--muted)">Enter a meeting code to join an existing meeting.</div></div>
+          <div style="display:flex;gap:8px;width:100%">
+            <input id="admin-meet-code" class="form-control" placeholder="abc-defg-hij" style="flex:1;text-transform:lowercase" onkeydown="if(event.key==='Enter')adminJoinMeeting()">
+            <button class="btn btn-outline" onclick="adminJoinMeeting()">Join</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── GOOGLE CHAT PAGE ────────────────────────────────── -->
+  <div id="page-gchat" class="page">
+    <div class="page-body">
+      <div style="font-size:20px;font-weight:700;margin-bottom:6px">Google Chat</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:28px">Open Google Chat to message your team.</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:32px;max-width:420px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center">
+        <div style="width:60px;height:60px;background:rgba(66,133,244,.12);border-radius:50%;display:flex;align-items:center;justify-content:center">
+          <i data-lucide="message-square" style="width:28px;height:28px;color:#4285F4"></i>
+        </div>
+        <div><div style="font-weight:700;font-size:16px;margin-bottom:6px">Open Google Chat</div>
+          <div style="font-size:13px;color:var(--muted)">Google Chat opens in a new tab. Make sure you're signed in with your Google Workspace account.</div></div>
+        <a href="https://chat.google.com" target="_blank" rel="noopener" class="btn btn-primary" style="text-decoration:none;padding:10px 28px">
+          <i data-lucide="external-link" style="width:14px;height:14px"></i> Open Google Chat
+        </a>
+      </div>
     </div>
   </div>
 
@@ -1341,6 +1411,16 @@
   </div><!-- /app-content -->
   </div><!-- /layout -->
 </div><!-- /app -->
+
+<!-- Drive / Sheets inline viewer -->
+<div id="admin-drive-viewer-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:800;flex-direction:column">
+  <div style="display:flex;align-items:center;gap:12px;padding:10px 18px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+    <span id="admin-drive-viewer-title" style="font-weight:600;font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <a id="admin-drive-viewer-ext-link" href="#" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none;flex-shrink:0">Open in Google ↗</a>
+    <button onclick="adminCloseDriveViewer()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:24px;line-height:1;padding:2px 6px;flex-shrink:0">×</button>
+  </div>
+  <iframe id="admin-drive-viewer-frame" src="about:blank" style="flex:1;border:none;background:#fff" allowfullscreen></iframe>
+</div>
 
 <!-- ── Modals ─────────────────────────────────────────────────────────────── -->
 <div id="modal-overlay" class="modal-overlay" style="display:none" onclick="closeModal(event)">
@@ -1810,6 +1890,12 @@ let usersMap = {};
 async function preloadUsers() {
   try { usersMap = await apiFetch('/api/dashboard/users').then(r => r.json()); } catch (_) {}
 }
+
+let employeesForTasks = null;
+async function preloadEmployeesForTasks() {
+  if (employeesForTasks) return;
+  try { employeesForTasks = await apiFetch('/api/dashboard/employees-for-tasks').then(r => r.json()); } catch (_) { employeesForTasks = []; }
+}
 function resolvedName(id) {
   const u = usersMap[id];
   if (!u) return `<span class="assignee-id">${esc(id)}</span>`;
@@ -1825,10 +1911,10 @@ async function ensureChannels() {
 }
 
 async function openTaskModal(id) {
-  await Promise.all([ensureChannels(), preloadUsers()]);
+  await Promise.all([ensureChannels(), preloadEmployeesForTasks()]);
   const t = id ? allTasks.find(x => x.id === id) : null;
   const chanOpts = slackChannels.map(c => `<option value="${c.id}|${esc(c.name)}"${t?.channel_id===c.id?' selected':''}>${esc(c.name)}</option>`).join('');
-  const userOpts = Object.values(usersMap).map(u => `<option value="${u.id}"${t?.assignee_id===u.id?' selected':''}>${esc(u.displayName||u.name)}</option>`).join('');
+  const userOpts = (employeesForTasks || []).map(e => `<option value="${esc(e.slack_user_id||'')}"${t?.assignee_id===e.slack_user_id?' selected':''}>${esc(e.name)}</option>`).join('');
   showModal(t ? `Edit Task #${t.id}` : 'Add New Task', `
     <div class="form-group"><label class="form-label">Title *</label><input class="form-control" id="t-title" value="${esc(t?.title||'')}" placeholder="Task title…"></div>
     <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="t-desc" rows="2">${esc(t?.description||'')}</textarea></div>
@@ -2805,6 +2891,7 @@ async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, co
       </div>`; return;
     }
     const files = await apiFetch(filesApi).then(r => r.json());
+    _adminDriveViewFiles = files;
     c.innerHTML = `
       <div class="page-body">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
@@ -2822,11 +2909,14 @@ async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, co
               <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Modified</th>
               <th style="padding:10px 16px;border-bottom:1px solid var(--border)"></th>
             </tr></thead>
-            <tbody>${files.map(f => `
+            <tbody>${files.map((f, i) => `
               <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
                 <td style="padding:12px 16px;font-size:13px">${driveFileIcon(f.mimeType)} ${esc(f.name)}</td>
                 <td style="padding:12px 16px;font-size:12px;color:var(--muted)">${f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '—'}</td>
-                <td style="padding:12px 16px;text-align:right">${f.webViewLink ? `<a href="${f.webViewLink}" target="_blank" rel="noopener" class="btn btn-outline" style="font-size:12px;padding:4px 12px;text-decoration:none">Open ↗</a>` : ''}</td>
+                <td style="padding:12px 16px;text-align:right;white-space:nowrap">
+                  <button onclick="adminOpenDriveViewer(${i})" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 10px;margin-right:5px">View</button>
+                  ${f.webViewLink ? `<a href="${esc(f.webViewLink)}" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="font-size:11px;padding:4px 10px;text-decoration:none">Open ↗</a>` : ''}
+                </td>
               </tr>`).join('')}
             </tbody>
           </table>
@@ -2840,6 +2930,34 @@ async function disconnectDrive()  { await apiFetch('/api/drive/disconnect', { me
 function loadDrive()  { loadDriveSection('/api/drive/status',  '/api/drive/files',  'disconnectDrive',  'drive-content',  'connectDrive',  'My Drive',   'Drive'); }
 function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheets', 'disconnectDrive',  'sheets-content', 'connectDrive',  'My Sheets',  'Sheets'); }
 
+let _adminDriveViewFiles = [];
+function adminDriveEmbedUrl(f) {
+  if (!f?.id) return '';
+  if (f.mimeType === 'application/vnd.google-apps.spreadsheet')  return `https://docs.google.com/spreadsheets/d/${f.id}/preview`;
+  if (f.mimeType === 'application/vnd.google-apps.document')     return `https://docs.google.com/document/d/${f.id}/preview`;
+  if (f.mimeType === 'application/vnd.google-apps.presentation') return `https://docs.google.com/presentation/d/${f.id}/preview`;
+  return `https://drive.google.com/file/d/${f.id}/preview`;
+}
+function adminOpenDriveViewer(idx) {
+  const f = _adminDriveViewFiles[idx];
+  if (!f) return;
+  const url = adminDriveEmbedUrl(f);
+  if (!url) return;
+  document.getElementById('admin-drive-viewer-title').textContent = f.name;
+  document.getElementById('admin-drive-viewer-frame').src = url;
+  document.getElementById('admin-drive-viewer-ext-link').href = f.webViewLink || '#';
+  document.getElementById('admin-drive-viewer-overlay').style.display = 'flex';
+}
+function adminCloseDriveViewer() {
+  document.getElementById('admin-drive-viewer-overlay').style.display = 'none';
+  document.getElementById('admin-drive-viewer-frame').src = 'about:blank';
+}
+function adminJoinMeeting() {
+  const code = document.getElementById('admin-meet-code').value.trim().replace(/\s/g,'');
+  if (!code) return;
+  window.open('https://meet.google.com/' + code, '_blank', 'noopener');
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
   lucide.createIcons();
@@ -2847,7 +2965,7 @@ function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheet
   if (!ok) return;
   adminStartPresenceHeartbeat();
   const hash = location.hash.replace('#', '');
-  const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','carsync','chat'];
+  const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','carsync','chat','calendar','meet','gchat'];
   if (hash && validPages.includes(hash)) navigate(hash);
   else loadDashboard();
 })();
