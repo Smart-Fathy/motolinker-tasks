@@ -105,6 +105,7 @@
   /* Pages */
   .page { display:none; padding:28px; max-width:100%; }
   .page.active { display:block; animation:fadeIn .2s cubic-bezier(.16,1,.3,1); }
+  #page-calendar.active { display:flex !important; flex-direction:column; padding:0; }
   @keyframes fadeIn { from { opacity:0; transform:translateY(8px) scale(0.99); } to { opacity:1; transform:translateY(0) scale(1); } }
   .page-title { font-size:20px; font-weight:700; margin-bottom:24px; display:flex; align-items:center; gap:10px; }
   .page-body { width:100%; }
@@ -682,10 +683,15 @@
     </div>
 
     <!-- ── Google Calendar Page ── -->
-    <div class="page" id="page-calendar" style="padding:0;display:flex;flex-direction:column">
-      <div style="padding:20px 28px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
-        <div style="font-size:18px;font-weight:700;margin-bottom:4px">Google Calendar</div>
-        <div style="font-size:12px;color:var(--muted)">Your calendar — make sure you're signed into Google in this browser.</div>
+    <div class="page" id="page-calendar" style="padding:0">
+      <div style="padding:20px 28px 12px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:18px;font-weight:700;margin-bottom:4px">Google Calendar</div>
+          <div style="font-size:12px;color:var(--muted)">Your calendar — make sure you're signed into Google in this browser.</div>
+        </div>
+        <a href="https://calendar.google.com/calendar/r/eventedit" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="text-decoration:none;flex-shrink:0">
+          <i data-lucide="plus" style="width:13px;height:13px"></i> New Event
+        </a>
       </div>
       <div style="flex:1;min-height:0;padding:16px">
         <iframe id="calendar-frame"
@@ -967,6 +973,16 @@
     </div>
 
   </div><!-- /content -->
+
+  <!-- Drive / Sheets inline viewer -->
+  <div id="drive-viewer-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:800;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 18px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+      <span id="drive-viewer-title" style="font-weight:600;font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      <a id="drive-viewer-ext-link" href="#" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none;flex-shrink:0">Open in Google ↗</a>
+      <button onclick="closeDriveViewer()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:24px;line-height:1;padding:2px 6px;flex-shrink:0">×</button>
+    </div>
+    <iframe id="drive-viewer-frame" src="about:blank" style="flex:1;border:none;background:#fff" allowfullscreen></iframe>
+  </div>
 
   <!-- Mobile Bottom Navigation -->
   <nav class="bottom-nav" id="bottom-nav">
@@ -1512,6 +1528,7 @@ async function loadDriveSection(statusUrl, filesUrl, connectUrl, disconnectUrl, 
       </div>`; return;
     }
     const files = await ef(filesUrl).then(r => r.json());
+    _driveViewFiles = files;
     c.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
         <div style="display:flex;align-items:center;gap:10px">
@@ -1531,10 +1548,13 @@ async function loadDriveSection(statusUrl, filesUrl, connectUrl, disconnectUrl, 
             <th style="padding:9px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Modified</th>
             <th style="padding:9px 16px;border-bottom:1px solid var(--border)"></th>
           </tr></thead>
-          <tbody>${files.map(f => `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+          <tbody>${files.map((f, i) => `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
             <td style="padding:11px 16px;font-size:13px">${driveIcon(f.mimeType)} ${esc(f.name)}</td>
             <td style="padding:11px 16px;font-size:12px;color:var(--muted)">${f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '—'}</td>
-            <td style="padding:11px 16px;text-align:right">${f.webViewLink ? `<a href="${f.webViewLink}" target="_blank" rel="noopener" class="btn btn-outline" style="font-size:12px;padding:4px 12px;text-decoration:none">Open ↗</a>` : ''}</td>
+            <td style="padding:11px 16px;text-align:right;white-space:nowrap">
+              <button onclick="openDriveViewer(${i})" class="btn btn-primary" style="font-size:11px;padding:4px 10px;margin-right:5px">View</button>
+              ${f.webViewLink ? `<a href="${esc(f.webViewLink)}" target="_blank" rel="noopener" class="btn btn-outline" style="font-size:11px;padding:4px 10px;text-decoration:none">Open ↗</a>` : ''}
+            </td>
           </tr>`).join('')}</tbody>
         </table>` : '<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">No files found</div>'}
       </div>`;
@@ -1556,6 +1576,29 @@ async function disconnectDrive(url, contentId, title, icon) {
 
 function loadDrive()  { loadDriveSection('/api/employee/drive/status', '/api/employee/drive/files',  '/api/employee/drive/connect', '/api/employee/drive/disconnect', 'drive-content',  'My Drive',  '<i data-lucide="hard-drive" style="width:20px;height:20px"></i>'); }
 function loadSheets() { loadDriveSection('/api/employee/drive/status', '/api/employee/drive/sheets', '/api/employee/drive/connect', '/api/employee/drive/disconnect', 'sheets-content', 'My Sheets', '<i data-lucide="table" style="width:20px;height:20px"></i>'); }
+
+let _driveViewFiles = [];
+function driveEmbedUrl(f) {
+  if (!f?.id) return '';
+  if (f.mimeType === 'application/vnd.google-apps.spreadsheet')  return `https://docs.google.com/spreadsheets/d/${f.id}/preview`;
+  if (f.mimeType === 'application/vnd.google-apps.document')     return `https://docs.google.com/document/d/${f.id}/preview`;
+  if (f.mimeType === 'application/vnd.google-apps.presentation') return `https://docs.google.com/presentation/d/${f.id}/preview`;
+  return `https://drive.google.com/file/d/${f.id}/preview`;
+}
+function openDriveViewer(idx) {
+  const f = _driveViewFiles[idx];
+  if (!f) return;
+  const url = driveEmbedUrl(f);
+  if (!url) return;
+  document.getElementById('drive-viewer-title').textContent = f.name;
+  document.getElementById('drive-viewer-frame').src = url;
+  document.getElementById('drive-viewer-ext-link').href = f.webViewLink || '#';
+  document.getElementById('drive-viewer-overlay').style.display = 'flex';
+}
+function closeDriveViewer() {
+  document.getElementById('drive-viewer-overlay').style.display = 'none';
+  document.getElementById('drive-viewer-frame').src = 'about:blank';
+}
 
 /* ── Email ── */
 let emailMessages  = [];

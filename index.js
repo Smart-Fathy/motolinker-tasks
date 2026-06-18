@@ -1696,6 +1696,12 @@ receiver.router.delete('/api/dashboard/employees/:id', requireAuth, async (req, 
   res.json({ ok: true });
 });
 
+receiver.router.get('/api/dashboard/employees-for-tasks', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('employees').select('id,name,slack_user_id').order('name');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 const chatSseClients = new Map(); // key: 'admin' | 'employee_<id>'
 
