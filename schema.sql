@@ -326,6 +326,42 @@ CREATE TRIGGER deals_updated_at
 ALTER TABLE quotations ADD COLUMN IF NOT EXISTS deal_id BIGINT REFERENCES deals(id) ON DELETE SET NULL;
 
 -- ============================================================
+--  WhatsApp Inbox (whatsapp-web.js bridge)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS whatsapp_contacts (
+  id                   BIGSERIAL PRIMARY KEY,
+  wa_id                TEXT UNIQUE NOT NULL,      -- e.g. '201234567890@c.us'
+  phone                TEXT DEFAULT '',
+  name                 TEXT DEFAULT '',
+  last_message_at      TIMESTAMPTZ,
+  last_message_preview TEXT DEFAULT '',
+  unread               INT DEFAULT 0,
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_wa_contacts_last ON whatsapp_contacts (last_message_at DESC);
+
+CREATE TABLE IF NOT EXISTS whatsapp_messages (
+  id            BIGSERIAL PRIMARY KEY,
+  contact_id    BIGINT NOT NULL REFERENCES whatsapp_contacts(id) ON DELETE CASCADE,
+  wa_message_id TEXT,                              -- WhatsApp msg id (dedupe)
+  direction     TEXT NOT NULL CHECK (direction IN ('in','out')),
+  body          TEXT DEFAULT '',
+  media_url     TEXT DEFAULT NULL,                 -- Supabase storage URL
+  media_type    TEXT DEFAULT NULL,
+  status        TEXT DEFAULT 'sent',               -- sent/delivered/read (outgoing)
+  ts            TIMESTAMPTZ DEFAULT NOW(),
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_wa_msgs_contact ON whatsapp_messages (contact_id, created_at);
+
+DROP TRIGGER IF EXISTS whatsapp_contacts_updated_at ON whatsapp_contacts;
+CREATE TRIGGER whatsapp_contacts_updated_at
+  BEFORE UPDATE ON whatsapp_contacts
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
 --  Optional: Row Level Security (RLS)
 -- ============================================================
 

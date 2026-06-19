@@ -881,6 +881,7 @@
       <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft</div>
       <div class="sidebar-section-label">Chat</div>
       <div class="nav-item" onclick="navigate('chat')" id="nav-chat"><span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat<span class="chat-nav-badge" id="chat-nav-badge" style="display:none">0</span></div>
+      <div class="nav-item" onclick="navigate('whatsapp')" id="nav-whatsapp"><span class="nav-icon"><i data-lucide="message-square-text"></i></span> WhatsApp<span class="chat-nav-badge" id="wa-nav-badge" style="display:none">0</span></div>
       <div class="sidebar-section-label">Google</div>
       <div class="nav-item" onclick="navigate('calendar')" id="nav-calendar"><span class="nav-icon"><i data-lucide="calendar"></i></span> Calendar</div>
       <div class="nav-item" onclick="navigate('meet')"     id="nav-meet">    <span class="nav-icon"><i data-lucide="video"></i></span> Meet</div>
@@ -1664,6 +1665,80 @@
     </div>
   </div>
 
+  <!-- ── WhatsApp Page ── -->
+  <div id="page-whatsapp" class="page" style="padding:0">
+    <!-- Connection bar -->
+    <div id="wa-conn-bar" style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--border);background:var(--surface);flex-wrap:wrap">
+      <span id="wa-status-dot" style="width:10px;height:10px;border-radius:50%;background:var(--muted);flex-shrink:0"></span>
+      <span id="wa-status-text" style="font-size:13px;font-weight:600">Checking…</span>
+      <div style="flex:1"></div>
+      <button class="btn btn-sm btn-primary" id="wa-connect-btn" onclick="waConnect()" style="display:none"><i data-lucide="link" style="width:13px;height:13px"></i> Connect</button>
+      <button class="btn btn-sm btn-outline" id="wa-logout-btn" onclick="waLogout()" style="display:none"><i data-lucide="log-out" style="width:13px;height:13px"></i> Log out</button>
+    </div>
+
+    <!-- QR overlay (shown when status === 'qr') -->
+    <div id="wa-qr-panel" style="display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px;text-align:center">
+      <div style="font-size:16px;font-weight:700">Link your dedicated WhatsApp number</div>
+      <div style="font-size:13px;color:var(--muted);max-width:360px;line-height:1.6">On the phone with your dedicated number, open <b>WhatsApp → Settings → Linked Devices → Link a Device</b> and scan this code.</div>
+      <img id="wa-qr-img" alt="WhatsApp QR" style="width:264px;height:264px;background:#fff;border-radius:12px;padding:10px">
+    </div>
+
+    <!-- Conversation layout (shown when ready) -->
+    <div class="chat-layout" id="wa-layout" style="display:none">
+      <div class="chat-rooms-panel mob-show" id="wa-contacts-panel">
+        <div class="chat-rooms-header">
+          <span class="chat-rooms-title">WhatsApp</span>
+          <button class="btn btn-sm btn-outline" onclick="waShowNewModal()" title="New chat" style="padding:5px 8px">
+            <i data-lucide="edit" style="width:13px;height:13px"></i>
+          </button>
+        </div>
+        <div id="wa-contacts-list" style="flex:1;overflow-y:auto"></div>
+      </div>
+      <div class="chat-main" id="wa-conv-panel" style="flex-direction:column;overflow:hidden">
+        <div id="wa-conv-empty" style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px">Select a conversation</div>
+        <div id="wa-conv" style="display:none;flex-direction:column;height:100%">
+          <div class="chat-header">
+            <button class="btn btn-sm btn-outline chat-back-btn" onclick="waBackToList()" style="display:none;padding:5px 8px"><i data-lucide="arrow-left" style="width:13px;height:13px"></i></button>
+            <div>
+              <div class="chat-header-name" id="wa-conv-name">—</div>
+              <div class="chat-header-meta" id="wa-conv-phone">—</div>
+            </div>
+          </div>
+          <div class="chat-messages" id="wa-messages"></div>
+          <div style="display:flex;gap:8px;align-items:flex-end;padding:12px 16px;border-top:1px solid var(--border);background:var(--surface)">
+            <textarea class="chat-input" id="wa-input" rows="1" placeholder="Type a message…" onkeydown="waInputKey(event)"></textarea>
+            <button class="btn btn-primary" onclick="waSend()" style="border-radius:50%;width:40px;height:40px;padding:0;flex-shrink:0"><i data-lucide="send" style="width:16px;height:16px"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WhatsApp New Chat Modal -->
+  <div id="wa-new-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
+    <div class="modal" style="width:100%;max-width:440px">
+      <div class="modal-header">
+        <div class="modal-title">New WhatsApp Chat</div>
+        <button class="modal-close" onclick="waCloseNewModal()">×</button>
+      </div>
+      <div class="modal-body" style="padding:24px;display:grid;gap:14px">
+        <div>
+          <label class="form-label">Phone Number <span style="color:var(--danger)">*</span></label>
+          <input class="form-input" id="wa-new-phone" placeholder="e.g. 201234567890 (with country code)">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Include country code, digits only.</div>
+        </div>
+        <div>
+          <label class="form-label">Message <span style="color:var(--danger)">*</span></label>
+          <textarea class="form-input" id="wa-new-body" rows="3" placeholder="Type your message…" style="resize:vertical"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="waCloseNewModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="waSendNew()">Send</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Chat Page ── -->
   <div id="page-chat" class="page" style="padding:0">
     <div class="chat-layout" id="admin-chat-layout">
@@ -2295,10 +2370,11 @@ async function syncToSlackLists() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, carsync: loadCarSync, pdfscraper: () => {}, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, carsync: loadCarSync, pdfscraper: () => {}, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
+  if (currentPage === 'whatsapp' && page !== 'whatsapp') waCloseSse();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
@@ -4790,6 +4866,180 @@ async function saveDeal() {
     closeDealModal();
     renderDealsKanban();
   } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ── WhatsApp ───────────────────────────────────────────────────────────────
+let waSse = null;
+let waContacts = [];
+let waActiveContact = null;
+let waMessages = [];
+
+async function loadWhatsApp() {
+  waOpenSse();
+  await waRefreshStatus();
+}
+
+async function waRefreshStatus() {
+  try {
+    const s = await apiFetch('/api/dashboard/whatsapp/status').then(r => r.json());
+    waApplyStatus(s.status, s.qr, s.enabled);
+  } catch (_) {}
+}
+
+function waApplyStatus(status, qr, enabled) {
+  const dot = document.getElementById('wa-status-dot');
+  const txt = document.getElementById('wa-status-text');
+  const connectBtn = document.getElementById('wa-connect-btn');
+  const logoutBtn  = document.getElementById('wa-logout-btn');
+  const qrPanel = document.getElementById('wa-qr-panel');
+  const layout  = document.getElementById('wa-layout');
+
+  const labels = { ready:'Connected', qr:'Scan QR to link', connecting:'Connecting…', disconnected:'Disconnected' };
+  txt.textContent = (enabled === false) ? 'WhatsApp disabled on server' : (labels[status] || status);
+  dot.style.background = status === 'ready' ? '#4caf50' : (status === 'disconnected' ? 'var(--muted)' : 'var(--primary)');
+
+  connectBtn.style.display = (status === 'disconnected' && enabled !== false) ? '' : 'none';
+  logoutBtn.style.display  = (status === 'ready') ? '' : 'none';
+  qrPanel.style.display = (status === 'qr') ? 'flex' : 'none';
+  layout.style.display  = (status === 'ready') ? 'grid' : 'none';
+
+  if (status === 'qr' && qr) document.getElementById('wa-qr-img').src = qr;
+  if (status === 'ready') waLoadContacts();
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+function waOpenSse() {
+  waCloseSse();
+  waSse = new EventSource('/api/dashboard/whatsapp/events');
+  waSse.addEventListener('whatsapp_status', e => {
+    const d = JSON.parse(e.data);
+    waApplyStatus(d.status, d.qr);
+  });
+  waSse.addEventListener('whatsapp_message', e => {
+    const d = JSON.parse(e.data);
+    // Update contact list ordering/preview
+    const idx = waContacts.findIndex(c => c.id === d.contact.id);
+    if (idx >= 0) waContacts[idx] = d.contact; else waContacts.unshift(d.contact);
+    waContacts.sort((a,b) => new Date(b.last_message_at||0) - new Date(a.last_message_at||0));
+    if (waActiveContact && d.contact.id === waActiveContact.id) {
+      waMessages.push(d.message);
+      waRenderMessages();
+      // mark read on server
+      apiFetch(`/api/dashboard/whatsapp/contacts/${waActiveContact.id}/messages`).catch(()=>{});
+    }
+    waRenderContacts();
+  });
+}
+
+function waCloseSse() { if (waSse) { try { waSse.close(); } catch(_){} waSse = null; } }
+
+async function waConnect() {
+  document.getElementById('wa-status-text').textContent = 'Connecting…';
+  try { await apiFetch('/api/dashboard/whatsapp/connect', { method:'POST' }); } catch (e) { alert('Connect failed: ' + e.message); }
+}
+
+async function waLogout() {
+  if (!confirm('Log out of WhatsApp? You will need to scan the QR again to reconnect.')) return;
+  try { await apiFetch('/api/dashboard/whatsapp/logout', { method:'POST' }); waApplyStatus('disconnected'); } catch (e) { alert(e.message); }
+}
+
+async function waLoadContacts() {
+  try {
+    waContacts = await apiFetch('/api/dashboard/whatsapp/contacts').then(r => r.json());
+    waRenderContacts();
+  } catch (_) {}
+}
+
+function waRenderContacts() {
+  const list = document.getElementById('wa-contacts-list');
+  if (!waContacts.length) { list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">No conversations yet.</div>'; return; }
+  list.innerHTML = waContacts.map(c => `
+    <div class="chat-room-item ${waActiveContact && waActiveContact.id === c.id ? 'active':''}" data-wa="${c.id}" onclick="waOpenContact(${c.id})">
+      <div style="width:38px;height:38px;border-radius:50%;background:rgba(37,211,102,.15);color:#25d366;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700">${esc((c.name||c.phone||'?').charAt(0).toUpperCase())}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;gap:6px">
+          <span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.name || c.phone)}</span>
+          ${c.unread ? `<span style="background:#25d366;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;flex-shrink:0">${c.unread}</span>` : ''}
+        </div>
+        <div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.last_message_preview || '')}</div>
+      </div>
+    </div>`).join('');
+}
+
+async function waOpenContact(id) {
+  waActiveContact = waContacts.find(c => c.id === id) || null;
+  if (!waActiveContact) return;
+  document.getElementById('wa-conv-empty').style.display = 'none';
+  document.getElementById('wa-conv').style.display = 'flex';
+  document.getElementById('wa-conv-name').textContent = waActiveContact.name || waActiveContact.phone;
+  document.getElementById('wa-conv-phone').textContent = '+' + (waActiveContact.phone || '');
+  waActiveContact.unread = 0;
+  waRenderContacts();
+  // mobile: swap to conversation view
+  document.getElementById('wa-contacts-panel').classList.remove('mob-show');
+  document.getElementById('wa-conv-panel').classList.add('mob-show');
+  try {
+    waMessages = await apiFetch(`/api/dashboard/whatsapp/contacts/${id}/messages`).then(r => r.json());
+    waRenderMessages();
+  } catch (_) {}
+}
+
+function waBackToList() {
+  document.getElementById('wa-contacts-panel').classList.add('mob-show');
+  document.getElementById('wa-conv-panel').classList.remove('mob-show');
+}
+
+function waRenderMessages() {
+  const box = document.getElementById('wa-messages');
+  box.innerHTML = waMessages.map(m => {
+    const mine = m.direction === 'out';
+    const t = new Date(m.ts || m.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+    let media = '';
+    if (m.media_url) {
+      if ((m.media_type||'').startsWith('image/')) media = `<a href="${esc(m.media_url)}" target="_blank"><img src="${esc(m.media_url)}" style="max-width:220px;border-radius:10px;margin-bottom:4px;display:block"></a>`;
+      else media = `<a href="${esc(m.media_url)}" target="_blank" style="color:inherit;text-decoration:underline">📎 Attachment</a>`;
+    }
+    return `<div class="chat-msg ${mine?'mine':'theirs'}">
+      <div class="chat-msg-bubble">${media}${esc(m.body||'')}</div>
+      <div class="chat-msg-time">${t}</div>
+    </div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+function waInputKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); waSend(); } }
+
+async function waSend() {
+  const input = document.getElementById('wa-input');
+  const body = input.value.trim();
+  if (!body || !waActiveContact) return;
+  input.value = '';
+  try {
+    const msg = await apiFetch(`/api/dashboard/whatsapp/contacts/${waActiveContact.id}/messages`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ body })
+    }).then(r => r.json());
+    if (msg.error) { alert(msg.error); input.value = body; return; }
+    waMessages.push(msg);
+    waRenderMessages();
+  } catch (e) { alert('Send failed: ' + e.message); input.value = body; }
+}
+
+function waShowNewModal() { document.getElementById('wa-new-phone').value = ''; document.getElementById('wa-new-body').value = ''; document.getElementById('wa-new-modal').style.display = 'flex'; }
+function waCloseNewModal() { document.getElementById('wa-new-modal').style.display = 'none'; }
+
+async function waSendNew() {
+  const phone = document.getElementById('wa-new-phone').value.replace(/[^\d]/g, '');
+  const body  = document.getElementById('wa-new-body').value.trim();
+  if (!phone || !body) { alert('Phone and message are required.'); return; }
+  try {
+    const result = await apiFetch('/api/dashboard/whatsapp/send', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ phone, body })
+    }).then(r => r.json());
+    if (result.error) { alert(result.error); return; }
+    waCloseNewModal();
+    await waLoadContacts();
+    if (result.contact) waOpenContact(result.contact.id);
+  } catch (e) { alert('Send failed: ' + e.message); }
 }
 
 // ── PWA: iOS add-to-home-screen hint ──────────────────────────────────────
