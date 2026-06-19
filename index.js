@@ -630,6 +630,17 @@ receiver.router.post('/api/dashboard/tasks', requireAuth, express.json(), async 
       await slackClient.chat.postMessage({ channel: CHIEFS_CHANNEL_ID, text: `✅ Task #${task.id} created via dashboard: ${title}` });
     } catch (e) { console.warn('Slack notify failed:', e.message); }
   }
+  // Push notify assignee
+  if (task?.assignee_id) {
+    const { data: assigneeEmp } = await supabase.from('employees').select('id').eq('slack_user_id', task.assignee_id).single();
+    if (assigneeEmp) {
+      sendPushToOfflineMembers([`employee_${assigneeEmp.id}`], {
+        title: 'New task assigned to you',
+        body: task.title,
+        url: '/employee'
+      });
+    }
+  }
   res.json(task);
 });
 
@@ -761,9 +772,22 @@ receiver.router.post('/api/dashboard/requests', requireAuth, express.json(), asy
 });
 
 receiver.router.put('/api/dashboard/requests/:id', requireAuth, express.json(), async (req, res) => {
+  const { data: existing } = await supabase.from('requests').select('status,created_by,title').eq('id', req.params.id).single();
   const { data, error } = await supabase.from('requests')
     .update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
+  // Push notify creator if status changed and creator is an employee (not 'dashboard')
+  if (existing && data && existing.status !== data.status && existing.created_by && existing.created_by !== 'dashboard') {
+    const { data: emp } = await supabase.from('employees').select('id').eq('username', existing.created_by).single();
+    if (emp) {
+      const labels = { pending: 'Pending', in_review: 'In Review', approved: '✓ Approved', rejected: 'Rejected' };
+      sendPushToOfflineMembers([`employee_${emp.id}`], {
+        title: `Request ${labels[data.status] || data.status}`,
+        body: data.title,
+        url: '/employee'
+      });
+    }
+  }
   res.json(data);
 });
 
@@ -1700,6 +1724,74 @@ receiver.router.get('/api/dashboard/employees-for-tasks', requireAuth, async (_r
   const { data, error } = await supabase.from('employees').select('id,name,slack_user_id').order('name');
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
+});
+
+// ── Customers ─────────────────────────────────────────────────────────────────
+receiver.router.get('/api/dashboard/customers', requireAuth, async (req, res) => {
+  let query = supabase.from('customers').select('*').order('created_at', { ascending: false });
+  if (req.query.q) query = query.or(`name.ilike.%${req.query.q}%,phone.ilike.%${req.query.q}%,email.ilike.%${req.query.q}%`);
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.post('/api/dashboard/customers', requireAuth, express.json(), async (req, res) => {
+  const { name, phone, email, source, notes } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name is required' });
+  const { data, error } = await supabase.from('customers')
+    .insert({ name, phone: phone||'', email: email||'', source: source||'', notes: notes||'', created_by: 'dashboard' })
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.put('/api/dashboard/customers/:id', requireAuth, express.json(), async (req, res) => {
+  const { data, error } = await supabase.from('customers')
+    .update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.delete('/api/dashboard/customers/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('customers').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// ── Deals ─────────────────────────────────────────────────────────────────────
+receiver.router.get('/api/dashboard/deals', requireAuth, async (req, res) => {
+  let query = supabase.from('deals').select('*, customers(name,phone,email)').order('created_at', { ascending: false });
+  if (req.query.stage) query = query.eq('stage', req.query.stage);
+  if (req.query.assigned_to) query = query.eq('assigned_to', req.query.assigned_to);
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.post('/api/dashboard/deals', requireAuth, express.json(), async (req, res) => {
+  const { customer_id, title, stage, car_model, budget_egp, notes, assigned_to } = req.body;
+  if (!customer_id || !title) return res.status(400).json({ error: 'customer_id and title are required' });
+  const { data, error } = await supabase.from('deals')
+    .insert({ customer_id, title, stage: stage||'lead', car_model: car_model||'', budget_egp: budget_egp||null, notes: notes||'', assigned_to: assigned_to||'', created_by: 'dashboard' })
+    .select('*, customers(name,phone,email)').single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.put('/api/dashboard/deals/:id', requireAuth, express.json(), async (req, res) => {
+  const updates = { ...req.body, updated_at: new Date().toISOString() };
+  if ((updates.stage === 'won' || updates.stage === 'lost') && !updates.closed_at) updates.closed_at = new Date().toISOString();
+  if (updates.stage && updates.stage !== 'won' && updates.stage !== 'lost') updates.closed_at = null;
+  const { data, error } = await supabase.from('deals')
+    .update(updates).eq('id', req.params.id).select('*, customers(name,phone,email)').single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.delete('/api/dashboard/deals/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('deals').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
 });
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
@@ -3049,6 +3141,55 @@ function generateQuoteId() {
   return `MT${week}W${rand}Y${year}`;
 }
 
+// ── Quotation Settings ────────────────────────────────────────────────────────
+receiver.router.get('/api/dashboard/quotation/settings', requireAuth, async (_req, res) => {
+  const { data } = await supabase.from('quotation_settings').select('key,value');
+  const settings = {};
+  for (const row of data || []) settings[row.key] = row.value;
+  res.json(settings);
+});
+
+receiver.router.put('/api/dashboard/quotation/settings', requireAuth, express.json(), async (req, res) => {
+  const entries = Object.entries(req.body || {}).map(([key, value]) => ({ key, value: String(value) }));
+  if (!entries.length) return res.json({ ok: true });
+  const { error } = await supabase.from('quotation_settings').upsert(entries, { onConflict: 'key' });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// ── Quotation History ─────────────────────────────────────────────────────────
+receiver.router.get('/api/dashboard/quotations', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('quotations').select('id,quote_id,title,created_by,created_at').order('created_at', { ascending: false }).limit(100);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.get('/api/dashboard/quotations/:id', requireAuth, async (req, res) => {
+  const { data, error } = await supabase.from('quotations').select('*').eq('id', req.params.id).single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// Employee quotation settings (read-only)
+receiver.router.get('/api/employee/quotation/settings', requireEmployeeAuth, async (_req, res) => {
+  const { data } = await supabase.from('quotation_settings').select('key,value');
+  const settings = {};
+  for (const row of data || []) settings[row.key] = row.value;
+  res.json(settings);
+});
+
+receiver.router.get('/api/employee/quotations', requireEmployeeAuth, async (req, res) => {
+  const { data, error } = await supabase.from('quotations').select('id,quote_id,title,created_by,created_at').eq('created_by', req.employee.username).order('created_at', { ascending: false }).limit(50);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.get('/api/employee/quotations/:id', requireEmployeeAuth, async (req, res) => {
+  const { data, error } = await supabase.from('quotations').select('*').eq('id', req.params.id).eq('created_by', req.employee.username).single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 receiver.router.get('/api/dashboard/quotation/newid', requireAuth, (_req, res) => {
   res.json({ id: generateQuoteId() });
 });
@@ -3068,7 +3209,8 @@ function calcEgp(priceUsd, units, exchange) {
 }
 
 function buildQuotationHtml(data) {
-  const { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs } = data;
+  const { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings } = data;
+  const s = settings || {};
   const exRate = parseFloat(exchange) || 1;
 
   // Calculate totals
@@ -3242,9 +3384,7 @@ function buildQuotationHtml(data) {
       <td style="width:45%">
         <div class="payment-box">
           <div class="payment-title">Payment terms:</div>
-          <div>50% Down payment operations start</div>
-          <div>30% Upon shipping from supplier</div>
-          <div>20% Upon Custom clearances</div>
+          ${(s.payment_terms || '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances').split('\n').map(l => `<div>${l}</div>`).join('')}
         </div>
       </td>
     </tr>
@@ -3252,17 +3392,17 @@ function buildQuotationHtml(data) {
 
   <!-- FOOTER -->
   <div class="footer">
-    <div class="footer-brand">MOTOLINKERS</div>
-    <div>This quotation is valid until ${validTo || '—'} | Confidential</div>
+    <div class="footer-brand">${s.company_name || 'MOTOLINKERS'}</div>
+    <div>This quotation is valid until ${validTo || '—'} | ${s.footer_note || 'Confidential'}</div>
     <div>${id || ''}</div>
   </div>
 
   <!-- COMPANY CONTACT FOOTER -->
   <div style="border:2px solid ${NAVY};border-radius:8px;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:16px">
     <div style="display:flex;flex-direction:column;gap:3px;font-size:9px;color:#333;line-height:1.5">
-      <div><strong>Address:</strong> Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo</div>
-      <div><strong>Email:</strong> info@motolinkers.com &nbsp;|&nbsp; <strong>Website:</strong> Motolinkers.com &nbsp;|&nbsp; <strong>Phone:</strong> +2 010 000 78104</div>
-      <div><strong>TAX ID:</strong> 773934006 &nbsp;|&nbsp; <strong>Registration No:</strong> 282378</div>
+      <div><strong>Address:</strong> ${s.company_address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo'}</div>
+      <div><strong>Email:</strong> ${s.company_email || 'info@motolinkers.com'} &nbsp;|&nbsp; <strong>Website:</strong> ${s.company_website || 'Motolinkers.com'} &nbsp;|&nbsp; <strong>Phone:</strong> ${s.company_phone || '+2 010 000 78104'}</div>
+      ${s.company_tax_id ? `<div><strong>TAX ID:</strong> ${s.company_tax_id} &nbsp;|&nbsp; <strong>Registration No:</strong> ${s.company_reg_no || ''}</div>` : `<div><strong>TAX ID:</strong> 773934006 &nbsp;|&nbsp; <strong>Registration No:</strong> 282378</div>`}
     </div>
     <div style="font-size:18px;font-weight:900;color:${NAVY};white-space:nowrap;letter-spacing:1px;margin-left:20px">
       MOT<span style="color:${GOLD}">O</span>L<span style="color:${GOLD}">|</span>NKERS
@@ -3283,7 +3423,12 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       const files       = req.files || [];
       const imageDataUrls = files.map(f => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`);
 
-      const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs });
+      // Load company settings from DB
+      const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
+      const settings = {};
+      for (const row of settingsRows || []) settings[row.key] = row.value;
+
+      const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings });
 
       const puppeteer = require('puppeteer');
       const browser   = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
@@ -3297,6 +3442,13 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       await browser.close();
 
       res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
+      // Save quotation record (best-effort)
+      supabase.from('quotations').insert({
+        quote_id: id || generateQuoteId(),
+        title: `${vehicleModel || 'Quotation'} — ${name || ''}`.trim(),
+        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs },
+        created_by: 'dashboard'
+      }).then(() => {}).catch(() => {});
     } catch (e) {
       console.error('[quotation-gen]', e);
       res.status(500).json({ error: e.message });
@@ -3319,7 +3471,12 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
       const files       = req.files || [];
       const imageDataUrls = files.map(f => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`);
 
-      const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs });
+      // Load company settings from DB
+      const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
+      const settings = {};
+      for (const row of settingsRows || []) settings[row.key] = row.value;
+
+      const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings });
 
       const puppeteer = require('puppeteer');
       const browser   = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
@@ -3398,9 +3555,45 @@ receiver.router.delete('/api/submissions/:id', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+async function sendDueDateReminders() {
+  if (!process.env.VAPID_PUBLIC_KEY) return;
+  const today    = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  const [{ data: dueTomorrow }, { data: overdue }] = await Promise.all([
+    supabase.from('tasks').select('id,title,assignee_id').eq('due_date', tomorrow).neq('status', 'done'),
+    supabase.from('tasks').select('id,title,assignee_id').lt('due_date', today).neq('status', 'done'),
+  ]);
+  const allTasks  = [...(dueTomorrow || []), ...(overdue || [])];
+  const slackIds  = [...new Set(allTasks.map(t => t.assignee_id).filter(Boolean))];
+  if (!slackIds.length) return;
+  const { data: emps } = await supabase.from('employees').select('id,slack_user_id').in('slack_user_id', slackIds);
+  const idMap = {};
+  for (const e of emps || []) idMap[e.slack_user_id] = e.id;
+  for (const t of dueTomorrow || []) {
+    const eid = idMap[t.assignee_id];
+    if (eid) sendPushToOfflineMembers([`employee_${eid}`], { title: '⏰ Task due tomorrow', body: t.title, url: '/employee' });
+  }
+  for (const t of overdue || []) {
+    const eid = idMap[t.assignee_id];
+    if (eid) sendPushToOfflineMembers([`employee_${eid}`], { title: '🔴 Overdue task', body: t.title, url: '/employee' });
+  }
+}
+
+function scheduleDueDateReminders() {
+  const now    = new Date();
+  const next9  = new Date(now);
+  next9.setHours(9, 0, 0, 0);
+  if (next9 <= now) next9.setDate(next9.getDate() + 1);
+  setTimeout(() => {
+    sendDueDateReminders().catch(console.error);
+    setInterval(() => sendDueDateReminders().catch(console.error), 24 * 60 * 60 * 1000);
+  }, next9 - now);
+}
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 (async () => {
   await loadGoogleTokens();
+  scheduleDueDateReminders();
   const port = process.env.PORT || 3000;
   if (app) {
     await app.start(port);

@@ -234,6 +234,98 @@ CREATE TABLE IF NOT EXISTS google_tokens (
 );
 
 -- ============================================================
+--  Quotation Settings (editable company info / footer)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS quotation_settings (
+  id         BIGSERIAL PRIMARY KEY,
+  key        TEXT UNIQUE NOT NULL,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO quotation_settings (key, value) VALUES
+  ('company_name',    'MotoLinkers'),
+  ('company_address', ''),
+  ('company_phone',   ''),
+  ('company_email',   ''),
+  ('company_website', ''),
+  ('company_tax_id',  ''),
+  ('payment_terms',   '50% deposit / 30% on arrival / 20% on delivery'),
+  ('footer_note',     'Confidential')
+ON CONFLICT (key) DO NOTHING;
+
+-- ============================================================
+--  Quotations (saved generation history)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS quotations (
+  id           BIGSERIAL PRIMARY KEY,
+  quote_id     TEXT UNIQUE NOT NULL,
+  title        TEXT NOT NULL,
+  data         JSONB NOT NULL,
+  pdf_url      TEXT DEFAULT '',
+  created_by   TEXT NOT NULL,
+  customer_id  BIGINT DEFAULT NULL,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_quotations_created_by ON quotations (created_by);
+CREATE INDEX IF NOT EXISTS idx_quotations_created_at ON quotations (created_at DESC);
+
+-- ============================================================
+--  Customers (CRM)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS customers (
+  id         BIGSERIAL PRIMARY KEY,
+  name       TEXT NOT NULL,
+  phone      TEXT DEFAULT '',
+  email      TEXT DEFAULT '',
+  source     TEXT DEFAULT '',
+  notes      TEXT DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_customers_name ON customers (name);
+
+CREATE TRIGGER customers_updated_at
+  BEFORE UPDATE ON customers
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+--  Deals (CRM pipeline)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS deals (
+  id          BIGSERIAL PRIMARY KEY,
+  customer_id BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  title       TEXT NOT NULL,
+  stage       TEXT NOT NULL DEFAULT 'lead'
+                CHECK (stage IN ('lead','contacted','quoted','negotiating','won','lost')),
+  car_model   TEXT DEFAULT '',
+  budget_egp  NUMERIC(14,2) DEFAULT NULL,
+  notes       TEXT DEFAULT '',
+  assigned_to TEXT DEFAULT '',
+  created_by  TEXT NOT NULL,
+  closed_at   TIMESTAMPTZ DEFAULT NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_deals_customer ON deals (customer_id);
+CREATE INDEX IF NOT EXISTS idx_deals_stage    ON deals (stage);
+
+CREATE TRIGGER deals_updated_at
+  BEFORE UPDATE ON deals
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Link quotation to customer/deal (run as migration if quotations table already exists):
+ALTER TABLE quotations ADD COLUMN IF NOT EXISTS deal_id BIGINT REFERENCES deals(id) ON DELETE SET NULL;
+
+-- ============================================================
 --  Optional: Row Level Security (RLS)
 -- ============================================================
 

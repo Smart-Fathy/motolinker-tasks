@@ -872,6 +872,9 @@
       <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon"><i data-lucide="inbox"></i></span> Requests</div>
       <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><i data-lucide="mail"></i></span> Submissions</div>
       <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><i data-lucide="clock"></i></span> Hours Logs</div>
+      <div class="sidebar-section-label">CRM</div>
+      <div class="nav-item"        onclick="navigate('customers')"  id="nav-customers">    <span class="nav-icon"><i data-lucide="user-circle-2"></i></span> Customers</div>
+      <div class="nav-item"        onclick="navigate('deals')"      id="nav-deals">        <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals</div>
       <div class="sidebar-section-label">Integrations</div>
       <div class="nav-item"        onclick="navigate('carsync')"    id="nav-carsync">      <span class="nav-icon"><i data-lucide="car"></i></span> Car Sync</div>
       <div class="nav-item"        onclick="navigate('pdfscraper')" id="nav-pdfscraper">   <span class="nav-icon"><i data-lucide="file-text"></i></span> PDF Scraper</div>
@@ -1281,15 +1284,25 @@
   <div id="page-quotation" class="page">
     <div class="page-body" style="max-width:860px">
 
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
         <div>
-          <div style="font-size:20px;font-weight:700">Quotation Draft</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:4px">Fill in the details to generate a professional PDF quotation</div>
+          <div style="font-size:20px;font-weight:700">Quotation</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Generate PDFs, manage company settings, and view history</div>
         </div>
         <button class="btn btn-primary" onclick="generateQuotation()" id="qt-generate-btn">
           <i data-lucide="file-badge" style="width:15px;height:15px"></i> Generate PDF
         </button>
       </div>
+
+      <!-- Tabs -->
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:24px">
+        <button id="qt-tab-draft"    class="tab active" onclick="switchQtTab('draft')"    style="font-size:13px;padding:8px 18px">Draft</button>
+        <button id="qt-tab-history"  class="tab"        onclick="switchQtTab('history')"  style="font-size:13px;padding:8px 18px">History</button>
+        <button id="qt-tab-settings" class="tab"        onclick="switchQtTab('settings')" style="font-size:13px;padding:8px 18px">Settings</button>
+      </div>
+
+      <!-- ══ TAB: Draft ══ -->
+      <div id="qt-panel-draft">
 
       <!-- ── Section 1: Document Info ── -->
       <div class="card" style="margin-bottom:20px">
@@ -1411,6 +1424,71 @@
 
       <div id="qt-error" style="display:none;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#f87171;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px"></div>
 
+      </div><!-- /qt-panel-draft -->
+
+      <!-- ══ TAB: History ══ -->
+      <div id="qt-panel-history" style="display:none">
+        <div class="card">
+          <div class="table-header" style="display:flex;align-items:center;justify-content:space-between">
+            <span class="table-title">Saved Quotations</span>
+            <button class="btn btn-sm btn-outline" onclick="loadQtHistory()"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i> Refresh</button>
+          </div>
+          <div id="qt-history-body" style="padding:16px 20px">
+            <div style="color:var(--muted);font-size:13px;text-align:center;padding:24px">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ TAB: Settings ══ -->
+      <div id="qt-panel-settings" style="display:none">
+        <div class="card">
+          <div class="table-header"><span class="table-title">Company Info</span></div>
+          <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div>
+              <label class="form-label">Company Name</label>
+              <input class="form-input" id="qts-company-name" placeholder="MotoLinkers">
+            </div>
+            <div>
+              <label class="form-label">Phone</label>
+              <input class="form-input" id="qts-company-phone" placeholder="+20 xxx xxx xxxx">
+            </div>
+            <div>
+              <label class="form-label">Email</label>
+              <input class="form-input" id="qts-company-email" placeholder="info@motolinkers.com">
+            </div>
+            <div>
+              <label class="form-label">Website</label>
+              <input class="form-input" id="qts-company-website" placeholder="www.motolinkers.com">
+            </div>
+            <div style="grid-column:span 2">
+              <label class="form-label">Address</label>
+              <input class="form-input" id="qts-company-address" placeholder="Cairo, Egypt">
+            </div>
+            <div>
+              <label class="form-label">Tax ID (optional)</label>
+              <input class="form-input" id="qts-company-tax-id" placeholder="TAX-XXXXXXX">
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="table-header"><span class="table-title">Document Defaults</span></div>
+          <div style="padding:20px;display:grid;gap:16px">
+            <div>
+              <label class="form-label">Payment Terms</label>
+              <input class="form-input" id="qts-payment-terms" placeholder="50% deposit / 30% on arrival / 20% on delivery">
+            </div>
+            <div>
+              <label class="form-label">Footer Note</label>
+              <input class="form-input" id="qts-footer-note" placeholder="Confidential">
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;justify-content:flex-end">
+          <button class="btn btn-primary" onclick="saveQtSettings()"><i data-lucide="save" style="width:14px;height:14px"></i> Save Settings</button>
+        </div>
+        <div id="qts-msg" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:13px"></div>
+      </div>
+
     </div>
   </div>
 
@@ -1430,6 +1508,158 @@
       </div>
       <div style="padding:20px;background:#f0f0f0;min-height:500px">
         <iframe id="qt-preview-frame" style="width:100%;min-height:700px;border:none;border-radius:8px;background:#fff"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Customers Page ── -->
+  <div id="page-customers" class="page">
+    <div class="page-body">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="page-title">Customers</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Manage your customer database</div>
+        </div>
+        <button class="btn btn-primary" onclick="openCustomerModal()">
+          <i data-lucide="user-plus" style="width:15px;height:15px"></i> Add Customer
+        </button>
+      </div>
+      <div style="margin-bottom:16px">
+        <input class="filter-input" id="customer-search" placeholder="Search by name or phone…" oninput="filterCustomers()" style="max-width:320px">
+      </div>
+      <div class="table-card">
+        <table class="table" id="customers-table">
+          <thead><tr>
+            <th>Name</th><th>Phone</th><th>Email</th><th>Source</th><th>Notes</th><th>Deals</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="customers-tbody">
+            <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Deals Page ── -->
+  <div id="page-deals" class="page">
+    <div class="page-body" style="max-width:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="page-title">Deals Pipeline</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Track your deals through the sales pipeline</div>
+        </div>
+        <button class="btn btn-primary" onclick="openDealModal()">
+          <i data-lucide="plus" style="width:15px;height:15px"></i> Add Deal
+        </button>
+      </div>
+      <div id="deals-kanban" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:start;overflow-x:auto;min-width:900px">
+        <!-- Columns rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer Modal -->
+  <div id="customer-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
+    <div class="modal" style="width:100%;max-width:500px">
+      <div class="modal-header">
+        <div class="modal-title" id="customer-modal-title">Add Customer</div>
+        <button class="modal-close" onclick="closeCustomerModal()">×</button>
+      </div>
+      <div class="modal-body" style="padding:24px;display:grid;gap:14px">
+        <input type="hidden" id="cm-id">
+        <div>
+          <label class="form-label">Name <span style="color:var(--danger)">*</span></label>
+          <input class="form-input" id="cm-name" placeholder="Full name">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label class="form-label">Phone</label>
+            <input class="form-input" id="cm-phone" placeholder="+20 …">
+          </div>
+          <div>
+            <label class="form-label">Email</label>
+            <input class="form-input" id="cm-email" type="email" placeholder="email@…">
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Source</label>
+          <select class="form-input" id="cm-source">
+            <option value="">— Unknown —</option>
+            <option value="referral">Referral</option>
+            <option value="website">Website</option>
+            <option value="social">Social Media</option>
+            <option value="walk-in">Walk-in</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea class="form-input" id="cm-notes" rows="2" placeholder="Any notes…" style="resize:vertical"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeCustomerModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveCustomer()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deal Modal -->
+  <div id="deal-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
+    <div class="modal" style="width:100%;max-width:520px">
+      <div class="modal-header">
+        <div class="modal-title" id="deal-modal-title">Add Deal</div>
+        <button class="modal-close" onclick="closeDealModal()">×</button>
+      </div>
+      <div class="modal-body" style="padding:24px;display:grid;gap:14px">
+        <input type="hidden" id="dm-id">
+        <div>
+          <label class="form-label">Customer <span style="color:var(--danger)">*</span></label>
+          <select class="form-input" id="dm-customer-id">
+            <option value="">Select customer…</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Deal Title <span style="color:var(--danger)">*</span></label>
+          <input class="form-input" id="dm-title" placeholder="e.g. Deepal S05 import for Ahmed">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label class="form-label">Stage</label>
+            <select class="form-input" id="dm-stage">
+              <option value="lead">Lead</option>
+              <option value="contacted">Contacted</option>
+              <option value="quoted">Quoted</option>
+              <option value="negotiating">Negotiating</option>
+              <option value="won">Won</option>
+              <option value="lost">Lost</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Assigned To</label>
+            <select class="form-input" id="dm-assigned-to">
+              <option value="">Unassigned</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label class="form-label">Car Model</label>
+            <input class="form-input" id="dm-car-model" placeholder="e.g. Deepal S05">
+          </div>
+          <div>
+            <label class="form-label">Budget (EGP)</label>
+            <input class="form-input" id="dm-budget" type="number" min="0" step="1000" placeholder="e.g. 1500000">
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea class="form-input" id="dm-notes" rows="2" placeholder="Any notes…" style="resize:vertical"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeDealModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveDeal()">Save</button>
       </div>
     </div>
   </div>
@@ -2065,7 +2295,7 @@ async function syncToSlackLists() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, carsync: loadCarSync, pdfscraper: () => {}, quotation: loadQuotation, chat: loadAdminChat };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, carsync: loadCarSync, pdfscraper: () => {}, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
@@ -4280,6 +4510,286 @@ function triggerAdminInstall() {
 function dismissAdminInstallBanner() {
   localStorage.setItem('pwaAdminInstallDismissed', '1');
   document.getElementById('pwa-install-banner').style.display = 'none';
+}
+
+// ── Quotation Tabs ────────────────────────────────────────────────────────
+function switchQtTab(tab) {
+  ['draft','history','settings'].forEach(t => {
+    document.getElementById('qt-tab-' + t).classList.toggle('active', t === tab);
+    document.getElementById('qt-panel-' + t).style.display = t === tab ? '' : 'none';
+  });
+  document.getElementById('qt-generate-btn').style.display = tab === 'draft' ? '' : 'none';
+  if (tab === 'history')  loadQtHistory();
+  if (tab === 'settings') loadQtSettings();
+}
+
+async function loadQtHistory() {
+  const body = document.getElementById('qt-history-body');
+  body.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px">Loading…</div>';
+  try {
+    const rows = await apiFetch('/api/dashboard/quotations').then(r => r.json());
+    if (!rows.length) { body.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px">No saved quotations yet.</div>'; return; }
+    body.innerHTML = `<table class="table"><thead><tr><th>ID</th><th>Title</th><th>Created By</th><th>Date</th><th></th></tr></thead>
+      <tbody>${rows.map(q => `<tr>
+        <td><code style="font-size:11px">${esc(q.quote_id)}</code></td>
+        <td>${esc(q.title||'—')}</td>
+        <td>${esc(q.created_by||'—')}</td>
+        <td>${new Date(q.created_at).toLocaleDateString()}</td>
+        <td><button class="btn btn-sm btn-outline" onclick="duplicateQuotation(${q.id})"><i data-lucide="copy" style="width:12px;height:12px"></i> Duplicate</button></td>
+      </tr>`).join('')}</tbody></table>`;
+    requestAnimationFrame(() => lucide.createIcons());
+  } catch (e) { body.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:16px">${esc(e.message)}</div>`; }
+}
+
+async function duplicateQuotation(id) {
+  try {
+    const q = await apiFetch(`/api/dashboard/quotations/${id}`).then(r => r.json());
+    if (!q.data) return;
+    const d = q.data;
+    switchQtTab('draft');
+    await refreshQuoteId();
+    if (d.name)         document.getElementById('qt-name').value    = d.name;
+    if (d.vehicleModel) document.getElementById('qt-vehicle').value = d.vehicleModel;
+    if (d.currency)     document.getElementById('qt-currency').value = d.currency;
+    if (d.exchange)     document.getElementById('qt-exchange').value = d.exchange;
+    if (d.items?.length) {
+      document.getElementById('qt-items').innerHTML = '';
+      d.items.forEach(it => addPricingRow(it.name, it.unit, it.priceUsd === 'Free' ? 'Free' : it.priceUsd, it.priceUsd === 'Free'));
+    }
+    recalcAll();
+  } catch (e) { alert('Could not load quotation: ' + e.message); }
+}
+
+async function loadQtSettings() {
+  try {
+    const settings = await apiFetch('/api/dashboard/quotation/settings').then(r => r.json());
+    document.getElementById('qts-company-name').value    = settings.company_name    || '';
+    document.getElementById('qts-company-phone').value   = settings.company_phone   || '';
+    document.getElementById('qts-company-email').value   = settings.company_email   || '';
+    document.getElementById('qts-company-website').value = settings.company_website  || '';
+    document.getElementById('qts-company-address').value = settings.company_address  || '';
+    document.getElementById('qts-company-tax-id').value  = settings.company_tax_id   || '';
+    document.getElementById('qts-payment-terms').value   = settings.payment_terms    || '';
+    document.getElementById('qts-footer-note').value     = settings.footer_note      || '';
+  } catch (e) { console.error('loadQtSettings', e); }
+}
+
+async function saveQtSettings() {
+  const msg = document.getElementById('qts-msg');
+  const payload = {
+    company_name:    document.getElementById('qts-company-name').value,
+    company_phone:   document.getElementById('qts-company-phone').value,
+    company_email:   document.getElementById('qts-company-email').value,
+    company_website: document.getElementById('qts-company-website').value,
+    company_address: document.getElementById('qts-company-address').value,
+    company_tax_id:  document.getElementById('qts-company-tax-id').value,
+    payment_terms:   document.getElementById('qts-payment-terms').value,
+    footer_note:     document.getElementById('qts-footer-note').value,
+  };
+  try {
+    await apiFetch('/api/dashboard/quotation/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    msg.style.display = 'block';
+    msg.style.background = 'rgba(138,154,134,.1)';
+    msg.style.color = '#9fb59a';
+    msg.textContent = 'Settings saved successfully.';
+    setTimeout(() => { msg.style.display = 'none'; }, 3000);
+  } catch (e) {
+    msg.style.display = 'block';
+    msg.style.background = 'rgba(239,68,68,.08)';
+    msg.style.color = '#f87171';
+    msg.textContent = 'Error: ' + e.message;
+  }
+}
+
+// ── Customers ─────────────────────────────────────────────────────────────
+let _allCustomers = [];
+
+async function loadCustomers() {
+  try {
+    _allCustomers = await apiFetch('/api/dashboard/customers').then(r => r.json());
+    renderCustomers(_allCustomers);
+  } catch (e) {
+    document.getElementById('customers-tbody').innerHTML = `<tr><td colspan="7" style="color:var(--danger);text-align:center;padding:24px">${esc(e.message)}</td></tr>`;
+  }
+}
+
+function filterCustomers() {
+  const q = document.getElementById('customer-search').value.toLowerCase();
+  renderCustomers(q ? _allCustomers.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q)) : _allCustomers);
+}
+
+function renderCustomers(list) {
+  const tbody = document.getElementById('customers-tbody');
+  if (!list.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">No customers yet. Click "Add Customer" to get started.</td></tr>'; return; }
+  tbody.innerHTML = list.map(c => `<tr>
+    <td><strong>${esc(c.name)}</strong></td>
+    <td>${esc(c.phone||'—')}</td>
+    <td>${esc(c.email||'—')}</td>
+    <td><span class="badge">${esc(c.source||'—')}</span></td>
+    <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.notes||'')}">${esc(c.notes||'—')}</td>
+    <td><button class="btn btn-sm btn-outline" onclick="navigate('deals');filterDealsByCustomer(${c.id})"><i data-lucide="kanban-square" style="width:12px;height:12px"></i></button></td>
+    <td style="display:flex;gap:6px;flex-wrap:nowrap">
+      <button class="btn btn-sm btn-outline" onclick="openCustomerModal(${c.id})"><i data-lucide="edit-2" style="width:12px;height:12px"></i></button>
+      <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--danger);border:none" onclick="deleteCustomer(${c.id})"><i data-lucide="trash-2" style="width:12px;height:12px"></i></button>
+    </td>
+  </tr>`).join('');
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+function openCustomerModal(id) {
+  const c = id ? _allCustomers.find(x => x.id === id) : null;
+  document.getElementById('customer-modal-title').textContent = c ? 'Edit Customer' : 'Add Customer';
+  document.getElementById('cm-id').value      = c?.id    || '';
+  document.getElementById('cm-name').value    = c?.name  || '';
+  document.getElementById('cm-phone').value   = c?.phone || '';
+  document.getElementById('cm-email').value   = c?.email || '';
+  document.getElementById('cm-source').value  = c?.source|| '';
+  document.getElementById('cm-notes').value   = c?.notes || '';
+  document.getElementById('customer-modal').style.display = 'flex';
+}
+
+function closeCustomerModal() { document.getElementById('customer-modal').style.display = 'none'; }
+
+async function saveCustomer() {
+  const id = document.getElementById('cm-id').value;
+  const payload = {
+    name:   document.getElementById('cm-name').value.trim(),
+    phone:  document.getElementById('cm-phone').value.trim(),
+    email:  document.getElementById('cm-email').value.trim(),
+    source: document.getElementById('cm-source').value,
+    notes:  document.getElementById('cm-notes').value.trim(),
+  };
+  if (!payload.name) { alert('Name is required.'); return; }
+  try {
+    const url = id ? `/api/dashboard/customers/${id}` : '/api/dashboard/customers';
+    const method = id ? 'PUT' : 'POST';
+    await apiFetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    closeCustomerModal();
+    await loadCustomers();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function deleteCustomer(id) {
+  if (!confirm('Delete this customer and all their deals?')) return;
+  try {
+    await apiFetch(`/api/dashboard/customers/${id}`, { method:'DELETE' });
+    await loadCustomers();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ── Deals ─────────────────────────────────────────────────────────────────
+const DEAL_STAGES = ['lead','contacted','quoted','negotiating','won','lost'];
+const DEAL_STAGE_LABELS = { lead:'Lead', contacted:'Contacted', quoted:'Quoted', negotiating:'Negotiating', won:'Won', lost:'Lost' };
+const DEAL_STAGE_COLORS = { lead:'rgba(201,163,94,.15)', contacted:'rgba(124,106,255,.15)', quoted:'rgba(90,120,200,.15)', negotiating:'rgba(230,150,80,.15)', won:'rgba(100,180,120,.15)', lost:'rgba(239,68,68,.1)' };
+let _allDeals = [];
+let _dealsCustomerFilter = null;
+
+async function loadDeals() {
+  try {
+    _allDeals = await apiFetch('/api/dashboard/deals').then(r => r.json());
+    renderDealsKanban();
+    await populateDealModalCustomers();
+    await populateDealModalAssignees();
+  } catch (e) { document.getElementById('deals-kanban').innerHTML = `<div style="color:var(--danger);padding:24px">${esc(e.message)}</div>`; }
+}
+
+function filterDealsByCustomer(customerId) {
+  _dealsCustomerFilter = customerId || null;
+  renderDealsKanban();
+}
+
+function renderDealsKanban() {
+  const kanban = document.getElementById('deals-kanban');
+  const deals = _dealsCustomerFilter ? _allDeals.filter(d => d.customer_id === _dealsCustomerFilter) : _allDeals;
+  kanban.innerHTML = DEAL_STAGES.map(stage => {
+    const stagDeals = deals.filter(d => d.stage === stage);
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:200px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${esc(DEAL_STAGE_LABELS[stage])}</div>
+        <div style="background:rgba(255,255,255,.07);border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">${stagDeals.length}</div>
+      </div>
+      ${stagDeals.map(d => dealCard(d)).join('')}
+    </div>`;
+  }).join('');
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+function dealCard(d) {
+  const daysOpen = Math.floor((Date.now() - new Date(d.created_at)) / 86400000);
+  const customer = d.customers;
+  return `<div style="background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;cursor:pointer" onclick="openDealModal(${d.id})">
+    <div style="font-size:13px;font-weight:600;margin-bottom:6px;line-height:1.3">${esc(d.title)}</div>
+    ${customer ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px"><i data-lucide="user" style="width:10px;height:10px"></i> ${esc(customer.name)}</div>` : ''}
+    ${d.car_model ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px"><i data-lucide="car" style="width:10px;height:10px"></i> ${esc(d.car_model)}</div>` : ''}
+    ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
+      ${d.assigned_to ? `<div style="font-size:10px;color:var(--muted)">${esc(d.assigned_to)}</div>` : '<div></div>'}
+      <div style="font-size:10px;color:var(--muted)">${daysOpen}d</div>
+    </div>
+  </div>`;
+}
+
+let _dealModalEmployees = [];
+let _dealModalCustomers = [];
+
+async function populateDealModalCustomers() {
+  _dealModalCustomers = _allCustomers.length ? _allCustomers : await apiFetch('/api/dashboard/customers').then(r => r.json());
+  const sel = document.getElementById('dm-customer-id');
+  if (sel) {
+    sel.innerHTML = '<option value="">Select customer…</option>' +
+      _dealModalCustomers.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  }
+}
+
+async function populateDealModalAssignees() {
+  try {
+    const emps = await apiFetch('/api/dashboard/employees-for-tasks').then(r => r.json());
+    _dealModalEmployees = emps;
+    const sel = document.getElementById('dm-assigned-to');
+    if (sel) {
+      sel.innerHTML = '<option value="">Unassigned</option>' +
+        emps.map(e => `<option value="${esc(e.name)}">${esc(e.name)}</option>`).join('');
+    }
+  } catch (_) {}
+}
+
+function openDealModal(id) {
+  const d = id ? _allDeals.find(x => x.id === id) : null;
+  document.getElementById('deal-modal-title').textContent = d ? 'Edit Deal' : 'Add Deal';
+  document.getElementById('dm-id').value          = d?.id           || '';
+  document.getElementById('dm-customer-id').value = d?.customer_id  || '';
+  document.getElementById('dm-title').value        = d?.title        || '';
+  document.getElementById('dm-stage').value        = d?.stage        || 'lead';
+  document.getElementById('dm-car-model').value    = d?.car_model    || '';
+  document.getElementById('dm-budget').value       = d?.budget_egp   || '';
+  document.getElementById('dm-notes').value        = d?.notes        || '';
+  document.getElementById('dm-assigned-to').value  = d?.assigned_to  || '';
+  document.getElementById('deal-modal').style.display = 'flex';
+}
+
+function closeDealModal() { document.getElementById('deal-modal').style.display = 'none'; }
+
+async function saveDeal() {
+  const id = document.getElementById('dm-id').value;
+  const payload = {
+    customer_id: parseInt(document.getElementById('dm-customer-id').value),
+    title:       document.getElementById('dm-title').value.trim(),
+    stage:       document.getElementById('dm-stage').value,
+    car_model:   document.getElementById('dm-car-model').value.trim(),
+    budget_egp:  parseFloat(document.getElementById('dm-budget').value) || null,
+    notes:       document.getElementById('dm-notes').value.trim(),
+    assigned_to: document.getElementById('dm-assigned-to').value,
+  };
+  if (!payload.customer_id || !payload.title) { alert('Customer and title are required.'); return; }
+  try {
+    const url = id ? `/api/dashboard/deals/${id}` : '/api/dashboard/deals';
+    const method = id ? 'PUT' : 'POST';
+    const deal = await apiFetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(r => r.json());
+    if (id) { const idx = _allDeals.findIndex(d => d.id === deal.id); if (idx >= 0) _allDeals[idx] = deal; }
+    else { _allDeals.unshift(deal); }
+    closeDealModal();
+    renderDealsKanban();
+  } catch (e) { alert('Error: ' + e.message); }
 }
 
 // ── PWA: iOS add-to-home-screen hint ──────────────────────────────────────
