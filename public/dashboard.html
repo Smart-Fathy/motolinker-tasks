@@ -4910,7 +4910,7 @@ function waApplyStatus(status, qr, enabled) {
 
 function waOpenSse() {
   waCloseSse();
-  waSse = new EventSource('/api/dashboard/whatsapp/events');
+  waSse = new EventSource(`/api/dashboard/whatsapp/events?_t=${encodeURIComponent(authToken)}`);
   waSse.addEventListener('whatsapp_status', e => {
     const d = JSON.parse(e.data);
     waApplyStatus(d.status, d.qr);
