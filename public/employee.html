@@ -13,18 +13,18 @@
 <link rel="icon" type="image/png" href="/icons/favicon.png">
 <title>MotoLinker — Employee Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #0a0b10; --surface: #13152a; --card: #1a1d35; --border: #252945;
-    --text: #edf0f7; --muted: #7c85a0; --primary: #7c6aff; --primary-h: #6554e8;
-    --primary-glow: rgba(124,106,255,.15); --primary-glow-strong: rgba(124,106,255,.25);
-    --success: #34d399; --warning: #fbbf24; --danger: #f87171; --info: #60a5fa;
+    --bg: #0b0b0d; --surface: #131316; --card: #18181b; --border: rgba(255,255,255,.09);
+    --text: #f3efe7; --muted: #8d897f; --primary: #c9a35e; --primary-h: #a07e3f;
+    --primary-glow: rgba(201,163,94,.15); --primary-glow-strong: rgba(201,163,94,.25);
+    --success: #8a9a86; --warning: #c9a35e; --danger: #c97d6e; --info: #9fb0bd;
     --sidebar-w: 240px; --topbar-h: 64px; --bottomnav-h: 72px;
-    --radius: 14px; --radius-sm: 10px; --font: 'Inter', system-ui, sans-serif;
-    --glass: rgba(19,21,42,.85); --glass-border: rgba(255,255,255,.06);
+    --radius: 8px; --radius-sm: 6px; --font: 'Manrope', system-ui, sans-serif;
+    --glass: rgba(12,12,14,.85); --glass-border: rgba(255,255,255,.07);
     --shadow-lg: 0 8px 32px rgba(0,0,0,.4);
     --shadow-card: 0 2px 12px rgba(0,0,0,.25);
   }
@@ -363,6 +363,28 @@
   .chat-voice-msg { display:flex; align-items:center; gap:8px; padding:6px 4px; flex-wrap:wrap; }
   .chat-voice-msg audio { height:32px; max-width:200px; }
   .chat-voice-dur { font-size:11px; color:var(--muted); white-space:nowrap; }
+
+  /* ════════════ LUXURY ATELIER — BLACK & GOLD ════════════ */
+  :root{ --gold:#c9a35e; --gold-soft:#d9bd7f; --gold-deep:#a07e3f; --hair:rgba(255,255,255,.09); --hair-gold:rgba(201,163,94,.22); }
+  .topbar-title,.sidebar-brand-name,.auth-logo h1,.page-title,.card-title,.table-title,.stat-val{ font-family:'Cormorant Garamond',serif!important; font-weight:500!important; letter-spacing:.3px!important; }
+  .stat-val{ font-size:30px!important; }
+  .page-title{ font-size:26px!important; }
+  .topbar-title{ font-size:21px!important; white-space:nowrap; }
+  .card-title,.table-title{ font-size:19px!important; font-weight:600!important; }
+  .sidebar-brand-name{ font-size:19px!important; letter-spacing:1.5px!important; }
+  .auth-logo h1{ font-size:27px!important; letter-spacing:1px!important; }
+  .sidebar-icon,.auth-logo-icon{ background:#0f0f11 url('https://images.motolinkers.com/avatar-11-max-reev/05_logo_copy-1__1_-removebg-preview2.png') center/contain no-repeat !important; border:1px solid var(--gold)!important; border-radius:50%!important; box-shadow:none!important; }
+  .sidebar-icon i,.auth-logo-icon i{ display:none!important; }
+  .btn-primary{ color:#0c0c0e!important; }
+  .toggle-btn.active{ color:#0c0c0e!important; }
+  .tab.active{ color:var(--gold)!important; border-bottom-color:var(--gold)!important; }
+  .nav-item.active{ color:var(--gold)!important; }
+  .user-avatar{ color:#0c0c0e!important; }
+  .badge-todo{ background:rgba(255,255,255,.05)!important; color:#b9b3a4!important; }
+  .badge-in_progress,.badge-medium{ background:rgba(201,163,94,.1)!important; color:var(--gold)!important; }
+  .badge-done,.badge-low{ background:rgba(138,154,134,.12)!important; color:#9fb59a!important; }
+  .badge-high{ background:rgba(201,125,110,.1)!important; color:#d39082!important; }
+  .alert-success{ background:rgba(138,154,134,.1)!important; border-color:rgba(138,154,134,.25)!important; color:#9fb59a!important; }
 </style>
 </head>
 <body>

@@ -13,27 +13,27 @@
   <link rel="icon" type="image/png" href="/icons/favicon.png">
   <title>MotoLinker · Admin Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:        #f0f4f8;
-      --surface:   #ffffff;
-      --border:    #e2e8f0;
-      --text:      #1a202c;
-      --muted:     #718096;
-      --primary:   #5a67d8;
-      --success:   #38a169;
-      --warning:   #d69e2e;
-      --danger:    #e53e3e;
-      --info:      #3182ce;
-      --orange:    #dd6b20;
-      --radius:    12px;
-      --shadow:    0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
-      --shadow-md: 0 4px 16px rgba(0,0,0,.08);
+      --bg:        #0c0c0e;
+      --surface:   #141416;
+      --border:    rgba(255,255,255,.09);
+      --text:      #f3efe7;
+      --muted:     #8d897f;
+      --primary:   #c9a35e;
+      --success:   #8a9a86;
+      --warning:   #c9a35e;
+      --danger:    #c97d6e;
+      --info:      #9fb0bd;
+      --orange:    #c98b5e;
+      --radius:    4px;
+      --shadow:    0 1px 2px rgba(0,0,0,.4);
+      --shadow-md: 0 18px 40px -18px rgba(0,0,0,.65);
     }
 
     body {
@@ -778,6 +778,60 @@
     .chat-emoji-wrap { left:12px; right:12px; width:auto; }
     .chat-emoji-grid { max-height:200px; overflow-y:auto; }
   }
+
+  /* ════════════ LUXURY ATELIER — BLACK & GOLD ════════════ */
+  :root{ --gold:#c9a35e; --gold-soft:#d9bd7f; --gold-deep:#a07e3f; --panel:#141416; --hair:rgba(255,255,255,.09); --hair-gold:rgba(201,163,94,.22); }
+  body{ font-family:'Manrope',sans-serif; letter-spacing:.1px; }
+  .header h1,.sidebar-logo-text,.page-title,.card-title,.table-title,.modal-title,.auth-title,.stat-value,.hours-card-val,.employee-stat-val,.employee-name,.progress-pct,.chat-header-name,.empty-title,.chat-rooms-title{ font-family:'Cormorant Garamond',serif; font-weight:500; letter-spacing:.3px; }
+  .stat-value{ font-size:46px; font-weight:500; }
+  .page-title{ font-size:30px; }
+  .header h1{ font-size:22px; font-weight:600; letter-spacing:2px; }
+  .card-title,.table-title{ font-size:20px; font-weight:600; }
+  .hours-card-val{ font-size:34px; }
+  .progress-pct{ font-size:26px; color:var(--gold)!important; }
+  .header-badge{ background:transparent; color:var(--gold); border:1px solid var(--hair-gold); white-space:nowrap; }
+  .header{ background:rgba(12,12,14,.85)!important; border-bottom:1px solid var(--hair-gold)!important; box-shadow:none!important; }
+  .sidebar{ background:#0f0f12; border-right:1px solid var(--hair); }
+  .sidebar-logo{ border-bottom:1px solid var(--hair); }
+  .sidebar-logo-sub{ color:var(--gold); }
+  .nav-item.active{ background:rgba(201,163,94,.12)!important; color:var(--gold)!important; box-shadow:inset 0 0 0 1px var(--hair-gold); }
+  .nav-item:hover{ background:rgba(255,255,255,.05); color:#f3efe7; }
+  .logo,.sidebar-logo-icon{ background:#0f0f11 url('https://images.motolinkers.com/avatar-11-max-reev/05_logo_copy-1__1_-removebg-preview2.png') center/contain no-repeat; border:1px solid var(--gold); border-radius:50%; color:var(--gold); font-family:'Cormorant Garamond',serif; font-weight:600; }
+  .chart-card,.card,.table-card,.stat-card,.hours-card,.employee-card,.progress-card,.email-connect-card,.auth-card{ background:var(--panel)!important; border:1px solid var(--hair)!important; box-shadow:none!important; border-radius:4px!important; }
+  .stat-card{ border-top:1px solid var(--hair); }
+  .stat-card.total .stat-value,.stat-card.done .stat-value,.stat-card.in-progress .stat-value,.stat-card.todo .stat-value,.stat-card.high-pri .stat-value,.stat-card.overdue .stat-value{ color:var(--text); }
+  .stat-card.total{ border-top-color:var(--hair-gold); }
+  .stat-card:hover{ transform:translateY(-2px); box-shadow:0 14px 30px -18px rgba(0,0,0,.7)!important; border-color:var(--hair-gold)!important; }
+  .progress-track{ background:rgba(255,255,255,.08); }
+  .progress-fill{ background:linear-gradient(90deg,var(--gold-deep),var(--gold-soft))!important; }
+  .btn-primary{ background:linear-gradient(135deg,var(--gold-soft),var(--gold))!important; color:#0c0c0e!important; font-weight:600; }
+  .btn-primary:hover{ filter:brightness(1.06); }
+  .btn-outline{ border:1px solid var(--hair-gold)!important; color:var(--text)!important; background:transparent!important; }
+  .btn-outline:hover{ background:rgba(201,163,94,.08)!important; border-color:var(--gold)!important; }
+  .filter-input,.form-input,.form-control,.auth-input,.chat-input{ background:#0e0e10!important; border:1px solid var(--hair)!important; color:var(--text)!important; }
+  .filter-input:focus,.form-input:focus,.form-control:focus,.auth-input:focus,.chat-input:focus{ border-color:var(--gold)!important; box-shadow:0 0 0 3px rgba(201,163,94,.14)!important; }
+  thead th{ background:#101012!important; border-bottom:1px solid var(--hair-gold)!important; }
+  tbody tr{ border-bottom:1px solid var(--hair)!important; }
+  tbody tr:hover{ background:rgba(201,163,94,.05)!important; }
+  .table-header{ border-color:var(--hair)!important; background:transparent; }
+  .table-footer{ border-color:var(--hair)!important; background:#101012!important; color:var(--muted); }
+  .badge{ background:rgba(255,255,255,.05)!important; border:1px solid var(--hair)!important; }
+  .badge-todo{ color:#b9b3a4!important; }
+  .badge-in_progress,.badge-medium{ color:var(--gold)!important; border-color:var(--hair-gold)!important; }
+  .badge-done,.badge-low{ color:#9fb59a!important; }
+  .badge-high{ color:#d39082!important; border-color:rgba(201,125,110,.4)!important; }
+  .bulk-bar{ background:rgba(201,163,94,.08)!important; border-bottom:1px solid var(--hair-gold)!important; color:var(--gold)!important; }
+  .milestone-tag{ background:rgba(159,176,189,.12); color:#9fb0bd; }
+  .auth-screen{ background:radial-gradient(120% 80% at 50% 0%,#15130e,#0b0b0c)!important; }
+  .auth-icon{ background:transparent!important; border:1px solid var(--gold); color:var(--gold); }
+  .employee-avatar,.chat-room-avatar{ background:linear-gradient(160deg,#1c1a14,#0e0e10)!important; color:var(--gold)!important; border:1px solid var(--hair-gold); }
+  .chat-send-btn{ background:linear-gradient(135deg,var(--gold-soft),var(--gold))!important; color:#0c0c0e!important; border:none!important; }
+  .modal{ background:var(--panel)!important; border:1px solid var(--hair-gold)!important; box-shadow:0 20px 60px rgba(0,0,0,.7)!important; }
+  .chat-msg.mine .chat-msg-bubble{ background:linear-gradient(135deg,var(--gold-soft),var(--gold))!important; color:#0c0c0e!important; }
+  .chat-room-item.active{ background:rgba(201,163,94,.1)!important; }
+  .select-input,.form-input,select{ color-scheme:dark; }
+  .topbar,.app-content .topbar{ background:rgba(12,12,14,.9); border-bottom:1px solid var(--hair); }
+  .assignee-chip,.user-pill{ background:rgba(201,163,94,.1); border:1px solid var(--hair-gold); color:var(--gold); }
   </style>
 </head>
 <body>
