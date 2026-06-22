@@ -1688,29 +1688,29 @@ receiver.router.post('/api/employee/hours', requireEmployeeAuth, express.json(),
 
 // ── Admin: Employee management ────────────────────────────────────────────────
 receiver.router.get('/api/dashboard/employees', requireAuth, async (_req, res) => {
-  const { data, error } = await supabase.from('employees').select('id, name, username, email, slack_user_id, permissions, created_at').order('name');
+  const { data, error } = await supabase.from('employees').select('id, name, username, email, job_title, slack_user_id, permissions, created_at').order('name');
   if (error) return res.status(500).json({ error: error.message });
   res.json((data || []).map(e => ({ ...e, permissions: { ...DEFAULT_PERMISSIONS, ...(e.permissions || {}) } })));
 });
 receiver.router.post('/api/dashboard/employees', requireAuth, express.json(), async (req, res) => {
-  const { name, username, password, email, slack_user_id, permissions } = req.body;
+  const { name, username, password, email, job_title, slack_user_id, permissions } = req.body;
   if (!name || !username || !password) return res.status(400).json({ error: 'Name, username and password are required' });
   const { data: existing } = await supabase.from('employees').select('id').eq('username', username).single();
   if (existing) return res.status(409).json({ error: 'Username already taken' });
   const perms = { ...DEFAULT_PERMISSIONS, ...(permissions || {}) };
   const { data, error } = await supabase.from('employees')
-    .insert({ name, username, password_hash: hashPassword(password), email: email || '', slack_user_id: slack_user_id || '', permissions: perms })
-    .select('id, name, username, email, slack_user_id, permissions, created_at').single();
+    .insert({ name, username, password_hash: hashPassword(password), email: email || '', job_title: job_title || '', slack_user_id: slack_user_id || '', permissions: perms })
+    .select('id, name, username, email, job_title, slack_user_id, permissions, created_at').single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 receiver.router.put('/api/dashboard/employees/:id', requireAuth, express.json(), async (req, res) => {
-  const { name, username, password, email, slack_user_id, permissions } = req.body;
-  const updates = { name, username, email: email || '', slack_user_id: slack_user_id || '', updated_at: new Date().toISOString() };
+  const { name, username, password, email, job_title, slack_user_id, permissions } = req.body;
+  const updates = { name, username, email: email || '', job_title: job_title || '', slack_user_id: slack_user_id || '', updated_at: new Date().toISOString() };
   if (password) updates.password_hash = hashPassword(password);
   if (permissions) updates.permissions = { ...DEFAULT_PERMISSIONS, ...permissions };
   const { data, error } = await supabase.from('employees').update(updates).eq('id', req.params.id)
-    .select('id, name, username, email, slack_user_id, permissions, created_at').single();
+    .select('id, name, username, email, job_title, slack_user_id, permissions, created_at').single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });

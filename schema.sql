@@ -122,6 +122,9 @@ ALTER TABLE hours_logs ADD COLUMN IF NOT EXISTS employee_id BIGINT REFERENCES em
 -- Employee portal section permissions
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{"requests":true,"drive":true,"sheets":true,"pdfscraper":false,"email":false,"viewAllRequests":false,"quotation":false}'::jsonb;
 
+-- Employee job title
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS job_title TEXT DEFAULT '';
+
 -- Chat message enhancements
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS edited_at  TIMESTAMPTZ DEFAULT NULL;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS file_url   TEXT DEFAULT NULL;
