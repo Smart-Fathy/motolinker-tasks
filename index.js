@@ -27,12 +27,24 @@ if (process.env.SLACK_BOT_TOKEN) {
 const supabase    = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 // ─── VAPID (Web Push) ─────────────────────────────────────────────────────────
-if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(
-    'mailto:admin@motolinker.com',
-    process.env.VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  );
+let vapidKeys = null; // { publicKey, privateKey } — from env, DB, or generated
+
+async function loadOrCreateVapidKeys() {
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    vapidKeys = { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY };
+  } else {
+    try {
+      const { data } = await supabase.from('google_tokens').select('tokens').eq('user_key', 'vapid').single();
+      if (data?.tokens?.publicKey && data?.tokens?.privateKey) vapidKeys = data.tokens;
+    } catch (_) {}
+    if (!vapidKeys) {
+      vapidKeys = webpush.generateVAPIDKeys();
+      await saveGoogleToken('vapid', vapidKeys);
+      console.log('[VAPID] Generated and persisted a new key pair');
+    }
+  }
+  webpush.setVapidDetails('mailto:admin@motolinker.com', vapidKeys.publicKey, vapidKeys.privateKey);
+  console.log('[VAPID] Web push configured');
 }
 const slackClient = process.env.SLACK_BOT_TOKEN ? new WebClient(process.env.SLACK_BOT_TOKEN) : null;
 const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -1454,7 +1466,7 @@ function chatCallerIdentity(req) {
 }
 
 async function sendPushToOfflineMembers(memberKeys, payload) {
-  if (!process.env.VAPID_PUBLIC_KEY) return;
+  if (!vapidKeys) return;
   const offlineKeys = memberKeys.filter(k => !chatSseClients.has(k));
   if (!offlineKeys.length) return;
   const { data: subs } = await supabase.from('push_subscriptions').select('*').in('member_key', offlineKeys);
@@ -1474,7 +1486,7 @@ async function sendPushToOfflineMembers(memberKeys, payload) {
 // Like sendPushToOfflineMembers but skips the chat-SSE online filter — used for
 // task assignment where we always want to push regardless of chat presence.
 async function sendPushAlways(memberKeys, payload) {
-  if (!process.env.VAPID_PUBLIC_KEY) return;
+  if (!vapidKeys) return;
   const { data: subs } = await supabase.from('push_subscriptions').select('*').in('member_key', memberKeys);
   const pushPayload = JSON.stringify(payload);
   for (const sub of subs || []) {
@@ -1502,6 +1514,7 @@ function notifyEmployeeTaskAssigned(task) {
   };
   // In-app SSE for employees who have the portal open
   const sseRes = taskSseClients.get(key);
+  console.log('[task-notify]', key, 'sse=' + !!sseRes);
   if (sseRes) {
     try { sseRes.write(`event: task_assigned\ndata: ${JSON.stringify({ task })}\n\n`); } catch (_) {}
   }
@@ -1644,6 +1657,7 @@ receiver.router.get('/api/employee/task-events', requireEmployeeAuth, (req, res)
   res.flushHeaders();
   res.write(':ok\n\n');
   taskSseClients.set(key, res);
+  console.log('[task-sse] connected', key);
   const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
   req.on('close', () => { clearInterval(ka); taskSseClients.delete(key); });
 });
@@ -1775,7 +1789,7 @@ receiver.router.get('/api/dashboard/presence', requireAuth, async (req, res) => 
 
 // ─── Push subscriptions ───────────────────────────────────────────────────────
 receiver.router.get('/api/push/vapid-public-key', (req, res) => {
-  res.json({ key: process.env.VAPID_PUBLIC_KEY || '' });
+  res.json({ key: vapidKeys?.publicKey || '' });
 });
 receiver.router.post('/api/employee/push/subscribe', requireEmployeeAuth, express.json(), async (req, res) => {
   const { key: callerKey } = chatCallerIdentity(req);
@@ -2439,7 +2453,7 @@ receiver.router.delete('/api/submissions/:id', requireAuth, (req, res) => {
 });
 
 async function sendDueDateReminders() {
-  if (!process.env.VAPID_PUBLIC_KEY) return;
+  if (!vapidKeys) return;
   const today    = new Date().toISOString().split('T')[0];
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
   const [{ data: dueTomorrow }, { data: overdue }] = await Promise.all([
@@ -2466,7 +2480,7 @@ function scheduleDueDateReminders() {
 }
 
 async function sendHoursLogReminder() {
-  if (!process.env.VAPID_PUBLIC_KEY) return;
+  if (!vapidKeys) return;
   const today = new Date().toISOString().split('T')[0];
   const [{ data: allEmps }, { data: logsToday }] = await Promise.all([
     supabase.from('employees').select('id'),
@@ -2499,6 +2513,7 @@ function scheduleHoursLogReminder() {
 // ─── Start ────────────────────────────────────────────────────────────────────
 (async () => {
   await loadGoogleTokens();
+  await loadOrCreateVapidKeys();
   scheduleDueDateReminders();
   scheduleHoursLogReminder();
   if (process.env.WHATSAPP_ENABLED === 'true') initWhatsApp().catch(console.error);
