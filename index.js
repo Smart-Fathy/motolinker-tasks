@@ -617,14 +617,8 @@ receiver.router.post('/api/dashboard/tasks', requireAuth, express.json(), async 
       await slackClient.chat.postMessage({ channel: CHIEFS_CHANNEL_ID, text: `✅ Task #${task.id} created via dashboard: ${title}` });
     } catch (e) { console.warn('Slack notify failed:', e.message); }
   }
-  // Push notify assignee (assignee_id is now an employee internal id)
-  if (task?.assignee_id) {
-    sendPushToOfflineMembers([`employee_${task.assignee_id}`], {
-      title: '📋 New task assigned',
-      body: `${task.title} · due ${task.due_date} · ${task.priority} priority`,
-      url: '/employee'
-    });
-  }
+  // Notify assignee via SSE (if portal is open) and push (always)
+  notifyEmployeeTaskAssigned(task);
   res.json(task);
 });
 
@@ -1477,6 +1471,44 @@ async function sendPushToOfflineMembers(memberKeys, payload) {
   }
 }
 
+// Like sendPushToOfflineMembers but skips the chat-SSE online filter — used for
+// task assignment where we always want to push regardless of chat presence.
+async function sendPushAlways(memberKeys, payload) {
+  if (!process.env.VAPID_PUBLIC_KEY) return;
+  const { data: subs } = await supabase.from('push_subscriptions').select('*').in('member_key', memberKeys);
+  const pushPayload = JSON.stringify(payload);
+  for (const sub of subs || []) {
+    webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth_key } },
+      pushPayload
+    ).catch(async err => {
+      if (err.statusCode === 410 || err.statusCode === 404) {
+        await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+      }
+    });
+  }
+}
+
+// Persistent task-notification SSE: one per logged-in employee, always open.
+const taskSseClients = new Map(); // key: 'employee_<id>'
+
+function notifyEmployeeTaskAssigned(task) {
+  if (!task?.assignee_id) return;
+  const key = `employee_${task.assignee_id}`;
+  const payload = {
+    title: '📋 New task assigned',
+    body: `${task.title} · due ${task.due_date} · ${task.priority} priority`,
+    url: '/employee'
+  };
+  // In-app SSE for employees who have the portal open
+  const sseRes = taskSseClients.get(key);
+  if (sseRes) {
+    try { sseRes.write(`event: task_assigned\ndata: ${JSON.stringify({ task })}\n\n`); } catch (_) {}
+  }
+  // Push — unconditional, reaches backgrounded / closed browsers
+  sendPushAlways([key], payload);
+}
+
 async function chatListRooms(callerKey) {
   const { data: membership } = await supabase.from('chat_room_members').select('room_id').eq('member_key', callerKey);
   if (!membership?.length) return [];
@@ -1594,7 +1626,7 @@ receiver.router.get('/api/dashboard/chat/events', requireAuth, (req, res) => {
   req.on('close', () => { clearInterval(ka); chatSseClients.delete('admin'); });
 });
 
-// SSE — Employee
+// SSE — Employee chat
 receiver.router.get('/api/employee/chat/events', requireEmployeeAuth, (req, res) => {
   const key = `employee_${req.employee.id}`;
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
@@ -1603,6 +1635,17 @@ receiver.router.get('/api/employee/chat/events', requireEmployeeAuth, (req, res)
   chatSseClients.set(key, res);
   const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
   req.on('close', () => { clearInterval(ka); chatSseClients.delete(key); });
+});
+
+// SSE — Employee task notifications (persistent, open for the whole portal session)
+receiver.router.get('/api/employee/task-events', requireEmployeeAuth, (req, res) => {
+  const key = `employee_${req.employee.id}`;
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders();
+  res.write(':ok\n\n');
+  taskSseClients.set(key, res);
+  const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
+  req.on('close', () => { clearInterval(ka); taskSseClients.delete(key); });
 });
 
 // People lists

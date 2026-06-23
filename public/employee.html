@@ -385,6 +385,8 @@
   .badge-done,.badge-low{ background:rgba(138,154,134,.12)!important; color:#9fb59a!important; }
   .badge-high{ background:rgba(201,125,110,.1)!important; color:#d39082!important; }
   .alert-success{ background:rgba(138,154,134,.1)!important; border-color:rgba(138,154,134,.25)!important; color:#9fb59a!important; }
+  .emp-toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(2rem);background:#1e293b;color:#fff;padding:.75rem 1.25rem;border-radius:8px;font-size:.875rem;opacity:0;transition:opacity .3s,transform .3s;z-index:9999;pointer-events:none;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis;}
+  .emp-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 </style>
 </head>
 <body>
@@ -1100,6 +1102,8 @@ async function showApp() {
   // Re-subscribe push so authenticated POST reaches the server after login
   if (_swReg) chatSubscribePush(_swReg);
   else navigator.serviceWorker?.ready.then(reg => chatSubscribePush(reg)).catch(() => {});
+  // Open persistent task-notification SSE
+  openTaskNotifSse();
   const hash = location.hash.replace('#', '');
   if (hash && pageTitles[hash]) navigate(hash);
   else navigate('log');
@@ -1109,6 +1113,7 @@ async function showApp() {
 
 async function logout() {
   closeChatSse();
+  closeTaskNotifSse();
   try { await ef('/api/employee/logout', { method: 'POST' }); } catch (_) {}
   localStorage.removeItem('ml_emp_token'); empToken = null; showLogin();
 }
@@ -2245,6 +2250,33 @@ function openChatSse() {
 function closeChatSse() {
   if (chatSse) { chatSse.close(); chatSse = null; }
   activeChatRoomId = null;
+}
+
+// ── Task notification SSE (always-open after login) ───────────────────────────
+let taskNotifSse = null;
+function openTaskNotifSse() {
+  if (taskNotifSse) { taskNotifSse.close(); taskNotifSse = null; }
+  taskNotifSse = new EventSource(`/api/employee/task-events?_t=${encodeURIComponent(empToken)}`);
+  taskNotifSse.addEventListener('task_assigned', e => {
+    try {
+      const { task } = JSON.parse(e.data);
+      showToast(`📋 New task: ${task.title}`);
+      loadMyTasks();
+      loadDropdownTasks();
+    } catch (_) {}
+  });
+}
+function closeTaskNotifSse() {
+  if (taskNotifSse) { taskNotifSse.close(); taskNotifSse = null; }
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'emp-toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 4000);
 }
 
 async function loadChat() {
