@@ -125,6 +125,10 @@ ALTER TABLE employees ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{"requ
 -- Employee job title
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS job_title TEXT DEFAULT '';
 
+-- Tasks channel columns no longer required (Slack removed)
+ALTER TABLE tasks ALTER COLUMN channel_id   DROP NOT NULL;
+ALTER TABLE tasks ALTER COLUMN channel_name DROP NOT NULL;
+
 -- Chat message enhancements
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS edited_at  TIMESTAMPTZ DEFAULT NULL;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS file_url   TEXT DEFAULT NULL;

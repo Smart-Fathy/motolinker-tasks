@@ -1,4 +1,4 @@
-const CACHE = 'motolinker-dash-v2';
+const CACHE = 'motolinker-dash-v3';
 const SHELL = ['/dashboard', '/manifest-dashboard.json'];
 const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com', 'cdn.jsdelivr.net'];
 
@@ -74,33 +74,37 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   if (!e.data) return;
   try {
-    const { senderName, body, roomId } = e.data.json();
+    const d = e.data.json();
+    const title = d.title || d.senderName || 'MotoLinker';
+    const body  = d.body || 'New message';
+    const tag   = d.tag || (d.roomId ? `chat-room-${d.roomId}` : 'motolinker');
     e.waitUntil(
-      self.registration.showNotification(senderName || 'MotoLinker', {
-        body: body || 'New message',
+      self.registration.showNotification(title, {
+        body,
         icon: '/icons/icon-192.png',
         badge: '/icons/icon-192.png',
-        tag: `chat-room-${roomId}`,
+        tag,
         renotify: true,
-        data: { roomId },
+        data: { url: d.url, roomId: d.roomId },
       })
     );
   } catch (_) {}
 });
 
-// ── Notification tapped → open/focus the app and go to that chat room ─────────
+// ── Notification tapped → open/focus the app ──────────────────────────────────
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const roomId = e.notification.data?.roomId;
+  const { url, roomId } = e.notification.data || {};
+  const target = url || (roomId ? '/dashboard?chat=' + roomId : '/dashboard');
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
       for (const client of list) {
         if (client.url.includes('/dashboard') && 'focus' in client) {
-          client.postMessage({ type: 'open_chat_room', roomId });
+          if (roomId) client.postMessage({ type: 'open_chat_room', roomId });
           return client.focus();
         }
       }
-      return clients.openWindow('/dashboard?chat=' + roomId);
+      return clients.openWindow(target);
     })
   );
 });

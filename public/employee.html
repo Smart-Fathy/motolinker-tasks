@@ -526,13 +526,9 @@
       <button class="nav-item"        id="nav-meet"     onclick="navigate('meet')">
         <span class="nav-icon"><i data-lucide="video"></i></span> Meet
       </button>
-      <button class="nav-item"        id="nav-gchat"    onclick="navigate('gchat')">
-        <span class="nav-icon"><i data-lucide="message-square"></i></span> Google Chat
-      </button>
+
       <div class="sidebar-section-label" id="nav-label-tools" style="display:none">Tools</div>
-      <button class="nav-item"        id="nav-pdfscraper" onclick="navigate('pdfscraper')" style="display:none">
-        <span class="nav-icon"><i data-lucide="file-text"></i></span> PDF Scraper
-      </button>
+
       <button class="nav-item"        id="nav-quotation" onclick="navigate('quotation')" style="display:none">
         <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft
       </button>
@@ -547,7 +543,7 @@
         <div class="user-avatar" id="user-avatar">?</div>
         <div>
           <div class="user-name" id="user-name">—</div>
-          <div class="user-role">Employee</div>
+          <div class="user-role" id="user-role">Employee</div>
         </div>
       </div>
       <button class="btn btn-outline" style="width:100%;font-size:12px;padding:9px;margin-bottom:6px" onclick="document.getElementById('change-pass-modal').style.display='flex';document.getElementById('chpass-current').value='';document.getElementById('chpass-new').value='';document.getElementById('chpass-confirm').value='';document.getElementById('chpass-err').style.display='none';document.getElementById('chpass-ok').style.display='none'">
@@ -753,64 +749,6 @@
               <input id="meet-code" class="form-control" placeholder="abc-defg-hij" style="flex:1;text-transform:lowercase" onkeydown="if(event.key==='Enter')joinMeeting()">
               <button class="btn btn-outline" onclick="joinMeeting()">Join</button>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Google Chat Page ── -->
-    <div class="page" id="page-gchat">
-      <div style="padding:28px">
-        <div style="font-size:20px;font-weight:700;margin-bottom:6px">Google Chat</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:28px">Open Google Chat to message your team.</div>
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:32px;max-width:420px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center">
-          <div style="width:60px;height:60px;background:rgba(66,133,244,.12);border-radius:50%;display:flex;align-items:center;justify-content:center">
-            <i data-lucide="message-square" style="width:28px;height:28px;color:#4285F4"></i>
-          </div>
-          <div>
-            <div style="font-weight:700;font-size:16px;margin-bottom:6px">Open Google Chat</div>
-            <div style="font-size:13px;color:var(--muted)">Google Chat opens in a new tab. Make sure you're signed in with your Google Workspace account.</div>
-          </div>
-          <a href="https://chat.google.com" target="_blank" rel="noopener" class="btn btn-primary" style="text-decoration:none;padding:10px 28px">
-            <i data-lucide="external-link" style="width:14px;height:14px"></i> Open Google Chat
-          </a>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── PDF Scraper Page ── -->
-    <div class="page" id="page-pdfscraper">
-      <div style="padding:28px">
-        <div style="font-size:20px;font-weight:700;margin-bottom:6px">Autohome Scraper</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:24px">Paste an Autohome config URL to get a CSV spreadsheet instantly</div>
-
-        <div class="card">
-          <div class="card-title"><i data-lucide="link" class="icon-sm"></i> Scrape from URL</div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-            <input id="emp-scrape-url" type="url" class="form-control" placeholder="https://www.autohome.com.cn/config/series/7752.html"
-              style="flex:1;min-width:260px" onkeydown="if(event.key==='Enter')empScrapeUrl()">
-            <button class="btn btn-primary" id="emp-scrape-btn" onclick="empScrapeUrl()" style="white-space:nowrap">
-              <i data-lucide="search" style="width:15px;height:15px"></i> Scrape
-            </button>
-          </div>
-          <div style="font-size:11px;color:var(--muted);margin-top:8px">Works for any autohome.com.cn/config/series/… page</div>
-        </div>
-
-        <div id="emp-scrape-status" style="display:none;margin-bottom:16px;padding:12px 16px;border-radius:8px;font-size:13px"></div>
-
-        <div id="emp-scrape-results" style="display:none">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-            <div style="font-size:15px;font-weight:700" id="emp-scrape-series"></div>
-            <button class="btn btn-outline" id="emp-dl-btn" onclick="empDownloadCsv()">
-              <i data-lucide="download" style="width:15px;height:15px"></i> Download CSV
-            </button>
-          </div>
-          <div id="emp-scrape-trims" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px"></div>
-          <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border)">
-            <table id="emp-scrape-table" style="width:100%;border-collapse:collapse;font-size:12px">
-              <thead id="emp-scrape-thead" style="position:sticky;top:0;z-index:1"></thead>
-              <tbody id="emp-scrape-tbody"></tbody>
-            </table>
           </div>
         </div>
       </div>
@@ -1137,10 +1075,10 @@ function showLogin() {
 }
 
 // Sections that can be controlled by admin permissions
-const PERM_SECTIONS = ['requests', 'drive', 'sheets', 'pdfscraper', 'email', 'quotation'];
+const PERM_SECTIONS = ['requests', 'drive', 'sheets', 'email', 'quotation'];
 
 function applyPermissions(permissions) {
-  const p = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, quotation:false, ...(permissions||{}) };
+  const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, ...(permissions||{}) };
   PERM_SECTIONS.forEach(section => {
     const navEl   = document.getElementById('nav-' + section);
     const bnavEl  = document.getElementById('bnav-' + section);
@@ -1150,9 +1088,9 @@ function applyPermissions(permissions) {
     if (bnavEl) bnavEl.style.display = display;
     if (pageEl) pageEl.dataset.permitted = p[section] ? '1' : '0';
   });
-  // Show "Tools" section label only if pdfscraper is enabled
+  // Show "Tools" section label only if quotation is enabled
   const toolsLabel = document.getElementById('nav-label-tools');
-  if (toolsLabel) toolsLabel.style.display = p.pdfscraper ? '' : 'none';
+  if (toolsLabel) toolsLabel.style.display = p.quotation ? '' : 'none';
 }
 
 async function showApp() {
@@ -1161,9 +1099,13 @@ async function showApp() {
   const name = empInfo?.name || empInfo?.username || '?';
   document.getElementById('user-name').textContent = name;
   document.getElementById('user-avatar').textContent = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+  document.getElementById('user-role').textContent = empInfo?.job_title || 'Employee';
   document.getElementById('h-date').value = new Date().toISOString().split('T')[0];
   applyPermissions(empInfo?.permissions);
   startPresenceHeartbeat();
+  // Re-subscribe push so authenticated POST reaches the server after login
+  if (_swReg) chatSubscribePush(_swReg);
+  else navigator.serviceWorker?.ready.then(reg => chatSubscribePush(reg)).catch(() => {});
   const hash = location.hash.replace('#', '');
   if (hash && pageTitles[hash]) navigate(hash);
   else navigate('log');
@@ -1178,7 +1120,7 @@ async function logout() {
 }
 
 /* ── Navigation ── */
-const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', pdfscraper: 'PDF Scraper', quotation: 'Quotation Draft', calendar: 'Calendar', meet: 'Meet', gchat: 'Google Chat' };
+const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation Draft', calendar: 'Calendar', meet: 'Meet' };
 const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation };
 let _currentEmpPage = 'log';
 function navigate(page) {

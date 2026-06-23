@@ -876,8 +876,6 @@
       <div class="nav-item"        onclick="navigate('customers')"  id="nav-customers">    <span class="nav-icon"><i data-lucide="user-circle-2"></i></span> Customers</div>
       <div class="nav-item"        onclick="navigate('deals')"      id="nav-deals">        <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals</div>
       <div class="sidebar-section-label">Integrations</div>
-      <div class="nav-item"        onclick="navigate('carsync')"    id="nav-carsync">      <span class="nav-icon"><i data-lucide="car"></i></span> Car Sync</div>
-      <div class="nav-item"        onclick="navigate('pdfscraper')" id="nav-pdfscraper">   <span class="nav-icon"><i data-lucide="file-text"></i></span> PDF Scraper</div>
       <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft</div>
       <div class="sidebar-section-label">Chat</div>
       <div class="nav-item" onclick="navigate('chat')" id="nav-chat"><span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat<span class="chat-nav-badge" id="chat-nav-badge" style="display:none">0</span></div>
@@ -885,7 +883,6 @@
       <div class="sidebar-section-label">Google</div>
       <div class="nav-item" onclick="navigate('calendar')" id="nav-calendar"><span class="nav-icon"><i data-lucide="calendar"></i></span> Calendar</div>
       <div class="nav-item" onclick="navigate('meet')"     id="nav-meet">    <span class="nav-icon"><i data-lucide="video"></i></span> Meet</div>
-      <div class="nav-item" onclick="navigate('gchat')"    id="nav-gchat">   <span class="nav-icon"><i data-lucide="message-square"></i></span> Google Chat</div>
       <div class="sidebar-section-label">Account</div>
       <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon"><i data-lucide="mail"></i></span> My Email</div>
       <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon"><i data-lucide="hard-drive"></i></span> My Drive</div>
@@ -1050,65 +1047,6 @@
     </div>
   </div>
 
-  <!-- ── PDF SCRAPER PAGE ─────────────────────────────── -->
-  <div id="page-pdfscraper" class="page">
-    <div class="page-body">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
-        <div>
-          <div style="font-size:20px;font-weight:700">Autohome Scraper</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:4px">Paste an Autohome config URL or upload a saved PDF → get a CSV spreadsheet instantly</div>
-        </div>
-        <button class="btn btn-outline" id="pdf-dl-btn" style="display:none" onclick="downloadPdfCsv()">Download CSV</button>
-      </div>
-
-      <!-- URL scrape section -->
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
-        <div style="font-size:13px;font-weight:600;margin-bottom:10px">Scrape directly from URL</div>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <input id="scrape-url-input" type="url" placeholder="https://www.autohome.com.cn/config/series/7752.html"
-            style="flex:1;min-width:260px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none"
-            onkeydown="if(event.key==='Enter')scrapeFromUrl()"
-          >
-          <button class="btn btn-primary" id="scrape-url-btn" onclick="scrapeFromUrl()" style="white-space:nowrap">
-            Scrape
-          </button>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:7px">Works for any autohome.com.cn/config/series/… page — no PDF download needed</div>
-      </div>
-
-      <div style="text-align:center;font-size:12px;color:var(--muted);margin-bottom:14px">— or upload a saved PDF —</div>
-
-      <!-- Upload zone -->
-      <div id="pdf-drop-zone"
-        style="border:2px dashed var(--border);border-radius:12px;padding:36px 24px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;margin-bottom:20px"
-        onclick="document.getElementById('pdf-file-input').click()"
-        ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='rgba(90,103,216,.06)'"
-        ondragleave="this.style.borderColor='';this.style.background=''"
-        ondrop="event.preventDefault();this.style.borderColor='';this.style.background='';handlePdfDrop(event)">
-        <div style="font-size:36px;margin-bottom:12px"></div>
-        <div style="font-size:15px;font-weight:600;color:var(--text)">Drag & drop a PDF here</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:6px">or click to browse — max 20 MB</div>
-        <input type="file" id="pdf-file-input" accept=".pdf,application/pdf" style="display:none" onchange="uploadPdf(this.files[0])">
-      </div>
-
-      <!-- Status -->
-      <div id="pdf-status" style="display:none;margin-bottom:16px;padding:12px 16px;border-radius:8px;font-size:13px"></div>
-
-      <!-- Results -->
-      <div id="pdf-results" style="display:none">
-        <!-- Trim summary -->
-        <div id="pdf-trims" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px"></div>
-        <!-- Spec table -->
-        <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border)">
-          <table id="pdf-table" style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead id="pdf-thead" style="position:sticky;top:0;z-index:1"></thead>
-            <tbody id="pdf-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- ── EMAIL PAGE ────────────────────────────────────── -->
   <div id="page-email" class="page">
     <div id="email-content" style="flex:1;overflow:auto;padding:28px">
@@ -1173,110 +1111,6 @@
             <button class="btn btn-outline" onclick="adminJoinMeeting()">Join</button>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── GOOGLE CHAT PAGE ────────────────────────────────── -->
-  <div id="page-gchat" class="page">
-    <div class="page-body">
-      <div style="font-size:20px;font-weight:700;margin-bottom:6px">Google Chat</div>
-      <div style="font-size:13px;color:var(--muted);margin-bottom:28px">Open Google Chat to message your team.</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:32px;max-width:420px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center">
-        <div style="width:60px;height:60px;background:rgba(66,133,244,.12);border-radius:50%;display:flex;align-items:center;justify-content:center">
-          <i data-lucide="message-square" style="width:28px;height:28px;color:#4285F4"></i>
-        </div>
-        <div><div style="font-weight:700;font-size:16px;margin-bottom:6px">Open Google Chat</div>
-          <div style="font-size:13px;color:var(--muted)">Google Chat opens in a new tab. Make sure you're signed in with your Google Workspace account.</div></div>
-        <a href="https://chat.google.com" target="_blank" rel="noopener" class="btn btn-primary" style="text-decoration:none;padding:10px 28px">
-          <i data-lucide="external-link" style="width:14px;height:14px"></i> Open Google Chat
-        </a>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── CAR SYNC PAGE ────────────────────────────────────── -->
-  <div id="page-carsync" class="page">
-    <div class="page-body">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
-        <div>
-          <div style="font-size:20px;font-weight:700">Car Stock Sync</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:4px">Import car listings from Google Sheets → WordPress automatically</div>
-        </div>
-        <button class="btn btn-primary" id="sync-run-btn" onclick="runCarSync()" style="min-width:140px">Run Sync Now</button>
-      </div>
-
-      <!-- Last sync status -->
-      <div id="carsync-last" style="display:none;margin-bottom:20px"></div>
-
-      <!-- Step 1: Google Sheet -->
-      <div class="table-card" style="margin-bottom:16px">
-        <div class="table-header"><span class="table-title">① Google Sheet</span><span id="sheet-status" style="font-size:12px"></span></div>
-        <div style="padding:16px 20px">
-          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-            <div style="flex:1;min-width:220px">
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Google Sheet ID</div>
-              <input class="form-control" id="cs-sheet-id" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" style="font-family:monospace;font-size:12px">
-              <div style="font-size:11px;color:var(--muted);margin-top:4px">The long ID from the sheet URL: …/spreadsheets/d/<strong>ID</strong>/edit</div>
-            </div>
-            <button class="btn btn-outline" onclick="loadSheetPreview()" style="white-space:nowrap;height:38px">Load Preview</button>
-          </div>
-          <div id="drive-warn" style="display:none;margin-top:12px;padding:10px 14px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;font-size:13px;color:var(--warning)">
-            Google Drive not connected. Go to <a href="#" onclick="navigate('drive')" style="color:var(--warning)">My Drive</a> first to connect your Google account.
-          </div>
-        </div>
-      </div>
-
-      <!-- Step 2: WordPress -->
-      <div class="table-card" style="margin-bottom:16px">
-        <div class="table-header"><span class="table-title">② WordPress Connection</span><span id="wp-status" style="font-size:12px"></span></div>
-        <div style="padding:16px 20px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-            <div>
-              <div class="form-label" style="margin-bottom:6px">WordPress Site URL</div>
-              <input class="form-control" id="cs-wp-url" placeholder="https://yoursite.com">
-            </div>
-            <div>
-              <div class="form-label" style="margin-bottom:6px">Post Type slug</div>
-              <input class="form-control" id="cs-wp-type" placeholder="listing" value="listing">
-              <div style="font-size:11px;color:var(--muted);margin-top:4px">The WordPress post type (e.g. listing, car, vehicle, post)</div>
-            </div>
-            <div>
-              <div class="form-label" style="margin-bottom:6px">WP Username</div>
-              <input class="form-control" id="cs-wp-user" placeholder="admin" autocomplete="off">
-            </div>
-            <div>
-              <div class="form-label" style="margin-bottom:6px">Password</div>
-              <input class="form-control" id="cs-wp-pass" type="password" placeholder="Your WordPress password" autocomplete="off">
-              <div style="font-size:11px;color:var(--muted);margin-top:4px">Your regular WordPress login password</div>
-            </div>
-          </div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-            <button class="btn btn-outline" onclick="testWpConnection()" id="wp-test-btn">Test Connection</button>
-            <div style="display:flex;align-items:center;gap:6px">
-              <button class="btn btn-outline" onclick="discoverFields()" id="wp-discover-btn">Discover Fields</button>
-              <input class="form-control" id="discover-post-id" placeholder="Post ID (optional)" style="width:160px;font-size:12px" title="Enter a specific WP post ID to inspect (e.g. 9970). Leave empty to scan recent listings.">
-            </div>
-            <button class="btn btn-primary" onclick="saveCarSyncConfig()">Save Settings</button>
-          </div>
-          <div id="discover-result" style="display:none;margin-top:12px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:monospace;white-space:pre-wrap;max-height:220px;overflow:auto"></div>
-        </div>
-      </div>
-
-      <!-- Step 3: Column Mapping -->
-      <div class="table-card" style="margin-bottom:16px" id="mapping-section">
-        <div class="table-header"><span class="table-title">③ Column Mapping</span><span style="font-size:12px;color:var(--muted)">Map your sheet columns to car fields</span></div>
-        <div style="padding:16px 20px">
-          <div id="mapping-body">
-            <div style="color:var(--muted);font-size:13px">Load a sheet preview first to see your columns.</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Step 4: Preview -->
-      <div class="table-card" id="preview-section" style="display:none;margin-bottom:16px">
-        <div class="table-header"><span class="table-title">④ Sheet Preview</span><span id="preview-count" style="font-size:12px;color:var(--muted)"></span></div>
-        <div style="overflow-x:auto" id="preview-body"></div>
       </div>
     </div>
   </div>
@@ -2256,6 +2090,13 @@ async function preloadEmployeesForTasks() {
   try { employeesForTasks = await apiFetch('/api/dashboard/employees-for-tasks').then(r => r.json()); } catch (_) { employeesForTasks = []; }
 }
 function resolvedName(id) {
+  // Try employee id lookup first (new tasks use employee internal id)
+  const empById = (employeesForTasks || []).find(e => String(e.id) === String(id));
+  if (empById) {
+    const initials = (empById.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    return `<span class="assignee-chip"><span class="assignee-avatar">${initials}</span>${esc(empById.name)}</span>`;
+  }
+  // Fall back to Slack users map (legacy tasks with slack_user_id)
   const u = usersMap[id];
   if (!u) return `<span class="assignee-id">${esc(id)}</span>`;
   const initials = (u.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
@@ -2264,21 +2105,14 @@ function resolvedName(id) {
 }
 
 // ── Task CRUD modals ──────────────────────────────────────────────────────────
-let slackChannels = [];
-async function ensureChannels() {
-  if (!slackChannels.length) slackChannels = await apiFetch('/api/dashboard/channels').then(r => r.json()).catch(() => []);
-}
-
 async function openTaskModal(id) {
-  await Promise.all([ensureChannels(), preloadEmployeesForTasks()]);
+  await preloadEmployeesForTasks();
   const t = id ? allTasks.find(x => x.id === id) : null;
-  const chanOpts = slackChannels.map(c => `<option value="${c.id}|${esc(c.name)}"${t?.channel_id===c.id?' selected':''}>${esc(c.name)}</option>`).join('');
-  const userOpts = (employeesForTasks || []).map(e => `<option value="${esc(e.slack_user_id||'')}"${t?.assignee_id===e.slack_user_id?' selected':''}>${esc(e.name)}</option>`).join('');
+  const userOpts = (employeesForTasks || []).map(e => `<option value="${e.id}"${t?.assignee_id===String(e.id)?' selected':''}>${esc(e.name)}</option>`).join('');
   showModal(t ? `Edit Task #${t.id}` : 'Add New Task', `
     <div class="form-group"><label class="form-label">Title *</label><input class="form-control" id="t-title" value="${esc(t?.title||'')}" placeholder="Task title…"></div>
     <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="t-desc" rows="2">${esc(t?.description||'')}</textarea></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Channel *</label><select class="form-control" id="t-channel"><option value="">Select channel…</option>${chanOpts}</select></div>
       <div class="form-group"><label class="form-label">Assignee *</label><select class="form-control" id="t-assignee"><option value="">Select person…</option>${userOpts}</select></div>
     </div>
     <div class="form-row">
@@ -2296,10 +2130,8 @@ async function openTaskModal(id) {
 }
 
 async function saveTask(id) {
-  const chanVal = document.getElementById('t-channel').value;
-  const [channel_id, channel_name] = chanVal.includes('|') ? chanVal.split('|') : [chanVal, chanVal];
-  const body = { title: document.getElementById('t-title').value.trim(), description: document.getElementById('t-desc').value.trim(), channel_id, channel_name, assignee_id: document.getElementById('t-assignee').value, due_date: document.getElementById('t-due').value, priority: document.getElementById('t-priority').value, status: document.getElementById('t-status').value, milestone: document.getElementById('t-milestone').value.trim() };
-  if (!body.title || !body.channel_id || !body.assignee_id || !body.due_date) { alert('Title, channel, assignee and due date are required'); return; }
+  const body = { title: document.getElementById('t-title').value.trim(), description: document.getElementById('t-desc').value.trim(), assignee_id: document.getElementById('t-assignee').value, due_date: document.getElementById('t-due').value, priority: document.getElementById('t-priority').value, status: document.getElementById('t-status').value, milestone: document.getElementById('t-milestone').value.trim() };
+  if (!body.title || !body.assignee_id || !body.due_date) { alert('Title, assignee and due date are required'); return; }
   const url = id ? `/api/dashboard/tasks/${id}` : '/api/dashboard/tasks';
   const method = id ? 'PUT' : 'POST';
   const r = await apiFetch(url, { method, body: JSON.stringify(body) });
@@ -2370,7 +2202,7 @@ async function syncToSlackLists() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, carsync: loadCarSync, pdfscraper: () => {}, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
@@ -2397,350 +2229,6 @@ function closeSidebar() {
   const ov = document.getElementById('sidebar-overlay');
   sb.classList.remove('open');
   ov.classList.remove('visible');
-}
-
-// ── Car Sync ──────────────────────────────────────────────────────────────────
-const CS_FIELDS = [
-  // ── Taxonomy dropdowns ────────────────────────────────────────────────────
-  { key: 'make',         label: 'Make (Brand)',               defaultWpKey: 'tax:listing_make' },
-  { key: 'model',        label: 'Model',                      defaultWpKey: 'tax:listing_model' },
-  { key: 'category',     label: 'Category (e.g. SUVs)',       defaultWpKey: 'tax:listing_category' },
-  { key: 'condition',    label: 'Condition (New/Used)',        defaultWpKey: 'tax:listing_condition' },
-  { key: 'body_type',    label: 'Body Style',                 defaultWpKey: 'tax:listing_type' },
-  { key: 'transmission', label: 'Transmission',               defaultWpKey: 'tax:listing_transmission' },
-  { key: 'drive_type',   label: 'Drive Type',                 defaultWpKey: 'tax:listing_drive_type' },
-  { key: 'fuel_type',    label: 'Fuel Type',                  defaultWpKey: 'tax:listing_fuel_type' },
-  { key: 'power_train',  label: 'Power Train (Electric/Gas)', defaultWpKey: 'tax:listing_fuel_type' },
-  { key: 'label',        label: 'Label',                      defaultWpKey: 'tax:listing_label' },
-  { key: 'offer_type',   label: 'Offer Type',                 defaultWpKey: 'tax:listing_offer_type' },
-  // ── Features — one column per checkbox (put Y or the feature name; blank = skip) ──
-  // Driver Assistance Systems (ADAS)
-  { section: 'Features — Driver Assistance Systems (ADAS)' },
-  { key: 'feat_360_cam',      label: '360 Surround Camera',              defaultWpKey: 'tax:listing_feature', termName: '360 Surround Camera' },
-  { key: 'feat_acc',          label: 'Adaptive Cruise Control (ACC)',    defaultWpKey: 'tax:listing_feature', termName: 'Adaptive Cruise Control (ACC)' },
-  { key: 'feat_bsm',          label: 'Blind Spot Monitoring (BSM)',      defaultWpKey: 'tax:listing_feature', termName: 'Blind Spot Monitoring (BSM)' },
-  { key: 'feat_cc',           label: 'Cruise Control (CC)',              defaultWpKey: 'tax:listing_feature', termName: 'Cruise Control (CC)' },
-  { key: 'feat_front_parking',label: 'Front Parking Sensors',            defaultWpKey: 'tax:listing_feature', termName: 'Front Parking Sensors' },
-  { key: 'feat_hsa',          label: 'Hill Start Assist (HSA)',          defaultWpKey: 'tax:listing_feature', termName: 'Hill Start Assist (HSA)' },
-  { key: 'feat_ldw',          label: 'Lane Departure Warning (LDW)',     defaultWpKey: 'tax:listing_feature', termName: 'Lane Departure Warning (LDW)' },
-  { key: 'feat_lka',          label: 'Lane Keeping Assist (LKA)',        defaultWpKey: 'tax:listing_feature', termName: 'Lane Keeping Assist (LKA)' },
-  { key: 'feat_rcta',         label: 'Rear Cross Traffic Alert (RCTA)',  defaultWpKey: 'tax:listing_feature', termName: 'Rear Cross Traffic Alert (RCTA)' },
-  { key: 'feat_rear_parking', label: 'Rear Parking Sensors',             defaultWpKey: 'tax:listing_feature', termName: 'Rear Parking Sensors' },
-  { key: 'feat_tsr',          label: 'Traffic Sign Recognition (TSR)',   defaultWpKey: 'tax:listing_feature', termName: 'Traffic Sign Recognition (TSR)' },
-  // Steering, Suspension & Brakes
-  { section: 'Features — Steering, Suspension & Brakes' },
-  { key: 'feat_adaptive_susp',   label: 'Adaptive Suspension',       defaultWpKey: 'tax:listing_feature', termName: 'Adaptive Suspension' },
-  { key: 'feat_brake_booster',   label: 'Brake Booster',             defaultWpKey: 'tax:listing_feature', termName: 'Brake Booster' },
-  { key: 'feat_brake_cooling',   label: 'Brake Cooling',             defaultWpKey: 'tax:listing_feature', termName: 'Brake Cooling' },
-  { key: 'feat_self_level_susp', label: 'Self-Leveling Suspension',  defaultWpKey: 'tax:listing_feature', termName: 'Self-Leveling Suspension' },
-  // External & Lighting
-  { section: 'Features — External & Lighting' },
-  { key: 'feat_auto_fold_mirrors',    label: 'Auto Folding Mirrors',              defaultWpKey: 'tax:listing_feature', termName: 'Auto Folding Mirrors' },
-  { key: 'feat_auto_headlights',      label: 'Auto Headlights',                  defaultWpKey: 'tax:listing_feature', termName: 'Auto Headlights' },
-  { key: 'feat_fog_lamps',            label: 'Fog lamps',                        defaultWpKey: 'tax:listing_feature', termName: 'Fog lamps' },
-  { key: 'feat_heated_mirrors',       label: 'Heated Side Mirrors',              defaultWpKey: 'tax:listing_feature', termName: 'Heated Side Mirrors' },
-  { key: 'feat_led_drl',              label: 'LED Daytime running lamps',        defaultWpKey: 'tax:listing_feature', termName: 'LED Daytime running lamps' },
-  { key: 'feat_light_sensors',        label: 'Light Sensors',                    defaultWpKey: 'tax:listing_feature', termName: 'Light Sensors' },
-  { key: 'feat_mirror_turn',          label: 'Mirror Integrated Turn Signals',   defaultWpKey: 'tax:listing_feature', termName: 'Mirror Integrated Turn Signals' },
-  { key: 'feat_power_mirrors',        label: 'Power mirrors',                    defaultWpKey: 'tax:listing_feature', termName: 'Power mirrors' },
-  { key: 'feat_roof_rack',            label: 'Roof Rack',                        defaultWpKey: 'tax:listing_feature', termName: 'Roof Rack' },
-  { key: 'feat_steering_headlights',  label: 'Steering adaptive headlights',     defaultWpKey: 'tax:listing_feature', termName: 'Steering adaptive headlights' },
-  { key: 'feat_tinted_glass',         label: 'Tinted glass',                     defaultWpKey: 'tax:listing_feature', termName: 'Tinted glass' },
-  // Seats & Interior
-  { section: 'Features — Seats & Interior' },
-  { key: 'feat_back_arm_rest',     label: 'Back Arm Rest',                    defaultWpKey: 'tax:listing_feature', termName: 'Back Arm Rest' },
-  { key: 'feat_bev_cooler',        label: 'Beverage Cooler',                  defaultWpKey: 'tax:listing_feature', termName: 'Beverage Cooler' },
-  { key: 'feat_center_lock',       label: 'Center Lock',                      defaultWpKey: 'tax:listing_feature', termName: 'Center Lock' },
-  { key: 'feat_comfort_access',    label: 'Comfort Access',                   defaultWpKey: 'tax:listing_feature', termName: 'Comfort Access' },
-  { key: 'feat_elec_window',       label: 'Electronic Window',                defaultWpKey: 'tax:listing_feature', termName: 'Electronic Window' },
-  { key: 'feat_fold_rear_seats',   label: 'Folding Rear Seats',               defaultWpKey: 'tax:listing_feature', termName: 'Folding Rear Seats' },
-  { key: 'feat_lumbar',            label: 'Front Seats Lumbar Support',       defaultWpKey: 'tax:listing_feature', termName: 'Front Seats Lumbar Support' },
-  { key: 'feat_massage',           label: 'Front Seats Massage',              defaultWpKey: 'tax:listing_feature', termName: 'Front Seats Massage' },
-  { key: 'feat_height_adj_seat',   label: 'Height adjustable front seats',    defaultWpKey: 'tax:listing_feature', termName: 'Height adjustable front seats' },
-  { key: 'feat_keyless_entry',     label: 'Keyless Entry',                    defaultWpKey: 'tax:listing_feature', termName: 'Keyless Entry' },
-  { key: 'feat_keyless_start',     label: 'Keyless Start/Stop',               defaultWpKey: 'tax:listing_feature', termName: 'Keyless Start/Stop' },
-  { key: 'feat_multi_sw',          label: 'Multi function steering wheel',    defaultWpKey: 'tax:listing_feature', termName: 'Multi function steering wheel' },
-  { key: 'feat_one_touch_window',  label: 'One Touch Window Opening',         defaultWpKey: 'tax:listing_feature', termName: 'One Touch Window Opening' },
-  { key: 'feat_panoramic_roof',    label: 'Panoramic Roof',                   defaultWpKey: 'tax:listing_feature', termName: 'Panoramic Roof' },
-  { key: 'feat_power_pass_seat',   label: 'Power Passenger Seat',             defaultWpKey: 'tax:listing_feature', termName: 'Power Passenger Seat' },
-  { key: 'feat_power_tailgate',    label: 'Power Tailgate',                   defaultWpKey: 'tax:listing_feature', termName: 'Power Tailgate' },
-  { key: 'feat_rear_ac_vents',     label: 'Rear AC Vents',                    defaultWpKey: 'tax:listing_feature', termName: 'Rear AC Vents' },
-  { key: 'feat_seat_ventilation',  label: 'Seat Ventilation',                 defaultWpKey: 'tax:listing_feature', termName: 'Seat Ventilation' },
-  { key: 'feat_wireless_charger',  label: 'Wireless Charger',                 defaultWpKey: 'tax:listing_feature', termName: 'Wireless Charger' },
-  // Infotainment
-  { section: 'Features — Infotainment' },
-  { key: 'feat_bluetooth_conn',  label: 'Bluetooth Connectivity',         defaultWpKey: 'tax:listing_feature', termName: 'Bluetooth Connectivity' },
-  { key: 'feat_navigation',      label: 'Built-in Navigation System',     defaultWpKey: 'tax:listing_feature', termName: 'Built-in Navigation System' },
-  { key: 'feat_front_usb',       label: 'Front USB Ports',                defaultWpKey: 'tax:listing_feature', termName: 'Front USB Ports' },
-  { key: 'feat_hud',             label: 'Head-Up Display (HUD)',          defaultWpKey: 'tax:listing_feature', termName: 'Head-Up Display (HUD)' },
-  { key: 'feat_ota',             label: 'Over-the-Air (OTA) Updates',     defaultWpKey: 'tax:listing_feature', termName: 'Over-the-Air (OTA) Updates' },
-  { key: 'feat_rear_usb',        label: 'Rear USB Ports',                 defaultWpKey: 'tax:listing_feature', termName: 'Rear USB Ports' },
-  { key: 'feat_subwoofer',       label: 'Subwoofer',                      defaultWpKey: 'tax:listing_feature', termName: 'Subwoofer' },
-  { key: 'feat_touchscreen_func',label: 'Touchscreen Functionality',      defaultWpKey: 'tax:listing_feature', termName: 'Touchscreen Functionality' },
-  { key: 'feat_type_c',          label: 'Type-C',                         defaultWpKey: 'tax:listing_feature', termName: 'Type-C' },
-  { key: 'feat_voice_cmd',       label: 'Voice Commands',                 defaultWpKey: 'tax:listing_feature', termName: 'Voice Commands' },
-  { key: 'feat_wifi',            label: 'Wi-Fi Hotspot Capability',       defaultWpKey: 'tax:listing_feature', termName: 'Wi-Fi Hotspot Capability' },
-  { key: 'feat_wireless_pad',    label: 'Wireless Charging Pad',          defaultWpKey: 'tax:listing_feature', termName: 'Wireless Charging Pad' },
-  // Safety Systems
-  { section: 'Features — Safety Systems' },
-  { key: 'feat_3pt_seatbelts',      label: '3-Point Seatbelts',                               defaultWpKey: 'tax:listing_feature', termName: '3-Point Seatbelts' },
-  { key: 'feat_abs',                label: 'Anti-lock Braking System (ABS)',                  defaultWpKey: 'tax:listing_feature', termName: 'Anti-lock Braking System (ABS)' },
-  { key: 'feat_ba',                 label: 'Brake Assist (BA/EBA)',                           defaultWpKey: 'tax:listing_feature', termName: 'Brake Assist (BA/EBA)' },
-  { key: 'feat_ebd',                label: 'Electronic Brakeforce Distribution (EBD)',        defaultWpKey: 'tax:listing_feature', termName: 'Electronic Brakeforce Distribution (EBD)' },
-  { key: 'feat_epb',                label: 'Electronic Parking Brake EPB',                    defaultWpKey: 'tax:listing_feature', termName: 'Electronic Parking Brake EPB' },
-  { key: 'feat_esc',                label: 'Electronic Stability Control (ESC/ESP/VDC)',      defaultWpKey: 'tax:listing_feature', termName: 'Electronic Stability Control (ESC/ESP/VDC)' },
-  { key: 'feat_immobilizer',        label: 'Immobilizer Anti-Theft System',                   defaultWpKey: 'tax:listing_feature', termName: 'Immobilizer Anti-Theft System' },
-  { key: 'feat_isofix',             label: 'ISOFIX Child Seat Anchors',                       defaultWpKey: 'tax:listing_feature', termName: 'ISOFIX Child Seat Anchors' },
-  { key: 'feat_seatbelt_adj',       label: 'Seatbelt Height Adjustment (Front)',              defaultWpKey: 'tax:listing_feature', termName: 'Seatbelt Height Adjustment (Front)' },
-  { key: 'feat_seatbelt_pretens',   label: 'Seatbelt Pretensioners',                          defaultWpKey: 'tax:listing_feature', termName: 'Seatbelt Pretensioners' },
-  { key: 'feat_seatbelt_reminder',  label: 'Seatbelt Reminder System',                        defaultWpKey: 'tax:listing_feature', termName: 'Seatbelt Reminder System' },
-  { key: 'feat_tpms',               label: 'Tire Pressure Monitoring System (TPMS)',          defaultWpKey: 'tax:listing_feature', termName: 'Tire Pressure Monitoring System (TPMS)' },
-  { key: 'feat_tcs',                label: 'Traction Control System (TCS)',                   defaultWpKey: 'tax:listing_feature', termName: 'Traction Control System (TCS)' },
-  // Interior
-  { section: 'Features — Interior' },
-  { key: 'feat_ac',                 label: 'Air Conditioner',        defaultWpKey: 'tax:listing_feature', termName: 'Air Conditioner' },
-  { key: 'feat_digital_odo',        label: 'Digital Odometer',       defaultWpKey: 'tax:listing_feature', termName: 'Digital Odometer' },
-  { key: 'feat_heater',             label: 'Heater',                 defaultWpKey: 'tax:listing_feature', termName: 'Heater' },
-  { key: 'feat_leather_seats',      label: 'Leather Seats',          defaultWpKey: 'tax:listing_feature', termName: 'Leather Seats' },
-  { key: 'feat_moonroof',           label: 'Panoramic Moonroof',     defaultWpKey: 'tax:listing_feature', termName: 'Panoramic Moonroof' },
-  { key: 'feat_tachometer',         label: 'Tachometer',             defaultWpKey: 'tax:listing_feature', termName: 'Tachometer' },
-  { key: 'feat_touchscreen_display',label: 'Touchscreen Display',    defaultWpKey: 'tax:listing_feature', termName: 'Touchscreen Display' },
-  // Comfort & Convenience
-  { section: 'Features — Comfort & Convenience' },
-  { key: 'feat_android_auto',    label: 'Android Auto',     defaultWpKey: 'tax:listing_feature', termName: 'Android Auto' },
-  { key: 'feat_apple_carplay',   label: 'Apple CarPlay',    defaultWpKey: 'tax:listing_feature', termName: 'Apple CarPlay' },
-  { key: 'feat_bluetooth',       label: 'Bluetooth',        defaultWpKey: 'tax:listing_feature', termName: 'Bluetooth' },
-  { key: 'feat_homelink',        label: 'HomeLink',         defaultWpKey: 'tax:listing_feature', termName: 'HomeLink' },
-  { key: 'feat_power_steering',  label: 'Power Steering',   defaultWpKey: 'tax:listing_feature', termName: 'Power Steering' },
-  { key: 'feat_vanity_mirror',   label: 'Vanity Mirror',    defaultWpKey: 'tax:listing_feature', termName: 'Vanity Mirror' },
-  // General
-  { section: 'Features — General' },
-  { key: 'feat_anti_lock',       label: 'Anti-lock Braking',   defaultWpKey: 'tax:listing_feature', termName: 'Anti-lock Braking' },
-  { key: 'feat_brake_assist',    label: 'Brake Assist',        defaultWpKey: 'tax:listing_feature', termName: 'Brake Assist' },
-  { key: 'feat_child_locks',     label: 'Child Safety Locks',  defaultWpKey: 'tax:listing_feature', termName: 'Child Safety Locks' },
-  { key: 'feat_driver_airbag',   label: 'Driver Air Bag',      defaultWpKey: 'tax:listing_feature', termName: 'Driver Air Bag' },
-  { key: 'feat_power_door_locks',label: 'Power Door Locks',    defaultWpKey: 'tax:listing_feature', termName: 'Power Door Locks' },
-  { key: 'feat_stability_ctrl',  label: 'Stability Control',   defaultWpKey: 'tax:listing_feature', termName: 'Stability Control' },
-  { key: 'feat_traction_ctrl',   label: 'Traction Control',    defaultWpKey: 'tax:listing_feature', termName: 'Traction Control' },
-  // Exterior
-  { section: 'Features — Exterior' },
-  { key: 'feat_fog_lights_front',  label: 'Fog Lights Front',      defaultWpKey: 'tax:listing_feature', termName: 'Fog Lights Front' },
-  { key: 'feat_rain_wiper',        label: 'Rain Sensing Wiper',     defaultWpKey: 'tax:listing_feature', termName: 'Rain Sensing Wiper' },
-  { key: 'feat_rear_spoiler',      label: 'Rear Spoiler',           defaultWpKey: 'tax:listing_feature', termName: 'Rear Spoiler' },
-  { key: 'feat_elec_windows_ext',  label: 'Windows - Electric',     defaultWpKey: 'tax:listing_feature', termName: 'Windows - Electric' },
-  // ── Core text / meta fields ───────────────────────────────────────────────
-  { key: 'year',         label: 'Year',                       defaultWpKey: '_listing_year' },
-  { key: 'price',        label: 'Price',                      defaultWpKey: '_listing_price' },
-  { key: 'old_price',    label: 'Old Price',                  defaultWpKey: '_listing_old_price' },
-  { key: 'mileage',      label: 'Mileage',                    defaultWpKey: '_listing_mileage' },
-  { key: 'color',        label: 'Color',                      defaultWpKey: '_listing_color' },
-  { key: 'vin',          label: 'VIN',                        defaultWpKey: '_listing_vin' },
-  { key: 'tagline',      label: 'Tagline',                    defaultWpKey: '_listing_tagline' },
-  { key: 'stock_number', label: 'Stock Number',               defaultWpKey: '_listing_stock_number' },
-  // ── Dimensions & Capacity ─────────────────────────────────────────────────
-  { key: 'seats',        label: 'No. of Seats',               defaultWpKey: '_listing_number_of_seats' },
-  { key: 'length',       label: 'Length (mm)',                 defaultWpKey: '_listing_length' },
-  { key: 'width',        label: 'Width (mm)',                  defaultWpKey: '_listing_width' },
-  { key: 'height',       label: 'Height (mm)',                 defaultWpKey: '_listing_height' },
-  { key: 'wheelbase',    label: 'Wheelbase (mm)',              defaultWpKey: '_listing_wheelbase' },
-  { key: 'gross_weight', label: 'Gross Vehicle Weight (kg)',   defaultWpKey: '_listing_gross_vehicle_weight' },
-  { key: 'max_load',     label: 'Max. Loading Weight (kg)',    defaultWpKey: '_listing_max_loading_weight' },
-  { key: 'luggage_down', label: 'Luggage Seats Down (L)',      defaultWpKey: '_listing_luggage_capacity_seats_down' },
-  { key: 'luggage_up',   label: 'Luggage Seats Up (L)',        defaultWpKey: '_listing_luggage_capacity_seats_up' },
-  // ── EV / Engine fields (inferred from discover-fields data)
-  { key: 'motor_power_kw',   label: 'Motor Power (kW)',        defaultWpKey: 'custom-number-65' },
-  { key: 'motor_power_hp',   label: 'Motor Power (HP)',        defaultWpKey: 'custom-number-67' },
-  { key: 'max_torque',       label: 'Max Torque (N.m)',        defaultWpKey: 'custom-number-68' },
-  { key: 'battery_capacity', label: 'Battery Capacity (kWh)', defaultWpKey: 'custom-number-70' },
-  { key: 'ev_range',         label: 'Electric Range (km)',     defaultWpKey: 'custom-number-71' },
-  { key: 'acceleration',     label: 'Acceleration 0-100 km/h', defaultWpKey: 'custom-number-90' },
-  { key: 'charging_port',    label: 'Charging Port Type',      defaultWpKey: 'custom-text-72' },
-  { key: 'fast_charge_kw',   label: 'DC Fast Charging (kW)',   defaultWpKey: 'custom-number-74' },
-  // ── Special (always at bottom) ────────────────────────────────────────────
-  { key: 'title',        label: 'Car Title *',  special: 'Used as post title' },
-  { key: 'description',  label: 'Description',  special: 'Used as post body' },
-  { key: 'status',       label: 'Status',       special: 'sold → draft, else publish' },
-];
-
-let csHeaders = [];
-let csMapping = {};
-let csWpKeys  = {};
-
-async function loadCarSync() {
-  try {
-    const cfg = await apiFetch('/api/carsync/config').then(r => r.json());
-    if (cfg.sheetId)    document.getElementById('cs-sheet-id').value = cfg.sheetId;
-    if (cfg.wpUrl)      document.getElementById('cs-wp-url').value   = cfg.wpUrl;
-    if (cfg.wpUsername) document.getElementById('cs-wp-user').value  = cfg.wpUsername;
-    if (cfg.wpPostType) document.getElementById('cs-wp-type').value  = cfg.wpPostType;
-    csMapping = cfg.mapping || {};
-    csWpKeys  = cfg.wpKeyMapping || {};
-    if (!cfg.driveConnected) document.getElementById('drive-warn').style.display = '';
-    if (cfg.lastSync) showSyncResult(cfg.lastSync);
-    if (cfg.sheetId && cfg.driveConnected) loadSheetPreview();
-  } catch (_) {}
-}
-
-async function loadSheetPreview() {
-  const sheetId = document.getElementById('cs-sheet-id').value.trim();
-  if (!sheetId) { alert('Enter a Sheet ID first'); return; }
-  const statusEl = document.getElementById('sheet-status');
-  statusEl.innerHTML = '<span style="color:var(--muted)">Loading…</span>';
-  try {
-    await saveCarSyncConfig(true);
-    const d = await apiFetch('/api/carsync/preview').then(r => r.json());
-    if (d.error) { statusEl.innerHTML = `<span style="color:var(--danger)">${esc(d.error)}</span>`; return; }
-    csHeaders = d.headers || [];
-    statusEl.innerHTML = `<span style="color:var(--success)">${d.rows.length} rows loaded</span>`;
-    renderMapping();
-    renderPreview(d.headers, d.rows);
-  } catch (e) { statusEl.innerHTML = `<span style="color:var(--danger)">${esc(e.message)}</span>`; }
-}
-
-function renderMapping() {
-  const body = document.getElementById('mapping-body');
-  if (!csHeaders.length) { body.innerHTML = '<div style="color:var(--muted);font-size:13px">No columns found in sheet.</div>'; return; }
-  const options = `<option value="">— skip —</option>` + csHeaders.map((h, i) => `<option value="${i}">${esc(h)} (col ${i + 1})</option>`).join('');
-
-  // Auto-fill defaults for any field not yet explicitly set by the user
-  CS_FIELDS.forEach(f => {
-    if (f.defaultWpKey && csWpKeys[f.key] === undefined) csWpKeys[f.key] = f.defaultWpKey;
-  });
-
-  const normalFields  = CS_FIELDS.filter(f => !f.special && !f.section);
-  const specialFields = CS_FIELDS.filter(f =>  f.special);
-
-  body.innerHTML =
-    `<div style="display:grid;grid-template-columns:max-content 1fr 1fr;gap:8px 12px;align-items:center;margin-bottom:8px">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Field</div>
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Sheet Column</div>
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">WP Meta Key</div>` +
-    CS_FIELDS.filter(f => !f.special).map(f => {
-      if (f.section) return `<div style="grid-column:1/-1;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-top:1px solid var(--border);padding-top:8px;margin-top:4px">${esc(f.section)}</div>`;
-      return `
-      <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap">${esc(f.label)}</div>
-      <select class="form-control" style="font-size:12px" id="map-${f.key}" onchange="csMapping['${f.key}']=this.value===''?undefined:+this.value">
-        ${options}
-      </select>
-      <input class="form-control" style="font-size:12px" id="wpkey-${f.key}" placeholder="meta key or tax:slug" value="${esc(csWpKeys[f.key] || '')}" oninput="csWpKeys['${f.key}']=this.value.trim()||undefined">`;
-    }).join('') +
-    `</div>
-    <div style="display:grid;grid-template-columns:max-content 1fr 1fr;gap:8px 12px;align-items:center;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;grid-column:1/-1;margin-bottom:2px">Post Fields</div>` +
-    specialFields.map(f => `
-      <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(f.label)}</div>
-      <select class="form-control" style="font-size:12px" id="map-${f.key}" onchange="csMapping['${f.key}']=this.value===''?undefined:+this.value">${options}</select>
-      <div style="font-size:11px;color:var(--muted)">${esc(f.special)}</div>`).join('') +
-    `</div>
-    <button class="btn btn-outline" style="margin-top:12px;font-size:12px" onclick="saveCarSyncConfig()">Save Mapping</button>`;
-
-  // Restore saved column mapping
-  CS_FIELDS.forEach(f => {
-    const el = document.getElementById('map-' + f.key);
-    if (el && csMapping[f.key] !== undefined) el.value = csMapping[f.key];
-  });
-}
-
-function renderPreview(headers, rows) {
-  const section = document.getElementById('preview-section');
-  section.style.display = '';
-  document.getElementById('preview-count').textContent = `First ${rows.length} rows`;
-  const ths = headers.map(h => `<th>${esc(h)}</th>`).join('');
-  const trs = rows.map(r => `<tr>${headers.map((_, i) => `<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r[i] || '')}</td>`).join('')}</tr>`).join('');
-  document.getElementById('preview-body').innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
-}
-
-async function discoverFields() {
-  const btn    = document.getElementById('wp-discover-btn');
-  const res    = document.getElementById('discover-result');
-  const postId = document.getElementById('discover-post-id').value.trim();
-  btn.disabled = true; btn.textContent = 'Discovering…';
-  res.style.display = '';
-  res.textContent = 'Loading…';
-  try {
-    const body = {
-      wpUrl:      document.getElementById('cs-wp-url').value.trim(),
-      wpUsername: document.getElementById('cs-wp-user').value.trim(),
-      wpPassword: document.getElementById('cs-wp-pass').value,
-      wpPostType: document.getElementById('cs-wp-type').value.trim(),
-      ...(postId ? { postId } : {}),
-    };
-    const d = await apiFetch('/api/carsync/discover-fields', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
-    if (d.error) { res.textContent = d.error; return; }
-    const xmlKeys    = Object.keys(d.xmlFields  || {});
-    const restKeys   = Object.keys(d.restMeta   || {});
-    const taxEntries = Object.entries(d.taxonomies || {}).filter(([s]) => s.startsWith('listing_'));
-    let out = postId ? `Inspecting post ID ${postId}\n\n` : `Scanned oldest listings (merged keys)\n\n`;
-    out += `XML-RPC meta fields:\n`;
-    out += xmlKeys.length ? xmlKeys.map(k => `  ${k}: ${d.xmlFields[k]}`).join('\n') : '  (none found)';
-    if (restKeys.length) {
-      out += `\n\nREST API meta fields (authenticated):\n`;
-      out += restKeys.map(k => `  ${k}: ${JSON.stringify(d.restMeta[k])}`).join('\n');
-    } else {
-      out += `\n\nREST API meta: (none — plugin fields not exposed via REST)`;
-    }
-    out += `\n\nTAXONOMY FIELDS — prefix with "tax:" in "WP Meta Key":\n`;
-    out += taxEntries.length
-      ? taxEntries.map(([slug, label]) => `  tax:${slug}   → ${label}`).join('\n')
-      : '  (none found)';
-    out += `\n\nText fields → use meta key directly (e.g. year, price, custom-text-61)\n   Dropdowns → tax:listing_make, tax:listing_model etc.\n   Features → tax:listing_feature  (comma-separated: "360 Camera, ACC, BSM")`;
-    res.textContent = out;
-  } catch (e) { res.textContent = e.message; }
-  finally { btn.disabled = false; btn.textContent = 'Discover Fields'; }
-}
-
-async function testWpConnection() {
-  const btn = document.getElementById('wp-test-btn');
-  btn.disabled = true; btn.textContent = 'Testing…';
-  const statusEl = document.getElementById('wp-status');
-  try {
-    const body = { wpUrl: document.getElementById('cs-wp-url').value.trim(), wpUsername: document.getElementById('cs-wp-user').value.trim(), wpPassword: document.getElementById('cs-wp-pass').value };
-    const d = await apiFetch('/api/carsync/test-wp', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
-    if (d.ok) statusEl.innerHTML = `<span style="color:var(--success)">Connected to WordPress successfully</span>`;
-    else      statusEl.innerHTML = `<span style="color:var(--danger)">${esc(d.error)}</span>`;
-  } catch (e) { statusEl.innerHTML = `<span style="color:var(--danger)">${esc(e.message)}</span>`; }
-  finally { btn.disabled = false; btn.textContent = 'Test Connection'; }
-}
-
-async function saveCarSyncConfig(silent = false) {
-  const body = {
-    sheetId:      document.getElementById('cs-sheet-id').value.trim(),
-    wpUrl:        document.getElementById('cs-wp-url').value.trim(),
-    wpUsername:   document.getElementById('cs-wp-user').value.trim(),
-    wpPostType:   document.getElementById('cs-wp-type').value.trim(),
-    mapping:      csMapping,
-    wpKeyMapping: Object.fromEntries(Object.entries(csWpKeys).filter(([,v]) => v)),
-    termNameMap:  Object.fromEntries(CS_FIELDS.filter(f => f.termName).map(f => [f.key, f.termName])),
-  };
-  const pass = document.getElementById('cs-wp-pass').value;
-  if (pass) body.wpPassword = pass;
-  await apiFetch('/api/carsync/config', { method: 'POST', body: JSON.stringify(body) });
-  if (!silent) alert('Settings saved.');
-}
-
-function showSyncResult(r) {
-  const el = document.getElementById('carsync-last');
-  el.style.display = '';
-  const hasErrors = r.errors && r.errors.length;
-  const color = hasErrors ? 'var(--warning)' : 'var(--success)';
-  el.innerHTML = `<div style="background:rgba(34,197,94,.07);border:1px solid ${color};border-radius:10px;padding:14px 18px">
-    <div style="font-weight:600;font-size:13px;margin-bottom:6px" style="color:${color}">
-      Last sync: ${new Date(r.at).toLocaleString()} — ${r.created} created${r.skipped ? `, ${r.skipped} skipped (already exist)` : ''}${hasErrors ? `, ${r.errors.length} error(s)` : ''}
-    </div>
-    ${hasErrors ? `<div style="font-size:12px;color:var(--warning);margin-top:6px">${r.errors.map(e => esc(e)).join('<br>')}</div>` : ''}
-  </div>`;
-}
-
-async function runCarSync() {
-  const btn = document.getElementById('sync-run-btn');
-  btn.disabled = true; btn.textContent = 'Syncing…';
-  try {
-    await saveCarSyncConfig(true);
-    const d = await apiFetch('/api/carsync/run', { method: 'POST' }).then(r => r.json());
-    if (d.error) { alert('Sync error: ' + d.error); return; }
-    showSyncResult(d);
-  } catch (e) { alert('Sync error: ' + e.message); }
-  finally { btn.disabled = false; btn.textContent = 'Run Sync Now'; }
 }
 
 async function logout() {
@@ -2778,7 +2266,7 @@ async function loadEmployees() {
     if (!emps.length) {
       tableC.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px">No employee portal accounts yet. Click "+ Create Employee" to add one.</div>';
     } else {
-      const permLabels = { requests: 'Requests', drive: 'Drive', sheets: 'Sheets', pdfscraper: 'PDF Scraper', email: 'Email', viewAllRequests: 'View All Requests' };
+      const permLabels = { requests: 'Requests', drive: 'Drive', sheets: 'Sheets', email: 'Email', viewAllRequests: 'View All Requests' };
       tableC.innerHTML = `<div style="overflow-x:auto"><table>
         <thead><tr><th>Name</th><th>Username</th><th>Job Title</th><th>Email</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>${emps.map(e => {
@@ -2840,13 +2328,12 @@ async function loadEmployees() {
 
 function openEmpModal(id) {
   const e = id ? allEmployees.find(x => x.id === id) : null;
-  const p = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, quotation:false, ...(e?.permissions||{}) };
+  const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, ...(e?.permissions||{}) };
   const permItems = [
     { key:'requests',        label:'Requests',          desc:'Submit & view own requests' },
     { key:'viewAllRequests', label:'View All Requests',  desc:'See all requests from every employee' },
     { key:'drive',           label:'My Drive',           desc:'Browse Google Drive files' },
     { key:'sheets',          label:'My Sheets',          desc:'Browse Google Sheets' },
-    { key:'pdfscraper',      label:'PDF Scraper',        desc:'Use the Autohome spec scraper' },
     { key:'email',           label:'Email',              desc:'Access personal email' },
     { key:'quotation',       label:'Quotation Draft',    desc:'Create quotation drafts and generate PDFs' },
   ];
@@ -2893,7 +2380,6 @@ async function saveEmployee(id) {
       viewAllRequests: document.getElementById('perm-viewAllRequests')?.checked ?? false,
       drive:           document.getElementById('perm-drive')?.checked            ?? true,
       sheets:          document.getElementById('perm-sheets')?.checked           ?? true,
-      pdfscraper:      document.getElementById('perm-pdfscraper')?.checked       ?? false,
       email:           document.getElementById('perm-email')?.checked            ?? false,
       quotation:       document.getElementById('perm-quotation')?.checked        ?? false,
     },
@@ -3335,7 +2821,7 @@ function adminJoinMeeting() {
   if (!ok) return;
   adminStartPresenceHeartbeat();
   const hash = location.hash.replace('#', '');
-  const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','carsync','chat','calendar','meet','gchat'];
+  const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','chat','calendar','meet','quotation','customers','deals','whatsapp'];
   if (hash && validPages.includes(hash)) navigate(hash);
   else loadDashboard();
 })();
@@ -3960,125 +3446,6 @@ async function deleteSubmission(id) {
   const res = await apiFetch(`/api/submissions/${id}`, { method: 'DELETE' });
   if (res.ok) loadSubmissions();
   else alert('Delete failed');
-}
-
-// ── PDF Scraper ───────────────────────────────────────────────────────────────
-async function scrapeFromUrl() {
-  const input = document.getElementById('scrape-url-input');
-  const btn   = document.getElementById('scrape-url-btn');
-  const url   = (input.value || '').trim();
-  if (!url) { input.focus(); return; }
-  if (!url.includes('autohome.com.cn')) {
-    showPdfStatus('Only autohome.com.cn URLs are supported', 'error'); return;
-  }
-  btn.disabled = true; btn.textContent = 'Scraping…';
-  document.getElementById('pdf-results').style.display = 'none';
-  document.getElementById('pdf-dl-btn').style.display  = 'none';
-  showPdfStatus('Loading page and extracting table… this may take 20–40 seconds', 'info');
-  try {
-    const res  = await apiFetch('/api/pdf-scraper/scrape-url', { method: 'POST', body: JSON.stringify({ url }) });
-    const data = await res.json();
-    if (!res.ok || data.error) { showPdfStatus('Error: ' + (data.error || 'Scrape failed'), 'error'); return; }
-    showPdfStatus(`Done — ${data.trims.length} trims, ${data.specs.length} spec rows`, 'ok');
-    renderPdfResults(data);
-  } catch (e) {
-    showPdfStatus('Error: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Scrape';
-  }
-}
-
-function handlePdfDrop(e) {
-  const file = e.dataTransfer.files[0];
-  if (file && file.type === 'application/pdf') uploadPdf(file);
-  else showPdfStatus('Please drop a PDF file.', 'error');
-}
-
-function showPdfStatus(msg, type) {
-  const el = document.getElementById('pdf-status');
-  el.style.display = 'block';
-  el.style.background = type === 'error' ? 'rgba(239,68,68,.1)' : type === 'ok' ? 'rgba(34,197,94,.1)' : 'rgba(90,103,216,.1)';
-  el.style.color = type === 'error' ? 'var(--danger)' : type === 'ok' ? 'var(--success)' : 'var(--primary)';
-  el.style.border = `1px solid ${type === 'error' ? 'var(--danger)' : type === 'ok' ? 'var(--success)' : 'var(--primary)'}`;
-  el.textContent = msg;
-}
-
-async function uploadPdf(file) {
-  if (!file) return;
-  document.getElementById('pdf-results').style.display = 'none';
-  document.getElementById('pdf-dl-btn').style.display  = 'none';
-  showPdfStatus(`Parsing "${file.name}"…`, 'info');
-
-  const fd = new FormData();
-  fd.append('pdf', file);
-  try {
-    const res  = await apiFetch('/api/pdf-scraper/upload', { method: 'POST', body: fd });
-    const data = await res.json();
-    if (!res.ok || data.error) { showPdfStatus('Error: ' + (data.error || 'Upload failed'), 'error'); return; }
-    showPdfStatus(`Done — ${data.specs.length} spec rows extracted from ${data.trims.length} trim${data.trims.length > 1 ? 's' : ''}.`, 'ok');
-    renderPdfResults(data);
-  } catch (e) {
-    showPdfStatus('Error: ' + e.message, 'error');
-  }
-}
-
-function renderPdfResults(data) {
-  // Trim cards
-  const trimsEl = document.getElementById('pdf-trims');
-  trimsEl.innerHTML = data.trims.map((t, i) => `
-    <div style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Trim ${i + 1}</div>
-      <div style="font-size:13px;font-weight:600;color:var(--text);line-height:1.3">${esc(t.name)}</div>
-      ${t.price ? `<div style="font-size:12px;color:var(--primary);font-weight:700;margin-top:6px">¥${esc(t.price)}</div>` : ''}
-    </div>`).join('');
-
-  // Table
-  const colStyle = 'padding:8px 12px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis';
-  const hStyle   = 'padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--surface);border-bottom:2px solid var(--border);white-space:nowrap';
-
-  document.getElementById('pdf-thead').innerHTML = `<tr>
-    <th style="${hStyle}">Spec</th>
-    ${data.trims.map(t => `<th style="${hStyle}">${esc(t.name.replace(/^.*?\d{4}\s*/,''))}</th>`).join('')}
-  </tr>`;
-
-  let lastSection = '';
-  document.getElementById('pdf-tbody').innerHTML = data.specs.map(s => {
-    let sectionRow = '';
-    if (s.section && s.section !== lastSection) {
-      lastSection = s.section;
-      sectionRow = `<tr><td colspan="${data.trims.length + 1}" style="padding:10px 12px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--primary);background:var(--bg);border-bottom:1px solid var(--border)">${esc(s.section)}</td></tr>`;
-    }
-    const cells = s.values.map(v => {
-      const isEmpty = !v || v === '-';
-      return `<td style="${colStyle};color:${isEmpty ? 'var(--muted)' : 'var(--text)'}" title="${esc(v)}">${esc(isEmpty ? '—' : v)}</td>`;
-    }).join('');
-    return sectionRow + `<tr style="transition:background .1s" onmouseover="this.style.background='var(--surface)'" onmouseout="this.style.background=''">
-      <td style="${colStyle};font-weight:600;color:var(--text);min-width:180px">${esc(s.label)}</td>${cells}
-    </tr>`;
-  }).join('');
-
-  document.getElementById('pdf-results').style.display  = 'block';
-  document.getElementById('pdf-dl-btn').style.display   = '';
-}
-
-async function downloadPdfCsv() {
-  const btn = document.getElementById('pdf-dl-btn');
-  btn.disabled = true; btn.textContent = 'Preparing…';
-  try {
-    const res  = await apiFetch('/api/pdf-scraper/download');
-    if (!res.ok) { alert('Download failed: ' + res.status); return; }
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    const cd   = res.headers.get('Content-Disposition') || '';
-    const m    = cd.match(/filename="([^"]+)"/);
-    a.href     = url;
-    a.download = m ? m[1] : 'specs.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  } finally {
-    btn.disabled = false; btn.textContent = 'Download CSV';
-  }
 }
 
 // ── Quotation Draft ────────────────────────────────────────────────────────────
