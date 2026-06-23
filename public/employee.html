@@ -991,15 +991,9 @@
         <label class="form-label">Description</label>
         <textarea class="form-control" id="nt-desc" rows="2" placeholder="More details…" style="resize:vertical"></textarea>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Channel *</label>
-          <select class="form-control" id="nt-channel"><option value="">Loading…</option></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Due Date *</label>
-          <input class="form-control" id="nt-due" type="date">
-        </div>
+      <div class="form-group">
+        <label class="form-label">Due Date *</label>
+        <input class="form-control" id="nt-due" type="date">
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -1336,14 +1330,6 @@ async function openNewTaskModal() {
   document.getElementById('nt-priority').value  = 'medium';
   document.getElementById('task-modal-err').style.display = 'none';
   document.getElementById('task-modal-overlay').style.display = 'flex';
-  // Load channels
-  try {
-    const r = await ef('/api/employee/channels');
-    const channels = await r.json();
-    document.getElementById('nt-channel').innerHTML =
-      '<option value="">Select channel…</option>' +
-      channels.map(c => `<option value="${c.id}|${c.name}">${c.name}</option>`).join('');
-  } catch (e) { document.getElementById('nt-channel').innerHTML = '<option value="">Failed to load</option>'; }
 }
 
 function closeTaskModal() {
@@ -1355,16 +1341,13 @@ async function submitNewTask() {
   const err = document.getElementById('task-modal-err');
   err.style.display = 'none';
   const title    = document.getElementById('nt-title').value.trim();
-  const chanVal  = document.getElementById('nt-channel').value;
   const due_date = document.getElementById('nt-due').value;
   if (!title)    { err.textContent = 'Title is required'; err.style.display = 'block'; return; }
-  if (!chanVal)  { err.textContent = 'Please select a channel'; err.style.display = 'block'; return; }
   if (!due_date) { err.textContent = 'Due date is required'; err.style.display = 'block'; return; }
-  const [channel_id, channel_name] = chanVal.split('|');
   btn.disabled = true; btn.textContent = 'Creating…';
   try {
     const r = await ef('/api/employee/my-tasks', { method: 'POST', body: JSON.stringify({
-      title, channel_id, channel_name,
+      title,
       description: document.getElementById('nt-desc').value.trim(),
       due_date,
       priority:  document.getElementById('nt-priority').value,
