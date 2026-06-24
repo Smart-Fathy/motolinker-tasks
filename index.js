@@ -638,9 +638,15 @@ receiver.router.put('/api/dashboard/tasks/:id', requireAuth, express.json(), asy
   const updates = { ...req.body, updated_at: new Date().toISOString() };
   if (updates.status === 'done' && !updates.completed_at) updates.completed_at = new Date().toISOString();
   if (updates.status && updates.status !== 'done') updates.completed_at = null;
+  // Capture prior assignee to detect (re)assignment
+  const { data: prev } = await supabase.from('tasks').select('assignee_id').eq('id', req.params.id).single();
   const { data, error } = await supabase.from('tasks').update(updates).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
   updateTaskInSlackList(data).catch(() => {});
+  // Notify the assignee only when the task was assigned to a different person
+  if (data?.assignee_id && String(data.assignee_id) !== String(prev?.assignee_id || '')) {
+    notifyEmployeeTaskAssigned(data);
+  }
   res.json(data);
 });
 
@@ -771,11 +777,12 @@ receiver.router.put('/api/dashboard/requests/:id', requireAuth, express.json(), 
     const { data: emp } = await supabase.from('employees').select('id').eq('username', existing.created_by).single();
     if (emp) {
       const labels = { pending: 'Pending', in_review: 'In Review', approved: '✓ Approved', rejected: 'Rejected' };
-      sendPushToOfflineMembers([`employee_${emp.id}`], {
+      createNotification(`employee_${emp.id}`, {
+        type: 'request',
         title: `Request ${labels[data.status] || data.status}`,
         body: data.title,
-        url: '/employee'
-      });
+        url: '/employee',
+      }, 'offline');
     }
   }
   res.json(data);
@@ -1128,6 +1135,15 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json
     .insert({ title, description: description || '', priority: priority || 'medium', assigned_to: '', created_by: req.employee.username, status: 'pending', category: category || '' })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
+  // Notify admin notification center
+  if (data) {
+    createNotification('admin', {
+      type: 'request',
+      title: '📨 New employee request',
+      body: `${req.employee.name}: ${title}`,
+      url: '/dashboard',
+    }, 'offline');
+  }
   // Notify chiefs channel on Slack
   if (slackClient && CHIEFS_CHANNEL_ID && data) {
     const prioEmoji = { high: '🔴', medium: '🟡', low: '🟢' }[priority || 'medium'] || '🟡';
@@ -1501,25 +1517,42 @@ async function sendPushAlways(memberKeys, payload) {
   }
 }
 
-// Persistent task-notification SSE: one per logged-in employee, always open.
-const taskSseClients = new Map(); // key: 'employee_<id>'
+// ─── Notification Center ────────────────────────────────────────────────────
+// Persistent notification SSE: one per logged-in member ('admin' | 'employee_<id>'),
+// kept open the whole time the portal is loaded.
+const notifSseClients = new Map();
+
+// Create a notification: persist (best-effort), push it live over SSE, and fire push.
+// pushMode: 'always' (ignore online filter) | 'offline' (skip if connected) | false (none)
+async function createNotification(memberKey, { type = 'general', title, body = '', url = '' }, pushMode = 'offline') {
+  if (!memberKey || !title) return null;
+  const defaultUrl = url || (memberKey === 'admin' ? '/dashboard' : '/employee');
+  let row = { member_key: memberKey, type, title, body, url: defaultUrl, read: false, created_at: new Date().toISOString() };
+  try {
+    const { data } = await supabase.from('notifications')
+      .insert({ member_key: memberKey, type, title, body, url: defaultUrl })
+      .select().single();
+    if (data) row = data;
+  } catch (e) { console.warn('[notif] persist failed:', e.message); }
+  // Live SSE to an open portal
+  const sseRes = notifSseClients.get(memberKey);
+  console.log('[notif]', memberKey, type, 'sse=' + !!sseRes);
+  if (sseRes) { try { sseRes.write(`event: notification\ndata: ${JSON.stringify(row)}\n\n`); } catch (_) {} }
+  // OS push
+  const payload = { title, body, url: defaultUrl };
+  if (pushMode === 'always') sendPushAlways([memberKey], payload);
+  else if (pushMode === 'offline') sendPushToOfflineMembers([memberKey], payload);
+  return row;
+}
 
 function notifyEmployeeTaskAssigned(task) {
   if (!task?.assignee_id) return;
-  const key = `employee_${task.assignee_id}`;
-  const payload = {
+  createNotification(`employee_${task.assignee_id}`, {
+    type: 'task',
     title: '📋 New task assigned',
     body: `${task.title} · due ${task.due_date} · ${task.priority} priority`,
-    url: '/employee'
-  };
-  // In-app SSE for employees who have the portal open
-  const sseRes = taskSseClients.get(key);
-  console.log('[task-notify]', key, 'sse=' + !!sseRes);
-  if (sseRes) {
-    try { sseRes.write(`event: task_assigned\ndata: ${JSON.stringify({ task })}\n\n`); } catch (_) {}
-  }
-  // Push — unconditional, reaches backgrounded / closed browsers
-  sendPushAlways([key], payload);
+    url: '/employee',
+  }, 'always');
 }
 
 async function chatListRooms(callerKey) {
@@ -1650,17 +1683,51 @@ receiver.router.get('/api/employee/chat/events', requireEmployeeAuth, (req, res)
   req.on('close', () => { clearInterval(ka); chatSseClients.delete(key); });
 });
 
-// SSE — Employee task notifications (persistent, open for the whole portal session)
-receiver.router.get('/api/employee/task-events', requireEmployeeAuth, (req, res) => {
-  const key = `employee_${req.employee.id}`;
+// ─── Notification Center streams + REST (both portals) ────────────────────────
+function openNotifStream(key, res, reqObj) {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
   res.write(':ok\n\n');
-  taskSseClients.set(key, res);
-  console.log('[task-sse] connected', key);
+  notifSseClients.set(key, res);
+  console.log('[notif-sse] connected', key);
   const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
-  req.on('close', () => { clearInterval(ka); taskSseClients.delete(key); });
-});
+  reqObj.on('close', () => { clearInterval(ka); notifSseClients.delete(key); });
+}
+
+async function listNotifications(memberKey, res) {
+  try {
+    const { data } = await supabase.from('notifications')
+      .select('*').eq('member_key', memberKey).order('created_at', { ascending: false }).limit(50);
+    const items = data || [];
+    res.json({ items, unread: items.filter(n => !n.read).length });
+  } catch (_) { res.json({ items: [], unread: 0 }); }
+}
+
+async function markNotificationsRead(memberKey, body, res) {
+  try {
+    let q = supabase.from('notifications').update({ read: true }).eq('member_key', memberKey);
+    if (body?.id) q = q.eq('id', body.id);
+    else q = q.eq('read', false);
+    await q;
+    res.json({ ok: true });
+  } catch (_) { res.json({ ok: true }); }
+}
+
+// Employee
+receiver.router.get('/api/employee/notifications/stream', requireEmployeeAuth, (req, res) =>
+  openNotifStream(`employee_${req.employee.id}`, res, req));
+receiver.router.get('/api/employee/notifications', requireEmployeeAuth, (req, res) =>
+  listNotifications(`employee_${req.employee.id}`, res));
+receiver.router.post('/api/employee/notifications/read', requireEmployeeAuth, express.json(), (req, res) =>
+  markNotificationsRead(`employee_${req.employee.id}`, req.body, res));
+
+// Admin
+receiver.router.get('/api/dashboard/notifications/stream', requireAuth, (req, res) =>
+  openNotifStream('admin', res, req));
+receiver.router.get('/api/dashboard/notifications', requireAuth, (req, res) =>
+  listNotifications('admin', res));
+receiver.router.post('/api/dashboard/notifications/read', requireAuth, express.json(), (req, res) =>
+  markNotificationsRead('admin', req.body, res));
 
 // People lists
 receiver.router.get('/api/dashboard/chat/people', requireAuth, async (_req, res) => {
@@ -2461,10 +2528,10 @@ async function sendDueDateReminders() {
     supabase.from('tasks').select('id,title,assignee_id').lt('due_date', today).neq('status', 'done'),
   ]);
   for (const t of dueTomorrow || []) {
-    if (t.assignee_id) sendPushToOfflineMembers([`employee_${t.assignee_id}`], { title: '⏰ Task due tomorrow', body: t.title, url: '/employee' });
+    if (t.assignee_id) createNotification(`employee_${t.assignee_id}`, { type: 'reminder', title: '⏰ Task due tomorrow', body: t.title, url: '/employee' }, 'offline');
   }
   for (const t of overdue || []) {
-    if (t.assignee_id) sendPushToOfflineMembers([`employee_${t.assignee_id}`], { title: '🔴 Overdue task', body: t.title, url: '/employee' });
+    if (t.assignee_id) createNotification(`employee_${t.assignee_id}`, { type: 'reminder', title: '🔴 Overdue task', body: t.title, url: '/employee' }, 'offline');
   }
 }
 
@@ -2489,11 +2556,12 @@ async function sendHoursLogReminder() {
   const loggedIds = new Set((logsToday || []).map(l => l.employee_id));
   for (const emp of allEmps || []) {
     if (!loggedIds.has(emp.id)) {
-      sendPushToOfflineMembers([`employee_${emp.id}`], {
+      createNotification(`employee_${emp.id}`, {
+        type: 'reminder',
         title: '⏰ Log your hours',
         body: "Please log today's working hours before you leave.",
-        url: '/employee'
-      });
+        url: '/employee',
+      }, 'offline');
     }
   }
 }
