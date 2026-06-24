@@ -369,6 +369,21 @@ CREATE TRIGGER whatsapp_contacts_updated_at
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ============================================================
+--  Notification Center (bell + counter, both portals)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS notifications (
+  id          BIGSERIAL PRIMARY KEY,
+  member_key  TEXT NOT NULL,            -- 'admin' | 'employee_<id>'
+  type        TEXT DEFAULT 'general',   -- task | request | reminder | submission | general
+  title       TEXT NOT NULL,
+  body        TEXT DEFAULT '',
+  url         TEXT DEFAULT '',
+  read        BOOLEAN DEFAULT FALSE,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_member ON notifications (member_key, created_at DESC);
+
+-- ============================================================
 --  Optional: Row Level Security (RLS)
 -- ============================================================
 
