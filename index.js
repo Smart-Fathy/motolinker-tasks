@@ -2447,7 +2447,7 @@ function buildQuotationHtml(data) {
       <div style="margin-top:8px"><strong>Currency:</strong> ${currency || 'EGP'}</div>
       <div style="padding-left:14px"><strong>Exchange:</strong> ${fmtNum(exchange)}</div>
       ${issuer ? `<div style="margin-top:4px"><strong>Issuer:</strong> ${issuer}</div>` : ''}
-      ${(customSpecs || []).map(sp => `<div><strong>${sp.key || ''}:</strong> ${sp.val || ''}</div>`).join('')}
+      ${(customSpecs || []).map(sp => sp.key ? `<div><strong>${sp.key}:</strong> ${sp.val || ''}</div>` : `<div>${sp.val || ''}</div>`).join('')}
     </div>
   </div>
 
