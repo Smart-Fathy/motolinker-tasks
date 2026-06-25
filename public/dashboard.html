@@ -796,7 +796,7 @@
   .sidebar-logo-sub{ color:var(--gold); }
   .nav-item.active{ background:rgba(201,163,94,.12)!important; color:var(--gold)!important; box-shadow:inset 0 0 0 1px var(--hair-gold); }
   .nav-item:hover{ background:rgba(255,255,255,.05); color:#f3efe7; }
-  .logo,.sidebar-logo-icon{ background:#0f0f11 url('https://images.motolinkers.com/avatar-11-max-reev/05_logo_copy-1__1_-removebg-preview2.png') center/contain no-repeat; border:1px solid var(--gold); border-radius:50%; color:var(--gold); font-family:'Cormorant Garamond',serif; font-weight:600; }
+  .logo,.sidebar-logo-icon{ background:#0f0f11 url('https://images.motolinkers.com/avatar-11-max-reev/05_logo_copy-1__1_-removebg-preview2.png') center/contain no-repeat; border:1px solid var(--gold); border-radius:50%; color:transparent; font-size:0; font-family:'Cormorant Garamond',serif; font-weight:600; }
   .chart-card,.card,.table-card,.stat-card,.hours-card,.employee-card,.progress-card,.email-connect-card,.auth-card{ background:var(--panel)!important; border:1px solid var(--hair)!important; box-shadow:none!important; border-radius:4px!important; }
   .stat-card{ border-top:1px solid var(--hair); }
   .stat-card.total .stat-value,.stat-card.done .stat-value,.stat-card.in-progress .stat-value,.stat-card.todo .stat-value,.stat-card.high-pri .stat-value,.stat-card.overdue .stat-value{ color:var(--text); }
@@ -880,7 +880,7 @@
   <!-- Sidebar -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
-      <div class="sidebar-logo-icon">M</div>
+      <div class="sidebar-logo-icon"></div>
       <div>
         <div class="sidebar-logo-text">MotoLinker</div>
         <div class="sidebar-logo-sub">Super Admin</div>
@@ -894,7 +894,7 @@
       <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><i data-lucide="mail"></i></span> Submissions</div>
       <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><i data-lucide="clock"></i></span> Hours Logs</div>
       <div class="sidebar-section-label">CRM</div>
-      <div class="nav-item"        onclick="navigate('customers')"  id="nav-customers">    <span class="nav-icon"><i data-lucide="user-circle-2"></i></span> Customers</div>
+      <div class="nav-item"        onclick="navigate('customers')"  id="nav-customers">    <span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads</div>
       <div class="nav-item"        onclick="navigate('deals')"      id="nav-deals">        <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals</div>
       <div class="sidebar-section-label">Integrations</div>
       <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft</div>
@@ -921,7 +921,7 @@
   <header class="header">
     <div class="header-left">
       <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu"><i data-lucide="menu" style="width:22px;height:22px"></i></button>
-      <div class="logo">M</div>
+      <div class="logo"></div>
       <h1>MotoLinker</h1>
       <span class="header-badge">Admin Dashboard</span>
     </div>
@@ -1354,6 +1354,18 @@
             </div>
           </div>
         </div>
+        <div class="card" style="margin-top:16px">
+          <div class="table-header"><span class="table-title">Notification Settings</span></div>
+          <div style="padding:20px;display:grid;gap:16px">
+            <div>
+              <label class="form-label">Notify on Deal → Contacted</label>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:8px">When a deal stage changes to "Contacted", send a notification to this employee to create a quotation.</div>
+              <select class="form-input" id="qts-contact-notify-id">
+                <option value="">— Nobody —</option>
+              </select>
+            </div>
+          </div>
+        </div>
         <div style="margin-top:16px;display:flex;justify-content:flex-end">
           <button class="btn btn-primary" onclick="saveQtSettings()"><i data-lucide="save" style="width:14px;height:14px"></i> Save Settings</button>
         </div>
@@ -1383,28 +1395,54 @@
     </div>
   </div>
 
-  <!-- ── Customers Page ── -->
+  <!-- ── Leads Page ── -->
   <div id="page-customers" class="page">
-    <div class="page-body">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+    <div class="page-body" style="max-width:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
         <div>
-          <div class="page-title">Customers</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:4px">Manage your customer database</div>
+          <div class="page-title">Leads</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Manage your lead database</div>
         </div>
-        <button class="btn btn-primary" onclick="openCustomerModal()">
-          <i data-lucide="user-plus" style="width:15px;height:15px"></i> Add Customer
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-outline" onclick="openCsvImportModal()">
+            <i data-lucide="upload" style="width:15px;height:15px"></i> Import CSV
+          </button>
+          <button class="btn btn-primary" onclick="openCustomerModal()">
+            <i data-lucide="user-plus" style="width:15px;height:15px"></i> Add Lead
+          </button>
+        </div>
+      </div>
+      <!-- Bulk action bar -->
+      <div id="leads-bulk-bar" style="display:none;align-items:center;gap:12px;padding:8px 14px;background:rgba(201,163,94,.08);border:1px solid var(--hair-gold);border-radius:8px;margin-bottom:12px">
+        <span id="leads-bulk-count" style="font-size:13px;font-weight:600;color:var(--gold)">0 selected</span>
+        <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--danger);border:none" onclick="bulkDeleteLeads()">
+          <i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete Selected
         </button>
+        <button class="btn btn-sm btn-outline" onclick="clearLeadSelection()">Cancel</button>
       </div>
-      <div style="margin-bottom:16px">
-        <input class="filter-input" id="customer-search" placeholder="Search by name or phone…" oninput="filterCustomers()" style="max-width:320px">
+      <!-- Filters -->
+      <div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap">
+        <input class="filter-input" id="customer-search" placeholder="Search name, phone, car…" oninput="filterCustomers()" style="max-width:260px">
+        <select class="filter-input" id="lead-status-filter" onchange="filterCustomers()" style="max-width:180px">
+          <option value="">All Statuses</option>
+          <option value="cold">Cold</option>
+          <option value="warm">Warm</option>
+          <option value="hot">Hot</option>
+          <option value="immediate_delivery">Immediate Delivery</option>
+          <option value="not_interested">Not Interested</option>
+          <option value="blacklist">Blacklist</option>
+        </select>
       </div>
-      <div class="table-card">
-        <table class="table" id="customers-table">
+      <div class="table-card" style="overflow-x:auto">
+        <table class="table" id="customers-table" style="min-width:1200px">
           <thead><tr>
-            <th>Name</th><th>Phone</th><th>Email</th><th>Source</th><th>Notes</th><th>Deals</th><th>Actions</th>
+            <th style="width:36px;padding:8px 6px"><input type="checkbox" id="select-all-leads" onchange="toggleSelectAllLeads(this)"></th>
+            <th>Date</th><th>Time</th><th>Name</th><th>Phone</th><th>Status</th>
+            <th>Origin</th><th>Car</th><th>Budget</th><th>Next Action</th>
+            <th>Contacted</th><th>Notes</th><th>Actions</th>
           </tr></thead>
           <tbody id="customers-tbody">
-            <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">Loading…</td></tr>
+            <tr><td colspan="13" style="text-align:center;color:var(--muted);padding:32px">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -1429,48 +1467,133 @@
     </div>
   </div>
 
-  <!-- Customer Modal -->
+  <!-- Lead Modal -->
   <div id="customer-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
-    <div class="modal" style="width:100%;max-width:500px">
+    <div class="modal" style="width:100%;max-width:640px;max-height:92vh;overflow-y:auto">
       <div class="modal-header">
-        <div class="modal-title" id="customer-modal-title">Add Customer</div>
+        <div class="modal-title" id="customer-modal-title">Add Lead</div>
         <button class="modal-close" onclick="closeCustomerModal()">×</button>
       </div>
       <div class="modal-body" style="padding:24px;display:grid;gap:14px">
         <input type="hidden" id="cm-id">
-        <div>
-          <label class="form-label">Name <span style="color:var(--danger)">*</span></label>
-          <input class="form-input" id="cm-name" placeholder="Full name">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label class="form-label">Date</label>
+            <input class="form-input" id="cm-date" type="date">
+          </div>
+          <div>
+            <label class="form-label">Time</label>
+            <input class="form-input" id="cm-time" type="time">
+          </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label class="form-label">Name <span style="color:var(--danger)">*</span></label>
+            <input class="form-input" id="cm-name" placeholder="Full name">
+          </div>
           <div>
             <label class="form-label">Phone</label>
             <input class="form-input" id="cm-phone" placeholder="+20 …">
           </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div>
-            <label class="form-label">Email</label>
-            <input class="form-input" id="cm-email" type="email" placeholder="email@…">
+            <label class="form-label">Status</label>
+            <select class="form-input" id="cm-lead-status">
+              <option value="cold">Cold</option>
+              <option value="warm">Warm</option>
+              <option value="hot">Hot</option>
+              <option value="immediate_delivery">Immediate Delivery</option>
+              <option value="not_interested">Not Interested</option>
+              <option value="blacklist">Blacklist</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Origin</label>
+            <select class="form-input" id="cm-source">
+              <option value="">— Unknown —</option>
+              <option value="fb_ad">FB Ad.</option>
+              <option value="whatsapp">Whatsapp</option>
+              <option value="messenger">Messenger</option>
+              <option value="direct_call">Direct Call</option>
+              <option value="ig_ads">IG ads</option>
+            </select>
           </div>
         </div>
-        <div>
-          <label class="form-label">Source</label>
-          <select class="form-input" id="cm-source">
-            <option value="">— Unknown —</option>
-            <option value="referral">Referral</option>
-            <option value="website">Website</option>
-            <option value="social">Social Media</option>
-            <option value="walk-in">Walk-in</option>
-            <option value="other">Other</option>
-          </select>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label class="form-label">Car in Question</label>
+            <input class="form-input" id="cm-car" placeholder="e.g. Deepal S05">
+          </div>
+          <div>
+            <label class="form-label">Budget (EGP)</label>
+            <input class="form-input" id="cm-budget" type="number" min="0" placeholder="e.g. 1500000">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label class="form-label">Next Action</label>
+            <select class="form-input" id="cm-next-action">
+              <option value="">— None —</option>
+              <option value="followed_by_sales">Followed By Sales</option>
+              <option value="need_follow_up">Need Follow Up</option>
+              <option value="closed">Closed</option>
+              <option value="no_answer">No Answer</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;justify-content:flex-end">
+            <label class="form-label">Been Contacted?</label>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#0e0e10;border:1px solid var(--hair);border-radius:6px">
+              <input type="checkbox" id="cm-been-contacted" style="width:16px;height:16px;accent-color:var(--gold)">
+              <label for="cm-been-contacted" style="font-size:13px;cursor:pointer">Yes, contacted</label>
+            </div>
+          </div>
         </div>
         <div>
           <label class="form-label">Notes</label>
           <textarea class="form-input" id="cm-notes" rows="2" placeholder="Any notes…" style="resize:vertical"></textarea>
         </div>
+        <div>
+          <label class="form-label">Sales Feedback</label>
+          <textarea class="form-input" id="cm-sales-feedback" rows="2" placeholder="Feedback from sales team…" style="resize:vertical"></textarea>
+        </div>
+        <div>
+          <label class="form-label">Inquiry</label>
+          <textarea class="form-input" id="cm-inquiry" rows="2" placeholder="Customer inquiry details…" style="resize:vertical"></textarea>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeCustomerModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveCustomer()">Save</button>
+        <button class="btn btn-primary" onclick="saveCustomer()">Save Lead</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CSV Import Modal -->
+  <div id="csv-import-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
+    <div class="modal" style="width:100%;max-width:500px">
+      <div class="modal-header">
+        <div class="modal-title">Import Leads</div>
+        <button class="modal-close" onclick="document.getElementById('csv-import-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body" style="padding:24px;display:grid;gap:14px">
+        <div style="font-size:12px;color:var(--muted);line-height:1.7;background:rgba(255,255,255,.03);padding:10px 14px;border-radius:8px;border:1px solid var(--hair)">
+          CSV columns (any order): <strong>name, phone, notes, status, origin, car, budget, next_action, been_contacted, sales_feedback, inquiry, date, time</strong><br>
+          <em>name</em> column is required. Status values: cold, warm, hot, immediate_delivery, not_interested, blacklist.
+        </div>
+        <div>
+          <label class="form-label">CSV File</label>
+          <input type="file" id="csv-file-input" accept=".csv,.txt" class="form-input" style="padding:6px">
+        </div>
+        <div style="text-align:center;color:var(--muted);font-size:12px;padding:4px 0">— or paste a Google Sheets URL —</div>
+        <div>
+          <label class="form-label">Google Sheets URL <span style="color:var(--muted);font-weight:400">(must be publicly shared)</span></label>
+          <input class="form-input" id="csv-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/…">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('csv-import-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" onclick="importLeadsCsv()">Import</button>
       </div>
     </div>
   </div>
@@ -4154,7 +4277,10 @@ async function duplicateQuotation(id) {
 
 async function loadQtSettings() {
   try {
-    const settings = await apiFetch('/api/dashboard/quotation/settings').then(r => r.json());
+    const [settings, emps] = await Promise.all([
+      apiFetch('/api/dashboard/quotation/settings').then(r => r.json()),
+      apiFetch('/api/dashboard/employees-for-tasks').then(r => r.json()).catch(() => []),
+    ]);
     document.getElementById('qts-company-name').value    = settings.company_name    || '';
     document.getElementById('qts-company-phone').value   = settings.company_phone   || '';
     document.getElementById('qts-company-email').value   = settings.company_email   || '';
@@ -4163,6 +4289,11 @@ async function loadQtSettings() {
     document.getElementById('qts-company-tax-id').value  = settings.company_tax_id   || '';
     document.getElementById('qts-payment-terms').value   = settings.payment_terms    || '';
     document.getElementById('qts-footer-note').value     = settings.footer_note      || '';
+    // Populate notify dropdown
+    const sel = document.getElementById('qts-contact-notify-id');
+    if (sel) {
+      sel.innerHTML = '<option value="">— Nobody —</option>' + emps.map(e => `<option value="${esc(String(e.id))}"${String(settings.contact_notify_employee_id) === String(e.id) ? ' selected' : ''}>${esc(e.name)}</option>`).join('');
+    }
   } catch (e) { console.error('loadQtSettings', e); }
 }
 
@@ -4177,6 +4308,7 @@ async function saveQtSettings() {
     company_tax_id:  document.getElementById('qts-company-tax-id').value,
     payment_terms:   document.getElementById('qts-payment-terms').value,
     footer_note:     document.getElementById('qts-footer-note').value,
+    contact_notify_employee_id: document.getElementById('qts-contact-notify-id')?.value || '',
   };
   try {
     await apiFetch('/api/dashboard/quotation/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
@@ -4193,50 +4325,124 @@ async function saveQtSettings() {
   }
 }
 
-// ── Customers ─────────────────────────────────────────────────────────────
+// ── Leads (Customers) ─────────────────────────────────────────────────────
 let _allCustomers = [];
+let _selectedLeads = new Set();
+
+const LEAD_STATUS_LABELS = { cold:'Cold', warm:'Warm', hot:'Hot', immediate_delivery:'Immediate Delivery', not_interested:'Not Interested', blacklist:'Blacklist' };
+const LEAD_STATUS_COLORS = { cold:'rgba(255,255,255,.06)', warm:'rgba(230,150,80,.18)', hot:'rgba(239,68,68,.14)', immediate_delivery:'rgba(100,180,120,.14)', not_interested:'rgba(150,150,150,.1)', blacklist:'rgba(60,0,0,.35)' };
+const LEAD_STATUS_TEXT   = { cold:'#b9b3a4', warm:'var(--gold)', hot:'#f87171', immediate_delivery:'#6dd8a4', not_interested:'#888', blacklist:'#f87171' };
+const ORIGIN_LABELS      = { fb_ad:'FB Ad.', whatsapp:'Whatsapp', messenger:'Messenger', direct_call:'Direct Call', ig_ads:'IG ads' };
+const NEXT_ACTION_LABELS = { followed_by_sales:'Followed By Sales', need_follow_up:'Need Follow Up', closed:'Closed', no_answer:'No Answer' };
 
 async function loadCustomers() {
   try {
     _allCustomers = await apiFetch('/api/dashboard/customers').then(r => r.json());
-    renderCustomers(_allCustomers);
+    filterCustomers();
   } catch (e) {
-    document.getElementById('customers-tbody').innerHTML = `<tr><td colspan="7" style="color:var(--danger);text-align:center;padding:24px">${esc(e.message)}</td></tr>`;
+    document.getElementById('customers-tbody').innerHTML = `<tr><td colspan="13" style="color:var(--danger);text-align:center;padding:24px">${esc(e.message)}</td></tr>`;
   }
 }
 
 function filterCustomers() {
-  const q = document.getElementById('customer-search').value.toLowerCase();
-  renderCustomers(q ? _allCustomers.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q)) : _allCustomers);
+  const q = (document.getElementById('customer-search')?.value || '').toLowerCase();
+  const sf = document.getElementById('lead-status-filter')?.value || '';
+  let list = _allCustomers;
+  if (q) list = list.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.car_in_question||'').toLowerCase().includes(q));
+  if (sf) list = list.filter(c => (c.lead_status || 'cold') === sf);
+  renderCustomers(list);
 }
 
 function renderCustomers(list) {
   const tbody = document.getElementById('customers-tbody');
-  if (!list.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">No customers yet. Click "Add Customer" to get started.</td></tr>'; return; }
-  tbody.innerHTML = list.map(c => `<tr>
-    <td><strong>${esc(c.name)}</strong></td>
-    <td>${esc(c.phone||'—')}</td>
-    <td>${esc(c.email||'—')}</td>
-    <td><span class="badge">${esc(c.source||'—')}</span></td>
-    <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.notes||'')}">${esc(c.notes||'—')}</td>
-    <td><button class="btn btn-sm btn-outline" onclick="navigate('deals');filterDealsByCustomer(${c.id})"><i data-lucide="kanban-square" style="width:12px;height:12px"></i></button></td>
-    <td style="display:flex;gap:6px;flex-wrap:nowrap">
-      <button class="btn btn-sm btn-outline" onclick="openCustomerModal(${c.id})"><i data-lucide="edit-2" style="width:12px;height:12px"></i></button>
-      <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--danger);border:none" onclick="deleteCustomer(${c.id})"><i data-lucide="trash-2" style="width:12px;height:12px"></i></button>
-    </td>
-  </tr>`).join('');
+  if (!list.length) { tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:32px">No leads yet. Click "Add Lead" to get started.</td></tr>'; return; }
+  tbody.innerHTML = list.map(c => {
+    const st = c.lead_status || 'cold';
+    const slabel = LEAD_STATUS_LABELS[st] || st;
+    const sbg = LEAD_STATUS_COLORS[st] || LEAD_STATUS_COLORS.cold;
+    const scol = LEAD_STATUS_TEXT[st] || LEAD_STATUS_TEXT.cold;
+    const olabel = ORIGIN_LABELS[c.source] || c.source || '—';
+    const nalabel = NEXT_ACTION_LABELS[c.next_action] || c.next_action || '—';
+    const checked = _selectedLeads.has(c.id) ? 'checked' : '';
+    return `<tr>
+      <td style="padding:8px 6px"><input type="checkbox" ${checked} onchange="toggleLeadSelect(${c.id})" onclick="event.stopPropagation()"></td>
+      <td style="font-size:12px;white-space:nowrap">${c.lead_date || '—'}</td>
+      <td style="font-size:12px;white-space:nowrap">${c.lead_time || '—'}</td>
+      <td><strong>${esc(c.name)}</strong></td>
+      <td style="white-space:nowrap">${esc(c.phone||'—')}</td>
+      <td><span style="background:${sbg};color:${scol};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap">${esc(slabel)}</span></td>
+      <td style="font-size:12px">${esc(olabel)}</td>
+      <td style="font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.car_in_question||'')}">${esc(c.car_in_question||'—')}</td>
+      <td style="font-size:12px;white-space:nowrap">${c.budget_lead ? Number(c.budget_lead).toLocaleString() + ' EGP' : '—'}</td>
+      <td style="font-size:11px;white-space:nowrap">${esc(nalabel)}</td>
+      <td style="text-align:center;font-size:16px">${c.been_contacted ? '✅' : '⬜'}</td>
+      <td style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${esc(c.notes||'')}">${esc(c.notes||'—')}</td>
+      <td style="display:flex;gap:5px;flex-wrap:nowrap">
+        <button class="btn btn-sm btn-outline" onclick="openCustomerModal(${c.id})" title="Edit"><i data-lucide="edit-2" style="width:12px;height:12px"></i></button>
+        <button class="btn btn-sm btn-outline" onclick="navigate('deals');filterDealsByCustomer(${c.id})" title="View Deals"><i data-lucide="kanban-square" style="width:12px;height:12px"></i></button>
+        <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--danger);border:none" onclick="deleteCustomer(${c.id})" title="Delete"><i data-lucide="trash-2" style="width:12px;height:12px"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+  // sync select-all checkbox state
+  const allCb = document.getElementById('select-all-leads');
+  if (allCb) allCb.checked = list.length > 0 && list.every(c => _selectedLeads.has(c.id));
   requestAnimationFrame(() => lucide.createIcons());
+}
+
+function toggleSelectAllLeads(cb) {
+  _allCustomers.forEach(c => { if (cb.checked) _selectedLeads.add(c.id); else _selectedLeads.delete(c.id); });
+  filterCustomers();
+  updateLeadsBulkBar();
+}
+
+function toggleLeadSelect(id) {
+  if (_selectedLeads.has(id)) _selectedLeads.delete(id); else _selectedLeads.add(id);
+  updateLeadsBulkBar();
+}
+
+function updateLeadsBulkBar() {
+  const bar = document.getElementById('leads-bulk-bar');
+  const n = _selectedLeads.size;
+  if (bar) { bar.style.display = n > 0 ? 'flex' : 'none'; }
+  const cnt = document.getElementById('leads-bulk-count');
+  if (cnt) cnt.textContent = n + ' selected';
+}
+
+function clearLeadSelection() {
+  _selectedLeads.clear();
+  updateLeadsBulkBar();
+  filterCustomers();
+}
+
+async function bulkDeleteLeads() {
+  if (!_selectedLeads.size) return;
+  if (!confirm(`Delete ${_selectedLeads.size} lead(s)? This cannot be undone.`)) return;
+  try {
+    await Promise.all([..._selectedLeads].map(id => apiFetch(`/api/dashboard/customers/${id}`, { method:'DELETE' })));
+    _selectedLeads.clear();
+    updateLeadsBulkBar();
+    await loadCustomers();
+  } catch (e) { alert('Error: ' + e.message); }
 }
 
 function openCustomerModal(id) {
   const c = id ? _allCustomers.find(x => x.id === id) : null;
-  document.getElementById('customer-modal-title').textContent = c ? 'Edit Customer' : 'Add Customer';
-  document.getElementById('cm-id').value      = c?.id    || '';
-  document.getElementById('cm-name').value    = c?.name  || '';
-  document.getElementById('cm-phone').value   = c?.phone || '';
-  document.getElementById('cm-email').value   = c?.email || '';
-  document.getElementById('cm-source').value  = c?.source|| '';
-  document.getElementById('cm-notes').value   = c?.notes || '';
+  document.getElementById('customer-modal-title').textContent = c ? 'Edit Lead' : 'Add Lead';
+  document.getElementById('cm-id').value = c?.id || '';
+  document.getElementById('cm-name').value = c?.name || '';
+  document.getElementById('cm-phone').value = c?.phone || '';
+  document.getElementById('cm-date').value = c?.lead_date || '';
+  document.getElementById('cm-time').value = c?.lead_time || '';
+  document.getElementById('cm-lead-status').value = c?.lead_status || 'cold';
+  document.getElementById('cm-source').value = c?.source || '';
+  document.getElementById('cm-car').value = c?.car_in_question || '';
+  document.getElementById('cm-budget').value = c?.budget_lead || '';
+  document.getElementById('cm-next-action').value = c?.next_action || '';
+  document.getElementById('cm-been-contacted').checked = c?.been_contacted || false;
+  document.getElementById('cm-notes').value = c?.notes || '';
+  document.getElementById('cm-sales-feedback').value = c?.sales_feedback || '';
+  document.getElementById('cm-inquiry').value = c?.inquiry || '';
   document.getElementById('customer-modal').style.display = 'flex';
 }
 
@@ -4245,11 +4451,19 @@ function closeCustomerModal() { document.getElementById('customer-modal').style.
 async function saveCustomer() {
   const id = document.getElementById('cm-id').value;
   const payload = {
-    name:   document.getElementById('cm-name').value.trim(),
-    phone:  document.getElementById('cm-phone').value.trim(),
-    email:  document.getElementById('cm-email').value.trim(),
-    source: document.getElementById('cm-source').value,
-    notes:  document.getElementById('cm-notes').value.trim(),
+    name:           document.getElementById('cm-name').value.trim(),
+    phone:          document.getElementById('cm-phone').value.trim(),
+    lead_date:      document.getElementById('cm-date').value || null,
+    lead_time:      document.getElementById('cm-time').value || null,
+    lead_status:    document.getElementById('cm-lead-status').value,
+    source:         document.getElementById('cm-source').value,
+    car_in_question:document.getElementById('cm-car').value.trim(),
+    budget_lead:    document.getElementById('cm-budget').value ? parseInt(document.getElementById('cm-budget').value) : null,
+    next_action:    document.getElementById('cm-next-action').value,
+    been_contacted: document.getElementById('cm-been-contacted').checked,
+    notes:          document.getElementById('cm-notes').value.trim(),
+    sales_feedback: document.getElementById('cm-sales-feedback').value.trim(),
+    inquiry:        document.getElementById('cm-inquiry').value.trim(),
   };
   if (!payload.name) { alert('Name is required.'); return; }
   try {
@@ -4262,11 +4476,37 @@ async function saveCustomer() {
 }
 
 async function deleteCustomer(id) {
-  if (!confirm('Delete this customer and all their deals?')) return;
+  if (!confirm('Delete this lead and all their deals?')) return;
   try {
     await apiFetch(`/api/dashboard/customers/${id}`, { method:'DELETE' });
     await loadCustomers();
   } catch (e) { alert('Error: ' + e.message); }
+}
+
+function openCsvImportModal() {
+  document.getElementById('csv-file-input').value = '';
+  document.getElementById('csv-sheet-url').value = '';
+  document.getElementById('csv-import-modal').style.display = 'flex';
+}
+
+async function importLeadsCsv() {
+  const fileInput = document.getElementById('csv-file-input');
+  const sheetUrl = document.getElementById('csv-sheet-url').value.trim();
+  if (!fileInput.files[0] && !sheetUrl) { alert('Please select a CSV file or enter a spreadsheet URL.'); return; }
+  try {
+    let result;
+    if (fileInput.files[0]) {
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      result = await apiFetch('/api/dashboard/customers/import', { method:'POST', body: fd }).then(r => r.json());
+    } else {
+      result = await apiFetch('/api/dashboard/customers/import', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sheetUrl }) }).then(r => r.json());
+    }
+    if (result.error) { alert('Import error: ' + result.error); return; }
+    alert(`Imported ${result.count} lead(s) successfully.`);
+    document.getElementById('csv-import-modal').style.display = 'none';
+    await loadCustomers();
+  } catch (e) { alert('Import error: ' + e.message); }
 }
 
 // ── Deals ─────────────────────────────────────────────────────────────────
