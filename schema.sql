@@ -120,7 +120,7 @@ ALTER TABLE hours_logs ADD COLUMN IF NOT EXISTS log_date DATE DEFAULT CURRENT_DA
 ALTER TABLE hours_logs ADD COLUMN IF NOT EXISTS employee_id BIGINT REFERENCES employees(id) ON DELETE SET NULL;
 
 -- Employee portal section permissions
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{"requests":true,"drive":true,"sheets":true,"pdfscraper":false,"email":false,"viewAllRequests":false,"quotation":false}'::jsonb;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{"requests":true,"drive":true,"sheets":true,"pdfscraper":false,"email":false,"viewAllRequests":false,"quotation":false,"leads":false,"deals":false}'::jsonb;
 
 -- Employee job title
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS job_title TEXT DEFAULT '';

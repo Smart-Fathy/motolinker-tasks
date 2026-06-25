@@ -836,7 +836,7 @@ receiver.router.get('/api/email/callback', async (req, res) => {
         const { data: emp } = await supabase.from('employees').select('id,name,username,permissions').eq('email', profile.email).single();
         if (!emp) return res.redirect('/employee?google_login_error=' + encodeURIComponent('No account linked to this Google address. Contact your admin.'));
         const sessionToken = generateToken();
-        const permissions = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, quotation:false, ...(emp.permissions || {}) };
+        const permissions = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, ...(emp.permissions || {}) };
         employeeSessions.set(sessionToken, { id: emp.id, name: emp.name, username: emp.username, permissions });
         return res.redirect('/employee?emp_token=' + sessionToken);
       }
@@ -1169,7 +1169,7 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json
 });
 
 // Employee auth
-const DEFAULT_PERMISSIONS = { requests: true, drive: true, sheets: true, pdfscraper: false, email: false, viewAllRequests: false, quotation: false };
+const DEFAULT_PERMISSIONS = { requests: true, drive: true, sheets: true, pdfscraper: false, email: false, viewAllRequests: false, quotation: false, leads: false, deals: false };
 
 // Google login for employee portal
 receiver.router.get('/api/employee/auth/google', (req, res) => {
@@ -2209,6 +2209,21 @@ function generateQuoteId() {
   const year = String(now.getFullYear()).slice(-2);
   return `MT${week}W${rand}Y${year}`;
 }
+
+// ── Employee read-only CRM (gated by admin permission) ──────────────────────────
+receiver.router.get('/api/employee/leads', requireEmployeeAuth, async (req, res) => {
+  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  const { data, error } = await supabase.from('customers').select('*').order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.get('/api/employee/deals', requireEmployeeAuth, async (req, res) => {
+  if (req.employee.permissions?.deals !== true) return res.status(403).json({ error: 'Not permitted' });
+  const { data, error } = await supabase.from('deals').select('*, customers(name,phone,email)').order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
 
 // ── Quotation Settings ────────────────────────────────────────────────────────
 receiver.router.get('/api/dashboard/quotation/settings', requireAuth, async (_req, res) => {
