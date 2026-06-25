@@ -853,6 +853,13 @@
   .notif-text{ font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
   .notif-time{ font-size:10.5px; color:var(--muted); margin-top:3px; }
   .notif-empty{ padding:28px 16px; text-align:center; color:var(--muted); font-size:12px; }
+  /* ── Notification center full page ── */
+  .notif-center-item{ display:flex; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:var(--radius); margin-bottom:8px; cursor:pointer; transition:background .15s; align-items:flex-start; }
+  .notif-center-item:hover{ background:rgba(255,255,255,.04); }
+  .notif-center-item.unread{ background:rgba(201,163,94,.07); border-color:rgba(201,163,94,.25); }
+  /* ── Hide scrollbars globally ── */
+  *, *::before, *::after { scrollbar-width: none; -ms-overflow-style: none; }
+  *::-webkit-scrollbar { display: none; }
   </style>
 </head>
 <body>
@@ -908,6 +915,8 @@
       <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon"><i data-lucide="mail"></i></span> My Email</div>
       <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon"><i data-lucide="hard-drive"></i></span> My Drive</div>
       <div class="nav-item"        onclick="navigate('sheets')"    id="nav-sheets">   <span class="nav-icon"><i data-lucide="table"></i></span> My Sheets</div>
+      <div class="sidebar-section-label">System</div>
+      <div class="nav-item"        onclick="navigate('notif')"     id="nav-notif">    <span class="nav-icon"><i data-lucide="bell"></i></span> Notifications<span id="notif-nav-badge" style="display:none;margin-left:auto;background:var(--danger);color:#fff;border-radius:9px;font-size:10px;font-weight:700;padding:1px 6px;line-height:1.4">0</span></div>
     </nav>
     <div class="sidebar-footer">
       <div class="logout-btn" onclick="logout()">
@@ -939,7 +948,10 @@
         <div class="notif-panel" id="notif-panel">
           <div class="notif-panel-head">
             <span>Notifications</span>
-            <button class="notif-readall" id="notif-readall" onclick="markAllNotifsRead()">Mark all read</button>
+            <div style="display:flex;align-items:center;gap:6px">
+              <button class="notif-readall" onclick="toggleNotifPanel();navigate('notif')">View all</button>
+              <button class="notif-readall" id="notif-readall" onclick="markAllNotifsRead()">Mark all read</button>
+            </div>
           </div>
           <div class="notif-list" id="notif-list">
             <div class="notif-empty">No notifications yet</div>
@@ -1760,6 +1772,22 @@
     </div>
   </div>
 
+  <!-- ── Notifications Page ── -->
+  <div id="page-notif" class="page">
+    <div class="page-body" style="max-width:720px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:18px;font-weight:700">Notification Center</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:3px">Click any notification to navigate to the relevant page</div>
+        </div>
+        <button class="btn btn-sm btn-outline" onclick="markAllNotifsRead()">Mark all read</button>
+      </div>
+      <div id="notif-center-list">
+        <div class="notif-empty" style="padding:40px;text-align:center">No notifications yet</div>
+      </div>
+    </div>
+  </div>
+
   </div><!-- /app-content -->
   </div><!-- /layout -->
 </div><!-- /app -->
@@ -2364,7 +2392,7 @@ async function syncToSlackLists() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp, notif: loadNotifPage };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
@@ -2989,7 +3017,7 @@ function adminJoinMeeting() {
   loadNotifs();
   openNotifStream();
   const hash = location.hash.replace('#', '');
-  const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','chat','calendar','meet','quotation','customers','deals','whatsapp'];
+  const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','chat','calendar','meet','quotation','customers','deals','whatsapp','notif'];
   if (hash && validPages.includes(hash)) navigate(hash);
   else loadDashboard();
 })();
@@ -3042,18 +3070,25 @@ function renderNotifs() {
     if (notifUnread > 0) { badge.textContent = notifUnread > 99 ? '99+' : notifUnread; badge.style.display = 'flex'; }
     else badge.style.display = 'none';
   }
+  const navBadge = document.getElementById('notif-nav-badge');
+  if (navBadge) {
+    if (notifUnread > 0) { navBadge.textContent = notifUnread > 99 ? '99+' : notifUnread; navBadge.style.display = 'inline'; }
+    else navBadge.style.display = 'none';
+  }
   const list = document.getElementById('notif-list');
-  if (!list) return;
-  if (!notifItems.length) { list.innerHTML = '<div class="notif-empty">No notifications yet</div>'; return; }
-  list.innerHTML = notifItems.map(n => `
-    <div class="notif-item${n.read ? '' : ' unread'}" onclick="notifClick('${esc(n.type || '')}')">
-      <span class="notif-dot"></span>
-      <div class="notif-body">
-        <div class="notif-title">${esc(n.title || '')}</div>
-        ${n.body ? `<div class="notif-text">${esc(n.body)}</div>` : ''}
-        <div class="notif-time">${esc(notifRelTime(n.created_at))}</div>
-      </div>
-    </div>`).join('');
+  if (list) {
+    if (!notifItems.length) { list.innerHTML = '<div class="notif-empty">No notifications yet</div>'; }
+    else list.innerHTML = notifItems.slice(0, 20).map(n => `
+      <div class="notif-item${n.read ? '' : ' unread'}" onclick="notifClick('${esc(n.type || '')}','${encodeURIComponent(n.url||'')}')">
+        <span class="notif-dot"></span>
+        <div class="notif-body">
+          <div class="notif-title">${esc(n.title || '')}</div>
+          ${n.body ? `<div class="notif-text">${esc(n.body)}</div>` : ''}
+          <div class="notif-time">${esc(notifRelTime(n.created_at))}</div>
+        </div>
+      </div>`).join('');
+  }
+  if (currentPage === 'notif') renderNotifPage();
 }
 
 function toggleNotifPanel() {
@@ -3072,9 +3107,61 @@ async function markAllNotifsRead() {
   try { await apiFetch('/api/dashboard/notifications/read', { method: 'POST', body: JSON.stringify({ all: true }) }); } catch (_) {}
 }
 
-function notifClick(type) {
+function notifClick(type, urlEnc) {
   document.getElementById('notif-panel')?.classList.remove('open');
+  const url = decodeURIComponent(urlEnc || '');
+  const hash = url.split('#')[1];
+  if (hash && document.getElementById('page-' + hash)) { navigate(hash); return; }
   if (type === 'request') navigate('requests');
+  else if (type === 'task') navigate('tasks');
+  else if (type === 'hours') navigate('hours');
+  else if (type === 'quotation') navigate('quotation');
+  else if (type === 'lead') navigate('customers');
+  else if (type === 'deal') navigate('deals');
+}
+
+async function loadNotifPage() {
+  try {
+    const r = await apiFetch('/api/dashboard/notifications');
+    if (r.ok) {
+      const d = await r.json();
+      notifItems = d.notifications || [];
+      notifUnread = notifItems.filter(n => !n.read).length;
+      renderNotifs();
+    }
+  } catch (_) {}
+  renderNotifPage();
+}
+
+function renderNotifPage() {
+  const container = document.getElementById('notif-center-list');
+  if (!container) return;
+  if (!notifItems.length) {
+    container.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:14px">No notifications yet</div>';
+    return;
+  }
+  container.innerHTML = notifItems.map(n => `
+    <div class="notif-center-item${n.read ? '' : ' unread'}" onclick="notifCenterClick('${esc(n.type||'')}','${encodeURIComponent(n.url||'')}')">
+      <div class="notif-dot" style="${!n.read ? 'opacity:1;margin-top:6px' : 'opacity:0;margin-top:6px'}"></div>
+      <div style="flex:1;min-width:0">
+        <div class="notif-title">${esc(n.title || '')}</div>
+        ${n.body ? `<div class="notif-text" style="margin-top:2px">${esc(n.body)}</div>` : ''}
+        <div class="notif-time" style="margin-top:4px">${esc(notifRelTime(n.created_at))}</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;margin-left:8px">${new Date(n.created_at).toLocaleDateString()}</div>
+    </div>`).join('');
+}
+
+function notifCenterClick(type, urlEnc) {
+  const url = decodeURIComponent(urlEnc || '');
+  const hash = url.split('#')[1];
+  if (hash && document.getElementById('page-' + hash)) { navigate(hash); return; }
+  if (type === 'request') navigate('requests');
+  else if (type === 'task') navigate('tasks');
+  else if (type === 'hours') navigate('hours');
+  else if (type === 'quotation') navigate('quotation');
+  else if (type === 'lead') navigate('customers');
+  else if (type === 'deal') navigate('deals');
 }
 
 function showAdminToast(msg) {
