@@ -3860,10 +3860,9 @@ function addCustomSpecRow(containerId) {
   if (!container) return;
   const row = document.createElement('div');
   row.className = 'qt-custom-spec-row';
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 36px;gap:8px;margin-bottom:8px;align-items:center';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 36px;gap:8px;margin-bottom:8px;align-items:center';
   row.innerHTML = `
-    <input class="form-input" placeholder="Field name (e.g. Incoterms)">
-    <input class="form-input" placeholder="Value (e.g. CIF)">
+    <input class="form-input" placeholder="e.g. Incoterms: CIF">
     <button onclick="this.closest('.qt-custom-spec-row').remove()"
       style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
       <i data-lucide="x" style="width:13px;height:13px"></i>
@@ -3972,10 +3971,8 @@ async function generateQuotation() {
   // Collect custom specs
   const customSpecs = [];
   document.querySelectorAll('#qt-custom-specs .qt-custom-spec-row').forEach(row => {
-    const inputs = row.querySelectorAll('input');
-    const key = inputs[0]?.value.trim();
-    const val = inputs[1]?.value.trim();
-    if (key) customSpecs.push({ key, val: val || '' });
+    const val = row.querySelector('input')?.value.trim();
+    if (val) customSpecs.push({ key: '', val });
   });
 
   btn.disabled = true;
