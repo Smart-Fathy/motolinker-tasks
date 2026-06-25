@@ -1430,6 +1430,34 @@ function parseCsvLine(line) {
   }
   values.push(current); return values;
 }
+function normalizeLeadDate(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  // Already ISO (YYYY-MM-DD or YYYY/MM/DD)
+  let m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (m) {
+    const [, y, mo, d] = m;
+    return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  // Day-first or month-first: D-M-YYYY, DD/MM/YYYY, etc. (Egypt → day-first default)
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/);
+  if (m) {
+    let [, a, b, y] = m;
+    if (y.length === 2) y = '20' + y;
+    let day = parseInt(a, 10), mon = parseInt(b, 10);
+    if (day > 12 && mon <= 12) { /* clearly day-first */ }
+    else if (mon > 12 && day <= 12) { [day, mon] = [mon, day]; } // clearly month-first
+    // else ambiguous → keep day-first
+    if (mon < 1 || mon > 12 || day < 1 || day > 31) return null;
+    return `${y}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+  // Fallback: let Date try, otherwise null
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return null;
+}
+
 receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.single('file'), express.json(), async (req, res) => {
   try {
     let csvText = '';
@@ -1454,10 +1482,10 @@ receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.s
       return r;
     }).filter(r => r.name).map(r => ({
       name: r.name, phone: r.phone||'', email: r.email||'', source: r.origin||r.source||'',
-      notes: r.notes||'', lead_date: r.date||null, lead_time: r.time||'',
+      notes: r.notes||'', lead_date: normalizeLeadDate(r.date), lead_time: r.time||'',
       lead_status: r.status||'cold', car_in_question: r.car||r.car_in_question||'',
-      budget_lead: r.budget ? parseInt(r.budget)||null : null,
-      next_action: r.next_action||'', been_contacted: r.been_contacted==='true'||r.been_contacted==='1',
+      budget_lead: r.budget ? (parseInt(String(r.budget).replace(/[^0-9]/g, ''), 10) || null) : null,
+      next_action: r.next_action||'', been_contacted: /^(true|1|yes|y)$/i.test((r.been_contacted||'').trim()),
       sales_feedback: r.sales_feedback||'', inquiry: r.inquiry||'', created_by: 'csv_import',
     }));
     if (!toInsert.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
