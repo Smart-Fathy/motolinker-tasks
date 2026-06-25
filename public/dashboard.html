@@ -2428,7 +2428,7 @@ async function loadEmployees() {
     if (!emps.length) {
       tableC.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px">No employee portal accounts yet. Click "+ Create Employee" to add one.</div>';
     } else {
-      const permLabels = { requests: 'Requests', drive: 'Drive', sheets: 'Sheets', email: 'Email', viewAllRequests: 'View All Requests' };
+      const permLabels = { requests: 'Requests', drive: 'Drive', sheets: 'Sheets', email: 'Email', viewAllRequests: 'View All Requests', quotation: 'Quotation', leads: 'Leads', deals: 'Deals' };
       tableC.innerHTML = `<div style="overflow-x:auto"><table>
         <thead><tr><th>Name</th><th>Username</th><th>Job Title</th><th>Email</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>${emps.map(e => {
@@ -2490,7 +2490,7 @@ async function loadEmployees() {
 
 function openEmpModal(id) {
   const e = id ? allEmployees.find(x => x.id === id) : null;
-  const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, ...(e?.permissions||{}) };
+  const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, ...(e?.permissions||{}) };
   const permItems = [
     { key:'requests',        label:'Requests',          desc:'Submit & view own requests' },
     { key:'viewAllRequests', label:'View All Requests',  desc:'See all requests from every employee' },
@@ -2498,6 +2498,8 @@ function openEmpModal(id) {
     { key:'sheets',          label:'My Sheets',          desc:'Browse Google Sheets' },
     { key:'email',           label:'Email',              desc:'Access personal email' },
     { key:'quotation',       label:'Quotation Draft',    desc:'Create quotation drafts and generate PDFs' },
+    { key:'leads',           label:'Leads',              desc:'View the leads database' },
+    { key:'deals',           label:'Deals',              desc:'View the deals pipeline' },
   ];
   showModal(e ? 'Edit Employee' : 'Create Employee', `
     <div class="form-row">
@@ -2544,6 +2546,8 @@ async function saveEmployee(id) {
       sheets:          document.getElementById('perm-sheets')?.checked           ?? true,
       email:           document.getElementById('perm-email')?.checked            ?? false,
       quotation:       document.getElementById('perm-quotation')?.checked        ?? false,
+      leads:           document.getElementById('perm-leads')?.checked            ?? false,
+      deals:           document.getElementById('perm-deals')?.checked            ?? false,
     },
   };
   if (!body.name || !body.username) { alert('Name and username are required'); return; }

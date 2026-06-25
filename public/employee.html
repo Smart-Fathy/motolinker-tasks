@@ -555,6 +555,15 @@
       <button class="nav-item"        id="nav-quotation" onclick="navigate('quotation')" style="display:none">
         <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft
       </button>
+
+      <div class="sidebar-section-label" id="nav-label-crm" style="display:none">CRM</div>
+      <button class="nav-item"        id="nav-leads" onclick="navigate('leads')" style="display:none">
+        <span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads
+      </button>
+      <button class="nav-item"        id="nav-deals" onclick="navigate('deals')" style="display:none">
+        <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals
+      </button>
+
       <div class="sidebar-section-label">Chat</div>
       <button class="nav-item" id="nav-chat" onclick="navigate('chat')">
         <span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat
@@ -730,6 +739,42 @@
     <div class="page" id="page-sheets">
       <div id="sheets-content" style="padding:28px">
         <div class="loading"><span class="spinner"></span> Loading Sheets…</div>
+      </div>
+    </div>
+
+    <!-- ── Leads Page (read-only) ── -->
+    <div class="page" id="page-leads">
+      <div style="padding:28px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+          <div>
+            <div class="card-title" style="margin:0">Leads</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">View the leads database</div>
+          </div>
+          <input class="form-control" id="emp-lead-search" placeholder="Search name, phone, car…" oninput="empFilterLeads()" style="max-width:260px">
+        </div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;min-width:980px" id="emp-leads-table">
+              <thead><tr id="emp-leads-head"></tr></thead>
+              <tbody id="emp-leads-tbody">
+                <tr><td colspan="11" style="text-align:center;color:var(--muted);padding:28px">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Deals Page (read-only) ── -->
+    <div class="page" id="page-deals">
+      <div style="padding:28px">
+        <div style="margin-bottom:16px">
+          <div class="card-title" style="margin:0">Deals Pipeline</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">View deals across the sales pipeline</div>
+        </div>
+        <div id="emp-deals-kanban" style="display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:12px;align-items:start;overflow-x:auto">
+          <div class="loading"><span class="spinner"></span> Loading…</div>
+        </div>
       </div>
     </div>
 
@@ -1109,10 +1154,10 @@ function showLogin() {
 }
 
 // Sections that can be controlled by admin permissions
-const PERM_SECTIONS = ['requests', 'drive', 'sheets', 'email', 'quotation'];
+const PERM_SECTIONS = ['requests', 'drive', 'sheets', 'email', 'quotation', 'leads', 'deals'];
 
 function applyPermissions(permissions) {
-  const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, ...(permissions||{}) };
+  const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, ...(permissions||{}) };
   PERM_SECTIONS.forEach(section => {
     const navEl   = document.getElementById('nav-' + section);
     const bnavEl  = document.getElementById('bnav-' + section);
@@ -1125,6 +1170,9 @@ function applyPermissions(permissions) {
   // Show "Tools" section label only if quotation is enabled
   const toolsLabel = document.getElementById('nav-label-tools');
   if (toolsLabel) toolsLabel.style.display = p.quotation ? '' : 'none';
+  // Show "CRM" section label only if leads or deals is enabled
+  const crmLabel = document.getElementById('nav-label-crm');
+  if (crmLabel) crmLabel.style.display = (p.leads || p.deals) ? '' : 'none';
 }
 
 async function showApp() {
@@ -1158,8 +1206,8 @@ async function logout() {
 }
 
 /* ── Navigation ── */
-const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation Draft', calendar: 'Calendar', meet: 'Meet' };
-const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation };
+const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation Draft', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals' };
+const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation, leads: loadEmpLeads, deals: loadEmpDeals };
 let _currentEmpPage = 'log';
 function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
@@ -1589,6 +1637,91 @@ function openDriveViewer(idx) {
 function closeDriveViewer() {
   document.getElementById('drive-viewer-overlay').style.display = 'none';
   document.getElementById('drive-viewer-frame').src = 'about:blank';
+}
+
+/* ── CRM: Leads (read-only) ── */
+const EMP_LEAD_STATUS_LABELS = { cold:'Cold', warm:'Warm', hot:'Hot', immediate_delivery:'Immediate Delivery', not_interested:'Not Interested', blacklist:'Blacklist' };
+const EMP_LEAD_STATUS_BG     = { cold:'rgba(255,255,255,.06)', warm:'rgba(230,150,80,.18)', hot:'rgba(239,68,68,.14)', immediate_delivery:'rgba(100,180,120,.14)', not_interested:'rgba(150,150,150,.1)', blacklist:'rgba(120,0,0,.35)' };
+const EMP_LEAD_STATUS_FG     = { cold:'#b9b3a4', warm:'#e6a850', hot:'#f87171', immediate_delivery:'#6dd8a4', not_interested:'#888', blacklist:'#f87171' };
+const EMP_ORIGIN_LABELS      = { fb_ad:'FB Ad.', whatsapp:'Whatsapp', messenger:'Messenger', direct_call:'Direct Call', ig_ads:'IG ads' };
+const EMP_NEXT_ACTION_LABELS = { followed_by_sales:'Followed By Sales', need_follow_up:'Need Follow Up', closed:'Closed', no_answer:'No Answer' };
+let _empLeads = [];
+
+async function loadEmpLeads() {
+  const tbody = document.getElementById('emp-leads-tbody');
+  const head  = document.getElementById('emp-leads-head');
+  if (head) head.innerHTML = ['Date','Time','Name','Phone','Status','Origin','Car','Budget','Next Action','Contacted','Notes']
+    .map(h => `<th style="padding:9px 14px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap">${h}</th>`).join('');
+  try {
+    _empLeads = await ef('/api/employee/leads').then(r => r.json());
+    if (_empLeads.error) throw new Error(_empLeads.error);
+    empRenderLeads(_empLeads);
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--danger);padding:24px">${esc(e.message)}</td></tr>`;
+  }
+}
+
+function empFilterLeads() {
+  const q = (document.getElementById('emp-lead-search')?.value || '').toLowerCase();
+  empRenderLeads(q ? _empLeads.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.car_in_question||'').toLowerCase().includes(q)) : _empLeads);
+}
+
+function empRenderLeads(list) {
+  const tbody = document.getElementById('emp-leads-tbody');
+  if (!list.length) { tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:28px">No leads found.</td></tr>'; return; }
+  tbody.innerHTML = list.map(c => {
+    const st = c.lead_status || 'cold';
+    const slabel = EMP_LEAD_STATUS_LABELS[st] || st;
+    const sbg = EMP_LEAD_STATUS_BG[st] || EMP_LEAD_STATUS_BG.cold;
+    const sfg = EMP_LEAD_STATUS_FG[st] || EMP_LEAD_STATUS_FG.cold;
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+      <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${c.lead_date || '—'}</td>
+      <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${c.lead_time || '—'}</td>
+      <td style="padding:10px 14px;font-size:13px"><strong>${esc(c.name)}</strong></td>
+      <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${esc(c.phone||'—')}</td>
+      <td style="padding:10px 14px"><span style="background:${sbg};color:${sfg};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap">${esc(slabel)}</span></td>
+      <td style="padding:10px 14px;font-size:12px">${esc(EMP_ORIGIN_LABELS[c.source]||c.source||'—')}</td>
+      <td style="padding:10px 14px;font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.car_in_question||'')}">${esc(c.car_in_question||'—')}</td>
+      <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${c.budget_lead ? Number(c.budget_lead).toLocaleString()+' EGP' : '—'}</td>
+      <td style="padding:10px 14px;font-size:11px;white-space:nowrap">${esc(EMP_NEXT_ACTION_LABELS[c.next_action]||c.next_action||'—')}</td>
+      <td style="padding:10px 14px;text-align:center;font-size:15px">${c.been_contacted ? '✅' : '⬜'}</td>
+      <td style="padding:10px 14px;font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.notes||'')}">${esc(c.notes||'—')}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ── CRM: Deals (read-only kanban) ── */
+const EMP_DEAL_STAGES = ['lead','contacted','quoted','negotiating','won','lost'];
+const EMP_DEAL_STAGE_LABELS = { lead:'Lead', contacted:'Contacted', quoted:'Quoted', negotiating:'Negotiating', won:'Won', lost:'Lost' };
+
+async function loadEmpDeals() {
+  const kanban = document.getElementById('emp-deals-kanban');
+  try {
+    const deals = await ef('/api/employee/deals').then(r => r.json());
+    if (deals.error) throw new Error(deals.error);
+    kanban.innerHTML = EMP_DEAL_STAGES.map(stage => {
+      const stageDeals = deals.filter(d => d.stage === stage);
+      return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:160px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${EMP_DEAL_STAGE_LABELS[stage]}</div>
+          <div style="background:rgba(255,255,255,.07);border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">${stageDeals.length}</div>
+        </div>
+        ${stageDeals.map(d => empDealCard(d)).join('')}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    kanban.innerHTML = `<div style="color:var(--danger);padding:20px;font-size:13px">${esc(e.message)}</div>`;
+  }
+}
+
+function empDealCard(d) {
+  const cust = d.customers;
+  return `<div style="background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:6px;line-height:1.3">${esc(d.title)}</div>
+    ${cust ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px">${esc(cust.name)}</div>` : ''}
+    ${d.car_model ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px">${esc(d.car_model)}</div>` : ''}
+    ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary)">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
+  </div>`;
 }
 
 /* ── Email ── */
