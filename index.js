@@ -1407,19 +1407,81 @@ receiver.router.get('/api/dashboard/customers', requireAuth, async (req, res) =>
 });
 
 receiver.router.post('/api/dashboard/customers', requireAuth, express.json(), async (req, res) => {
-  const { name, phone, email, source, notes } = req.body;
+  const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, next_action, been_contacted, sales_feedback, inquiry } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
   const { data, error } = await supabase.from('customers')
-    .insert({ name, phone: phone||'', email: email||'', source: source||'', notes: notes||'', created_by: 'dashboard' })
+    .insert({ name, phone: phone||'', email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', created_by: 'dashboard' })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
+  // Auto-create deal if status is Hot on creation
+  if (data.lead_status === 'hot') {
+    supabase.from('deals').insert({ customer_id: data.id, title: `${data.name}${data.car_in_question ? ' — ' + data.car_in_question : ''}`, stage: 'lead', car_model: data.car_in_question||'', budget_egp: data.budget_lead||null, notes: 'Auto-created from Hot lead', created_by: 'system' }).then(()=>{}).catch(()=>{});
+  }
   res.json(data);
 });
 
+// CSV / Spreadsheet import
+const multerCsv = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+function parseCsvLine(line) {
+  const values = []; let current = ''; let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQuotes = !inQuotes; } else if (ch === ',' && !inQuotes) { values.push(current); current = ''; } else { current += ch; }
+  }
+  values.push(current); return values;
+}
+receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.single('file'), express.json(), async (req, res) => {
+  try {
+    let csvText = '';
+    if (req.file) {
+      csvText = req.file.buffer.toString('utf8');
+    } else if (req.body?.sheetUrl) {
+      const match = req.body.sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (!match) return res.status(400).json({ error: 'Invalid Google Sheets URL' });
+      const nodeFetch = require('node-fetch');
+      const r = await nodeFetch(`https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`);
+      if (!r.ok) return res.status(400).json({ error: 'Could not fetch spreadsheet — make sure it is publicly accessible.' });
+      csvText = await r.text();
+    }
+    if (!csvText) return res.status(400).json({ error: 'No data to import' });
+    const lines = csvText.split('\n').map(l => l.trim()).filter(l => l);
+    if (lines.length < 2) return res.status(400).json({ error: 'Need header row + at least one data row' });
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, '').replace(/ /g, '_'));
+    const toInsert = lines.slice(1).map(line => {
+      const vals = parseCsvLine(line);
+      const r = {};
+      headers.forEach((h, i) => { r[h] = (vals[i] || '').trim().replace(/^"|"$/g, ''); });
+      return r;
+    }).filter(r => r.name).map(r => ({
+      name: r.name, phone: r.phone||'', email: r.email||'', source: r.origin||r.source||'',
+      notes: r.notes||'', lead_date: r.date||null, lead_time: r.time||'',
+      lead_status: r.status||'cold', car_in_question: r.car||r.car_in_question||'',
+      budget_lead: r.budget ? parseInt(r.budget)||null : null,
+      next_action: r.next_action||'', been_contacted: r.been_contacted==='true'||r.been_contacted==='1',
+      sales_feedback: r.sales_feedback||'', inquiry: r.inquiry||'', created_by: 'csv_import',
+    }));
+    if (!toInsert.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
+    const { error } = await supabase.from('customers').insert(toInsert);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ count: toInsert.length });
+  } catch (e) { console.error('[csv-import]', e); res.status(500).json({ error: e.message }); }
+});
+
 receiver.router.put('/api/dashboard/customers/:id', requireAuth, express.json(), async (req, res) => {
+  const { data: prev } = await supabase.from('customers').select('lead_status').eq('id', req.params.id).single();
   const { data, error } = await supabase.from('customers')
     .update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
+  // Auto-create deal when status changes to Hot
+  if (data.lead_status === 'hot' && prev?.lead_status !== 'hot') {
+    try {
+      const { data: existing } = await supabase.from('deals').select('id').eq('customer_id', data.id).limit(1);
+      if (!existing?.length) {
+        await supabase.from('deals').insert({ customer_id: data.id, title: `${data.name}${data.car_in_question ? ' — ' + data.car_in_question : ''}`, stage: 'lead', car_model: data.car_in_question||'', budget_egp: data.budget_lead||null, notes: 'Auto-created from Hot lead', created_by: 'system' });
+        console.log('[leads] Auto-created deal for hot lead', data.id);
+      }
+    } catch (e) { console.warn('[leads] Auto-deal failed:', e.message); }
+  }
   res.json(data);
 });
 
@@ -1450,12 +1512,27 @@ receiver.router.post('/api/dashboard/deals', requireAuth, express.json(), async 
 });
 
 receiver.router.put('/api/dashboard/deals/:id', requireAuth, express.json(), async (req, res) => {
+  const { data: prev } = await supabase.from('deals').select('stage').eq('id', req.params.id).single();
   const updates = { ...req.body, updated_at: new Date().toISOString() };
   if ((updates.stage === 'won' || updates.stage === 'lost') && !updates.closed_at) updates.closed_at = new Date().toISOString();
   if (updates.stage && updates.stage !== 'won' && updates.stage !== 'lost') updates.closed_at = null;
   const { data, error } = await supabase.from('deals')
-    .update(updates).eq('id', req.params.id).select('*, customers(name,phone,email)').single();
+    .update(updates).eq('id', req.params.id).select('*, customers(name,phone,email,car_in_question,budget_lead)').single();
   if (error) return res.status(500).json({ error: error.message });
+  // Notify configured employee when deal moves to 'contacted'
+  if (updates.stage === 'contacted' && prev?.stage !== 'contacted') {
+    try {
+      const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
+      const settings = {};
+      for (const row of settingsRows || []) settings[row.key] = row.value;
+      const notifyId = settings.contact_notify_employee_id;
+      if (notifyId) {
+        const c = data.customers;
+        const body = [`Lead: ${c?.name || data.title}`, c?.phone ? `Phone: ${c.phone}` : '', c?.car_in_question ? `Car: ${c.car_in_question}` : '', c?.budget_lead ? `Budget: ${Number(c.budget_lead).toLocaleString()} EGP` : ''].filter(Boolean).join(' · ');
+        await createNotification(`employee_${notifyId}`, { type: 'lead', title: '📋 New lead to quote — ' + (c?.name || data.title), body, url: '/employee' }, 'always');
+      }
+    } catch (e) { console.warn('[deals] notify-contacted failed:', e.message); }
+  }
   res.json(data);
 });
 
@@ -2277,7 +2354,7 @@ function buildQuotationHtml(data) {
   <table class="header-table">
     <tr>
       <td style="width:35%;vertical-align:middle">
-        <div class="logo-text">MOT<span class="logo-link">O</span>L<span class="logo-link">|</span>NKERS</div>
+        <img src="https://images.motolinkers.com/avatar-11-max-reev/motolinkers-logo-black-text-preview.png" style="max-height:60px;width:auto;display:block">
       </td>
       <td style="width:30%;text-align:center;vertical-align:middle">
         <div class="quotation-title">QUOTATION</div>
@@ -2334,25 +2411,17 @@ function buildQuotationHtml(data) {
   </table>
 
   <!-- KEY SPECS + PAYMENT TERMS -->
-  <table style="width:100%;border-collapse:collapse;margin-top:14px">
-    <tr style="vertical-align:top">
-      <td style="width:55%;padding-right:12px">
-        <div class="section-label" style="margin-top:0">KEY SPECS</div>
-        <table class="key-specs-table">
-          <tr><td class="ks-label">Currency</td><td class="ks-val">${currency || 'EGP'}</td></tr>
-          <tr><td class="ks-label">Exchange Rate</td><td class="ks-val">1 USD = ${fmtNum(exchange)} EGP</td></tr>
-          <tr><td class="ks-label">Issued By</td><td class="ks-val">${issuer || ''}</td></tr>
-          ${(customSpecs || []).map(s => `<tr><td class="ks-label">${s.key || ''}</td><td class="ks-val">${s.val || ''}</td></tr>`).join('')}
-        </table>
-      </td>
-      <td style="width:45%">
-        <div class="payment-box">
-          <div class="payment-title">Payment terms:</div>
-          ${(s.payment_terms || '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances').split('\n').map(l => `<div>${l}</div>`).join('')}
-        </div>
-      </td>
-    </tr>
-  </table>
+  <div style="margin-top:14px">
+    <div class="section-label" style="margin-top:0">KEY SPECS</div>
+    <div style="border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY}">
+      <div><strong>Payment terms:</strong></div>
+      ${(s.payment_terms || '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances').split('\n').map(l => `<div style="padding-left:14px">${l}</div>`).join('')}
+      <div style="margin-top:8px"><strong>Currency:</strong> ${currency || 'EGP'}</div>
+      <div style="padding-left:14px"><strong>Exchange:</strong> ${fmtNum(exchange)}</div>
+      ${issuer ? `<div style="margin-top:4px"><strong>Issuer:</strong> ${issuer}</div>` : ''}
+      ${(customSpecs || []).map(sp => `<div><strong>${sp.key || ''}:</strong> ${sp.val || ''}</div>`).join('')}
+    </div>
+  </div>
 
   <!-- FOOTER -->
   <div class="footer">
@@ -2368,8 +2437,8 @@ function buildQuotationHtml(data) {
       <div><strong>Email:</strong> ${s.company_email || 'info@motolinkers.com'} &nbsp;|&nbsp; <strong>Website:</strong> ${s.company_website || 'Motolinkers.com'} &nbsp;|&nbsp; <strong>Phone:</strong> ${s.company_phone || '+2 010 000 78104'}</div>
       ${s.company_tax_id ? `<div><strong>TAX ID:</strong> ${s.company_tax_id} &nbsp;|&nbsp; <strong>Registration No:</strong> ${s.company_reg_no || ''}</div>` : `<div><strong>TAX ID:</strong> 773934006 &nbsp;|&nbsp; <strong>Registration No:</strong> 282378</div>`}
     </div>
-    <div style="font-size:18px;font-weight:900;color:${NAVY};white-space:nowrap;letter-spacing:1px;margin-left:20px">
-      MOT<span style="color:${GOLD}">O</span>L<span style="color:${GOLD}">|</span>NKERS
+    <div style="margin-left:20px;flex-shrink:0">
+      <img src="https://images.motolinkers.com/avatar-11-max-reev/motolinkers-logo-black-text-preview.png" style="max-height:45px;width:auto;display:block">
     </div>
   </div>
 

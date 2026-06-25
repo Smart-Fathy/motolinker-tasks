@@ -384,6 +384,24 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_member ON notifications (member_key, created_at DESC);
 
 -- ============================================================
+--  Leads / Customers — extended columns (run as migration)
+-- ============================================================
+
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS lead_date       DATE;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS lead_time       TEXT DEFAULT '';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS lead_status     TEXT DEFAULT 'cold';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS car_in_question TEXT DEFAULT '';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS budget_lead     BIGINT DEFAULT NULL;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS next_action     TEXT DEFAULT '';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS been_contacted  BOOLEAN DEFAULT FALSE;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS sales_feedback  TEXT DEFAULT '';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS inquiry         TEXT DEFAULT '';
+
+-- Notification setting for deal-contacted alert
+INSERT INTO quotation_settings (key, value) VALUES ('contact_notify_employee_id', '')
+  ON CONFLICT (key) DO NOTHING;
+
+-- ============================================================
 --  Optional: Row Level Security (RLS)
 -- ============================================================
 
