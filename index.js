@@ -833,7 +833,9 @@ receiver.router.get('/api/email/callback', async (req, res) => {
       const full = { ...tokens, email: profile.email, name: profile.name, expiry_date: Date.now() + ((tokens.expires_in || 3600) * 1000) };
       if (pending.type === 'employee-login') {
         // Google login for employee portal — match by email
-        const { data: emp } = await supabase.from('employees').select('id,name,username,permissions').eq('email', profile.email).single();
+        // Case-insensitive match (ilike, no wildcards) + limit(1) so mixed-case stored emails work and duplicates don't throw
+        const { data: empRows } = await supabase.from('employees').select('id,name,username,permissions').ilike('email', String(profile.email || '').trim()).limit(1);
+        const emp = empRows && empRows[0];
         if (!emp) return res.redirect('/employee?google_login_error=' + encodeURIComponent('No account linked to this Google address. Contact your admin.'));
         const sessionToken = generateToken();
         const permissions = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, ...(emp.permissions || {}) };
@@ -1370,14 +1372,14 @@ receiver.router.post('/api/dashboard/employees', requireAuth, express.json(), as
   if (existing) return res.status(409).json({ error: 'Username already taken' });
   const perms = { ...DEFAULT_PERMISSIONS, ...(permissions || {}) };
   const { data, error } = await supabase.from('employees')
-    .insert({ name, username, password_hash: hashPassword(password), email: email || '', job_title: job_title || '', slack_user_id: slack_user_id || '', permissions: perms })
+    .insert({ name, username, password_hash: hashPassword(password), email: (email || '').toLowerCase().trim(), job_title: job_title || '', slack_user_id: slack_user_id || '', permissions: perms })
     .select('id, name, username, email, job_title, slack_user_id, permissions, created_at').single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 receiver.router.put('/api/dashboard/employees/:id', requireAuth, express.json(), async (req, res) => {
   const { name, username, password, email, job_title, slack_user_id, permissions } = req.body;
-  const updates = { name, username, email: email || '', job_title: job_title || '', slack_user_id: slack_user_id || '', updated_at: new Date().toISOString() };
+  const updates = { name, username, email: (email || '').toLowerCase().trim(), job_title: job_title || '', slack_user_id: slack_user_id || '', updated_at: new Date().toISOString() };
   if (password) updates.password_hash = hashPassword(password);
   if (permissions) updates.permissions = { ...DEFAULT_PERMISSIONS, ...permissions };
   const { data, error } = await supabase.from('employees').update(updates).eq('id', req.params.id)
@@ -1400,7 +1402,9 @@ receiver.router.get('/api/dashboard/employees-for-tasks', requireAuth, async (_r
 // ── Customers ─────────────────────────────────────────────────────────────────
 receiver.router.get('/api/dashboard/customers', requireAuth, async (req, res) => {
   let query = supabase.from('customers').select('*').order('created_at', { ascending: false });
-  if (req.query.q) query = query.or(`name.ilike.%${req.query.q}%,phone.ilike.%${req.query.q}%,email.ilike.%${req.query.q}%`);
+  // Strip PostgREST-structural chars ( , ( ) * " \ % ) so terms like "Smith, Jr" or "(010)" don't break the .or() filter
+  const q = String(req.query.q || '').replace(/[,()*"\\%]/g, ' ').trim();
+  if (q) query = query.or(`name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`);
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
@@ -1454,7 +1458,10 @@ function normalizeLeadDate(raw) {
   }
   // Fallback: let Date try, otherwise null
   const parsed = new Date(s);
-  if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  if (!isNaN(parsed.getTime())) {
+    // Format from local components (not toISOString) so the server timezone can't shift the date a day
+    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+  }
   return null;
 }
 
@@ -1639,20 +1646,39 @@ async function createNotification(memberKey, { type = 'general', title, body = '
       .select().single();
     if (data) row = data;
   } catch (e) { console.warn('[notif] persist failed:', e.message); }
+  // If persistence failed, give the live-only row a synthetic id so the client can still mark it read locally
+  if (!row.id) row.id = 'tmp-' + Date.now();
   // Live SSE to an open portal
   const sseRes = notifSseClients.get(memberKey);
   console.log('[notif]', memberKey, type, 'sse=' + !!sseRes);
   if (sseRes) { try { sseRes.write(`event: notification\ndata: ${JSON.stringify(row)}\n\n`); } catch (_) {} }
-  // OS push
-  const payload = { title, body, url: defaultUrl };
+  // OS push — unique tag per notification so multiple pushes don't collapse in the tray
+  const payload = { title, body, url: defaultUrl, tag: 'notif-' + (row.id || Date.now()) };
   if (pushMode === 'always') sendPushAlways([memberKey], payload);
   else if (pushMode === 'offline') sendPushToOfflineMembers([memberKey], payload);
   return row;
 }
 
-function notifyEmployeeTaskAssigned(task) {
+// Resolve an assignee_id (numeric employee id OR legacy Slack user id) to the
+// canonical notification member key `employee_<id>` used by push subs + SSE.
+async function memberKeyForAssignee(assigneeId) {
+  if (assigneeId == null || assigneeId === '') return null;
+  const isNumeric = /^\d+$/.test(String(assigneeId));
+  const filter = isNumeric
+    ? `id.eq.${assigneeId},slack_user_id.eq.${assigneeId}`
+    : `slack_user_id.eq.${assigneeId}`;
+  try {
+    const { data } = await supabase.from('employees').select('id').or(filter).limit(1);
+    if (data && data[0]) return `employee_${data[0].id}`;
+  } catch (_) {}
+  return `employee_${assigneeId}`;
+}
+
+async function notifyEmployeeTaskAssigned(task) {
   if (!task?.assignee_id) return;
-  createNotification(`employee_${task.assignee_id}`, {
+  const key = await memberKeyForAssignee(task.assignee_id);
+  if (!key) return;
+  createNotification(key, {
     type: 'task',
     title: 'New task assigned',
     body: `${task.title} · due ${task.due_date} · ${task.priority} priority`,
@@ -2156,11 +2182,17 @@ receiver.router.get('/api/dashboard/whatsapp/contacts', requireAuth, async (_req
 });
 
 receiver.router.get('/api/dashboard/whatsapp/contacts/:id/messages', requireAuth, async (req, res) => {
+  // Pure read — no state mutation (clearing unread is an explicit POST .../read to avoid a lost-update race)
   const { data, error } = await supabase.from('whatsapp_messages').select('*').eq('contact_id', req.params.id).order('created_at', { ascending: true }).limit(200);
   if (error) return res.status(500).json({ error: error.message });
-  // Reading the conversation clears unread
-  await supabase.from('whatsapp_contacts').update({ unread: 0 }).eq('id', req.params.id);
   res.json(data || []);
+});
+
+// Explicit mark-conversation-read (called when the admin opens/focuses a conversation)
+receiver.router.post('/api/dashboard/whatsapp/contacts/:id/read', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('whatsapp_contacts').update({ unread: 0 }).eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
 });
 
 receiver.router.post('/api/dashboard/whatsapp/contacts/:id/messages', requireAuth, express.json(), async (req, res) => {
@@ -2255,7 +2287,8 @@ receiver.router.get('/api/dashboard/quotations/:id', requireAuth, async (req, re
 });
 
 // Employee quotation settings (read-only)
-receiver.router.get('/api/employee/quotation/settings', requireEmployeeAuth, async (_req, res) => {
+receiver.router.get('/api/employee/quotation/settings', requireEmployeeAuth, async (req, res) => {
+  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
   const { data } = await supabase.from('quotation_settings').select('key,value');
   const settings = {};
   for (const row of data || []) settings[row.key] = row.value;
@@ -2263,12 +2296,14 @@ receiver.router.get('/api/employee/quotation/settings', requireEmployeeAuth, asy
 });
 
 receiver.router.get('/api/employee/quotations', requireEmployeeAuth, async (req, res) => {
+  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
   const { data, error } = await supabase.from('quotations').select('id,quote_id,title,created_by,created_at').eq('created_by', req.employee.username).order('created_at', { ascending: false }).limit(50);
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
 
 receiver.router.get('/api/employee/quotations/:id', requireEmployeeAuth, async (req, res) => {
+  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
   const { data, error } = await supabase.from('quotations').select('*').eq('id', req.params.id).eq('created_by', req.employee.username).single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
@@ -2290,6 +2325,38 @@ function calcEgp(priceUsd, units, exchange) {
   const e = parseFloat(exchange) || 1;
   if (!isFinite(p)) return null;
   return Math.round(p * u * e);
+}
+
+// HTML-escape any user/DB-derived value before interpolating into the quotation HTML.
+function escHtml(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Render quotation HTML to a PDF buffer via Puppeteer, blocking any resource
+// load that isn't an inline data: URL or https: (prevents file:// LFI and
+// internal http:// SSRF from authored/injected markup).
+async function renderQuotationPdf(html) {
+  const puppeteer = require('puppeteer');
+  const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  try {
+    const page = await browser.newPage();
+    await page.setRequestInterception(true);
+    page.on('request', r => {
+      const u = r.url();
+      if (u.startsWith('data:') || u.startsWith('https:')) r.continue();
+      else r.abort();
+    });
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    return await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '0', bottom: '0', left: '0', right: '0' },
+    });
+  } finally {
+    await browser.close();
+  }
 }
 
 function buildQuotationHtml(data) {
@@ -2319,21 +2386,21 @@ function buildQuotationHtml(data) {
   const imgSection = imageDataUrls && imageDataUrls.length
     ? `<tr><td colspan="4" style="padding:10px 0;border:1px solid ${GOLD};border-top:none">
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-          ${imageDataUrls.map(src => `<img src="${src}" style="height:130px;max-width:220px;object-fit:contain;border-radius:4px;border:1px solid ${GOLD}">`).join('')}
+          ${imageDataUrls.map(src => `<img src="${escHtml(src)}" style="height:130px;max-width:220px;object-fit:contain;border-radius:4px;border:1px solid ${GOLD}">`).join('')}
         </div>
        </td></tr>`
     : '';
 
   const vehicleRow = vehicleModel
-    ? `<tr><td colspan="4" style="text-align:center;font-size:17px;font-weight:700;color:#cc3300;padding:10px 8px;border:1px solid ${GOLD};border-bottom:none">${vehicleModel}</td></tr>`
+    ? `<tr><td colspan="4" style="text-align:center;font-size:17px;font-weight:700;color:#cc3300;padding:10px 8px;border:1px solid ${GOLD};border-bottom:none">${escHtml(vehicleModel)}</td></tr>`
     : '';
 
   const itemRowsHtml = itemRows.map((item, i) => {
     const isFree = item.egp === null;
     const bg = i % 2 === 1 ? `background:#fdfaf3` : '';
     return `<tr style="${bg}">
-      <td style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${item.name || ''}</td>
-      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${item.unit || 1}</td>
+      <td style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${escHtml(item.name || '')}</td>
+      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${escHtml(item.unit || 1)}</td>
       <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${isFree ? 'Free' : fmtNum(item.priceUsd)}</td>
       <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${isFree ? 'Free' : fmtNum(item.egp)}</td>
     </tr>`;
@@ -2342,7 +2409,7 @@ function buildQuotationHtml(data) {
   const logRowsHtml = logisticsRows.map((row, i) => {
     const bg = i % 2 === 1 ? `background:#fdfaf3` : '';
     return `<tr style="${bg}">
-      <td colspan="2" style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${row.label}</td>
+      <td colspan="2" style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${escHtml(row.label)}</td>
       <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${fmtNum(row.priceUsd)}</td>
       <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${fmtNum(row.egp)}</td>
     </tr>`;
@@ -2404,10 +2471,10 @@ function buildQuotationHtml(data) {
       </td>
       <td style="width:35%;vertical-align:top">
         <table class="meta-table">
-          <tr><td class="meta-label">ID</td><td class="meta-val">${id || ''}</td></tr>
-          <tr><td class="meta-label">DATE</td><td class="meta-val">${date || ''}</td></tr>
-          <tr><td class="meta-label">VALID TO</td><td class="meta-val">${validTo || ''}</td></tr>
-          <tr><td class="meta-label">NAME</td><td class="meta-val">${name || ''}</td></tr>
+          <tr><td class="meta-label">ID</td><td class="meta-val">${escHtml(id || '')}</td></tr>
+          <tr><td class="meta-label">DATE</td><td class="meta-val">${escHtml(date || '')}</td></tr>
+          <tr><td class="meta-label">VALID TO</td><td class="meta-val">${escHtml(validTo || '')}</td></tr>
+          <tr><td class="meta-label">NAME</td><td class="meta-val">${escHtml(name || '')}</td></tr>
         </table>
       </td>
     </tr>
@@ -2459,32 +2526,32 @@ function buildQuotationHtml(data) {
     <div style="display:flex;gap:14px;align-items:stretch">
       <!-- Left: spec keys -->
       <div style="flex:1;border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY}">
-        <div><strong>Currency:</strong> ${currency || 'EGP'}</div>
+        <div><strong>Currency:</strong> ${escHtml(currency || 'EGP')}</div>
         <div><strong>Exchange:</strong> ${fmtNum(exchange)}</div>
-        ${issuer ? `<div><strong>Issuer:</strong> ${issuer}</div>` : ''}
-        ${(customSpecs || []).map(sp => sp.key ? `<div><strong>${sp.key}:</strong> ${sp.val || ''}</div>` : `<div>${sp.val || ''}</div>`).join('')}
+        ${issuer ? `<div><strong>Issuer:</strong> ${escHtml(issuer)}</div>` : ''}
+        ${(customSpecs || []).map(sp => sp.key ? `<div><strong>${escHtml(sp.key)}:</strong> ${escHtml(sp.val || '')}</div>` : `<div>${escHtml(sp.val || '')}</div>`).join('')}
       </div>
       <!-- Right: payment terms -->
       <div style="width:46%;border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY}">
         <div style="font-weight:700;margin-bottom:4px">Payment terms</div>
-        ${(s.payment_terms || '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances').split('\n').map(l => `<div style="padding-left:14px">${l}</div>`).join('')}
+        ${(s.payment_terms || '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances').split('\n').map(l => `<div style="padding-left:14px">${escHtml(l)}</div>`).join('')}
       </div>
     </div>
   </div>
 
   <!-- FOOTER -->
   <div class="footer">
-    <div class="footer-brand">${s.company_name || 'MOTOLINKERS'}</div>
-    <div>This quotation is valid until ${validTo || '—'} | ${s.footer_note || 'Confidential'}</div>
-    <div>${id || ''}</div>
+    <div class="footer-brand">${escHtml(s.company_name || 'MOTOLINKERS')}</div>
+    <div>This quotation is valid until ${escHtml(validTo || '—')} | ${escHtml(s.footer_note || 'Confidential')}</div>
+    <div>${escHtml(id || '')}</div>
   </div>
 
   <!-- COMPANY CONTACT FOOTER -->
   <div style="border:2px solid ${NAVY};border-radius:8px;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:16px">
     <div style="display:flex;flex-direction:column;gap:3px;font-size:9px;color:#333;line-height:1.5">
-      <div><strong>Address:</strong> ${s.company_address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo'}</div>
-      <div><strong>Email:</strong> ${s.company_email || 'info@motolinkers.com'} &nbsp;|&nbsp; <strong>Website:</strong> ${s.company_website || 'Motolinkers.com'} &nbsp;|&nbsp; <strong>Phone:</strong> ${s.company_phone || '+2 010 000 78104'}</div>
-      ${s.company_tax_id ? `<div><strong>TAX ID:</strong> ${s.company_tax_id} &nbsp;|&nbsp; <strong>Registration No:</strong> ${s.company_reg_no || ''}</div>` : `<div><strong>TAX ID:</strong> 773934006 &nbsp;|&nbsp; <strong>Registration No:</strong> 282378</div>`}
+      <div><strong>Address:</strong> ${escHtml(s.company_address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo')}</div>
+      <div><strong>Email:</strong> ${escHtml(s.company_email || 'info@motolinkers.com')} &nbsp;|&nbsp; <strong>Website:</strong> ${escHtml(s.company_website || 'Motolinkers.com')} &nbsp;|&nbsp; <strong>Phone:</strong> ${escHtml(s.company_phone || '+2 010 000 78104')}</div>
+      ${s.company_tax_id ? `<div><strong>TAX ID:</strong> ${escHtml(s.company_tax_id)} &nbsp;|&nbsp; <strong>Registration No:</strong> ${escHtml(s.company_reg_no || '')}</div>` : `<div><strong>TAX ID:</strong> 773934006 &nbsp;|&nbsp; <strong>Registration No:</strong> 282378</div>`}
     </div>
     <div style="margin-left:20px;flex-shrink:0">
       <img src="https://images.motolinkers.com/avatar-11-max-reev/motolinkers-logo-black-text-preview.png" style="max-height:45px;width:auto;display:block">
@@ -2512,16 +2579,7 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
 
       const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings });
 
-      const puppeteer = require('puppeteer');
-      const browser   = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-      const page      = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '0', bottom: '0', left: '0', right: '0' },
-      });
-      await browser.close();
+      const pdfBuffer = await renderQuotationPdf(html);
 
       res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
       // Save quotation record (best-effort)
@@ -2539,13 +2597,15 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
 );
 
 // ─── Employee Quotation Draft ──────────────────────────────────────────────────
-receiver.router.get('/api/employee/quotation/newid', requireEmployeeAuth, (_req, res) => {
+receiver.router.get('/api/employee/quotation/newid', requireEmployeeAuth, (req, res) => {
+  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
   res.json({ id: generateQuoteId() });
 });
 
 receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
   quotationImgUpload.array('images', 5), async (req, res) => {
     try {
+      if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
       const { id, date, validTo, name, vehicleModel, items: itemsJson, logistics: logisticsJson, currency, exchange, issuer, customSpecs: customSpecsJson } = req.body;
       const items       = JSON.parse(itemsJson       || '[]');
       const logistics   = JSON.parse(logisticsJson   || '[]');
@@ -2560,18 +2620,16 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
 
       const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings });
 
-      const puppeteer = require('puppeteer');
-      const browser   = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-      const page      = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '0', bottom: '0', left: '0', right: '0' },
-      });
-      await browser.close();
+      const pdfBuffer = await renderQuotationPdf(html);
 
       res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
+      // Save quotation record (best-effort) so the employee's history is populated
+      supabase.from('quotations').insert({
+        quote_id: id || generateQuoteId(),
+        title: `${vehicleModel || 'Quotation'} — ${name || ''}`.trim(),
+        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs },
+        created_by: req.employee.username
+      }).then(() => {}).catch(() => {});
     } catch (e) {
       console.error('[emp-quotation-gen]', e);
       res.status(500).json({ error: e.message });
@@ -2646,10 +2704,14 @@ async function sendDueDateReminders() {
     supabase.from('tasks').select('id,title,assignee_id').lt('due_date', today).neq('status', 'done'),
   ]);
   for (const t of dueTomorrow || []) {
-    if (t.assignee_id) createNotification(`employee_${t.assignee_id}`, { type: 'reminder', title: 'Task due tomorrow', body: t.title, url: '/employee#tasks' }, 'offline');
+    if (!t.assignee_id) continue;
+    const key = await memberKeyForAssignee(t.assignee_id);
+    if (key) createNotification(key, { type: 'reminder', title: 'Task due tomorrow', body: t.title, url: '/employee#tasks' }, 'offline');
   }
   for (const t of overdue || []) {
-    if (t.assignee_id) createNotification(`employee_${t.assignee_id}`, { type: 'reminder', title: 'Overdue task', body: t.title, url: '/employee#tasks' }, 'offline');
+    if (!t.assignee_id) continue;
+    const key = await memberKeyForAssignee(t.assignee_id);
+    if (key) createNotification(key, { type: 'reminder', title: 'Overdue task', body: t.title, url: '/employee#tasks' }, 'offline');
   }
 }
 
