@@ -432,8 +432,6 @@
   .notif-item{display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--glass-border);cursor:pointer;transition:background .15s;}
   .notif-item:hover{background:rgba(255,255,255,.04);}
   .notif-item.unread{background:rgba(201,163,94,.07);}
-  .notif-dot{width:8px;height:8px;border-radius:50%;background:var(--primary);flex-shrink:0;margin-top:5px;opacity:0;}
-  .notif-item.unread .notif-dot{opacity:1;}
   .notif-type-icon{position:relative;flex-shrink:0;width:30px;height:30px;border-radius:8px;background:var(--primary-glow);color:var(--primary);display:flex;align-items:center;justify-content:center;}
   .notif-type-icon svg{width:16px;height:16px;}
   .notif-unread-marker{position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:50%;background:var(--danger);border:2px solid var(--surface);}
@@ -2583,7 +2581,7 @@ function notifRelTime(ts) {
 }
 
 function notifIcon(type) {
-  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', request: 'inbox' };
+  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox' };
   return m[type] || 'bell';
 }
 // Strip any leading emoji/symbols so legacy notifications render clean text (new ones already clean)
@@ -2637,7 +2635,7 @@ async function markAllNotifsRead() {
 function notifRoute(url, type) {
   const hash = (url || '').split('#')[1];
   if (hash && pageTitles[hash]) { navigate(hash); return; }
-  const map = { hours: 'log', task: 'tasks', reminder: 'tasks', lead: 'quotation', request: 'requests' };
+  const map = { hours: 'log', task: 'tasks', reminder: 'tasks', lead: 'quotation', deal: 'deals', request: 'requests' };
   navigate(map[type] || 'log');
 }
 // Mark a single notification read (local + server)
@@ -2645,6 +2643,7 @@ async function notifMarkRead(id) {
   if (!id) return;
   const it = notifItems.find(n => String(n.id) === String(id));
   if (it && !it.read) { it.read = true; notifUnread = Math.max(0, notifUnread - 1); renderNotifs(); }
+  if (String(id).startsWith('tmp-')) return; // live-only notification (not persisted) — nothing to mark on the server
   try { await ef('/api/employee/notifications/read', { method: 'POST', body: JSON.stringify({ id }) }); } catch (_) {}
 }
 

@@ -833,7 +833,9 @@ receiver.router.get('/api/email/callback', async (req, res) => {
       const full = { ...tokens, email: profile.email, name: profile.name, expiry_date: Date.now() + ((tokens.expires_in || 3600) * 1000) };
       if (pending.type === 'employee-login') {
         // Google login for employee portal — match by email
-        const { data: emp } = await supabase.from('employees').select('id,name,username,permissions').eq('email', profile.email).single();
+        // Case-insensitive match (ilike, no wildcards) + limit(1) so mixed-case stored emails work and duplicates don't throw
+        const { data: empRows } = await supabase.from('employees').select('id,name,username,permissions').ilike('email', String(profile.email || '').trim()).limit(1);
+        const emp = empRows && empRows[0];
         if (!emp) return res.redirect('/employee?google_login_error=' + encodeURIComponent('No account linked to this Google address. Contact your admin.'));
         const sessionToken = generateToken();
         const permissions = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, ...(emp.permissions || {}) };
@@ -1370,14 +1372,14 @@ receiver.router.post('/api/dashboard/employees', requireAuth, express.json(), as
   if (existing) return res.status(409).json({ error: 'Username already taken' });
   const perms = { ...DEFAULT_PERMISSIONS, ...(permissions || {}) };
   const { data, error } = await supabase.from('employees')
-    .insert({ name, username, password_hash: hashPassword(password), email: email || '', job_title: job_title || '', slack_user_id: slack_user_id || '', permissions: perms })
+    .insert({ name, username, password_hash: hashPassword(password), email: (email || '').toLowerCase().trim(), job_title: job_title || '', slack_user_id: slack_user_id || '', permissions: perms })
     .select('id, name, username, email, job_title, slack_user_id, permissions, created_at').single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 receiver.router.put('/api/dashboard/employees/:id', requireAuth, express.json(), async (req, res) => {
   const { name, username, password, email, job_title, slack_user_id, permissions } = req.body;
-  const updates = { name, username, email: email || '', job_title: job_title || '', slack_user_id: slack_user_id || '', updated_at: new Date().toISOString() };
+  const updates = { name, username, email: (email || '').toLowerCase().trim(), job_title: job_title || '', slack_user_id: slack_user_id || '', updated_at: new Date().toISOString() };
   if (password) updates.password_hash = hashPassword(password);
   if (permissions) updates.permissions = { ...DEFAULT_PERMISSIONS, ...permissions };
   const { data, error } = await supabase.from('employees').update(updates).eq('id', req.params.id)
@@ -1400,7 +1402,9 @@ receiver.router.get('/api/dashboard/employees-for-tasks', requireAuth, async (_r
 // ── Customers ─────────────────────────────────────────────────────────────────
 receiver.router.get('/api/dashboard/customers', requireAuth, async (req, res) => {
   let query = supabase.from('customers').select('*').order('created_at', { ascending: false });
-  if (req.query.q) query = query.or(`name.ilike.%${req.query.q}%,phone.ilike.%${req.query.q}%,email.ilike.%${req.query.q}%`);
+  // Strip PostgREST-structural chars ( , ( ) * " \ % ) so terms like "Smith, Jr" or "(010)" don't break the .or() filter
+  const q = String(req.query.q || '').replace(/[,()*"\\%]/g, ' ').trim();
+  if (q) query = query.or(`name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`);
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
@@ -1454,7 +1458,10 @@ function normalizeLeadDate(raw) {
   }
   // Fallback: let Date try, otherwise null
   const parsed = new Date(s);
-  if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  if (!isNaN(parsed.getTime())) {
+    // Format from local components (not toISOString) so the server timezone can't shift the date a day
+    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+  }
   return null;
 }
 
@@ -1639,20 +1646,39 @@ async function createNotification(memberKey, { type = 'general', title, body = '
       .select().single();
     if (data) row = data;
   } catch (e) { console.warn('[notif] persist failed:', e.message); }
+  // If persistence failed, give the live-only row a synthetic id so the client can still mark it read locally
+  if (!row.id) row.id = 'tmp-' + Date.now();
   // Live SSE to an open portal
   const sseRes = notifSseClients.get(memberKey);
   console.log('[notif]', memberKey, type, 'sse=' + !!sseRes);
   if (sseRes) { try { sseRes.write(`event: notification\ndata: ${JSON.stringify(row)}\n\n`); } catch (_) {} }
-  // OS push
-  const payload = { title, body, url: defaultUrl };
+  // OS push — unique tag per notification so multiple pushes don't collapse in the tray
+  const payload = { title, body, url: defaultUrl, tag: 'notif-' + (row.id || Date.now()) };
   if (pushMode === 'always') sendPushAlways([memberKey], payload);
   else if (pushMode === 'offline') sendPushToOfflineMembers([memberKey], payload);
   return row;
 }
 
-function notifyEmployeeTaskAssigned(task) {
+// Resolve an assignee_id (numeric employee id OR legacy Slack user id) to the
+// canonical notification member key `employee_<id>` used by push subs + SSE.
+async function memberKeyForAssignee(assigneeId) {
+  if (assigneeId == null || assigneeId === '') return null;
+  const isNumeric = /^\d+$/.test(String(assigneeId));
+  const filter = isNumeric
+    ? `id.eq.${assigneeId},slack_user_id.eq.${assigneeId}`
+    : `slack_user_id.eq.${assigneeId}`;
+  try {
+    const { data } = await supabase.from('employees').select('id').or(filter).limit(1);
+    if (data && data[0]) return `employee_${data[0].id}`;
+  } catch (_) {}
+  return `employee_${assigneeId}`;
+}
+
+async function notifyEmployeeTaskAssigned(task) {
   if (!task?.assignee_id) return;
-  createNotification(`employee_${task.assignee_id}`, {
+  const key = await memberKeyForAssignee(task.assignee_id);
+  if (!key) return;
+  createNotification(key, {
     type: 'task',
     title: 'New task assigned',
     body: `${task.title} · due ${task.due_date} · ${task.priority} priority`,
@@ -2156,11 +2182,17 @@ receiver.router.get('/api/dashboard/whatsapp/contacts', requireAuth, async (_req
 });
 
 receiver.router.get('/api/dashboard/whatsapp/contacts/:id/messages', requireAuth, async (req, res) => {
+  // Pure read — no state mutation (clearing unread is an explicit POST .../read to avoid a lost-update race)
   const { data, error } = await supabase.from('whatsapp_messages').select('*').eq('contact_id', req.params.id).order('created_at', { ascending: true }).limit(200);
   if (error) return res.status(500).json({ error: error.message });
-  // Reading the conversation clears unread
-  await supabase.from('whatsapp_contacts').update({ unread: 0 }).eq('id', req.params.id);
   res.json(data || []);
+});
+
+// Explicit mark-conversation-read (called when the admin opens/focuses a conversation)
+receiver.router.post('/api/dashboard/whatsapp/contacts/:id/read', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('whatsapp_contacts').update({ unread: 0 }).eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
 });
 
 receiver.router.post('/api/dashboard/whatsapp/contacts/:id/messages', requireAuth, express.json(), async (req, res) => {
@@ -2591,6 +2623,13 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
       const pdfBuffer = await renderQuotationPdf(html);
 
       res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
+      // Save quotation record (best-effort) so the employee's history is populated
+      supabase.from('quotations').insert({
+        quote_id: id || generateQuoteId(),
+        title: `${vehicleModel || 'Quotation'} — ${name || ''}`.trim(),
+        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs },
+        created_by: req.employee.username
+      }).then(() => {}).catch(() => {});
     } catch (e) {
       console.error('[emp-quotation-gen]', e);
       res.status(500).json({ error: e.message });
@@ -2665,10 +2704,14 @@ async function sendDueDateReminders() {
     supabase.from('tasks').select('id,title,assignee_id').lt('due_date', today).neq('status', 'done'),
   ]);
   for (const t of dueTomorrow || []) {
-    if (t.assignee_id) createNotification(`employee_${t.assignee_id}`, { type: 'reminder', title: 'Task due tomorrow', body: t.title, url: '/employee#tasks' }, 'offline');
+    if (!t.assignee_id) continue;
+    const key = await memberKeyForAssignee(t.assignee_id);
+    if (key) createNotification(key, { type: 'reminder', title: 'Task due tomorrow', body: t.title, url: '/employee#tasks' }, 'offline');
   }
   for (const t of overdue || []) {
-    if (t.assignee_id) createNotification(`employee_${t.assignee_id}`, { type: 'reminder', title: 'Overdue task', body: t.title, url: '/employee#tasks' }, 'offline');
+    if (!t.assignee_id) continue;
+    const key = await memberKeyForAssignee(t.assignee_id);
+    if (key) createNotification(key, { type: 'reminder', title: 'Overdue task', body: t.title, url: '/employee#tasks' }, 'offline');
   }
 }
 
