@@ -2255,7 +2255,8 @@ receiver.router.get('/api/dashboard/quotations/:id', requireAuth, async (req, re
 });
 
 // Employee quotation settings (read-only)
-receiver.router.get('/api/employee/quotation/settings', requireEmployeeAuth, async (_req, res) => {
+receiver.router.get('/api/employee/quotation/settings', requireEmployeeAuth, async (req, res) => {
+  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
   const { data } = await supabase.from('quotation_settings').select('key,value');
   const settings = {};
   for (const row of data || []) settings[row.key] = row.value;
@@ -2263,12 +2264,14 @@ receiver.router.get('/api/employee/quotation/settings', requireEmployeeAuth, asy
 });
 
 receiver.router.get('/api/employee/quotations', requireEmployeeAuth, async (req, res) => {
+  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
   const { data, error } = await supabase.from('quotations').select('id,quote_id,title,created_by,created_at').eq('created_by', req.employee.username).order('created_at', { ascending: false }).limit(50);
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
 
 receiver.router.get('/api/employee/quotations/:id', requireEmployeeAuth, async (req, res) => {
+  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
   const { data, error } = await supabase.from('quotations').select('*').eq('id', req.params.id).eq('created_by', req.employee.username).single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
@@ -2290,6 +2293,38 @@ function calcEgp(priceUsd, units, exchange) {
   const e = parseFloat(exchange) || 1;
   if (!isFinite(p)) return null;
   return Math.round(p * u * e);
+}
+
+// HTML-escape any user/DB-derived value before interpolating into the quotation HTML.
+function escHtml(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Render quotation HTML to a PDF buffer via Puppeteer, blocking any resource
+// load that isn't an inline data: URL or https: (prevents file:// LFI and
+// internal http:// SSRF from authored/injected markup).
+async function renderQuotationPdf(html) {
+  const puppeteer = require('puppeteer');
+  const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  try {
+    const page = await browser.newPage();
+    await page.setRequestInterception(true);
+    page.on('request', r => {
+      const u = r.url();
+      if (u.startsWith('data:') || u.startsWith('https:')) r.continue();
+      else r.abort();
+    });
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    return await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '0', bottom: '0', left: '0', right: '0' },
+    });
+  } finally {
+    await browser.close();
+  }
 }
 
 function buildQuotationHtml(data) {
@@ -2319,21 +2354,21 @@ function buildQuotationHtml(data) {
   const imgSection = imageDataUrls && imageDataUrls.length
     ? `<tr><td colspan="4" style="padding:10px 0;border:1px solid ${GOLD};border-top:none">
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-          ${imageDataUrls.map(src => `<img src="${src}" style="height:130px;max-width:220px;object-fit:contain;border-radius:4px;border:1px solid ${GOLD}">`).join('')}
+          ${imageDataUrls.map(src => `<img src="${escHtml(src)}" style="height:130px;max-width:220px;object-fit:contain;border-radius:4px;border:1px solid ${GOLD}">`).join('')}
         </div>
        </td></tr>`
     : '';
 
   const vehicleRow = vehicleModel
-    ? `<tr><td colspan="4" style="text-align:center;font-size:17px;font-weight:700;color:#cc3300;padding:10px 8px;border:1px solid ${GOLD};border-bottom:none">${vehicleModel}</td></tr>`
+    ? `<tr><td colspan="4" style="text-align:center;font-size:17px;font-weight:700;color:#cc3300;padding:10px 8px;border:1px solid ${GOLD};border-bottom:none">${escHtml(vehicleModel)}</td></tr>`
     : '';
 
   const itemRowsHtml = itemRows.map((item, i) => {
     const isFree = item.egp === null;
     const bg = i % 2 === 1 ? `background:#fdfaf3` : '';
     return `<tr style="${bg}">
-      <td style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${item.name || ''}</td>
-      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${item.unit || 1}</td>
+      <td style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${escHtml(item.name || '')}</td>
+      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${escHtml(item.unit || 1)}</td>
       <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${isFree ? 'Free' : fmtNum(item.priceUsd)}</td>
       <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${isFree ? 'Free' : fmtNum(item.egp)}</td>
     </tr>`;
@@ -2342,7 +2377,7 @@ function buildQuotationHtml(data) {
   const logRowsHtml = logisticsRows.map((row, i) => {
     const bg = i % 2 === 1 ? `background:#fdfaf3` : '';
     return `<tr style="${bg}">
-      <td colspan="2" style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${row.label}</td>
+      <td colspan="2" style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${escHtml(row.label)}</td>
       <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${fmtNum(row.priceUsd)}</td>
       <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${fmtNum(row.egp)}</td>
     </tr>`;
@@ -2404,10 +2439,10 @@ function buildQuotationHtml(data) {
       </td>
       <td style="width:35%;vertical-align:top">
         <table class="meta-table">
-          <tr><td class="meta-label">ID</td><td class="meta-val">${id || ''}</td></tr>
-          <tr><td class="meta-label">DATE</td><td class="meta-val">${date || ''}</td></tr>
-          <tr><td class="meta-label">VALID TO</td><td class="meta-val">${validTo || ''}</td></tr>
-          <tr><td class="meta-label">NAME</td><td class="meta-val">${name || ''}</td></tr>
+          <tr><td class="meta-label">ID</td><td class="meta-val">${escHtml(id || '')}</td></tr>
+          <tr><td class="meta-label">DATE</td><td class="meta-val">${escHtml(date || '')}</td></tr>
+          <tr><td class="meta-label">VALID TO</td><td class="meta-val">${escHtml(validTo || '')}</td></tr>
+          <tr><td class="meta-label">NAME</td><td class="meta-val">${escHtml(name || '')}</td></tr>
         </table>
       </td>
     </tr>
@@ -2459,32 +2494,32 @@ function buildQuotationHtml(data) {
     <div style="display:flex;gap:14px;align-items:stretch">
       <!-- Left: spec keys -->
       <div style="flex:1;border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY}">
-        <div><strong>Currency:</strong> ${currency || 'EGP'}</div>
+        <div><strong>Currency:</strong> ${escHtml(currency || 'EGP')}</div>
         <div><strong>Exchange:</strong> ${fmtNum(exchange)}</div>
-        ${issuer ? `<div><strong>Issuer:</strong> ${issuer}</div>` : ''}
-        ${(customSpecs || []).map(sp => sp.key ? `<div><strong>${sp.key}:</strong> ${sp.val || ''}</div>` : `<div>${sp.val || ''}</div>`).join('')}
+        ${issuer ? `<div><strong>Issuer:</strong> ${escHtml(issuer)}</div>` : ''}
+        ${(customSpecs || []).map(sp => sp.key ? `<div><strong>${escHtml(sp.key)}:</strong> ${escHtml(sp.val || '')}</div>` : `<div>${escHtml(sp.val || '')}</div>`).join('')}
       </div>
       <!-- Right: payment terms -->
       <div style="width:46%;border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY}">
         <div style="font-weight:700;margin-bottom:4px">Payment terms</div>
-        ${(s.payment_terms || '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances').split('\n').map(l => `<div style="padding-left:14px">${l}</div>`).join('')}
+        ${(s.payment_terms || '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances').split('\n').map(l => `<div style="padding-left:14px">${escHtml(l)}</div>`).join('')}
       </div>
     </div>
   </div>
 
   <!-- FOOTER -->
   <div class="footer">
-    <div class="footer-brand">${s.company_name || 'MOTOLINKERS'}</div>
-    <div>This quotation is valid until ${validTo || '—'} | ${s.footer_note || 'Confidential'}</div>
-    <div>${id || ''}</div>
+    <div class="footer-brand">${escHtml(s.company_name || 'MOTOLINKERS')}</div>
+    <div>This quotation is valid until ${escHtml(validTo || '—')} | ${escHtml(s.footer_note || 'Confidential')}</div>
+    <div>${escHtml(id || '')}</div>
   </div>
 
   <!-- COMPANY CONTACT FOOTER -->
   <div style="border:2px solid ${NAVY};border-radius:8px;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:16px">
     <div style="display:flex;flex-direction:column;gap:3px;font-size:9px;color:#333;line-height:1.5">
-      <div><strong>Address:</strong> ${s.company_address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo'}</div>
-      <div><strong>Email:</strong> ${s.company_email || 'info@motolinkers.com'} &nbsp;|&nbsp; <strong>Website:</strong> ${s.company_website || 'Motolinkers.com'} &nbsp;|&nbsp; <strong>Phone:</strong> ${s.company_phone || '+2 010 000 78104'}</div>
-      ${s.company_tax_id ? `<div><strong>TAX ID:</strong> ${s.company_tax_id} &nbsp;|&nbsp; <strong>Registration No:</strong> ${s.company_reg_no || ''}</div>` : `<div><strong>TAX ID:</strong> 773934006 &nbsp;|&nbsp; <strong>Registration No:</strong> 282378</div>`}
+      <div><strong>Address:</strong> ${escHtml(s.company_address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo')}</div>
+      <div><strong>Email:</strong> ${escHtml(s.company_email || 'info@motolinkers.com')} &nbsp;|&nbsp; <strong>Website:</strong> ${escHtml(s.company_website || 'Motolinkers.com')} &nbsp;|&nbsp; <strong>Phone:</strong> ${escHtml(s.company_phone || '+2 010 000 78104')}</div>
+      ${s.company_tax_id ? `<div><strong>TAX ID:</strong> ${escHtml(s.company_tax_id)} &nbsp;|&nbsp; <strong>Registration No:</strong> ${escHtml(s.company_reg_no || '')}</div>` : `<div><strong>TAX ID:</strong> 773934006 &nbsp;|&nbsp; <strong>Registration No:</strong> 282378</div>`}
     </div>
     <div style="margin-left:20px;flex-shrink:0">
       <img src="https://images.motolinkers.com/avatar-11-max-reev/motolinkers-logo-black-text-preview.png" style="max-height:45px;width:auto;display:block">
@@ -2512,16 +2547,7 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
 
       const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings });
 
-      const puppeteer = require('puppeteer');
-      const browser   = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-      const page      = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '0', bottom: '0', left: '0', right: '0' },
-      });
-      await browser.close();
+      const pdfBuffer = await renderQuotationPdf(html);
 
       res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
       // Save quotation record (best-effort)
@@ -2539,13 +2565,15 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
 );
 
 // ─── Employee Quotation Draft ──────────────────────────────────────────────────
-receiver.router.get('/api/employee/quotation/newid', requireEmployeeAuth, (_req, res) => {
+receiver.router.get('/api/employee/quotation/newid', requireEmployeeAuth, (req, res) => {
+  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
   res.json({ id: generateQuoteId() });
 });
 
 receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
   quotationImgUpload.array('images', 5), async (req, res) => {
     try {
+      if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
       const { id, date, validTo, name, vehicleModel, items: itemsJson, logistics: logisticsJson, currency, exchange, issuer, customSpecs: customSpecsJson } = req.body;
       const items       = JSON.parse(itemsJson       || '[]');
       const logistics   = JSON.parse(logisticsJson   || '[]');
@@ -2560,16 +2588,7 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
 
       const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings });
 
-      const puppeteer = require('puppeteer');
-      const browser   = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-      const page      = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '0', bottom: '0', left: '0', right: '0' },
-      });
-      await browser.close();
+      const pdfBuffer = await renderQuotationPdf(html);
 
       res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
     } catch (e) {
