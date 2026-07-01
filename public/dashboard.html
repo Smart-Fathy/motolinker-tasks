@@ -1502,9 +1502,10 @@
         <button class="btn btn-sm btn-outline" onclick="clearLeadSelection()">Cancel</button>
       </div>
       <!-- Filters -->
-      <div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap">
-        <input class="filter-input" id="customer-search" placeholder="Search name, phone, car…" oninput="filterCustomers()" style="max-width:260px">
-        <select class="filter-input" id="lead-status-filter" onchange="filterCustomers()" style="max-width:180px">
+      <div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <input class="filter-input" id="customer-search" placeholder="Search name, phone, car…" oninput="filterCustomers()" style="max-width:240px">
+        <input class="filter-input" id="lead-date-filter" type="date" onchange="filterCustomers()" title="Filter by date" style="max-width:160px">
+        <select class="filter-input" id="lead-status-filter" onchange="filterCustomers()" style="max-width:170px">
           <option value="">All Statuses</option>
           <option value="cold">Cold</option>
           <option value="warm">Warm</option>
@@ -1513,6 +1514,15 @@
           <option value="not_interested">Not Interested</option>
           <option value="blacklist">Blacklist</option>
         </select>
+        <select class="filter-input" id="lead-origin-filter" onchange="filterCustomers()" style="max-width:150px">
+          <option value="">All Origins</option>
+          <option value="fb_ad">FB Ad.</option>
+          <option value="whatsapp">Whatsapp</option>
+          <option value="messenger">Messenger</option>
+          <option value="direct_call">Direct Call</option>
+          <option value="ig_ads">IG ads</option>
+        </select>
+        <button class="btn btn-sm btn-outline" onclick="clearLeadFilters()">Clear</button>
       </div>
       <div class="table-card" style="overflow-x:auto">
         <table class="table" id="customers-table" style="min-width:1200px">
@@ -4543,24 +4553,46 @@ async function loadCustomers() {
   }
 }
 
+// Canonicalize a stored value (which may be a key OR human label, any casing) to its key.
+// Handles data stored as "Cold"/"Not Interested"/"FB Ad." as well as cold/not_interested/fb_ad.
+function normKey(v, labels) {
+  if (v == null || v === '') return '';
+  const low = String(v).trim().toLowerCase();
+  if (labels[low]) return low;                       // already a key (e.g. 'cold')
+  const snake = low.replace(/\s+/g, '_');
+  if (labels[snake]) return snake;                   // 'immediate delivery' -> 'immediate_delivery'
+  for (const k in labels) if (labels[k].toLowerCase() === low) return k; // label match ('FB Ad.' -> 'fb_ad')
+  return snake;                                      // fallback
+}
+
 function filterCustomers() {
-  const q = (document.getElementById('customer-search')?.value || '').toLowerCase();
+  const q  = (document.getElementById('customer-search')?.value || '').toLowerCase();
+  const df = document.getElementById('lead-date-filter')?.value || '';
   const sf = document.getElementById('lead-status-filter')?.value || '';
+  const of = document.getElementById('lead-origin-filter')?.value || '';
   let list = _allCustomers;
-  if (q) list = list.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.car_in_question||'').toLowerCase().includes(q));
-  if (sf) list = list.filter(c => (c.lead_status || 'cold') === sf);
+  if (q)  list = list.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.car_in_question||'').toLowerCase().includes(q));
+  if (df) list = list.filter(c => (c.lead_date || '') === df);
+  if (sf) list = list.filter(c => normKey(c.lead_status || 'cold', LEAD_STATUS_LABELS) === sf);
+  if (of) list = list.filter(c => normKey(c.source, ORIGIN_LABELS) === of);
   renderCustomers(list);
+}
+
+function clearLeadFilters() {
+  const ids = ['customer-search', 'lead-date-filter', 'lead-status-filter', 'lead-origin-filter'];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  filterCustomers();
 }
 
 function renderCustomers(list) {
   const tbody = document.getElementById('customers-tbody');
   if (!list.length) { tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:32px">No leads yet. Click "Add Lead" to get started.</td></tr>'; return; }
   tbody.innerHTML = list.map(c => {
-    const st = c.lead_status || 'cold';
-    const slabel = LEAD_STATUS_LABELS[st] || st;
+    const st = normKey(c.lead_status || 'cold', LEAD_STATUS_LABELS);
+    const slabel = LEAD_STATUS_LABELS[st] || c.lead_status || st;
     const sbg = LEAD_STATUS_COLORS[st] || LEAD_STATUS_COLORS.cold;
     const scol = LEAD_STATUS_TEXT[st] || LEAD_STATUS_TEXT.cold;
-    const olabel = ORIGIN_LABELS[c.source] || c.source || '—';
+    const olabel = ORIGIN_LABELS[normKey(c.source, ORIGIN_LABELS)] || c.source || '—';
     const nalabel = NEXT_ACTION_LABELS[c.next_action] || c.next_action || '—';
     const checked = _selectedLeads.has(c.id) ? 'checked' : '';
     return `<tr>
