@@ -422,7 +422,45 @@
     }
     .logout-btn:hover { background: rgba(239,68,68,.15); color: #f87171; }
 
-    .app-content { margin-left: 220px; flex: 1; min-width: 0; }
+    .app-content { margin-left: 220px; flex: 1; min-width: 0; transition: margin-left .2s ease; }
+
+    /* ── Sidebar collapse button + collapsible groups ── */
+    .sidebar-logo-textwrap { min-width: 0; }
+    .sidebar-collapse-btn {
+      margin-left: auto; background: none; border: none; color: rgba(255,255,255,.45);
+      cursor: pointer; padding: 5px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .sidebar-collapse-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
+    .sidebar-collapse-btn svg { width: 18px; height: 18px; }
+
+    .nav-group { margin-bottom: 2px; }
+    .nav-group-head {
+      display: flex; align-items: center; justify-content: space-between; cursor: pointer;
+      color: rgba(255,255,255,.3); font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .8px; padding: 10px 8px 4px; user-select: none;
+    }
+    .nav-group-head:hover { color: rgba(255,255,255,.6); }
+    .nav-group-chevron { width: 13px; height: 13px; transition: transform .2s; flex-shrink: 0; }
+    .nav-group:not(.open) .nav-group-chevron { transform: rotate(-90deg); }
+    .nav-group-items { overflow: hidden; max-height: 0; transition: max-height .25s ease; }
+    .nav-group.open .nav-group-items { max-height: 640px; }
+
+    /* Collapsed rail (desktop only) */
+    @media (min-width: 901px) {
+      .sidebar.collapsed { width: 64px; }
+      .sidebar.collapsed ~ .app-content { margin-left: 64px; }
+      .sidebar.collapsed .sidebar-logo-textwrap { display: none; }
+      .sidebar.collapsed .sidebar-logo { flex-direction: column; gap: 10px; padding: 18px 0 14px; }
+      .sidebar.collapsed .sidebar-collapse-btn { margin: 0; }
+      .sidebar.collapsed .nav-group-head { display: none; }
+      .sidebar.collapsed .nav-group-items { max-height: none !important; }
+      .sidebar.collapsed .nav-item { font-size: 0; justify-content: center; padding: 11px 0; gap: 0; }
+      .sidebar.collapsed .nav-item .nav-icon { font-size: 16px; }
+      .sidebar.collapsed .nav-item .chat-nav-badge,
+      .sidebar.collapsed .nav-item #notif-nav-badge { display: none !important; }
+      .sidebar.collapsed .logout-btn { font-size: 0; justify-content: center; gap: 0; }
+      .sidebar.collapsed .logout-btn span { font-size: 16px; }
+    }
 
     /* ── Page visibility ─────────────────────────────────────── */
     .page { display: none; }
@@ -558,6 +596,7 @@
       .sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,.25); }
       .app-content { margin-left: 0; }
       .hamburger { display: inline-flex; align-items: center; justify-content: center; }
+      .sidebar-collapse-btn { display: none; }
     }
 
     @media (max-width: 640px) {
@@ -848,6 +887,9 @@
   .notif-item.unread{ background:rgba(201,163,94,.07); }
   .notif-dot{ width:8px; height:8px; border-radius:50%; background:var(--gold); flex-shrink:0; margin-top:5px; opacity:0; }
   .notif-item.unread .notif-dot{ opacity:1; }
+  .notif-type-icon{ position:relative; flex-shrink:0; width:30px; height:30px; border-radius:8px; background:rgba(201,163,94,.12); color:var(--primary); display:flex; align-items:center; justify-content:center; }
+  .notif-type-icon svg{ width:16px; height:16px; }
+  .notif-unread-marker{ position:absolute; top:-2px; right:-2px; width:8px; height:8px; border-radius:50%; background:var(--danger); border:2px solid var(--surface); }
   .notif-body{ flex:1; min-width:0; }
   .notif-title{ font-size:13px; font-weight:600; margin-bottom:2px; }
   .notif-text{ font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
@@ -888,35 +930,64 @@
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
       <div class="sidebar-logo-icon"></div>
-      <div>
+      <div class="sidebar-logo-textwrap">
         <div class="sidebar-logo-text">MotoLinker</div>
         <div class="sidebar-logo-sub">Super Admin</div>
       </div>
+      <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
     </div>
     <nav class="sidebar-nav">
-      <div class="sidebar-section-label">Management</div>
-      <div class="nav-item active" onclick="navigate('tasks')"    id="nav-tasks">    <span class="nav-icon"><i data-lucide="clipboard-list"></i></span> Tasks</div>
-      <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon"><i data-lucide="users"></i></span> Employees</div>
-      <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon"><i data-lucide="inbox"></i></span> Requests</div>
-      <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><i data-lucide="mail"></i></span> Submissions</div>
-      <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><i data-lucide="clock"></i></span> Hours Logs</div>
-      <div class="sidebar-section-label">CRM</div>
-      <div class="nav-item"        onclick="navigate('customers')"  id="nav-customers">    <span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads</div>
-      <div class="nav-item"        onclick="navigate('deals')"      id="nav-deals">        <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals</div>
-      <div class="sidebar-section-label">Integrations</div>
-      <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft</div>
-      <div class="sidebar-section-label">Chat</div>
-      <div class="nav-item" onclick="navigate('chat')" id="nav-chat"><span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat<span class="chat-nav-badge" id="chat-nav-badge" style="display:none">0</span></div>
-      <div class="nav-item" onclick="navigate('whatsapp')" id="nav-whatsapp"><span class="nav-icon"><i data-lucide="message-square-text"></i></span> WhatsApp<span class="chat-nav-badge" id="wa-nav-badge" style="display:none">0</span></div>
-      <div class="sidebar-section-label">Google</div>
-      <div class="nav-item" onclick="navigate('calendar')" id="nav-calendar"><span class="nav-icon"><i data-lucide="calendar"></i></span> Calendar</div>
-      <div class="nav-item" onclick="navigate('meet')"     id="nav-meet">    <span class="nav-icon"><i data-lucide="video"></i></span> Meet</div>
-      <div class="sidebar-section-label">Account</div>
-      <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon"><i data-lucide="mail"></i></span> My Email</div>
-      <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon"><i data-lucide="hard-drive"></i></span> My Drive</div>
-      <div class="nav-item"        onclick="navigate('sheets')"    id="nav-sheets">   <span class="nav-icon"><i data-lucide="table"></i></span> My Sheets</div>
-      <div class="sidebar-section-label">System</div>
-      <div class="nav-item"        onclick="navigate('notif')"     id="nav-notif">    <span class="nav-icon"><i data-lucide="bell"></i></span> Notifications<span id="notif-nav-badge" style="display:none;margin-left:auto;background:var(--danger);color:#fff;border-radius:9px;font-size:10px;font-weight:700;padding:1px 6px;line-height:1.4">0</span></div>
+      <div class="nav-group" data-group="management">
+        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Management</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <div class="nav-item active" onclick="navigate('tasks')"    id="nav-tasks">    <span class="nav-icon"><i data-lucide="clipboard-list"></i></span> Tasks</div>
+          <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon"><i data-lucide="users"></i></span> Employees</div>
+          <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon"><i data-lucide="inbox"></i></span> Requests</div>
+          <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><i data-lucide="mail"></i></span> Submissions</div>
+          <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><i data-lucide="clock"></i></span> Hours Logs</div>
+        </div>
+      </div>
+      <div class="nav-group" data-group="crm">
+        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">CRM</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <div class="nav-item"        onclick="navigate('customers')"  id="nav-customers">    <span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads</div>
+          <div class="nav-item"        onclick="navigate('deals')"      id="nav-deals">        <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals</div>
+        </div>
+      </div>
+      <div class="nav-group" data-group="integrations">
+        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Integrations</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft</div>
+        </div>
+      </div>
+      <div class="nav-group" data-group="chat">
+        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Chat</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <div class="nav-item" onclick="navigate('chat')" id="nav-chat"><span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat<span class="chat-nav-badge" id="chat-nav-badge" style="display:none">0</span></div>
+          <div class="nav-item" onclick="navigate('whatsapp')" id="nav-whatsapp"><span class="nav-icon"><i data-lucide="message-square-text"></i></span> WhatsApp<span class="chat-nav-badge" id="wa-nav-badge" style="display:none">0</span></div>
+        </div>
+      </div>
+      <div class="nav-group" data-group="google">
+        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Google</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <div class="nav-item" onclick="navigate('calendar')" id="nav-calendar"><span class="nav-icon"><i data-lucide="calendar"></i></span> Calendar</div>
+          <div class="nav-item" onclick="navigate('meet')"     id="nav-meet">    <span class="nav-icon"><i data-lucide="video"></i></span> Meet</div>
+        </div>
+      </div>
+      <div class="nav-group" data-group="account">
+        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Account</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon"><i data-lucide="mail"></i></span> My Email</div>
+          <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon"><i data-lucide="hard-drive"></i></span> My Drive</div>
+          <div class="nav-item"        onclick="navigate('sheets')"    id="nav-sheets">   <span class="nav-icon"><i data-lucide="table"></i></span> My Sheets</div>
+        </div>
+      </div>
+      <div class="nav-group" data-group="system">
+        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">System</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <div class="nav-item"        onclick="navigate('notif')"     id="nav-notif">    <span class="nav-icon"><i data-lucide="bell"></i></span> Notifications<span id="notif-nav-badge" style="display:none;margin-left:auto;background:var(--danger);color:#fff;border-radius:9px;font-size:10px;font-weight:700;padding:1px 6px;line-height:1.4">0</span></div>
+        </div>
+      </div>
     </nav>
     <div class="sidebar-footer">
       <div class="logout-btn" onclick="logout()">
@@ -2402,6 +2473,7 @@ function navigate(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.getElementById('nav-' + page).classList.add('active');
   currentPage = page;
+  openGroupForPage(page); // reveal the group containing the active item
   if (pageLoaders[page]) pageLoaders[page]();
   closeSidebar(); // close on mobile after navigation
   requestAnimationFrame(() => lucide.createIcons());
@@ -2419,6 +2491,35 @@ function closeSidebar() {
   const ov = document.getElementById('sidebar-overlay');
   sb.classList.remove('open');
   ov.classList.remove('visible');
+}
+
+// ── Sidebar collapse (rail) + collapsible section groups ──
+function toggleSidebarCollapse() {
+  const collapsed = document.getElementById('sidebar').classList.toggle('collapsed');
+  try { localStorage.setItem('ml_admin_sidebar', collapsed ? 'collapsed' : 'expanded'); } catch (_) {}
+}
+function toggleNavGroup(head) {
+  const group = head.closest('.nav-group');
+  if (!group) return;
+  group.classList.toggle('open');
+  try {
+    const open = [...document.querySelectorAll('.nav-group.open')].map(g => g.dataset.group);
+    localStorage.setItem('ml_admin_navgroups', JSON.stringify(open));
+  } catch (_) {}
+}
+function openGroupForPage(page) {
+  const nav = document.getElementById('nav-' + page);
+  const group = nav && nav.closest('.nav-group');
+  if (group) group.classList.add('open');
+}
+function initSidebarState() {
+  const sb = document.getElementById('sidebar');
+  try { if (localStorage.getItem('ml_admin_sidebar') === 'collapsed') sb.classList.add('collapsed'); } catch (_) {}
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('ml_admin_navgroups') || 'null'); } catch (_) {}
+  const groups = [...document.querySelectorAll('.nav-group')];
+  if (Array.isArray(saved)) groups.forEach(g => g.classList.toggle('open', saved.includes(g.dataset.group)));
+  else openGroupForPage(currentPage); // default: only active section open
 }
 
 async function logout() {
@@ -3016,6 +3117,7 @@ function adminJoinMeeting() {
   adminStartPresenceHeartbeat();
   loadNotifs();
   openNotifStream();
+  initSidebarState();
   const hash = location.hash.replace('#', '');
   const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','chat','calendar','meet','quotation','customers','deals','whatsapp','notif'];
   if (hash && validPages.includes(hash)) navigate(hash);
@@ -3079,17 +3181,25 @@ function renderNotifs() {
   if (list) {
     if (!notifItems.length) { list.innerHTML = '<div class="notif-empty">No notifications yet</div>'; }
     else list.innerHTML = notifItems.slice(0, 20).map(n => `
-      <div class="notif-item${n.read ? '' : ' unread'}" onclick="notifClick('${esc(n.type || '')}','${encodeURIComponent(n.url||'')}')">
-        <span class="notif-dot"></span>
+      <div class="notif-item${n.read ? '' : ' unread'}" onclick="notifClick(${n.id ? `'${n.id}'` : 'null'},'${encodeURIComponent(n.url||'')}','${esc(n.type || '')}')">
+        <span class="notif-type-icon"><i data-lucide="${notifIcon(n.type)}"></i></span>
         <div class="notif-body">
-          <div class="notif-title">${esc(n.title || '')}</div>
+          <div class="notif-title">${esc(notifCleanTitle(n.title))}</div>
           ${n.body ? `<div class="notif-text">${esc(n.body)}</div>` : ''}
           <div class="notif-time">${esc(notifRelTime(n.created_at))}</div>
         </div>
       </div>`).join('');
+    requestAnimationFrame(() => lucide.createIcons());
   }
   if (currentPage === 'notif') renderNotifPage();
 }
+
+function notifIcon(type) {
+  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox' };
+  return m[type] || 'bell';
+}
+// Strip any leading emoji/symbols so legacy notifications render clean text (new ones already clean)
+function notifCleanTitle(t) { return (t || '').replace(/^[^\p{L}\p{N}]+/u, '').trim() || (t || ''); }
 
 function toggleNotifPanel() {
   const panel = document.getElementById('notif-panel');
@@ -3107,17 +3217,25 @@ async function markAllNotifsRead() {
   try { await apiFetch('/api/dashboard/notifications/read', { method: 'POST', body: JSON.stringify({ all: true }) }); } catch (_) {}
 }
 
-function notifClick(type, urlEnc) {
-  document.getElementById('notif-panel')?.classList.remove('open');
-  const url = decodeURIComponent(urlEnc || '');
-  const hash = url.split('#')[1];
+// Route a notification to the right page (hash first, then type fallback for legacy rows)
+function notifRoute(url, type) {
+  const hash = (url || '').split('#')[1];
   if (hash && document.getElementById('page-' + hash)) { navigate(hash); return; }
-  if (type === 'request') navigate('requests');
-  else if (type === 'task') navigate('tasks');
-  else if (type === 'hours') navigate('hours');
-  else if (type === 'quotation') navigate('quotation');
-  else if (type === 'lead') navigate('customers');
-  else if (type === 'deal') navigate('deals');
+  const map = { request: 'requests', task: 'tasks', hours: 'hours', quotation: 'quotation', lead: 'customers', deal: 'deals' };
+  if (map[type]) navigate(map[type]);
+}
+// Mark a single notification read (local + server)
+async function notifMarkRead(id) {
+  if (!id) return;
+  const it = notifItems.find(n => String(n.id) === String(id));
+  if (it && !it.read) { it.read = true; notifUnread = Math.max(0, notifUnread - 1); renderNotifs(); }
+  try { await apiFetch('/api/dashboard/notifications/read', { method: 'POST', body: JSON.stringify({ id }) }); } catch (_) {}
+}
+
+function notifClick(id, urlEnc, type) {
+  document.getElementById('notif-panel')?.classList.remove('open');
+  notifMarkRead(id);
+  notifRoute(decodeURIComponent(urlEnc || ''), type);
 }
 
 async function loadNotifPage() {
@@ -3125,8 +3243,8 @@ async function loadNotifPage() {
     const r = await apiFetch('/api/dashboard/notifications');
     if (r.ok) {
       const d = await r.json();
-      notifItems = d.notifications || [];
-      notifUnread = notifItems.filter(n => !n.read).length;
+      notifItems = d.items || [];
+      notifUnread = d.unread != null ? d.unread : notifItems.filter(n => !n.read).length;
       renderNotifs();
     }
   } catch (_) {}
@@ -3141,27 +3259,21 @@ function renderNotifPage() {
     return;
   }
   container.innerHTML = notifItems.map(n => `
-    <div class="notif-center-item${n.read ? '' : ' unread'}" onclick="notifCenterClick('${esc(n.type||'')}','${encodeURIComponent(n.url||'')}')">
-      <div class="notif-dot" style="${!n.read ? 'opacity:1;margin-top:6px' : 'opacity:0;margin-top:6px'}"></div>
+    <div class="notif-center-item${n.read ? '' : ' unread'}" onclick="notifCenterClick(${n.id ? `'${n.id}'` : 'null'},'${encodeURIComponent(n.url||'')}','${esc(n.type||'')}')">
+      <span class="notif-type-icon" style="margin-top:2px">${!n.read ? '<span class="notif-unread-marker"></span>' : ''}<i data-lucide="${notifIcon(n.type)}"></i></span>
       <div style="flex:1;min-width:0">
-        <div class="notif-title">${esc(n.title || '')}</div>
+        <div class="notif-title">${esc(notifCleanTitle(n.title))}</div>
         ${n.body ? `<div class="notif-text" style="margin-top:2px">${esc(n.body)}</div>` : ''}
         <div class="notif-time" style="margin-top:4px">${esc(notifRelTime(n.created_at))}</div>
       </div>
       <div style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;margin-left:8px">${new Date(n.created_at).toLocaleDateString()}</div>
     </div>`).join('');
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
-function notifCenterClick(type, urlEnc) {
-  const url = decodeURIComponent(urlEnc || '');
-  const hash = url.split('#')[1];
-  if (hash && document.getElementById('page-' + hash)) { navigate(hash); return; }
-  if (type === 'request') navigate('requests');
-  else if (type === 'task') navigate('tasks');
-  else if (type === 'hours') navigate('hours');
-  else if (type === 'quotation') navigate('quotation');
-  else if (type === 'lead') navigate('customers');
-  else if (type === 'deal') navigate('deals');
+function notifCenterClick(id, urlEnc, type) {
+  notifMarkRead(id);
+  notifRoute(decodeURIComponent(urlEnc || ''), type);
 }
 
 function showAdminToast(msg) {
