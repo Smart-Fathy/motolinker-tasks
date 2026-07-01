@@ -1504,7 +1504,11 @@
       <!-- Filters -->
       <div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <input class="filter-input" id="customer-search" placeholder="Search name, phone, car…" oninput="filterCustomers()" style="max-width:240px">
-        <input class="filter-input" id="lead-date-filter" type="date" onchange="filterCustomers()" title="Filter by date" style="max-width:160px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <input class="filter-input" id="lead-date-from" type="date" onchange="filterCustomers()" title="From date" style="max-width:150px">
+          <span style="color:var(--muted);font-size:12px">→</span>
+          <input class="filter-input" id="lead-date-to" type="date" onchange="filterCustomers()" title="To date" style="max-width:150px">
+        </div>
         <select class="filter-input" id="lead-status-filter" onchange="filterCustomers()" style="max-width:170px">
           <option value="">All Statuses</option>
           <option value="cold">Cold</option>
@@ -4566,20 +4570,23 @@ function normKey(v, labels) {
 }
 
 function filterCustomers() {
-  const q  = (document.getElementById('customer-search')?.value || '').toLowerCase();
-  const df = document.getElementById('lead-date-filter')?.value || '';
-  const sf = document.getElementById('lead-status-filter')?.value || '';
-  const of = document.getElementById('lead-origin-filter')?.value || '';
+  const q    = (document.getElementById('customer-search')?.value || '').toLowerCase();
+  const from = document.getElementById('lead-date-from')?.value || '';
+  const to   = document.getElementById('lead-date-to')?.value || '';
+  const sf   = document.getElementById('lead-status-filter')?.value || '';
+  const of   = document.getElementById('lead-origin-filter')?.value || '';
   let list = _allCustomers;
   if (q)  list = list.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.car_in_question||'').toLowerCase().includes(q));
-  if (df) list = list.filter(c => (c.lead_date || '') === df);
+  // ISO dates (YYYY-MM-DD) compare correctly as strings; either bound may be left empty
+  if (from) list = list.filter(c => c.lead_date && c.lead_date >= from);
+  if (to)   list = list.filter(c => c.lead_date && c.lead_date <= to);
   if (sf) list = list.filter(c => normKey(c.lead_status || 'cold', LEAD_STATUS_LABELS) === sf);
   if (of) list = list.filter(c => normKey(c.source, ORIGIN_LABELS) === of);
   renderCustomers(list);
 }
 
 function clearLeadFilters() {
-  const ids = ['customer-search', 'lead-date-filter', 'lead-status-filter', 'lead-origin-filter'];
+  const ids = ['customer-search', 'lead-date-from', 'lead-date-to', 'lead-status-filter', 'lead-origin-filter'];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   filterCustomers();
 }
