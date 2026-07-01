@@ -781,7 +781,7 @@ receiver.router.put('/api/dashboard/requests/:id', requireAuth, express.json(), 
         type: 'request',
         title: `Request ${labels[data.status] || data.status}`,
         body: data.title,
-        url: '/employee',
+        url: '/employee#requests',
       }, 'offline');
     }
   }
@@ -1139,9 +1139,9 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json
   if (data) {
     createNotification('admin', {
       type: 'request',
-      title: '📨 New employee request',
+      title: 'New employee request',
       body: `${req.employee.name}: ${title}`,
-      url: '/dashboard',
+      url: '/dashboard#requests',
     }, 'offline');
   }
   // Notify chiefs channel on Slack
@@ -1557,7 +1557,7 @@ receiver.router.put('/api/dashboard/deals/:id', requireAuth, express.json(), asy
       if (notifyId) {
         const c = data.customers;
         const body = [`Lead: ${c?.name || data.title}`, c?.phone ? `Phone: ${c.phone}` : '', c?.car_in_question ? `Car: ${c.car_in_question}` : '', c?.budget_lead ? `Budget: ${Number(c.budget_lead).toLocaleString()} EGP` : ''].filter(Boolean).join(' · ');
-        await createNotification(`employee_${notifyId}`, { type: 'lead', title: '📋 New lead to quote — ' + (c?.name || data.title), body, url: '/employee' }, 'always');
+        await createNotification(`employee_${notifyId}`, { type: 'lead', title: 'New lead to quote — ' + (c?.name || data.title), body, url: '/employee#quotation' }, 'always');
       }
     } catch (e) { console.warn('[deals] notify-contacted failed:', e.message); }
   }
@@ -1654,9 +1654,9 @@ function notifyEmployeeTaskAssigned(task) {
   if (!task?.assignee_id) return;
   createNotification(`employee_${task.assignee_id}`, {
     type: 'task',
-    title: '📋 New task assigned',
+    title: 'New task assigned',
     body: `${task.title} · due ${task.due_date} · ${task.priority} priority`,
-    url: '/employee',
+    url: '/employee#tasks',
   }, 'always');
 }
 
@@ -2453,16 +2453,22 @@ function buildQuotationHtml(data) {
     </tbody>
   </table>
 
-  <!-- KEY SPECS + PAYMENT TERMS -->
+  <!-- KEY SPECS (left) + PAYMENT TERMS (bottom right) -->
   <div style="margin-top:14px">
     <div class="section-label" style="margin-top:0">KEY SPECS</div>
-    <div style="border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY}">
-      <div><strong>Payment terms:</strong></div>
-      ${(s.payment_terms || '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances').split('\n').map(l => `<div style="padding-left:14px">${l}</div>`).join('')}
-      <div style="margin-top:8px"><strong>Currency:</strong> ${currency || 'EGP'}</div>
-      <div style="padding-left:14px"><strong>Exchange:</strong> ${fmtNum(exchange)}</div>
-      ${issuer ? `<div style="margin-top:4px"><strong>Issuer:</strong> ${issuer}</div>` : ''}
-      ${(customSpecs || []).map(sp => sp.key ? `<div><strong>${sp.key}:</strong> ${sp.val || ''}</div>` : `<div>${sp.val || ''}</div>`).join('')}
+    <div style="display:flex;gap:14px;align-items:stretch">
+      <!-- Left: spec keys -->
+      <div style="flex:1;border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY}">
+        <div><strong>Currency:</strong> ${currency || 'EGP'}</div>
+        <div><strong>Exchange:</strong> ${fmtNum(exchange)}</div>
+        ${issuer ? `<div><strong>Issuer:</strong> ${issuer}</div>` : ''}
+        ${(customSpecs || []).map(sp => sp.key ? `<div><strong>${sp.key}:</strong> ${sp.val || ''}</div>` : `<div>${sp.val || ''}</div>`).join('')}
+      </div>
+      <!-- Right: payment terms -->
+      <div style="width:46%;border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY}">
+        <div style="font-weight:700;margin-bottom:4px">Payment terms</div>
+        ${(s.payment_terms || '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances').split('\n').map(l => `<div style="padding-left:14px">${l}</div>`).join('')}
+      </div>
     </div>
   </div>
 
@@ -2640,10 +2646,10 @@ async function sendDueDateReminders() {
     supabase.from('tasks').select('id,title,assignee_id').lt('due_date', today).neq('status', 'done'),
   ]);
   for (const t of dueTomorrow || []) {
-    if (t.assignee_id) createNotification(`employee_${t.assignee_id}`, { type: 'reminder', title: '⏰ Task due tomorrow', body: t.title, url: '/employee' }, 'offline');
+    if (t.assignee_id) createNotification(`employee_${t.assignee_id}`, { type: 'reminder', title: 'Task due tomorrow', body: t.title, url: '/employee#tasks' }, 'offline');
   }
   for (const t of overdue || []) {
-    if (t.assignee_id) createNotification(`employee_${t.assignee_id}`, { type: 'reminder', title: '🔴 Overdue task', body: t.title, url: '/employee' }, 'offline');
+    if (t.assignee_id) createNotification(`employee_${t.assignee_id}`, { type: 'reminder', title: 'Overdue task', body: t.title, url: '/employee#tasks' }, 'offline');
   }
 }
 
@@ -2669,10 +2675,10 @@ async function sendHoursLogReminder() {
   for (const emp of allEmps || []) {
     if (!loggedIds.has(emp.id)) {
       createNotification(`employee_${emp.id}`, {
-        type: 'reminder',
-        title: '⏰ Log your hours',
+        type: 'hours',
+        title: 'Log your hours',
         body: "Please log today's working hours before you leave.",
-        url: '/employee',
+        url: '/employee#log',
       }, 'offline');
     }
   }
