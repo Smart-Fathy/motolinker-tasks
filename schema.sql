@@ -69,8 +69,12 @@ CREATE INDEX IF NOT EXISTS idx_requests_status ON requests (status);
 --  Auto-update updated_at trigger
 -- ============================================================
 
+-- search_path pinned to '' (all refs resolve via pg_catalog) to satisfy the
+-- Supabase linter (function_search_path_mutable) and prevent search_path hijacking.
 CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SET search_path = ''
+AS $$
 BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
@@ -177,10 +181,14 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_room ON chat_messages(room_id, created_at DESC);
 
+-- search_path pinned to '' (table refs schema-qualified) to satisfy the
+-- Supabase linter (function_search_path_mutable) and prevent search_path hijacking.
 CREATE OR REPLACE FUNCTION chat_room_touch()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SET search_path = ''
+AS $$
 BEGIN
-  UPDATE chat_rooms SET updated_at = NOW() WHERE id = NEW.room_id;
+  UPDATE public.chat_rooms SET updated_at = NOW() WHERE id = NEW.room_id;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
