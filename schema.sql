@@ -402,9 +402,35 @@ INSERT INTO quotation_settings (key, value) VALUES ('contact_notify_employee_id'
   ON CONFLICT (key) DO NOTHING;
 
 -- ============================================================
---  Optional: Row Level Security (RLS)
+--  Row Level Security (RLS)
 -- ============================================================
+--  All database access happens server-side through the Express API using the
+--  Supabase SERVICE ROLE key (SUPABASE_SERVICE_KEY), which has BYPASSRLS and is
+--  therefore unaffected by these settings. The browser never talks to Supabase
+--  directly (no anon key, no supabase-js, no Realtime).
+--
+--  Enabling RLS with NO policies makes the auto-generated PostgREST API (reachable
+--  with the public anon key) deny-all for every table — closing the data-exposure
+--  hole flagged by the Supabase linter (rls_disabled_in_public /
+--  sensitive_columns_exposed) without affecting the app.
+--
+--  Idempotent: ENABLE ROW LEVEL SECURITY is a no-op if already enabled.
 
--- ALTER TABLE tasks     ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE hours_logs ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE requests   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.tasks                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.hours_logs            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.requests              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.employees             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.chat_rooms            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.chat_room_members     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.chat_messages         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.push_subscriptions    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.presence              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.password_reset_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.google_tokens         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.quotation_settings    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.quotations            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.customers             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.deals                 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.whatsapp_contacts     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.whatsapp_messages     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.notifications         ENABLE ROW LEVEL SECURITY;
