@@ -931,6 +931,15 @@
     outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(201,163,94,.15);
   }
   select.form-input option, select.form-control option, select.filter-input option { background:#141416; color:var(--text); }
+  /* ── Deals kanban drag & drop ── */
+  .deal-card{ background:var(--card,#18181b); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:10px; cursor:grab; transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease; }
+  .deal-card:hover{ box-shadow:0 4px 14px rgba(0,0,0,.35), inset 0 0 0 1px rgba(201,163,94,.25); }
+  .deal-card:active{ cursor:grabbing; }
+  .deal-card.deal-dragging{ opacity:.35; transform:rotate(3deg) scale(.98); box-shadow:0 0 0 1px var(--primary); }
+  body.dragging-deal, body.dragging-deal *{ cursor:grabbing !important; }
+  .deal-col{ transition:background .15s ease, box-shadow .15s ease, transform .15s ease; }
+  .deal-col.drag-over{ background:rgba(201,163,94,.08) !important; box-shadow:inset 0 0 0 2px var(--primary), 0 0 24px rgba(201,163,94,.25); transform:scale(1.01); }
+  .deal-col.drag-over > div:first-child .nav-group-label{ color:var(--primary); }
   .notif-body{ flex:1; min-width:0; }
   .notif-title{ font-size:13px; font-weight:600; margin-bottom:2px; }
   .notif-text{ font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
@@ -1013,11 +1022,6 @@
         <div class="nav-group-items">
           <div class="nav-item" onclick="navigate('calendar')" id="nav-calendar"><span class="nav-icon"><i data-lucide="calendar"></i></span> Calendar</div>
           <div class="nav-item" onclick="navigate('meet')"     id="nav-meet">    <span class="nav-icon"><i data-lucide="video"></i></span> Meet</div>
-        </div>
-      </div>
-      <div class="nav-group" data-group="account">
-        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Account</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
-        <div class="nav-group-items">
           <div class="nav-item"        onclick="navigate('email')"     id="nav-email">    <span class="nav-icon"><i data-lucide="mail"></i></span> My Email</div>
           <div class="nav-item"        onclick="navigate('drive')"     id="nav-drive">    <span class="nav-icon"><i data-lucide="hard-drive"></i></span> My Drive</div>
           <div class="nav-item"        onclick="navigate('sheets')"    id="nav-sheets">   <span class="nav-icon"><i data-lucide="table"></i></span> My Sheets</div>
@@ -1096,8 +1100,10 @@
     <!-- Charts -->
     <div class="charts-grid">
       <div class="chart-card">
-        <div class="card-title">Tasks by Channel</div>
-        <div class="chart-wrap"><canvas id="channelChart"></canvas></div>
+        <div class="card-title">Top Performers</div>
+        <div class="chart-wrap" id="top-performers" style="overflow-y:auto">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
       </div>
       <div class="chart-card">
         <div class="card-title">Status Distribution</div>
@@ -2179,30 +2185,41 @@ function renderStats(s) {
 }
 
 // ── Charts ───────────────────────────────────────────────────────────────────
-function renderCharts(s) {
-  const channels = Object.keys(s.byChannel);
+// Top Performers — ranked list of tasks completed per employee (replaces the
+// old Tasks-by-Channel chart, which became meaningless after Slack removal)
+function renderTopPerformers(byEmployee) {
+  const c = document.getElementById('top-performers');
+  if (!c) return;
+  const list = Array.isArray(byEmployee) ? byEmployee : [];
+  if (!list.length) {
+    c.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:12px">No assigned tasks yet</div>';
+    return;
+  }
+  const medals = ['🥇', '🥈', '🥉'];
+  c.innerHTML = list.slice(0, 8).map((e, i) => {
+    const pct = e.total ? Math.round((e.done / e.total) * 100) : 0;
+    const initials = (e.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    const avatar = e.avatar_url
+      ? `<img src="${esc(e.avatar_url)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0">`
+      : `<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;font-size:10px;font-weight:700;flex-shrink:0">${initials}</span>`;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border)">
+      <span style="width:26px;text-align:center;font-size:${i < 3 ? '16px' : '11px'};color:var(--muted);flex-shrink:0">${medals[i] || '#' + (i + 1)}</span>
+      ${avatar}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;font-weight:600">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.name)}</span>
+          <span style="color:var(--success);white-space:nowrap">${e.done} <span style="color:var(--muted);font-weight:400">/ ${e.total}</span></span>
+        </div>
+        <div style="height:5px;background:var(--border);border-radius:99px;margin-top:5px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--primary),#e6c98a);border-radius:99px"></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
 
-  // Stacked bar — Tasks by channel
-  if (charts.channel) charts.channel.destroy();
-  charts.channel = new Chart(document.getElementById('channelChart'), {
-    type: 'bar',
-    data: {
-      labels: channels,
-      datasets: [
-        { label: 'To Do',       data: channels.map(c => s.byChannel[c].todo        || 0), backgroundColor: '#94a3b8' },
-        { label: 'In Progress', data: channels.map(c => s.byChannel[c].in_progress || 0), backgroundColor: '#f59e0b' },
-        { label: 'Done',        data: channels.map(c => s.byChannel[c].done        || 0), backgroundColor: '#10b981' },
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 10 } } },
-      scales: {
-        x: { stacked: true, ticks: { font: { size: 11 } } },
-        y: { stacked: true, ticks: { stepSize: 1, font: { size: 11 } }, beginAtZero: true },
-      },
-    },
-  });
+function renderCharts(s) {
+  renderTopPerformers(s.byEmployee);
 
   // Doughnut — Status distribution
   if (charts.status) charts.status.destroy();
@@ -5294,7 +5311,9 @@ function renderDealsKanban() {
   const deals = _dealsCustomerFilter ? _allDeals.filter(d => d.customer_id === _dealsCustomerFilter) : _allDeals;
   kanban.innerHTML = DEAL_STAGES.map(stage => {
     const stagDeals = deals.filter(d => d.stage === stage);
-    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:200px">
+    return `<div class="deal-col" data-stage="${stage}"
+        ondragover="dealDragOver(event)" ondragleave="dealDragLeave(event)" ondrop="dealDrop(event,'${stage}')"
+        style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:200px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${esc(DEAL_STAGE_LABELS[stage])}</div>
         <div style="background:rgba(255,255,255,.07);border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">${stagDeals.length}</div>
@@ -5308,7 +5327,9 @@ function renderDealsKanban() {
 function dealCard(d) {
   const daysOpen = Math.floor((Date.now() - new Date(d.created_at)) / 86400000);
   const customer = d.customers;
-  return `<div style="background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;cursor:pointer" onclick="openDealModal(${d.id})">
+  return `<div class="deal-card" id="deal-card-${d.id}" draggable="true"
+      ondragstart="dealDragStart(event, ${d.id})" ondragend="dealDragEnd(event)"
+      onclick="dealCardClick(${d.id})">
     <div style="font-size:13px;font-weight:600;margin-bottom:6px;line-height:1.3">${esc(d.title)}</div>
     ${customer ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px"><i data-lucide="user" style="width:10px;height:10px"></i> ${esc(customer.name)}</div>` : ''}
     ${d.car_model ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px"><i data-lucide="car" style="width:10px;height:10px"></i> ${esc(d.car_model)}</div>` : ''}
@@ -5318,6 +5339,73 @@ function dealCard(d) {
       <div style="font-size:10px;color:var(--muted)">${daysOpen}d</div>
     </div>
   </div>`;
+}
+
+// ── Deals drag & drop between stages ──────────────────────────────────────────
+let _dragDealId = null;
+let _dealJustDragged = false; // suppress the click-to-edit that follows a drag
+
+function dealCardClick(id) {
+  if (_dealJustDragged) { _dealJustDragged = false; return; }
+  openDealModal(id);
+}
+
+function dealDragStart(e, id) {
+  _dragDealId = id;
+  const card = e.currentTarget;
+  card.classList.add('deal-dragging');
+  document.body.classList.add('dragging-deal');
+  e.dataTransfer.effectAllowed = 'move';
+  // Cool drag ghost: a tilted, glowing clone of the card
+  const ghost = card.cloneNode(true);
+  ghost.style.cssText = `position:fixed;top:-500px;left:-500px;width:${card.offsetWidth}px;transform:rotate(4deg) scale(1.05);box-shadow:0 14px 40px rgba(201,163,94,.45), 0 0 0 1px var(--primary);border-radius:8px;background:var(--card,#18181b);opacity:.95;pointer-events:none;padding:12px`;
+  document.body.appendChild(ghost);
+  e.dataTransfer.setDragImage(ghost, card.offsetWidth / 2, 24);
+  setTimeout(() => ghost.remove(), 0);
+}
+
+function dealDragEnd(e) {
+  _dealJustDragged = true;
+  setTimeout(() => { _dealJustDragged = false; }, 150);
+  e.currentTarget.classList.remove('deal-dragging');
+  document.body.classList.remove('dragging-deal');
+  document.querySelectorAll('.deal-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+  _dragDealId = null;
+}
+
+function dealDragOver(e) {
+  if (_dragDealId == null) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function dealDragLeave(e) {
+  if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('drag-over');
+}
+
+async function dealDrop(e, stage) {
+  e.preventDefault();
+  const id = _dragDealId;
+  document.querySelectorAll('.deal-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+  if (id == null) return;
+  const deal = _allDeals.find(d => d.id === id);
+  if (!deal || deal.stage === stage) return;
+  const prevStage = deal.stage;
+  // Optimistic move, revert on failure
+  deal.stage = stage;
+  renderDealsKanban();
+  try {
+    const updated = await apiFetch(`/api/dashboard/deals/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage }) }).then(r => r.json());
+    if (updated?.error) throw new Error(updated.error);
+    const idx = _allDeals.findIndex(d => d.id === id);
+    if (idx >= 0) _allDeals[idx] = updated;
+    renderDealsKanban();
+  } catch (err) {
+    deal.stage = prevStage;
+    renderDealsKanban();
+    showAdminToast('Could not move deal: ' + err.message);
+  }
 }
 
 let _dealModalEmployees = [];
