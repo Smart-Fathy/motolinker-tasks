@@ -888,6 +888,24 @@
   .notif-type-icon{ position:relative; flex-shrink:0; width:30px; height:30px; border-radius:8px; background:rgba(201,163,94,.12); color:var(--primary); display:flex; align-items:center; justify-content:center; }
   .notif-type-icon svg{ width:16px; height:16px; }
   .notif-unread-marker{ position:absolute; top:-2px; right:-2px; width:8px; height:8px; border-radius:50%; background:var(--danger); border:2px solid var(--surface); }
+  /* ── Leads column system (ClickUp-style) ── */
+  #customers-table th.lead-col{ cursor:pointer; user-select:none; white-space:nowrap; }
+  #customers-table th.lead-col:hover{ background:rgba(255,255,255,.05); }
+  #customers-table th.lead-col .col-chev{ width:12px; height:12px; opacity:.35; vertical-align:-2px; margin-left:4px; }
+  #customers-table th.lead-col:hover .col-chev{ opacity:.9; }
+  #customers-table th.lead-col.drag-over{ box-shadow:inset 2px 0 0 var(--primary); }
+  #customers-table td.lead-cell{ cursor:pointer; }
+  #customers-table td.lead-cell:hover{ box-shadow:inset 0 0 0 1px rgba(201,163,94,.4); border-radius:4px; }
+  .lead-menu{ position:fixed; z-index:900; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,.55); min-width:190px; max-height:70vh; overflow-y:auto; padding:6px; display:none; }
+  .lead-menu.open{ display:block; }
+  .lead-menu button{ display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:none; border:none; color:var(--text); font-size:12.5px; padding:8px 10px; border-radius:6px; cursor:pointer; }
+  .lead-menu button:hover{ background:rgba(255,255,255,.06); }
+  .lead-menu button:disabled{ opacity:.35; cursor:default; }
+  .lead-menu button.danger{ color:var(--danger); }
+  .lead-menu .lead-menu-sep{ height:1px; background:var(--border); margin:4px 6px; }
+  .lead-menu label.lead-col-toggle{ display:flex; align-items:center; gap:8px; padding:7px 10px; font-size:12.5px; cursor:pointer; border-radius:6px; }
+  .lead-menu label.lead-col-toggle:hover{ background:rgba(255,255,255,.06); }
+  .lead-menu label.lead-col-toggle input{ accent-color:var(--primary); }
   .notif-body{ flex:1; min-width:0; }
   .notif-title{ font-size:13px; font-weight:600; margin-bottom:2px; }
   .notif-text{ font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
@@ -1527,17 +1545,15 @@
           <option value="ig_ads">IG ads</option>
         </select>
         <button class="btn btn-sm btn-outline" onclick="clearLeadFilters()">Clear</button>
+        <button class="btn btn-sm btn-outline" id="lead-cols-btn" onclick="openLeadColsPicker(event)" title="Show / hide columns"><i data-lucide="columns-3" style="width:13px;height:13px"></i> Columns</button>
       </div>
       <div class="table-card" style="overflow-x:auto">
         <table class="table" id="customers-table" style="min-width:1200px">
-          <thead><tr>
+          <thead><tr id="leads-head-row">
             <th style="width:36px;padding:8px 6px"><input type="checkbox" id="select-all-leads" onchange="toggleSelectAllLeads(this)"></th>
-            <th>Date</th><th>Time</th><th>Name</th><th>Phone</th><th>Status</th>
-            <th>Origin</th><th>Car</th><th>Budget</th><th>Next Action</th>
-            <th>Contacted</th><th>Notes</th><th>Actions</th>
           </tr></thead>
           <tbody id="customers-tbody">
-            <tr><td colspan="13" style="text-align:center;color:var(--muted);padding:32px">Loading…</td></tr>
+            <tr><td colspan="20" style="text-align:center;color:var(--muted);padding:32px">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -1656,10 +1672,65 @@
           <label class="form-label">Inquiry</label>
           <textarea class="form-input" id="cm-inquiry" rows="2" placeholder="Customer inquiry details…" style="resize:vertical"></textarea>
         </div>
+        <div id="cm-custom-fields" style="display:grid;gap:14px"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeCustomerModal()">Cancel</button>
         <button class="btn btn-primary" onclick="saveCustomer()">Save Lead</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Lead Column Modal -->
+  <div id="lead-col-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:650;align-items:center;justify-content:center">
+    <div class="modal" style="width:100%;max-width:420px">
+      <div class="modal-header">
+        <div class="modal-title">Add Column</div>
+        <button class="modal-close" onclick="document.getElementById('lead-col-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body" style="padding:24px;display:grid;gap:14px">
+        <div>
+          <label class="form-label">Column name</label>
+          <input class="form-input" id="lc-name" placeholder="e.g. Deposit, Branch, Test Drive">
+        </div>
+        <div>
+          <label class="form-label">Type</label>
+          <select class="form-input" id="lc-type" onchange="lcTypeChanged()">
+            <option value="text">Text</option>
+            <option value="number">Number</option>
+            <option value="date">Date</option>
+            <option value="select">Dropdown</option>
+            <option value="checkbox">Checkbox</option>
+          </select>
+        </div>
+        <div id="lc-options-wrap" style="display:none">
+          <label class="form-label">Dropdown options (one per line)</label>
+          <textarea class="form-input" id="lc-options" rows="4" placeholder="Option A&#10;Option B" style="resize:vertical"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('lead-col-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" onclick="saveNewLeadCol()">Add Column</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Dropdown Options Modal -->
+  <div id="lead-opts-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:650;align-items:center;justify-content:center">
+    <div class="modal" style="width:100%;max-width:420px">
+      <div class="modal-header">
+        <div class="modal-title" id="lo-title">Edit Options</div>
+        <button class="modal-close" onclick="document.getElementById('lead-opts-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body" style="padding:24px">
+        <input type="hidden" id="lo-key">
+        <div id="lo-list"></div>
+        <button class="btn btn-sm btn-outline" onclick="loAddOption()" style="margin-top:4px"><i data-lucide="plus" style="width:13px;height:13px"></i> Add option</button>
+        <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">Renaming an option keeps existing leads linked to it. Deleting an option doesn't change saved leads — their old value still shows as text.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('lead-opts-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" onclick="saveLeadOpts()">Save Options</button>
       </div>
     </div>
   </div>
@@ -4542,18 +4613,380 @@ async function saveQtSettings() {
 let _allCustomers = [];
 let _selectedLeads = new Set();
 
-const LEAD_STATUS_LABELS = { cold:'Cold', warm:'Warm', hot:'Hot', immediate_delivery:'Immediate Delivery', not_interested:'Not Interested', blacklist:'Blacklist' };
 const LEAD_STATUS_COLORS = { cold:'rgba(255,255,255,.06)', warm:'rgba(230,150,80,.18)', hot:'rgba(239,68,68,.14)', immediate_delivery:'rgba(100,180,120,.14)', not_interested:'rgba(150,150,150,.1)', blacklist:'rgba(60,0,0,.35)' };
 const LEAD_STATUS_TEXT   = { cold:'#b9b3a4', warm:'var(--gold)', hot:'#f87171', immediate_delivery:'#6dd8a4', not_interested:'#888', blacklist:'#f87171' };
-const ORIGIN_LABELS      = { fb_ad:'FB Ad.', whatsapp:'Whatsapp', messenger:'Messenger', direct_call:'Direct Call', ig_ads:'IG ads' };
-const NEXT_ACTION_LABELS = { followed_by_sales:'Followed By Sales', need_follow_up:'Need Follow Up', closed:'Closed', no_answer:'No Answer' };
+
+// ── Leads: ClickUp-style configurable columns ─────────────────────────────────
+// Column config (order, visibility, labels, dropdown options, custom columns) is
+// persisted server-side via /api/dashboard/leads/columns. Custom column values
+// live in customers.custom_fields (JSONB) keyed by column key.
+const LEAD_DEFAULT_COLS = [
+  { key:'lead_date',       label:'Date',        type:'date',     builtin:true, visible:true },
+  { key:'lead_time',       label:'Time',        type:'text',     builtin:true, visible:true },
+  { key:'name',            label:'Name',        type:'text',     builtin:true, visible:true },
+  { key:'phone',           label:'Phone',       type:'text',     builtin:true, visible:true },
+  { key:'lead_status',     label:'Status',      type:'select',   builtin:true, visible:true, options:[
+    { key:'cold', label:'Cold' }, { key:'warm', label:'Warm' }, { key:'hot', label:'Hot' },
+    { key:'immediate_delivery', label:'Immediate Delivery' }, { key:'not_interested', label:'Not Interested' }, { key:'blacklist', label:'Blacklist' }] },
+  { key:'source',          label:'Origin',      type:'select',   builtin:true, visible:true, options:[
+    { key:'fb_ad', label:'FB Ad.' }, { key:'whatsapp', label:'Whatsapp' }, { key:'messenger', label:'Messenger' },
+    { key:'direct_call', label:'Direct Call' }, { key:'ig_ads', label:'IG ads' }] },
+  { key:'car_in_question', label:'Car',         type:'text',     builtin:true, visible:true },
+  { key:'budget_lead',     label:'Budget',      type:'number',   builtin:true, visible:true },
+  { key:'next_action',     label:'Next Action', type:'select',   builtin:true, visible:true, options:[
+    { key:'followed_by_sales', label:'Followed By Sales' }, { key:'need_follow_up', label:'Need Follow Up' },
+    { key:'closed', label:'Closed' }, { key:'no_answer', label:'No Answer' }] },
+  { key:'been_contacted',  label:'Contacted',   type:'checkbox', builtin:true, visible:true },
+  { key:'notes',           label:'Notes',       type:'text',     builtin:true, visible:true },
+];
+let _leadCols = null;
+let _leadColsLoaded = false;
+
+function leadCol(key) { return (_leadCols || LEAD_DEFAULT_COLS).find(c => c.key === key); }
+function colOptMap(col) { const m = {}; (col?.options || []).forEach(o => { m[o.key] = o.label; }); return m; }
+function slugKey(label) { return String(label).toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'col'; }
+
+async function loadLeadCols() {
+  if (_leadColsLoaded) return;
+  let saved = null;
+  try { const d = await apiFetch('/api/dashboard/leads/columns').then(r => r.json()); saved = d.columns; } catch (_) {}
+  _leadCols = mergeLeadCols(saved);
+  _leadColsLoaded = true;
+}
+
+function mergeLeadCols(saved) {
+  if (!Array.isArray(saved) || !saved.length) return JSON.parse(JSON.stringify(LEAD_DEFAULT_COLS));
+  const cols = saved
+    .filter(c => c && c.key && (!c.builtin || LEAD_DEFAULT_COLS.some(d => d.key === c.key)))
+    .map(c => ({ ...c, visible: c.visible !== false }));
+  // Builtins introduced after the config was saved get appended
+  LEAD_DEFAULT_COLS.forEach(d => { if (!cols.some(c => c.key === d.key)) cols.push(JSON.parse(JSON.stringify(d))); });
+  // Select builtins must always carry an options list
+  cols.forEach(c => {
+    const d = LEAD_DEFAULT_COLS.find(x => x.key === c.key);
+    if (d?.options && !Array.isArray(c.options)) c.options = JSON.parse(JSON.stringify(d.options));
+  });
+  return cols;
+}
+
+function saveLeadCols() {
+  apiFetch('/api/dashboard/leads/columns', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ columns: _leadCols }) }).catch(() => {});
+}
+
+// ── Header rendering + drag-to-reorder ──
+function renderLeadHead() {
+  const tr = document.getElementById('leads-head-row');
+  if (!tr || !_leadCols) return;
+  const ths = _leadCols.filter(c => c.visible).map(c => `
+    <th class="lead-col" draggable="true" data-colkey="${esc(c.key)}"
+        ondragstart="leadColDragStart(event)" ondragover="leadColDragOver(event)" ondragleave="this.classList.remove('drag-over')"
+        ondrop="leadColDrop(event)" ondragend="leadColDragEnd()"
+        onclick="openLeadColMenu(event,'${esc(c.key)}')">${esc(c.label)}<i data-lucide="chevron-down" class="col-chev"></i></th>`).join('');
+  tr.innerHTML = `
+    <th style="width:36px;padding:8px 6px"><input type="checkbox" id="select-all-leads" onchange="toggleSelectAllLeads(this)"></th>
+    ${ths}
+    <th style="width:34px;text-align:center"><button onclick="openAddLeadColModal()" title="Add column" style="background:none;border:1px dashed var(--border);border-radius:6px;color:var(--muted);cursor:pointer;width:24px;height:24px;font-size:15px;line-height:1">+</button></th>
+    <th>Actions</th>`;
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+let _dragColKey = null;
+function leadColDragStart(e) { _dragColKey = e.currentTarget.dataset.colkey; e.dataTransfer.effectAllowed = 'move'; }
+function leadColDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+function leadColDragEnd() { document.querySelectorAll('#leads-head-row th.drag-over').forEach(t => t.classList.remove('drag-over')); _dragColKey = null; }
+function leadColDrop(e) {
+  e.preventDefault();
+  const target = e.currentTarget.dataset.colkey;
+  const src = _dragColKey;
+  leadColDragEnd();
+  if (!src || src === target) return;
+  const from = _leadCols.findIndex(c => c.key === src);
+  const to = _leadCols.findIndex(c => c.key === target);
+  if (from < 0 || to < 0) return;
+  const [moved] = _leadCols.splice(from, 1);
+  _leadCols.splice(to, 0, moved);
+  saveLeadCols(); renderLeadHead(); filterCustomers();
+}
+
+// ── Column menu (rename / options / move / hide / delete) + visibility picker ──
+let _leadMenuEl = null;
+function ensureLeadMenu() {
+  if (!_leadMenuEl) {
+    _leadMenuEl = document.createElement('div');
+    _leadMenuEl.className = 'lead-menu';
+    document.body.appendChild(_leadMenuEl);
+    document.addEventListener('click', e => {
+      if (_leadMenuEl.classList.contains('open') && !_leadMenuEl.contains(e.target)
+          && !e.target.closest?.('th.lead-col') && !e.target.closest?.('#lead-cols-btn')) closeLeadMenu();
+    });
+  }
+  return _leadMenuEl;
+}
+function closeLeadMenu() { if (_leadMenuEl) _leadMenuEl.classList.remove('open'); }
+function positionLeadMenu(e) {
+  const m = _leadMenuEl;
+  m.style.left = Math.min(e.clientX, window.innerWidth - 230) + 'px';
+  m.style.top  = Math.min(e.clientY + 6, window.innerHeight - 60) + 'px';
+  m.classList.add('open');
+}
+
+function openLeadColMenu(e, key) {
+  e.stopPropagation();
+  const col = leadCol(key);
+  if (!col) return;
+  const m = ensureLeadMenu();
+  m.dataset.mode = 'colmenu';
+  const vis = _leadCols.filter(c => c.visible);
+  const vi = vis.findIndex(c => c.key === key);
+  m.innerHTML = `
+    <button onclick="leadColRename('${esc(key)}')"><i data-lucide="pencil" style="width:13px;height:13px"></i> Rename</button>
+    ${col.type === 'select' ? `<button onclick="openLeadOptsModal('${esc(key)}')"><i data-lucide="list" style="width:13px;height:13px"></i> Edit dropdown options</button>` : ''}
+    <div class="lead-menu-sep"></div>
+    <button onclick="leadColMove('${esc(key)}',-1)" ${vi <= 0 ? 'disabled' : ''}><i data-lucide="arrow-left" style="width:13px;height:13px"></i> Move left</button>
+    <button onclick="leadColMove('${esc(key)}',1)" ${vi >= vis.length - 1 ? 'disabled' : ''}><i data-lucide="arrow-right" style="width:13px;height:13px"></i> Move right</button>
+    <div class="lead-menu-sep"></div>
+    <button onclick="leadColHide('${esc(key)}')"><i data-lucide="eye-off" style="width:13px;height:13px"></i> Hide column</button>
+    ${!col.builtin ? `<button class="danger" onclick="leadColDelete('${esc(key)}')"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete column</button>` : ''}`;
+  positionLeadMenu(e);
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+function openLeadColsPicker(e) {
+  e.stopPropagation();
+  const m = ensureLeadMenu();
+  if (m.classList.contains('open') && m.dataset.mode === 'picker') return closeLeadMenu();
+  m.dataset.mode = 'picker';
+  m.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:6px 10px 4px">Show columns</div>` +
+    _leadCols.map(c => `
+      <label class="lead-col-toggle"><input type="checkbox" ${c.visible ? 'checked' : ''} onchange="toggleLeadColVis('${esc(c.key)}',this.checked)"> ${esc(c.label)}</label>`).join('');
+  positionLeadMenu(e);
+}
+
+function toggleLeadColVis(key, on) {
+  const col = leadCol(key);
+  if (!col) return;
+  col.visible = !!on;
+  saveLeadCols(); renderLeadHead(); filterCustomers();
+}
+
+function leadColRename(key) {
+  closeLeadMenu();
+  const col = leadCol(key);
+  const v = prompt('Column name', col.label);
+  if (v && v.trim()) { col.label = v.trim(); saveLeadCols(); renderLeadHead(); renderLeadFilterOptions(); }
+}
+function leadColMove(key, dir) {
+  closeLeadMenu();
+  const vis = _leadCols.filter(c => c.visible);
+  const vi = vis.findIndex(c => c.key === key);
+  const nb = vis[vi + dir];
+  if (!nb) return;
+  const from = _leadCols.findIndex(c => c.key === key);
+  const to = _leadCols.findIndex(c => c.key === nb.key);
+  const [moved] = _leadCols.splice(from, 1);
+  _leadCols.splice(to, 0, moved);
+  saveLeadCols(); renderLeadHead(); filterCustomers();
+}
+function leadColHide(key) {
+  closeLeadMenu();
+  const col = leadCol(key);
+  if (col) { col.visible = false; saveLeadCols(); renderLeadHead(); filterCustomers(); }
+}
+function leadColDelete(key) {
+  closeLeadMenu();
+  const col = leadCol(key);
+  if (!col || col.builtin) return;
+  if (!confirm(`Delete column "${col.label}"? Saved values stay on the leads but won't be shown.`)) return;
+  _leadCols = _leadCols.filter(c => c.key !== key);
+  saveLeadCols(); renderLeadHead(); filterCustomers();
+}
+
+// ── Add-column modal ──
+function openAddLeadColModal() {
+  document.getElementById('lc-name').value = '';
+  document.getElementById('lc-type').value = 'text';
+  document.getElementById('lc-options').value = '';
+  lcTypeChanged();
+  document.getElementById('lead-col-modal').style.display = 'flex';
+}
+function lcTypeChanged() {
+  document.getElementById('lc-options-wrap').style.display = document.getElementById('lc-type').value === 'select' ? '' : 'none';
+}
+function saveNewLeadCol() {
+  const label = document.getElementById('lc-name').value.trim();
+  if (!label) return alert('Column name is required.');
+  const type = document.getElementById('lc-type').value;
+  let key = 'cf_' + slugKey(label);
+  const base = key; let n = 2;
+  while (_leadCols.some(c => c.key === key)) key = base + '_' + (n++);
+  const col = { key, label, type, builtin: false, visible: true };
+  if (type === 'select') {
+    const lines = document.getElementById('lc-options').value.split('\n').map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return alert('Add at least one dropdown option (one per line).');
+    const opts = [];
+    lines.forEach(l => {
+      let k = slugKey(l); const b = k; let m = 2;
+      while (opts.some(o => o.key === k)) k = b + '_' + (m++);
+      opts.push({ key: k, label: l });
+    });
+    col.options = opts;
+  }
+  _leadCols.push(col);
+  saveLeadCols();
+  document.getElementById('lead-col-modal').style.display = 'none';
+  renderLeadHead(); filterCustomers();
+}
+
+// ── Dropdown-options editor ──
+function openLeadOptsModal(key) {
+  closeLeadMenu();
+  const col = leadCol(key);
+  if (!col) return;
+  document.getElementById('lo-key').value = key;
+  document.getElementById('lo-title').textContent = 'Edit Options — ' + col.label;
+  document.getElementById('lo-list').innerHTML = (col.options || []).map(o => loRowHtml(o.key, o.label)).join('');
+  document.getElementById('lead-opts-modal').style.display = 'flex';
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function loRowHtml(key, label) {
+  return `<div class="lo-row" data-optkey="${esc(key)}" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+    <input class="form-input" value="${esc(label)}" placeholder="Option label" style="flex:1">
+    <button onclick="this.closest('.lo-row').remove()" title="Remove" style="background:rgba(239,68,68,.1);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:30px;height:30px;flex-shrink:0">✕</button>
+  </div>`;
+}
+function loAddOption() {
+  document.getElementById('lo-list').insertAdjacentHTML('beforeend', loRowHtml('', ''));
+  const rows = document.querySelectorAll('#lo-list .lo-row');
+  rows[rows.length - 1]?.querySelector('input')?.focus();
+}
+function saveLeadOpts() {
+  const key = document.getElementById('lo-key').value;
+  const col = leadCol(key);
+  if (!col) return;
+  const opts = [];
+  document.querySelectorAll('#lo-list .lo-row').forEach(r => {
+    const label = r.querySelector('input').value.trim();
+    if (!label) return;
+    let k = r.dataset.optkey;
+    if (!k) { k = slugKey(label); const b = k; let m = 2; while (opts.some(o => o.key === k)) k = b + '_' + (m++); }
+    if (!opts.some(o => o.key === k)) opts.push({ key: k, label });
+  });
+  if (!opts.length) return alert('Keep at least one option.');
+  col.options = opts;
+  saveLeadCols();
+  document.getElementById('lead-opts-modal').style.display = 'none';
+  renderLeadFilterOptions(); filterCustomers();
+}
+
+// Rebuild the status/origin filter dropdowns from the current column options
+function renderLeadFilterOptions() {
+  const fill = (id, col, allLabel) => {
+    const sel = document.getElementById(id);
+    if (!sel || !col) return;
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">${allLabel}</option>` + (col.options || []).map(o => `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join('');
+    if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  };
+  fill('lead-status-filter', leadCol('lead_status'), 'All Statuses');
+  fill('lead-origin-filter', leadCol('source'), 'All Origins');
+}
+
+// ── Inline cell editing (click a cell to edit, ClickUp-style) ──
+let _editingLeadCell = false;
+function leadCellClick(e, id, key) {
+  e.stopPropagation();
+  if (_editingLeadCell) return;
+  const col = leadCol(key);
+  const c = _allCustomers.find(x => x.id === id);
+  if (!col || !c) return;
+  const raw = col.builtin ? c[key] : (c.custom_fields || {})[key];
+  if (col.type === 'checkbox') return saveLeadCell(id, col, !raw);
+  const td = e.currentTarget;
+  if (td.querySelector('input,select')) return;
+  _editingLeadCell = true;
+  const cur = raw == null ? '' : String(raw);
+  if (col.type === 'select') {
+    const m = colOptMap(col);
+    const curKey = normKey(cur, m);
+    td.innerHTML = `<select class="form-input" style="font-size:12px;padding:4px 6px;min-width:120px"><option value="">—</option>${(col.options || []).map(o => `<option value="${esc(o.key)}"${curKey === o.key ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`;
+  } else {
+    const t = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : key === 'lead_time' ? 'time' : 'text';
+    td.innerHTML = `<input class="form-input" type="${t}" value="${esc(cur)}" style="font-size:12px;padding:4px 6px;min-width:90px;max-width:170px">`;
+  }
+  const el = td.firstElementChild;
+  el.focus();
+  if (el.select) try { el.select(); } catch (_) {}
+  let done = false;
+  const finish = commit => {
+    if (done) return;
+    done = true;
+    _editingLeadCell = false;
+    if (commit) saveLeadCell(id, col, el.value);
+    else filterCustomers();
+  };
+  el.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+    else if (ev.key === 'Escape') finish(false);
+  });
+  el.addEventListener('blur', () => finish(true));
+  if (col.type === 'select') el.addEventListener('change', () => finish(true));
+}
+
+async function saveLeadCell(id, col, val) {
+  const c = _allCustomers.find(x => x.id === id);
+  if (!c) return;
+  let payload;
+  if (col.builtin) {
+    let v = val;
+    if (col.key === 'budget_lead') v = val === '' ? null : (parseInt(val) || null);
+    else if (col.type === 'checkbox') v = !!val;
+    else if (col.key === 'lead_date') v = val || null;
+    if (col.key === 'name' && !String(v || '').trim()) { filterCustomers(); return alert('Name is required.'); }
+    payload = { [col.key]: v };
+  } else {
+    let v = val;
+    if (col.type === 'checkbox') v = !!val;
+    else if (col.type === 'number') v = val === '' ? null : Number(val);
+    payload = { custom_fields: { ...(c.custom_fields || {}), [col.key]: v } };
+  }
+  try {
+    const updated = await apiFetch(`/api/dashboard/customers/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(r => r.json());
+    if (updated?.error) throw new Error(updated.error);
+    const i = _allCustomers.findIndex(x => x.id === id);
+    if (i >= 0) _allCustomers[i] = updated;
+  } catch (e) { alert('Save failed: ' + e.message); }
+  filterCustomers();
+}
+
+// Render one data cell for a lead row according to its column definition
+function leadCellHtml(c, col) {
+  const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
+  const attrs = `class="lead-cell" onclick="leadCellClick(event, ${c.id}, '${esc(col.key)}')"`;
+  if (col.key === 'name') return `<td ${attrs}><strong>${esc(raw || '—')}</strong></td>`;
+  if (col.key === 'lead_status') {
+    const m = colOptMap(col);
+    const k = normKey(raw || 'cold', m);
+    const bg = LEAD_STATUS_COLORS[k] || 'rgba(255,255,255,.06)';
+    const tc = LEAD_STATUS_TEXT[k] || '#b9b3a4';
+    return `<td ${attrs}><span style="background:${bg};color:${tc};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap">${esc(m[k] || raw || k)}</span></td>`;
+  }
+  if (col.key === 'budget_lead') return `<td ${attrs} style="font-size:12px;white-space:nowrap">${raw ? Number(raw).toLocaleString() + ' EGP' : '—'}</td>`;
+  if (col.key === 'notes' || col.key === 'car_in_question') return `<td ${attrs} style="font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(raw || '')}">${esc(raw || '—')}</td>`;
+  if (col.type === 'checkbox') return `<td ${attrs} style="text-align:center;font-size:16px">${raw ? '✅' : '⬜'}</td>`;
+  if (col.type === 'select') { const m = colOptMap(col); const k = normKey(raw, m); return `<td ${attrs} style="font-size:12px;white-space:nowrap">${esc(m[k] || raw || '—')}</td>`; }
+  if (col.type === 'number') return `<td ${attrs} style="font-size:12px;white-space:nowrap">${raw != null && raw !== '' ? Number(raw).toLocaleString() : '—'}</td>`;
+  return `<td ${attrs} style="font-size:12px;white-space:nowrap">${esc(raw || '—')}</td>`;
+}
 
 async function loadCustomers() {
   try {
+    await loadLeadCols();
+    renderLeadHead();
+    renderLeadFilterOptions();
     _allCustomers = await apiFetch('/api/dashboard/customers').then(r => r.json());
     filterCustomers();
   } catch (e) {
-    document.getElementById('customers-tbody').innerHTML = `<tr><td colspan="13" style="color:var(--danger);text-align:center;padding:24px">${esc(e.message)}</td></tr>`;
+    document.getElementById('customers-tbody').innerHTML = `<tr><td colspan="20" style="color:var(--danger);text-align:center;padding:24px">${esc(e.message)}</td></tr>`;
   }
 }
 
@@ -4580,8 +5013,8 @@ function filterCustomers() {
   // ISO dates (YYYY-MM-DD) compare correctly as strings; either bound may be left empty
   if (from) list = list.filter(c => c.lead_date && c.lead_date >= from);
   if (to)   list = list.filter(c => c.lead_date && c.lead_date <= to);
-  if (sf) list = list.filter(c => normKey(c.lead_status || 'cold', LEAD_STATUS_LABELS) === sf);
-  if (of) list = list.filter(c => normKey(c.source, ORIGIN_LABELS) === of);
+  if (sf) list = list.filter(c => normKey(c.lead_status || 'cold', colOptMap(leadCol('lead_status'))) === sf);
+  if (of) list = list.filter(c => normKey(c.source, colOptMap(leadCol('source'))) === of);
   renderCustomers(list);
 }
 
@@ -4593,35 +5026,19 @@ function clearLeadFilters() {
 
 function renderCustomers(list) {
   const tbody = document.getElementById('customers-tbody');
-  if (!list.length) { tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:32px">No leads yet. Click "Add Lead" to get started.</td></tr>'; return; }
-  tbody.innerHTML = list.map(c => {
-    const st = normKey(c.lead_status || 'cold', LEAD_STATUS_LABELS);
-    const slabel = LEAD_STATUS_LABELS[st] || c.lead_status || st;
-    const sbg = LEAD_STATUS_COLORS[st] || LEAD_STATUS_COLORS.cold;
-    const scol = LEAD_STATUS_TEXT[st] || LEAD_STATUS_TEXT.cold;
-    const olabel = ORIGIN_LABELS[normKey(c.source, ORIGIN_LABELS)] || c.source || '—';
-    const nalabel = NEXT_ACTION_LABELS[c.next_action] || c.next_action || '—';
-    const checked = _selectedLeads.has(c.id) ? 'checked' : '';
-    return `<tr>
-      <td style="padding:8px 6px"><input type="checkbox" ${checked} onchange="toggleLeadSelect(${c.id})" onclick="event.stopPropagation()"></td>
-      <td style="font-size:12px;white-space:nowrap">${c.lead_date || '—'}</td>
-      <td style="font-size:12px;white-space:nowrap">${c.lead_time || '—'}</td>
-      <td><strong>${esc(c.name)}</strong></td>
-      <td style="white-space:nowrap">${esc(c.phone||'—')}</td>
-      <td><span style="background:${sbg};color:${scol};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap">${esc(slabel)}</span></td>
-      <td style="font-size:12px">${esc(olabel)}</td>
-      <td style="font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.car_in_question||'')}">${esc(c.car_in_question||'—')}</td>
-      <td style="font-size:12px;white-space:nowrap">${c.budget_lead ? Number(c.budget_lead).toLocaleString() + ' EGP' : '—'}</td>
-      <td style="font-size:11px;white-space:nowrap">${esc(nalabel)}</td>
-      <td style="text-align:center;font-size:16px">${c.been_contacted ? '✅' : '⬜'}</td>
-      <td style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${esc(c.notes||'')}">${esc(c.notes||'—')}</td>
+  const vis = (_leadCols || []).filter(c => c.visible);
+  const span = vis.length + 3; // select-all + add-column + actions
+  if (!list.length) { tbody.innerHTML = `<tr><td colspan="${span}" style="text-align:center;color:var(--muted);padding:32px">No leads yet. Click "Add Lead" to get started.</td></tr>`; return; }
+  tbody.innerHTML = list.map(c => `<tr>
+      <td style="padding:8px 6px"><input type="checkbox" ${_selectedLeads.has(c.id) ? 'checked' : ''} onchange="toggleLeadSelect(${c.id})" onclick="event.stopPropagation()"></td>
+      ${vis.map(col => leadCellHtml(c, col)).join('')}
+      <td></td>
       <td style="display:flex;gap:5px;flex-wrap:nowrap">
         <button class="btn btn-sm btn-outline" onclick="openCustomerModal(${c.id})" title="Edit"><i data-lucide="edit-2" style="width:12px;height:12px"></i></button>
         <button class="btn btn-sm btn-outline" onclick="navigate('deals');filterDealsByCustomer(${c.id})" title="View Deals"><i data-lucide="kanban-square" style="width:12px;height:12px"></i></button>
         <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--danger);border:none" onclick="deleteCustomer(${c.id})" title="Delete"><i data-lucide="trash-2" style="width:12px;height:12px"></i></button>
       </td>
-    </tr>`;
-  }).join('');
+    </tr>`).join('');
   // sync select-all checkbox state
   const allCb = document.getElementById('select-all-leads');
   if (allCb) allCb.checked = list.length > 0 && list.every(c => _selectedLeads.has(c.id));
@@ -4664,6 +5081,16 @@ async function bulkDeleteLeads() {
   } catch (e) { alert('Error: ' + e.message); }
 }
 
+function fillLeadSelect(id, colKey, emptyLabel, rawValue) {
+  const sel = document.getElementById(id);
+  const col = leadCol(colKey);
+  if (!sel || !col) return;
+  sel.innerHTML = (emptyLabel != null ? `<option value="">${esc(emptyLabel)}</option>` : '') +
+    (col.options || []).map(o => `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join('');
+  const k = normKey(rawValue, colOptMap(col));
+  sel.value = [...sel.options].some(o => o.value === k) ? k : (emptyLabel != null ? '' : (col.options?.[0]?.key || ''));
+}
+
 function openCustomerModal(id) {
   const c = id ? _allCustomers.find(x => x.id === id) : null;
   document.getElementById('customer-modal-title').textContent = c ? 'Edit Lead' : 'Add Lead';
@@ -4672,15 +5099,40 @@ function openCustomerModal(id) {
   document.getElementById('cm-phone').value = c?.phone || '';
   document.getElementById('cm-date').value = c?.lead_date || '';
   document.getElementById('cm-time').value = c?.lead_time || '';
-  document.getElementById('cm-lead-status').value = c?.lead_status || 'cold';
-  document.getElementById('cm-source').value = c?.source || '';
+  fillLeadSelect('cm-lead-status', 'lead_status', null, c?.lead_status || 'cold');
+  fillLeadSelect('cm-source', 'source', '— Unknown —', c?.source);
+  fillLeadSelect('cm-next-action', 'next_action', '— None —', c?.next_action);
   document.getElementById('cm-car').value = c?.car_in_question || '';
   document.getElementById('cm-budget').value = c?.budget_lead || '';
-  document.getElementById('cm-next-action').value = c?.next_action || '';
   document.getElementById('cm-been-contacted').checked = c?.been_contacted || false;
   document.getElementById('cm-notes').value = c?.notes || '';
   document.getElementById('cm-sales-feedback').value = c?.sales_feedback || '';
   document.getElementById('cm-inquiry').value = c?.inquiry || '';
+  // Custom columns → dynamic inputs
+  const wrap = document.getElementById('cm-custom-fields');
+  const custom = (_leadCols || []).filter(x => !x.builtin);
+  wrap.innerHTML = custom.map(col => {
+    const v = (c?.custom_fields || {})[col.key];
+    if (col.type === 'checkbox') {
+      return `<div><label class="form-label">${esc(col.label)}</label>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#0e0e10;border:1px solid var(--hair);border-radius:6px">
+          <input type="checkbox" id="cm-cf-${esc(col.key)}" ${v ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--gold)">
+          <label for="cm-cf-${esc(col.key)}" style="font-size:13px;cursor:pointer">Yes</label>
+        </div></div>`;
+    }
+    if (col.type === 'select') {
+      const m = colOptMap(col);
+      const k = normKey(v, m);
+      return `<div><label class="form-label">${esc(col.label)}</label>
+        <select class="form-input" id="cm-cf-${esc(col.key)}">
+          <option value="">— None —</option>
+          ${(col.options || []).map(o => `<option value="${esc(o.key)}"${k === o.key ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}
+        </select></div>`;
+    }
+    const t = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text';
+    return `<div><label class="form-label">${esc(col.label)}</label>
+      <input class="form-input" id="cm-cf-${esc(col.key)}" type="${t}" value="${esc(v ?? '')}"></div>`;
+  }).join('');
   document.getElementById('customer-modal').style.display = 'flex';
 }
 
@@ -4703,6 +5155,19 @@ async function saveCustomer() {
     sales_feedback: document.getElementById('cm-sales-feedback').value.trim(),
     inquiry:        document.getElementById('cm-inquiry').value.trim(),
   };
+  const customCols = (_leadCols || []).filter(x => !x.builtin);
+  if (customCols.length) {
+    const existing = id ? (_allCustomers.find(x => String(x.id) === String(id))?.custom_fields || {}) : {};
+    const cf = { ...existing };
+    customCols.forEach(col => {
+      const el = document.getElementById('cm-cf-' + col.key);
+      if (!el) return;
+      cf[col.key] = col.type === 'checkbox' ? el.checked
+        : col.type === 'number' ? (el.value === '' ? null : Number(el.value))
+        : el.value;
+    });
+    payload.custom_fields = cf;
+  }
   if (!payload.name) { alert('Name is required.'); return; }
   try {
     const url = id ? `/api/dashboard/customers/${id}` : '/api/dashboard/customers';

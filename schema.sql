@@ -405,6 +405,9 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS been_contacted  BOOLEAN DEFAULT F
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS sales_feedback  TEXT DEFAULT '';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS inquiry         TEXT DEFAULT '';
 
+-- Values for admin-defined custom lead columns (keyed by column key, e.g. {"cf_deposit": "5000"})
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS custom_fields JSONB DEFAULT '{}'::jsonb;
+
 -- Notification setting for deal-contacted alert
 INSERT INTO quotation_settings (key, value) VALUES ('contact_notify_employee_id', '')
   ON CONFLICT (key) DO NOTHING;
