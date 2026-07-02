@@ -408,6 +408,26 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS inquiry         TEXT DEFAULT '';
 -- Values for admin-defined custom lead columns (keyed by column key, e.g. {"cf_deposit": "5000"})
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS custom_fields JSONB DEFAULT '{}'::jsonb;
 
+-- Employee profile: custom status + avatar
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS status_text  TEXT DEFAULT '';
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS status_emoji TEXT DEFAULT '';
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS avatar_url   TEXT DEFAULT '';
+
+-- Multiple assignees per task (array of employee ids as strings; assignee_id keeps the first for compat)
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assignee_ids JSONB DEFAULT NULL;
+
+-- Task comments (with @mentions)
+CREATE TABLE IF NOT EXISTS task_comments (
+  id BIGSERIAL PRIMARY KEY,
+  task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  author_key TEXT NOT NULL,          -- 'admin' or 'employee_<id>'
+  author_name TEXT DEFAULT '',
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id, created_at);
+ALTER TABLE IF EXISTS public.task_comments ENABLE ROW LEVEL SECURITY;
+
 -- Notification setting for deal-contacted alert
 INSERT INTO quotation_settings (key, value) VALUES ('contact_notify_employee_id', '')
   ON CONFLICT (key) DO NOTHING;
