@@ -188,7 +188,7 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
   try {
     const { data: tasks, error } = await supabase.from('tasks').select('*');
     if (error) throw error;
-    if (!tasks || tasks.length === 0) return res.json({ total: 0, done: 0, inProgress: 0, todo: 0, highPriority: 0, overdue: 0, byChannel: {}, byPriority: { high: 0, medium: 0, low: 0 }, completionRate: 0 });
+    if (!tasks || tasks.length === 0) return res.json({ total: 0, done: 0, inProgress: 0, todo: 0, highPriority: 0, overdue: 0, byChannel: {}, byPriority: { high: 0, medium: 0, low: 0 }, byEmployee: [], completionRate: 0 });
     const total = tasks.length, done = tasks.filter(t => t.status === 'done').length;
     const inProgress = tasks.filter(t => t.status === 'in_progress').length, todo = tasks.filter(t => t.status === 'todo').length;
     const highPriority = tasks.filter(t => t.priority === 'high' && t.status !== 'done').length;
@@ -200,7 +200,20 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
       byChannel[t.channel_name][t.status]++; byChannel[t.channel_name].total++;
       if (byPriority[t.priority] !== undefined) byPriority[t.priority]++;
     });
-    res.json({ total, done, inProgress, todo, highPriority, overdue, byChannel, byPriority, completionRate: Math.round((done / total) * 100) });
+    // Per-employee performance: total/done counted for every assignee of each task
+    // (multi-assignee aware; matches internal id or legacy slack_user_id)
+    const { data: emps } = await supabase.from('employees').select('id,name,slack_user_id,avatar_url');
+    const byEmployee = (emps || []).map(e => {
+      const keys = new Set([String(e.id), e.slack_user_id].filter(Boolean));
+      let empTotal = 0, empDone = 0;
+      tasks.forEach(t => {
+        if (!taskAssigneeList(t).some(a => keys.has(a))) return;
+        empTotal++;
+        if (t.status === 'done') empDone++;
+      });
+      return { id: e.id, name: e.name, avatar_url: e.avatar_url || '', total: empTotal, done: empDone };
+    }).filter(e => e.total > 0).sort((a, b) => b.done - a.done || b.total - a.total);
+    res.json({ total, done, inProgress, todo, highPriority, overdue, byChannel, byPriority, byEmployee, completionRate: Math.round((done / total) * 100) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -381,6 +394,13 @@ receiver.router.post('/api/employee/report-issue', requireEmployeeAuth, issueUpl
       fileUrl = urlData?.publicUrl || '';
     }
     const bodyTxt = [description || title, fileUrl ? `Attachment: ${fileUrl}` : ''].filter(Boolean).join('\n');
+    // Persist the ticket so the CTO can view/manage it in the Issues center (best-effort)
+    try {
+      await supabase.from('issues').insert({
+        title: title || 'System issue', description, file_url: fileUrl,
+        reporter_id: req.employee.id, reporter_name: req.employee.name, status: 'open',
+      });
+    } catch (e) { console.warn('[issues] persist failed:', e.message); }
     // Route to every employee whose job title is Chief Technical Officer (fallback: admin)
     const { data: ctos } = await supabase.from('employees').select('id,name').ilike('job_title', '%chief technical officer%');
     if (ctos?.length) {
@@ -389,7 +409,7 @@ receiver.router.post('/api/employee/report-issue', requireEmployeeAuth, issueUpl
           type: 'issue',
           title: `Issue reported by ${req.employee.name}: ${title || 'System issue'}`,
           body: bodyTxt,
-          url: '/employee#notif',
+          url: '/employee#issues',
         }, 'always');
       }
     } else {
@@ -402,6 +422,24 @@ receiver.router.post('/api/employee/report-issue', requireEmployeeAuth, issueUpl
     }
     res.json({ ok: true, file: fileUrl });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Issues center (CTO only) ──────────────────────────────────────────────────
+function isCto(req) { return /chief technical officer/i.test(req.employee?.job_title || ''); }
+
+receiver.router.get('/api/employee/issues', requireEmployeeAuth, async (req, res) => {
+  if (!isCto(req)) return res.status(403).json({ error: 'Not permitted' });
+  const { data, error } = await supabase.from('issues').select('*').order('created_at', { ascending: false }).limit(200);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.put('/api/employee/issues/:id', requireEmployeeAuth, express.json(), async (req, res) => {
+  if (!isCto(req)) return res.status(403).json({ error: 'Not permitted' });
+  const status = req.body?.status === 'resolved' ? 'resolved' : 'open';
+  const { data, error } = await supabase.from('issues').update({ status }).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
 });
 
 // ── Employee profile: status, avatar, username ────────────────────────────────

@@ -428,6 +428,19 @@ CREATE TABLE IF NOT EXISTS task_comments (
 CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id, created_at);
 ALTER TABLE IF EXISTS public.task_comments ENABLE ROW LEVEL SECURITY;
 
+-- Issue tickets reported from the employee portal (viewed/managed by the CTO)
+CREATE TABLE IF NOT EXISTS issues (
+  id BIGSERIAL PRIMARY KEY,
+  title TEXT DEFAULT '',
+  description TEXT DEFAULT '',
+  file_url TEXT DEFAULT '',
+  reporter_id BIGINT,
+  reporter_name TEXT DEFAULT '',
+  status TEXT DEFAULT 'open',            -- open | resolved
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE IF EXISTS public.issues ENABLE ROW LEVEL SECURITY;
+
 -- Notification setting for deal-contacted alert
 INSERT INTO quotation_settings (key, value) VALUES ('contact_notify_employee_id', '')
   ON CONFLICT (key) DO NOTHING;

@@ -734,6 +734,9 @@
             <span class="nav-icon"><i data-lucide="bell"></i></span> Notifications
             <span id="notif-nav-badge" style="display:none;margin-left:auto;background:var(--danger);color:#fff;border-radius:9px;font-size:10px;font-weight:700;padding:1px 6px;line-height:1.4">0</span>
           </button>
+          <button class="nav-item" id="nav-issues" onclick="navigate('issues')" style="display:none">
+            <span class="nav-icon"><i data-lucide="bug"></i></span> Issues
+          </button>
         </div>
       </div>
     </nav>
@@ -967,6 +970,26 @@
         </div>
         <div id="notif-center-list">
           <div class="notif-empty" style="padding:40px;text-align:center">No notifications yet</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Issues Page (CTO only) ── -->
+    <div class="page" id="page-issues">
+      <div style="max-width:760px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-size:18px;font-weight:700">Reported Issues</div>
+            <div style="font-size:13px;color:var(--muted);margin-top:3px">Tickets reported by the team from "Report an Issue"</div>
+          </div>
+          <select class="form-input" id="issues-filter" onchange="renderIssues()" style="max-width:150px">
+            <option value="">All</option>
+            <option value="open">Open</option>
+            <option value="resolved">Resolved</option>
+          </select>
+        </div>
+        <div id="issues-list">
+          <div class="loading"><span class="spinner"></span> Loading…</div>
         </div>
       </div>
     </div>
@@ -1368,8 +1391,64 @@ function applyPermissions(permissions) {
   if (crmLabel) { const on = p.leads || p.deals; crmLabel.style.display = on ? '' : 'none'; if (on) crmLabel.closest('.nav-group')?.classList.add('open'); }
 }
 
+/* ── Issues center (CTO only) ── */
+let _issues = [];
+function isCtoUser() { return /chief technical officer/i.test(empInfo?.job_title || ''); }
+
+async function loadIssues() {
+  const list = document.getElementById('issues-list');
+  list.innerHTML = '<div class="loading"><span class="spinner"></span> Loading…</div>';
+  try {
+    const r = await ef('/api/employee/issues');
+    const d = await r.json();
+    if (!r.ok) { list.innerHTML = `<div class="empty">${esc(d.error || 'Not permitted')}</div>`; return; }
+    _issues = d;
+    renderIssues();
+  } catch (e) { list.innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`; }
+}
+
+function renderIssues() {
+  const list = document.getElementById('issues-list');
+  if (!list) return;
+  const filter = document.getElementById('issues-filter')?.value || '';
+  const rows = filter ? _issues.filter(i => i.status === filter) : _issues;
+  if (!rows.length) { list.innerHTML = '<div class="empty">No issues here — all clear! 🎉</div>'; return; }
+  list.innerHTML = rows.map(i => {
+    const open = i.status !== 'resolved';
+    return `<div class="card" style="margin-bottom:12px;padding:16px 18px;${open ? '' : 'opacity:.65'}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:14px;font-weight:700">${esc(i.title || 'System issue')}</span>
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${open ? 'rgba(201,125,110,.15)' : 'rgba(138,154,134,.15)'};color:${open ? 'var(--danger)' : 'var(--success)'}">${open ? 'OPEN' : 'RESOLVED'}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">Reported by <strong>${esc(i.reporter_name || '—')}</strong> · ${new Date(i.created_at).toLocaleString()}</div>
+          ${i.description ? `<div style="font-size:13px;margin-top:8px;white-space:pre-wrap;word-break:break-word">${esc(i.description)}</div>` : ''}
+          ${i.file_url ? `<a href="${esc(i.file_url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--primary);margin-top:8px;text-decoration:none"><i data-lucide="paperclip" style="width:12px;height:12px"></i> View attachment</a>` : ''}
+        </div>
+        <button class="btn btn-sm ${open ? 'btn-primary' : 'btn-outline'}" onclick="toggleIssueStatus(${i.id}, '${open ? 'resolved' : 'open'}')">${open ? 'Mark Resolved' : 'Reopen'}</button>
+      </div>
+    </div>`;
+  }).join('');
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+async function toggleIssueStatus(id, status) {
+  try {
+    const r = await ef(`/api/employee/issues/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+    const d = await r.json();
+    if (!r.ok || d.error) return showToast(d.error || 'Failed');
+    const idx = _issues.findIndex(i => i.id === id);
+    if (idx >= 0) _issues[idx] = d;
+    renderIssues();
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
 /* ── Profile: avatar, status, username ── */
 function renderProfile() {
+  // Reveal the Issues nav for the CTO
+  const issuesNav = document.getElementById('nav-issues');
+  if (issuesNav) issuesNav.style.display = isCtoUser() ? '' : 'none';
   const name = empInfo?.name || empInfo?.username || '?';
   const nameEl = document.getElementById('user-name');
   if (nameEl) nameEl.firstChild.textContent = name + ' ';
@@ -1565,8 +1644,8 @@ async function logout() {
 }
 
 /* ── Navigation ── */
-const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation Draft', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', notif: 'Notifications' };
-const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation, leads: loadEmpLeads, deals: loadEmpDeals, notif: loadNotifPage };
+const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation Draft', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', notif: 'Notifications', issues: 'Issues' };
+const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation, leads: loadEmpLeads, deals: loadEmpDeals, notif: loadNotifPage, issues: loadIssues };
 let _currentEmpPage = 'log';
 function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
