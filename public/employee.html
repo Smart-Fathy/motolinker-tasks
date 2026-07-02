@@ -447,6 +447,24 @@
   /* ── Hide scrollbars globally ── */
   *, *::before, *::after { scrollbar-width: none; -ms-overflow-style: none; }
   *::-webkit-scrollbar { display: none; }
+  /* ── Status presets ── */
+  .st-preset { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:none; border:none; color:var(--text); font-size:13.5px; padding:10px 12px; border-radius:8px; cursor:pointer; }
+  .st-preset:hover { background:rgba(255,255,255,.05); }
+  /* ── Brand dropdowns: dark + gold, custom chevron ── */
+  select.form-input, select.form-control, select.filter-input {
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    background-color:#101013; color:var(--text);
+    border:1px solid var(--border); border-radius:8px;
+    padding-right:34px !important; cursor:pointer; color-scheme:dark;
+    background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23c9a35e' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 12px center;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  select.form-input:hover, select.form-control:hover, select.filter-input:hover { border-color:rgba(201,163,94,.45); }
+  select.form-input:focus, select.form-control:focus, select.filter-input:focus {
+    outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(201,163,94,.15);
+  }
+  select.form-input option, select.form-control option, select.filter-input option { background:#141416; color:var(--text); }
 </style>
 </head>
 <body>
@@ -520,6 +538,86 @@
       <div style="text-align:center;margin-top:12px">
         <a href="#" onclick="showLoginForm();return false;" style="font-size:12px;color:var(--muted);text-decoration:none">← Back to login</a>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Set Status Modal ── -->
+<div id="status-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:420px;margin:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div style="font-size:17px;font-weight:800">Set status</div>
+      <button onclick="document.getElementById('status-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:18px">
+      <input class="form-input" id="st-emoji" maxlength="4" placeholder="🙂" style="width:56px;text-align:center;font-size:17px;flex-shrink:0">
+      <input class="form-input" id="st-text" maxlength="100" placeholder="What's on your mind?" style="flex:1">
+    </div>
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">For MotoLinkers</div>
+    <div style="display:grid;gap:2px;margin-bottom:18px">
+      <button class="st-preset" onclick="stPreset('📅','In a meeting')">📅 <strong>In a meeting</strong></button>
+      <button class="st-preset" onclick="stPreset('📚','Focusing')">📚 <strong>Focusing</strong></button>
+      <button class="st-preset" onclick="stPreset('🤒','Sick')">🤒 <strong>Sick</strong> <span style="color:var(--muted)">— OOO for Today</span></button>
+      <button class="st-preset" onclick="stPreset('🏝️','Vacation')">🏝️ <strong>Vacation</strong> <span style="color:var(--muted)">— OOO</span></button>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="saveStatus(true)">Clear status</button>
+      <button class="btn btn-primary" onclick="saveStatus(false)">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Report an Issue Modal ── -->
+<div id="issue-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:440px;margin:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="font-size:17px;font-weight:800">Report an Issue</div>
+      <button onclick="document.getElementById('issue-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Describe the problem — your ticket goes straight to the Chief Technical Officer.</div>
+    <div style="display:grid;gap:12px">
+      <input class="form-input" id="iss-title" maxlength="150" placeholder="Short summary (e.g. Can't log hours)">
+      <textarea class="form-input" id="iss-desc" rows="4" maxlength="2000" placeholder="What happened? What did you expect?" style="resize:vertical"></textarea>
+      <div>
+        <label class="form-label" style="font-size:12px">Screenshot / file <span style="color:var(--muted)">(optional, up to 10 MB)</span></label>
+        <input class="form-input" id="iss-file" type="file" accept="image/*,.pdf,.log,.txt,.zip,.mp4">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+      <button class="btn btn-outline" onclick="document.getElementById('issue-modal').style.display='none'">Cancel</button>
+      <button class="btn btn-primary" id="iss-submit" onclick="submitIssue()">Submit Ticket</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Change Username Modal ── -->
+<div id="username-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:380px;margin:20px">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">Change Username</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">3–32 characters: letters, numbers, dots, dashes, underscores.</div>
+    <div id="un-err" style="display:none;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:var(--danger);padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:12px"></div>
+    <input class="form-input" id="un-input" placeholder="new.username" style="margin-bottom:16px">
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="document.getElementById('username-modal').style.display='none'">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUsername()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Task Comments Modal ── -->
+<div id="emp-comments-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:460px;margin:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="font-size:15px;font-weight:800" id="empc-title">Comments</div>
+      <button onclick="document.getElementById('emp-comments-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
+    </div>
+    <div id="empc-list" style="max-height:280px;overflow-y:auto;display:grid;gap:10px;margin-bottom:12px"></div>
+    <div style="position:relative">
+      <div id="empc-mention-box" style="display:none;position:absolute;bottom:100%;left:0;margin-bottom:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);padding:5px;z-index:10;min-width:180px"></div>
+      <textarea class="form-input" id="empc-input" rows="2" placeholder="Write a comment… type @name to mention" oninput="empcMentionHint(this)" style="resize:vertical"></textarea>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px">
+      <button class="btn btn-primary" onclick="empcPost()">Comment</button>
     </div>
   </div>
 </div>
@@ -637,12 +735,19 @@
     </nav>
     <div class="sidebar-footer">
       <div class="user-row">
-        <div class="user-avatar" id="user-avatar">?</div>
-        <div>
-          <div class="user-name" id="user-name">—</div>
+        <div class="user-avatar" id="user-avatar" onclick="document.getElementById('avatar-file').click()" title="Change profile picture" style="cursor:pointer;overflow:hidden;position:relative">?</div>
+        <input type="file" id="avatar-file" accept="image/*" style="display:none" onchange="uploadAvatar(this)">
+        <div style="min-width:0;flex:1">
+          <div class="user-name" id="user-name" style="display:flex;align-items:center;gap:6px">—
+            <button onclick="openUsernameModal()" title="Change username" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:1px;display:inline-flex"><i data-lucide="pencil" style="width:11px;height:11px"></i></button>
+          </div>
           <div class="user-role" id="user-role">Employee</div>
+          <div id="user-status" onclick="openStatusModal()" style="font-size:11px;color:var(--muted);cursor:pointer;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Set a status">＋ Set status</div>
         </div>
       </div>
+      <button class="btn btn-outline" style="width:100%;font-size:12px;padding:9px;margin-bottom:6px" onclick="openIssueModal()">
+        <i data-lucide="bug" style="width:14px;height:14px"></i> Report an Issue
+      </button>
       <button class="btn btn-outline" style="width:100%;font-size:12px;padding:9px;margin-bottom:6px" onclick="document.getElementById('change-pass-modal').style.display='flex';document.getElementById('chpass-current').value='';document.getElementById('chpass-new').value='';document.getElementById('chpass-confirm').value='';document.getElementById('chpass-err').style.display='none';document.getElementById('chpass-ok').style.display='none'">
         <i data-lucide="key" style="width:14px;height:14px"></i> Change Password
       </button>
@@ -1259,13 +1364,178 @@ function applyPermissions(permissions) {
   if (crmLabel) { const on = p.leads || p.deals; crmLabel.style.display = on ? '' : 'none'; if (on) crmLabel.closest('.nav-group')?.classList.add('open'); }
 }
 
+/* ── Profile: avatar, status, username ── */
+function renderProfile() {
+  const name = empInfo?.name || empInfo?.username || '?';
+  const nameEl = document.getElementById('user-name');
+  if (nameEl) nameEl.firstChild.textContent = name + ' ';
+  const av = document.getElementById('user-avatar');
+  if (av) {
+    if (empInfo?.avatar_url) av.innerHTML = `<img src="${esc(empInfo.avatar_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    else av.textContent = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  }
+  const role = document.getElementById('user-role');
+  if (role) role.textContent = empInfo?.job_title || 'Employee';
+  const st = document.getElementById('user-status');
+  if (st) {
+    const has = empInfo?.status_text || empInfo?.status_emoji;
+    st.textContent = has ? `${empInfo.status_emoji || ''} ${empInfo.status_text || ''}`.trim() : '＋ Set status';
+    st.style.color = has ? 'var(--primary)' : 'var(--muted)';
+  }
+}
+
+async function uploadAvatar(input) {
+  const f = input.files?.[0];
+  input.value = '';
+  if (!f) return;
+  if (!f.type.startsWith('image/')) return showToast('Please choose an image');
+  if (f.size > 5 * 1024 * 1024) return showToast('Image must be under 5 MB');
+  const fd = new FormData();
+  fd.append('file', f);
+  try {
+    const r = await fetch('/api/employee/avatar', { method: 'POST', headers: { Authorization: 'Bearer ' + empToken }, body: fd });
+    const d = await r.json();
+    if (d.error) return showToast('Upload failed: ' + d.error);
+    empInfo.avatar_url = d.avatar_url;
+    renderProfile();
+    showToast('Profile picture updated');
+  } catch (e) { showToast('Upload failed: ' + e.message); }
+}
+
+function openStatusModal() {
+  document.getElementById('st-emoji').value = empInfo?.status_emoji || '';
+  document.getElementById('st-text').value = empInfo?.status_text || '';
+  document.getElementById('status-modal').style.display = 'flex';
+}
+function stPreset(emoji, text) {
+  document.getElementById('st-emoji').value = emoji;
+  document.getElementById('st-text').value = text;
+}
+async function saveStatus(clear) {
+  const emoji = clear ? '' : document.getElementById('st-emoji').value.trim();
+  const text  = clear ? '' : document.getElementById('st-text').value.trim();
+  try {
+    const r = await ef('/api/employee/status', { method: 'PUT', body: JSON.stringify({ emoji, text }) });
+    const d = await r.json();
+    if (d.error) return showToast(d.error);
+    empInfo.status_emoji = d.status_emoji; empInfo.status_text = d.status_text;
+    renderProfile();
+    document.getElementById('status-modal').style.display = 'none';
+    showToast(clear ? 'Status cleared' : 'Status updated');
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
+function openUsernameModal() {
+  document.getElementById('un-input').value = empInfo?.username || '';
+  document.getElementById('un-err').style.display = 'none';
+  document.getElementById('username-modal').style.display = 'flex';
+}
+async function saveUsername() {
+  const username = document.getElementById('un-input').value.trim();
+  const err = document.getElementById('un-err');
+  try {
+    const r = await ef('/api/employee/username', { method: 'PUT', body: JSON.stringify({ username }) });
+    const d = await r.json();
+    if (!r.ok || d.error) { err.textContent = d.error || 'Failed'; err.style.display = 'block'; return; }
+    empInfo.username = d.username;
+    document.getElementById('username-modal').style.display = 'none';
+    showToast('Username changed to ' + d.username);
+  } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
+}
+
+/* ── Report an Issue ── */
+function openIssueModal() {
+  document.getElementById('iss-title').value = '';
+  document.getElementById('iss-desc').value = '';
+  document.getElementById('iss-file').value = '';
+  document.getElementById('issue-modal').style.display = 'flex';
+}
+async function submitIssue() {
+  const title = document.getElementById('iss-title').value.trim();
+  const desc  = document.getElementById('iss-desc').value.trim();
+  const file  = document.getElementById('iss-file').files?.[0];
+  if (!title && !desc) return showToast('Please describe the issue');
+  if (file && file.size > 10 * 1024 * 1024) return showToast('File must be under 10 MB');
+  const btn = document.getElementById('iss-submit');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('description', desc);
+    if (file) fd.append('file', file);
+    const r = await fetch('/api/employee/report-issue', { method: 'POST', headers: { Authorization: 'Bearer ' + empToken }, body: fd });
+    const d = await r.json();
+    if (!r.ok || d.error) return showToast('Error: ' + (d.error || r.status));
+    document.getElementById('issue-modal').style.display = 'none';
+    showToast('Ticket sent to the CTO — thank you!');
+  } catch (e) { showToast('Error: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Submit Ticket'; }
+}
+
+/* ── Task comments (with @mentions) ── */
+let _empcTaskId = null, _coworkers = null;
+async function loadCoworkers() {
+  if (_coworkers) return;
+  try { _coworkers = await ef('/api/employee/coworkers').then(r => r.json()); } catch (_) { _coworkers = []; }
+}
+async function openEmpTaskComments(id) {
+  _empcTaskId = id;
+  await loadCoworkers();
+  const t = (myTasks || []).find(x => x.id === id);
+  document.getElementById('empc-title').textContent = 'Comments — ' + (t ? t.title : '#' + id);
+  document.getElementById('empc-list').innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+  document.getElementById('empc-input').value = '';
+  document.getElementById('emp-comments-modal').style.display = 'flex';
+  empcLoad();
+}
+async function empcLoad() {
+  const rows = await ef(`/api/employee/tasks/${_empcTaskId}/comments`).then(r => r.json()).catch(() => []);
+  const list = document.getElementById('empc-list');
+  list.innerHTML = (Array.isArray(rows) && rows.length) ? rows.map(c => `
+    <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:8px 12px">
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);margin-bottom:3px"><strong style="color:var(--text)">${esc(c.author_name || '—')}</strong><span>${new Date(c.created_at).toLocaleString()}</span></div>
+      <div style="font-size:13px;white-space:pre-wrap;word-break:break-word">${empcRenderBody(c.body)}</div>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:12px;text-align:center;padding:14px">No comments yet — be the first.</div>';
+  list.scrollTop = list.scrollHeight;
+}
+function empcRenderBody(b) {
+  let h = esc(b || '');
+  (_coworkers || []).forEach(e => {
+    if (e.name) h = h.split('@' + esc(e.name)).join(`<span style="color:var(--primary);font-weight:700">@${esc(e.name)}</span>`);
+  });
+  return h;
+}
+function empcMentionHint(ta) {
+  const box = document.getElementById('empc-mention-box');
+  const m = ta.value.slice(0, ta.selectionStart).match(/@([a-zA-Z ]{0,30})$/);
+  if (!m) { box.style.display = 'none'; return; }
+  const q = m[1].toLowerCase();
+  const hits = (_coworkers || []).filter(e => (e.name || '').toLowerCase().startsWith(q)).slice(0, 6);
+  if (!hits.length) { box.style.display = 'none'; return; }
+  box.innerHTML = hits.map(e => `<button type="button" onclick="empcInsertMention('${esc(e.name)}')" style="display:block;width:100%;text-align:left;background:none;border:none;color:var(--text);font-size:12.5px;padding:7px 10px;border-radius:6px;cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='none'">@ ${esc(e.name)}</button>`).join('');
+  box.style.display = 'block';
+}
+function empcInsertMention(name) {
+  const ta = document.getElementById('empc-input');
+  const pos = ta.selectionStart;
+  ta.value = ta.value.slice(0, pos).replace(/@[a-zA-Z ]{0,30}$/, '@' + name + ' ') + ta.value.slice(pos);
+  document.getElementById('empc-mention-box').style.display = 'none';
+  ta.focus();
+}
+async function empcPost() {
+  const ta = document.getElementById('empc-input');
+  const body = ta.value.trim();
+  if (!body) return;
+  const r = await ef(`/api/employee/tasks/${_empcTaskId}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); return showToast('Error: ' + (e.error || r.status)); }
+  ta.value = '';
+  empcLoad();
+}
+
 async function showApp() {
   document.getElementById('auth-wrap').style.display = 'none';
   document.getElementById('layout').style.display = 'flex';
-  const name = empInfo?.name || empInfo?.username || '?';
-  document.getElementById('user-name').textContent = name;
-  document.getElementById('user-avatar').textContent = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
-  document.getElementById('user-role').textContent = empInfo?.job_title || 'Employee';
+  renderProfile();
   document.getElementById('h-date').value = new Date().toISOString().split('T')[0];
   initSidebarState();
   applyPermissions(empInfo?.permissions);
@@ -1437,7 +1707,10 @@ function renderTasksList() {
       <div class="task-info">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
           <div class="task-name${t.status==='done'?' done':''}">${t.title}</div>
-          ${activeTab === 'current' ? `<button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="markTaskDone(${t.id})"><i data-lucide="check" style="width:14px;height:14px"></i> Done</button>` : ''}
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn btn-outline btn-sm" onclick="openEmpTaskComments(${t.id})" title="Comments"><i data-lucide="message-square" style="width:14px;height:14px"></i></button>
+            ${activeTab === 'current' ? `<button class="btn btn-primary btn-sm" onclick="markTaskDone(${t.id})"><i data-lucide="check" style="width:14px;height:14px"></i> Done</button>` : ''}
+          </div>
         </div>
         <div class="task-meta">
           <span>${t.channel_name}</span>
@@ -2581,7 +2854,7 @@ function notifRelTime(ts) {
 }
 
 function notifIcon(type) {
-  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox' };
+  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox', issue: 'bug' };
   return m[type] || 'bell';
 }
 // Strip any leading emoji/symbols so legacy notifications render clean text (new ones already clean)

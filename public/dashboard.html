@@ -906,6 +906,25 @@
   .lead-menu label.lead-col-toggle{ display:flex; align-items:center; gap:8px; padding:7px 10px; font-size:12.5px; cursor:pointer; border-radius:6px; }
   .lead-menu label.lead-col-toggle:hover{ background:rgba(255,255,255,.06); }
   .lead-menu label.lead-col-toggle input{ accent-color:var(--primary); }
+  .lead-menu button.lead-col-eye{ color:var(--text); }
+  .lead-menu button.lead-col-eye svg{ color:var(--primary); }
+  .lead-menu button.lead-col-eye.col-hidden{ color:var(--muted); }
+  .lead-menu button.lead-col-eye.col-hidden svg{ color:var(--muted); }
+  /* ── Brand dropdowns: dark + gold, custom chevron ── */
+  select.form-input, select.form-control, select.filter-input {
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    background-color:#101013; color:var(--text);
+    border:1px solid var(--border); border-radius:8px;
+    padding-right:34px !important; cursor:pointer; color-scheme:dark;
+    background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23c9a35e' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 12px center;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  select.form-input:hover, select.form-control:hover, select.filter-input:hover { border-color:rgba(201,163,94,.45); }
+  select.form-input:focus, select.form-control:focus, select.filter-input:focus {
+    outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(201,163,94,.15);
+  }
+  select.form-input option, select.form-control option, select.filter-input option { background:#141416; color:var(--text); }
   .notif-body{ flex:1; min-width:0; }
   .notif-title{ font-size:13px; font-weight:600; margin-bottom:2px; }
   .notif-text{ font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
@@ -1091,7 +1110,6 @@
         <div class="table-filters">
           <button class="btn btn-primary" onclick="openTaskModal()" style="margin-right:4px">+ Add Task</button>
           <button class="btn btn-outline"  onclick="openCSVModal()"  style="margin-right:4px">CSV Upload</button>
-          <button class="btn btn-outline"  onclick="syncToSlackLists()" id="sync-lists-btn" style="margin-right:8px" title="Push all tasks to Slack Lists">Sync Slack Lists</button>
           <input  type="text"   id="search"         class="filter-input search-input" placeholder="Search title or description…" oninput="filterTasks()">
           <select id="f-status"   class="filter-input" onchange="filterTasks()">
             <option value="">All Status</option>
@@ -1135,10 +1153,6 @@
     </div>
     <div id="employee-accounts-section" style="padding:0 28px 28px">
       <div id="employees-table-container"><div class="loading"><div class="spinner"></div> Loading…</div></div>
-    </div>
-    <div style="padding:0 28px 8px"><h3 style="font-size:14px;font-weight:600;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin:0 0 16px">Slack Team Overview</h3></div>
-    <div id="employee-grid" class="employee-grid">
-      <div class="loading"><div class="spinner"></div> Loading employees…</div>
     </div>
   </div>
 
@@ -2268,7 +2282,7 @@ function renderTable(tasks) {
       <div class="empty-state">
         <div class="empty-icon" style="font-size:44px">—</div>
         <div class="empty-title">No tasks found</div>
-        <div class="empty-sub">Adjust the filters or create tasks via Slack using <code>/task-create</code></div>
+        <div class="empty-sub">Adjust the filters or click "+ Add Task" to create one</div>
       </div>`;
     document.getElementById('table-count').textContent = '0 tasks';
     return;
@@ -2290,7 +2304,7 @@ function renderTable(tasks) {
         ${t.description ? `<div class="task-desc" title="${esc(t.description)}">${esc(t.description)}</div>` : ''}
       </td>
       <td class="channel-tag">${esc(t.channel_name)}</td>
-      <td class="assignee-id">${resolvedName(t.assignee_id)}</td>
+      <td class="assignee-id">${resolvedNames(t)}</td>
       <td class="due-date ${dueCls}">${dueLabel}</td>
       <td>${priorityBadge(t.priority)}</td>
       <td>${statusBadge(t.status)}</td>
@@ -2300,6 +2314,7 @@ function renderTable(tasks) {
       <td style="white-space:nowrap">
         ${isDone ? '' : `<button class="btn btn-success" style="padding:4px 10px;font-size:11px" onclick="quickDone(${t.id})">Done</button> `}
         <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openTaskModal(${t.id})">Edit</button>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="openTaskComments(${t.id})" title="Comments">💬</button>
         <button class="btn btn-danger"  style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteTask(${t.id})">Delete</button>
       </td>
     </tr>`;
@@ -2342,7 +2357,7 @@ async function loadDashboard() {
   dot.classList.add('pulse');
 
   try {
-    const [stats, tasks] = await Promise.all([fetchStats(), fetchTasks(), preloadUsers()]);
+    const [stats, tasks] = await Promise.all([fetchStats(), fetchTasks(), preloadEmployeesForTasks()]);
 
     renderStats(stats);
     renderCharts(stats);
@@ -2422,42 +2437,40 @@ async function bulkDelete() {
   loadDashboard();
 }
 
-// ── User name cache & resolver ────────────────────────────────────────────────
-let usersMap = {};
-async function preloadUsers() {
-  try { usersMap = await apiFetch('/api/dashboard/users').then(r => r.json()); } catch (_) {}
-}
-
+// ── Assignee name resolver (employees only — Slack removed) ───────────────────
 let employeesForTasks = null;
 async function preloadEmployeesForTasks() {
   if (employeesForTasks) return;
   try { employeesForTasks = await apiFetch('/api/dashboard/employees-for-tasks').then(r => r.json()); } catch (_) { employeesForTasks = []; }
 }
 function resolvedName(id) {
-  // Try employee id lookup first (new tasks use employee internal id)
   const empById = (employeesForTasks || []).find(e => String(e.id) === String(id));
   if (empById) {
     const initials = (empById.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
     return `<span class="assignee-chip"><span class="assignee-avatar">${initials}</span>${esc(empById.name)}</span>`;
   }
-  // Fall back to Slack users map (legacy tasks with slack_user_id)
-  const u = usersMap[id];
-  if (!u) return `<span class="assignee-id">${esc(id)}</span>`;
-  const initials = (u.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-  const avatar   = u.avatar ? `<img src="${esc(u.avatar)}" style="width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:5px">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--primary);color:#fff;font-size:9px;font-weight:700;vertical-align:middle;margin-right:5px">${initials}</span>`;
-  return `<span style="display:inline-flex;align-items:center;white-space:nowrap;font-size:12px">${avatar}${esc(u.displayName||u.name)}</span>`;
+  return `<span class="assignee-id">${esc(id)}</span>`;
+}
+// Render every assignee of a task (multi-assignee aware)
+function resolvedNames(t) {
+  const list = Array.isArray(t.assignee_ids) && t.assignee_ids.length ? t.assignee_ids : (t.assignee_id ? [t.assignee_id] : []);
+  return [...new Set(list.map(String))].map(resolvedName).join(' ');
 }
 
 // ── Task CRUD modals ──────────────────────────────────────────────────────────
 async function openTaskModal(id) {
   await preloadEmployeesForTasks();
   const t = id ? allTasks.find(x => x.id === id) : null;
-  const userOpts = (employeesForTasks || []).map(e => `<option value="${e.id}"${t?.assignee_id===String(e.id)?' selected':''}>${esc(e.name)}</option>`).join('');
+  const current = new Set((Array.isArray(t?.assignee_ids) && t.assignee_ids.length ? t.assignee_ids : (t?.assignee_id ? [t.assignee_id] : [])).map(String));
+  const assigneeChecks = (employeesForTasks || []).map(e => `
+    <label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px" onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background='none'">
+      <input type="checkbox" class="t-assignee-cb" value="${e.id}" ${current.has(String(e.id)) ? 'checked' : ''} style="accent-color:var(--gold)"> ${esc(e.name)}
+    </label>`).join('');
   showModal(t ? `Edit Task #${t.id}` : 'Add New Task', `
     <div class="form-group"><label class="form-label">Title *</label><input class="form-control" id="t-title" value="${esc(t?.title||'')}" placeholder="Task title…"></div>
     <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="t-desc" rows="2">${esc(t?.description||'')}</textarea></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Assignee *</label><select class="form-control" id="t-assignee"><option value="">Select person…</option>${userOpts}</select></div>
+    <div class="form-group"><label class="form-label">Assignees * <span style="color:var(--muted);font-size:11px">(select one or more)</span></label>
+      <div id="t-assignees" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px">${assigneeChecks || '<div style="padding:8px;color:var(--muted);font-size:12px">No employees yet</div>'}</div>
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Due Date *</label><input class="form-control" id="t-due" type="date" value="${t?.due_date||''}"></div>
@@ -2474,8 +2487,9 @@ async function openTaskModal(id) {
 }
 
 async function saveTask(id) {
-  const body = { title: document.getElementById('t-title').value.trim(), description: document.getElementById('t-desc').value.trim(), assignee_id: document.getElementById('t-assignee').value, due_date: document.getElementById('t-due').value, priority: document.getElementById('t-priority').value, status: document.getElementById('t-status').value, milestone: document.getElementById('t-milestone').value.trim() };
-  if (!body.title || !body.assignee_id || !body.due_date) { alert('Title, assignee and due date are required'); return; }
+  const assignee_ids = [...document.querySelectorAll('.t-assignee-cb:checked')].map(cb => cb.value);
+  const body = { title: document.getElementById('t-title').value.trim(), description: document.getElementById('t-desc').value.trim(), assignee_ids, due_date: document.getElementById('t-due').value, priority: document.getElementById('t-priority').value, status: document.getElementById('t-status').value, milestone: document.getElementById('t-milestone').value.trim() };
+  if (!body.title || !assignee_ids.length || !body.due_date) { alert('Title, at least one assignee, and due date are required'); return; }
   const url = id ? `/api/dashboard/tasks/${id}` : '/api/dashboard/tasks';
   const method = id ? 'PUT' : 'POST';
   const r = await apiFetch(url, { method, body: JSON.stringify(body) });
@@ -2489,12 +2503,75 @@ async function deleteTask(id) {
   loadDashboard();
 }
 
+// ── Task comments (with @mentions) ────────────────────────────────────────────
+let _commentsTaskId = null;
+async function openTaskComments(id) {
+  _commentsTaskId = id;
+  await preloadEmployeesForTasks();
+  const t = allTasks.find(x => x.id === id);
+  showModal(`Comments — ${t ? t.title : '#' + id}`, `
+    <div id="tc-list" style="max-height:300px;overflow-y:auto;display:grid;gap:10px;padding:2px"><div class="loading"><div class="spinner"></div></div></div>
+    <div style="margin-top:12px;position:relative">
+      <div id="tc-mention-box" class="lead-menu" style="position:absolute;bottom:100%;left:0;margin-bottom:4px;max-height:180px"></div>
+      <textarea class="form-control" id="tc-input" rows="2" placeholder="Write a comment… type @name to mention someone" oninput="tcMentionHint(this)"></textarea>
+    </div>`,
+    `<button class="btn btn-outline" onclick="hideModal()">Close</button>
+     <button class="btn btn-primary" onclick="postTaskCommentUi()">Comment</button>`);
+  loadTaskComments();
+}
+async function loadTaskComments() {
+  const rows = await apiFetch(`/api/dashboard/tasks/${_commentsTaskId}/comments`).then(r => r.json()).catch(() => []);
+  const list = document.getElementById('tc-list');
+  if (!list) return;
+  list.innerHTML = (Array.isArray(rows) && rows.length) ? rows.map(c => `
+    <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:8px 12px">
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);margin-bottom:3px"><strong style="color:var(--text)">${esc(c.author_name || '—')}</strong><span>${new Date(c.created_at).toLocaleString()}</span></div>
+      <div style="font-size:13px;white-space:pre-wrap;word-break:break-word">${tcRenderBody(c.body)}</div>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:12px;text-align:center;padding:14px">No comments yet — be the first.</div>';
+  list.scrollTop = list.scrollHeight;
+}
+function tcRenderBody(b) {
+  let h = esc(b || '');
+  (employeesForTasks || []).forEach(e => {
+    if (e.name) h = h.split('@' + esc(e.name)).join(`<span style="color:var(--gold);font-weight:700">@${esc(e.name)}</span>`);
+  });
+  return h;
+}
+function tcMentionHint(ta) {
+  const box = document.getElementById('tc-mention-box');
+  if (!box) return;
+  const m = ta.value.slice(0, ta.selectionStart).match(/@([a-zA-Z ]{0,30})$/);
+  if (!m) { box.classList.remove('open'); return; }
+  const q = m[1].toLowerCase();
+  const hits = (employeesForTasks || []).filter(e => (e.name || '').toLowerCase().startsWith(q)).slice(0, 6);
+  if (!hits.length) { box.classList.remove('open'); return; }
+  box.innerHTML = hits.map(e => `<button type="button" onclick="tcInsertMention('${esc(e.name)}')">@ ${esc(e.name)}</button>`).join('');
+  box.classList.add('open');
+}
+function tcInsertMention(name) {
+  const ta = document.getElementById('tc-input');
+  const pos = ta.selectionStart;
+  const before = ta.value.slice(0, pos).replace(/@[a-zA-Z ]{0,30}$/, '@' + name + ' ');
+  ta.value = before + ta.value.slice(pos);
+  document.getElementById('tc-mention-box')?.classList.remove('open');
+  ta.focus();
+}
+async function postTaskCommentUi() {
+  const ta = document.getElementById('tc-input');
+  const body = ta.value.trim();
+  if (!body) return;
+  const r = await apiFetch(`/api/dashboard/tasks/${_commentsTaskId}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); return alert('Error: ' + (e.error || r.status)); }
+  ta.value = '';
+  loadTaskComments();
+}
+
 function downloadCSVTemplate() {
   const rows = [
-    ['title', 'description', 'channel_name', 'assignee_id', 'due_date', 'priority', 'milestone', 'status'],
-    ['Fix homepage bug',    'Button not working on mobile',   '#digital-presence', 'U012345678', '2026-04-15', 'high',   'Sprint 1', 'todo'],
-    ['Write Q2 report',     'Monthly summary for leadership', '#marketing',        'U087654321', '15/04/2026', 'medium', 'Q2',       'in_progress'],
-    ['Old task from Jan',   'Completed last quarter',         '#general',          'U012345678', '15/1/2026',  'low',    'Q1',       'done'],
+    ['title', 'description', 'assignee_id', 'due_date', 'priority', 'milestone', 'status'],
+    ['Fix homepage bug',    'Button not working on mobile',   '3', '2026-04-15', 'high',   'Sprint 1', 'todo'],
+    ['Write Q2 report',     'Monthly summary for leadership', '5', '15/04/2026', 'medium', 'Q2',       'in_progress'],
+    ['Old task from Jan',   'Completed last quarter',         '3', '15/1/2026',  'low',    'Q1',       'done'],
   ];
   const csv  = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -2507,7 +2584,7 @@ function downloadCSVTemplate() {
 
 function openCSVModal() {
   showModal('Bulk Upload Tasks via CSV', `
-    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">CSV columns: <code>title, description, channel_name, assignee_id, due_date, priority, milestone, status</code></p>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">CSV columns: <code>title, description, assignee_id, due_date, priority, milestone, status</code> — assignee_id is the employee's ID from the Employees page</p>
     <p style="font-size:12px;color:var(--muted);margin-bottom:4px">Use <strong>#channel-name</strong> format. Get assignee IDs from the Employees page.</p>
     <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Dates accept any format: <code>2026-04-15</code>, <code>15/04/2026</code>, <code>15/4/2026</code>. Past dates are allowed.</p>
     <div style="margin-bottom:16px">
@@ -2530,18 +2607,6 @@ async function uploadCSV() {
   if (data.error) { res.innerHTML = `<div class="error-msg">${esc(data.error)}</div>`; return; }
   res.innerHTML = `<div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;padding:10px 14px;border-radius:8px;font-size:13px">Inserted <strong>${data.inserted}</strong> task(s)${data.errors?.length ? `<br><span style="color:var(--warning)">${data.errors.join('<br>')}</span>` : ''}</div>`;
   loadDashboard();
-}
-
-async function syncToSlackLists() {
-  const btn = document.getElementById('sync-lists-btn');
-  btn.disabled = true; btn.textContent = 'Syncing…';
-  try {
-    const r = await apiFetch('/api/dashboard/tasks/sync-lists', { method: 'POST' });
-    const data = await r.json();
-    if (data.error) { alert('Sync failed: ' + data.error); }
-    else { alert(`${data.message}\n\nCheck your Slack channels — lists will appear within a minute.`); }
-  } catch (e) { alert('Sync error: ' + e.message); }
-  finally { btn.disabled = false; btn.textContent = 'Sync Slack Lists'; }
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -2624,16 +2689,10 @@ function closeModal(e) { if (e.target === document.getElementById('modal-overlay
 let allEmployees = [];
 
 async function loadEmployees() {
-  const grid = document.getElementById('employee-grid');
   const tableC = document.getElementById('employees-table-container');
-  grid.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   tableC.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   try {
-    const [users, tasks, emps] = await Promise.all([
-      apiFetch('/api/dashboard/users').then(r => r.json()),
-      apiFetch('/api/dashboard/tasks').then(r => r.json()),
-      apiFetch('/api/dashboard/employees').then(r => r.json()),
-    ]);
+    const emps = await apiFetch('/api/dashboard/employees').then(r => r.json());
     allEmployees = emps;
 
     // Employee portal accounts table
@@ -2642,16 +2701,20 @@ async function loadEmployees() {
     } else {
       const permLabels = { requests: 'Requests', drive: 'Drive', sheets: 'Sheets', email: 'Email', viewAllRequests: 'View All Requests', quotation: 'Quotation', leads: 'Leads', deals: 'Deals' };
       tableC.innerHTML = `<div style="overflow-x:auto"><table>
-        <thead><tr><th>Name</th><th>Username</th><th>Job Title</th><th>Email</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Name</th><th>Username</th><th>Job Title</th><th>Status</th><th>Email</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>${emps.map(e => {
           const p = e.permissions || {};
           const badges = Object.entries(permLabels).map(([k, lbl]) =>
             `<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;margin:1px;background:${p[k]?'rgba(99,102,241,.15)':'rgba(255,255,255,.05)'};color:${p[k]?'var(--primary)':'var(--muted)'}">${lbl}</span>`
           ).join('');
+          const initials = (e.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+          const avatar = e.avatar_url ? `<img src="${esc(e.avatar_url)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;font-size:10px;font-weight:700;vertical-align:middle;margin-right:8px">${initials}</span>`;
+          const statusStr = (e.status_emoji || e.status_text) ? `${e.status_emoji||''} ${esc(e.status_text||'')}`.trim() : '—';
           return `<tr>
-            <td class="task-title">${esc(e.name)}</td>
+            <td class="task-title">${avatar}${esc(e.name)}</td>
             <td><code style="font-size:12px">${esc(e.username)}</code></td>
             <td style="font-size:12px;color:var(--muted)">${esc(e.job_title || '—')}</td>
+            <td style="font-size:12px;color:var(--muted)">${statusStr}</td>
             <td style="font-size:12px;color:var(--muted)">${esc(e.email || '—')}</td>
             <td style="max-width:200px">${badges}</td>
             <td style="font-size:12px;color:var(--muted)">${new Date(e.created_at).toLocaleDateString()}</td>
@@ -2663,38 +2726,7 @@ async function loadEmployees() {
         }).join('')}</tbody>
       </table></div>`;
     }
-
-    // Slack team overview cards
-    const tasksByUser = {};
-    tasks.forEach(t => {
-      if (!tasksByUser[t.assignee_id]) tasksByUser[t.assignee_id] = { total: 0, done: 0 };
-      tasksByUser[t.assignee_id].total++;
-      if (t.status === 'done') tasksByUser[t.assignee_id].done++;
-    });
-    const members = Object.values(users);
-    if (!members.length) { grid.innerHTML = '<div class="loading">No Slack members found</div>'; return; }
-    // Build a lookup: slack_user_id → portal employee for job_title fallback
-    const empBySlackId = {};
-    emps.forEach(e => { if (e.slack_user_id) empBySlackId[e.slack_user_id] = e; });
-    grid.innerHTML = members.map(u => {
-      const stats = tasksByUser[u.id] || { total: 0, done: 0 };
-      const initials = (u.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-      const avatarHtml = u.avatar ? `<img src="${esc(u.avatar)}" alt="${esc(u.name)}">` : initials;
-      const portalEmp = empBySlackId[u.id];
-      const titleStr = u.title || portalEmp?.job_title || 'Team Member';
-      return `<div class="employee-card">
-        <div class="employee-avatar">${avatarHtml}</div>
-        <div class="employee-name">${esc(u.name)}</div>
-        <div class="employee-title">${esc(titleStr)}</div>
-        <div class="employee-id">${esc(u.id)}</div>
-        <div class="employee-stats">
-          <div class="employee-stat"><div class="employee-stat-val" style="color:var(--info)">${stats.total}</div><div class="employee-stat-lbl">Tasks</div></div>
-          <div class="employee-stat"><div class="employee-stat-val" style="color:var(--success)">${stats.done}</div><div class="employee-stat-lbl">Done</div></div>
-        </div>
-      </div>`;
-    }).join('');
   } catch (e) {
-    grid.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`;
     tableC.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`;
   }
   requestAnimationFrame(() => lucide.createIcons());
@@ -2724,7 +2756,6 @@ function openEmpModal(id) {
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Job Title</label><input class="form-control" id="em-job-title" value="${esc(e?.job_title||'')}" placeholder="e.g. Sales Manager"></div>
-      <div class="form-group"><label class="form-label">Slack User ID <span style="color:var(--muted);font-size:11px">(optional)</span></label><input class="form-control" id="em-slack" value="${esc(e?.slack_user_id||'')}" placeholder="U012345…"></div>
     </div>
     <div class="form-group" style="margin-top:4px">
       <label class="form-label">Portal Permissions</label>
@@ -2750,7 +2781,6 @@ async function saveEmployee(id) {
     password:      document.getElementById('em-password').value,
     email:         document.getElementById('em-email').value.trim(),
     job_title:     document.getElementById('em-job-title').value.trim(),
-    slack_user_id: document.getElementById('em-slack').value.trim(),
     permissions: {
       requests:        document.getElementById('perm-requests')?.checked        ?? true,
       viewAllRequests: document.getElementById('perm-viewAllRequests')?.checked ?? false,
@@ -2831,7 +2861,7 @@ function openRequestModal(id) {
         </select>
       </div>
     </div>
-    <div class="form-group"><label class="form-label">Assigned To (Slack ID)</label><input class="form-control" id="req-assigned" value="${esc(req?.assigned_to || '')}" placeholder="U012345…"></div>
+    <div class="form-group"><label class="form-label">Assigned To</label><input class="form-control" id="req-assigned" value="${esc(req?.assigned_to || '')}" placeholder="U012345…"></div>
   `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveRequest(${id || 'null'})">Save</button>`);
 }
@@ -3278,7 +3308,7 @@ function renderNotifs() {
 }
 
 function notifIcon(type) {
-  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox' };
+  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox', issue: 'bug' };
   return m[type] || 'bell';
 }
 // Strip any leading emoji/symbols so legacy notifications render clean text (new ones already clean)
@@ -4010,14 +4040,13 @@ const LOGISTICS_LABELS = [
 ];
 
 async function loadQuotation() {
-  // Load Slack users for issuer dropdown
+  // Load employees for the issuer dropdown
   try {
-    const usersRaw = await apiFetch('/api/dashboard/users').then(r => r.json());
-    const users = Array.isArray(usersRaw) ? usersRaw : Object.values(usersRaw || {});
+    await preloadEmployeesForTasks();
     const sel = document.getElementById('qt-issuer');
-    if (sel && users.length) {
+    if (sel && (employeesForTasks || []).length) {
       sel.innerHTML = '<option value="">— Select issuer —</option>' +
-        users.filter(u => u.name && !u.deleted).map(u => `<option value="${esc(u.displayName||u.name)}">${esc(u.displayName||u.name)}</option>`).join('');
+        employeesForTasks.map(e => `<option value="${esc(e.name)}">${esc(e.name)}</option>`).join('');
     }
   } catch (_) {}
 
@@ -4638,6 +4667,8 @@ const LEAD_DEFAULT_COLS = [
     { key:'closed', label:'Closed' }, { key:'no_answer', label:'No Answer' }] },
   { key:'been_contacted',  label:'Contacted',   type:'checkbox', builtin:true, visible:true },
   { key:'notes',           label:'Notes',       type:'text',     builtin:true, visible:true },
+  { key:'sales_feedback',  label:'Sales Feedback', type:'text',  builtin:true, visible:true },
+  { key:'inquiry',         label:'Inquiry',     type:'text',     builtin:true, visible:true },
 ];
 let _leadCols = null;
 let _leadColsLoaded = false;
@@ -4758,8 +4789,22 @@ function openLeadColsPicker(e) {
   m.dataset.mode = 'picker';
   m.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:6px 10px 4px">Show columns</div>` +
     _leadCols.map(c => `
-      <label class="lead-col-toggle"><input type="checkbox" ${c.visible ? 'checked' : ''} onchange="toggleLeadColVis('${esc(c.key)}',this.checked)"> ${esc(c.label)}</label>`).join('');
+      <button type="button" class="lead-col-eye ${c.visible ? '' : 'col-hidden'}" onclick="event.stopPropagation();toggleLeadColVis('${esc(c.key)}', ${c.visible ? 'false' : 'true'});openLeadColsPickerRefresh()">
+        <i data-lucide="${c.visible ? 'eye' : 'eye-off'}" style="width:14px;height:14px"></i> ${esc(c.label)}
+      </button>`).join('');
   positionLeadMenu(e);
+  requestAnimationFrame(() => lucide.createIcons());
+}
+// Re-render the picker in place (keeps it open) after an eye toggle
+function openLeadColsPickerRefresh() {
+  const m = _leadMenuEl;
+  if (!m || !m.classList.contains('open')) return;
+  m.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:6px 10px 4px">Show columns</div>` +
+    _leadCols.map(c => `
+      <button type="button" class="lead-col-eye ${c.visible ? '' : 'col-hidden'}" onclick="event.stopPropagation();toggleLeadColVis('${esc(c.key)}', ${c.visible ? 'false' : 'true'});openLeadColsPickerRefresh()">
+        <i data-lucide="${c.visible ? 'eye' : 'eye-off'}" style="width:14px;height:14px"></i> ${esc(c.label)}
+      </button>`).join('');
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function toggleLeadColVis(key, on) {
@@ -4971,7 +5016,7 @@ function leadCellHtml(c, col) {
     return `<td ${attrs}><span style="background:${bg};color:${tc};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap">${esc(m[k] || raw || k)}</span></td>`;
   }
   if (col.key === 'budget_lead') return `<td ${attrs} style="font-size:12px;white-space:nowrap">${raw ? Number(raw).toLocaleString() + ' EGP' : '—'}</td>`;
-  if (col.key === 'notes' || col.key === 'car_in_question') return `<td ${attrs} style="font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(raw || '')}">${esc(raw || '—')}</td>`;
+  if (col.key === 'notes' || col.key === 'car_in_question' || col.key === 'sales_feedback' || col.key === 'inquiry') return `<td ${attrs} style="font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(raw || '')}">${esc(raw || '—')}</td>`;
   if (col.type === 'checkbox') return `<td ${attrs} style="text-align:center;font-size:16px">${raw ? '✅' : '⬜'}</td>`;
   if (col.type === 'select') { const m = colOptMap(col); const k = normKey(raw, m); return `<td ${attrs} style="font-size:12px;white-space:nowrap">${esc(m[k] || raw || '—')}</td>`; }
   if (col.type === 'number') return `<td ${attrs} style="font-size:12px;white-space:nowrap">${raw != null && raw !== '' ? Number(raw).toLocaleString() : '—'}</td>`;

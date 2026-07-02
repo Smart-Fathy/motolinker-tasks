@@ -1,6 +1,4 @@
-const { App, ExpressReceiver, LogLevel } = require('@slack/bolt');
 const { createClient } = require('@supabase/supabase-js');
-const { WebClient }    = require('@slack/web-api');
 const crypto     = require('crypto');
 const path       = require('path');
 const express    = require('express');
@@ -9,20 +7,10 @@ const webpush    = require('web-push');
 const nodemailer = require('nodemailer');
 
 // ─── App Init ─────────────────────────────────────────────────────────────────
-const receiver = new ExpressReceiver({
-  signingSecret: process.env.SLACK_SIGNING_SECRET || 'placeholder-secret',
-});
-
-let app = null;
-if (process.env.SLACK_BOT_TOKEN) {
-  app = new App({
-    token: process.env.SLACK_BOT_TOKEN,
-    receiver,
-    logLevel: LogLevel.INFO,
-  });
-} else {
-  console.warn('[Slack] SLACK_BOT_TOKEN not set — Slack features disabled. Dashboard will still work.');
-}
+// Plain Express server (Slack integration removed). `receiver.router` is kept as
+// an alias so the existing route registrations stay unchanged.
+const expressApp = express();
+const receiver = { router: expressApp, app: expressApp };
 
 const supabase    = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -46,10 +34,8 @@ async function loadOrCreateVapidKeys() {
   webpush.setVapidDetails('mailto:admin@motolinker.com', vapidKeys.publicKey, vapidKeys.privateKey);
   console.log('[VAPID] Web push configured');
 }
-const slackClient = process.env.SLACK_BOT_TOKEN ? new WebClient(process.env.SLACK_BOT_TOKEN) : null;
 const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
-const CHIEFS_CHANNEL_ID    = process.env.CHIEFS_CHANNEL_ID;
 const ADMIN_USERNAME       = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD       = process.env.ADMIN_PASSWORD;
 const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID;
@@ -141,376 +127,6 @@ function requireEmployeeAuth(req, res, next) {
   next();
 }
 
-// ─── Slack Data Cache ─────────────────────────────────────────────────────────
-let _usersCache = null, _usersCacheAt = 0;
-let _chCache    = null, _chCacheAt    = 0;
-
-async function getSlackUsers() {
-  if (_usersCache && Date.now() - _usersCacheAt < 300_000) return _usersCache;
-  if (!slackClient) { if (!_usersCache) _usersCache = {}; return _usersCache; }
-  try {
-    const { members = [] } = await slackClient.users.list({ limit: 200 });
-    _usersCache = {};
-    members.forEach(u => {
-      if (u.is_bot || u.deleted || u.id === 'USLACKBOT') return;
-      _usersCache[u.id] = {
-        id: u.id,
-        name: u.real_name || u.profile?.display_name || u.name,
-        displayName: u.profile?.display_name || u.real_name || u.name,
-        avatar: u.profile?.image_48 || '',
-        email: u.profile?.email || '',
-        title: u.profile?.title || '',
-      };
-    });
-    _usersCacheAt = Date.now();
-  } catch (e) { console.error('getSlackUsers:', e.message); if (!_usersCache) _usersCache = {}; }
-  return _usersCache;
-}
-
-async function getSlackChannels() {
-  if (_chCache && Date.now() - _chCacheAt < 300_000) return _chCache;
-  if (!slackClient) { if (!_chCache) _chCache = []; return _chCache; }
-  try {
-    const { channels = [] } = await slackClient.conversations.list({ types: 'public_channel,private_channel', limit: 200 });
-    _chCache = channels.filter(c => !c.is_archived && c.id !== CHIEFS_CHANNEL_ID)
-                       .map(c => ({ id: c.id, name: `#${c.name}` }));
-    _chCacheAt = Date.now();
-  } catch (e) { console.error('getSlackChannels:', e.message); if (!_chCache) _chCache = []; }
-  return _chCache;
-}
-
-// ─── Pinned Task Board ────────────────────────────────────────────────────────
-// One pinned message per channel showing all tasks, auto-updated on any change.
-const taskBoardCache = new Map(); // channelId → message ts
-
-async function buildTaskBoardBlocks(channelId, channelName) {
-  const { data: tasks } = await supabase.from('tasks').select('*')
-    .eq('channel_id', channelId)
-    .order('due_date', { ascending: true });
-  if (!tasks || tasks.length === 0) return null;
-
-  const users = await getSlackUsers().catch(() => ({}));
-  const grouped = { todo: [], in_progress: [], done: [] };
-  tasks.forEach(t => { if (grouped[t.status]) grouped[t.status].push(t); });
-
-  const line = t => {
-    const name = users[t.assignee_id]?.displayName || users[t.assignee_id]?.name || t.assignee_id;
-    return `${priorityEmoji(t.priority)} *${t.title}* — ${name} · Due \`${t.due_date}\`${t.milestone ? ` · 🏁 ${t.milestone}` : ''}`;
-  };
-
-  const updated = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const blocks = [
-    { type: 'header', text: { type: 'plain_text', text: `📋 Task Board — ${channelName}` } },
-    { type: 'context', elements: [{ type: 'mrkdwn', text: `${tasks.length} task(s) total · Last updated ${updated}` }] },
-    { type: 'divider' },
-  ];
-
-  if (grouped.todo.length) {
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*⏳ To Do (${grouped.todo.length})*\n${grouped.todo.map(t => `• ${line(t)}`).join('\n')}` } });
-    blocks.push({ type: 'divider' });
-  }
-  if (grouped.in_progress.length) {
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*▶️ In Progress (${grouped.in_progress.length})*\n${grouped.in_progress.map(t => `• ${line(t)}`).join('\n')}` } });
-    blocks.push({ type: 'divider' });
-  }
-  if (grouped.done.length) {
-    const doneList = grouped.done.slice(0, 5).map(t => `• ✅ ~~${t.title}~~`).join('\n');
-    const extra = grouped.done.length > 5 ? `\n_…and ${grouped.done.length - 5} more_` : '';
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*✅ Done (${grouped.done.length})*\n${doneList}${extra}` } });
-  }
-
-  blocks.push({ type: 'divider' });
-  blocks.push({
-    type: 'actions',
-    block_id: `board_actions_${channelId}`,
-    elements: [{
-      type: 'button',
-      text: { type: 'plain_text', text: '🔄 Update a Task' },
-      value: channelId,
-      action_id: 'update_task_button',
-      style: 'primary',
-    }],
-  });
-
-  return blocks;
-}
-
-async function updateChannelTaskBoard(channelId, channelName) {
-  if (!slackClient) return;
-  try {
-    const blocks = await buildTaskBoardBlocks(channelId, channelName);
-    if (!blocks) return;
-    const text = `📋 Task Board — ${channelName}`;
-
-    if (taskBoardCache.has(channelId)) {
-      await slackClient.chat.update({ channel: channelId, ts: taskBoardCache.get(channelId), blocks, text });
-    } else {
-      const result = await slackClient.chat.postMessage({ channel: channelId, text, blocks });
-      if (result.ok && result.ts) {
-        taskBoardCache.set(channelId, result.ts);
-        try { await slackClient.pins.add({ channel: channelId, timestamp: result.ts }); } catch (_) {}
-      }
-    }
-  } catch (e) { console.warn(`updateChannelTaskBoard ${channelName}:`, e.message); }
-}
-
-const addTaskToSlackList     = task => updateChannelTaskBoard(task.channel_id, task.channel_name);
-const updateTaskInSlackList  = task => updateChannelTaskBoard(task.channel_id, task.channel_name);
-const removeTaskFromSlackList = task => updateChannelTaskBoard(task.channel_id, task.channel_name);
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-async function isChief(client, userId) {
-  try {
-    const res = await client.conversations.members({ channel: CHIEFS_CHANNEL_ID });
-    return res.members.includes(userId);
-  } catch { return false; }
-}
-
-function priorityEmoji(p) { return { high: '🔴', medium: '🟡', low: '🟢' }[p] ?? '⚪'; }
-
-function statusLabel(s) {
-  return { todo: '⏳ To Do', in_progress: '▶️ In Progress', done: '✅ Done' }[s] ?? '⏳ To Do';
-}
-
-function buildTaskBlocks(task) {
-  return [
-    { type: 'header', text: { type: 'plain_text', text: '📋 New Task Assigned to Your Channel' } },
-    { type: 'section', text: { type: 'mrkdwn', text: `*${task.title}*\n${task.description || '_No description provided._'}` } },
-    { type: 'divider' },
-    {
-      type: 'section',
-      fields: [
-        { type: 'mrkdwn', text: `*👤 Assignee:*\n<@${task.assignee_id}>` },
-        { type: 'mrkdwn', text: `*📅 Due Date:*\n${task.due_date}` },
-        { type: 'mrkdwn', text: `*${priorityEmoji(task.priority)} Priority:*\n${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}` },
-        { type: 'mrkdwn', text: `*🏁 Milestone:*\n${task.milestone || 'N/A'}` },
-        { type: 'mrkdwn', text: `*📊 Status:*\n${statusLabel(task.status)}` },
-        { type: 'mrkdwn', text: `*🆔 Task ID:*\n\`#${task.id}\`` },
-      ],
-    },
-    { type: 'divider' },
-    {
-      type: 'actions',
-      block_id: `task_actions_${task.id}`,
-      elements: [
-        { type: 'button', text: { type: 'plain_text', text: '▶️ Start Progress' }, value: String(task.id), action_id: 'status_in_progress', style: 'primary' },
-        { type: 'button', text: { type: 'plain_text', text: '✅ Mark Done' },      value: String(task.id), action_id: 'status_done',        style: 'primary' },
-        { type: 'button', text: { type: 'plain_text', text: '🔄 Reset to To Do' }, value: String(task.id), action_id: 'status_todo' },
-      ],
-    },
-    { type: 'context', elements: [{ type: 'mrkdwn', text: `Created by <@${task.created_by}> · Use \`/task-list\` to see all your channel tasks` }] },
-  ];
-}
-
-// ─── Slack Commands & Actions (only registered when SLACK_BOT_TOKEN is set) ───
-if (app) {
-
-// ─── /task-create ─────────────────────────────────────────────────────────────
-app.command('/task-create', async ({ command, ack, client, respond }) => {
-  await ack();
-  const chief = await isChief(client, command.user_id);
-  if (!chief) { await respond({ response_type: 'ephemeral', text: '🚫 Only *chiefs channel* members can create tasks.' }); return; }
-
-  const { channels } = await client.conversations.list({ types: 'public_channel,private_channel', limit: 200 });
-  const channelOptions = channels
-    .filter(ch => ch.id !== CHIEFS_CHANNEL_ID && !ch.is_archived)
-    .map(ch => ({ text: { type: 'plain_text', text: `#${ch.name}` }, value: ch.id }));
-
-  await client.views.open({
-    trigger_id: command.trigger_id,
-    view: {
-      type: 'modal', callback_id: 'create_task_modal',
-      title: { type: 'plain_text', text: '📋 Create New Task' },
-      submit: { type: 'plain_text', text: '✅ Create Task' },
-      close:  { type: 'plain_text', text: 'Cancel' },
-      blocks: [
-        { type: 'input', block_id: 'task_title', label: { type: 'plain_text', text: '📝 Task Title' }, element: { type: 'plain_text_input', action_id: 'title_input', placeholder: { type: 'plain_text', text: 'e.g. Create Q2 marketing report...' }, max_length: 150 } },
-        { type: 'input', block_id: 'task_description', label: { type: 'plain_text', text: '📄 Description' }, optional: true, element: { type: 'plain_text_input', action_id: 'description_input', multiline: true, placeholder: { type: 'plain_text', text: 'Describe what needs to be done...' }, max_length: 1000 } },
-        { type: 'input', block_id: 'assigned_channel', label: { type: 'plain_text', text: '📢 Assign to Channel' }, element: { type: 'static_select', action_id: 'channel_select', placeholder: { type: 'plain_text', text: 'Select target channel...' }, options: channelOptions.length > 0 ? channelOptions : [{ text: { type: 'plain_text', text: 'No channels found' }, value: 'none' }] } },
-        { type: 'input', block_id: 'assignee', label: { type: 'plain_text', text: '👤 Assignee' }, element: { type: 'users_select', action_id: 'user_select', placeholder: { type: 'plain_text', text: 'Select team member...' } } },
-        { type: 'input', block_id: 'due_date', label: { type: 'plain_text', text: '📅 Due Date' }, element: { type: 'datepicker', action_id: 'date_input', placeholder: { type: 'plain_text', text: 'Pick a due date' } } },
-        { type: 'input', block_id: 'priority', label: { type: 'plain_text', text: '🚦 Priority' }, element: { type: 'static_select', action_id: 'priority_select', initial_option: { text: { type: 'plain_text', text: '🟡 Medium' }, value: 'medium' }, options: [{ text: { type: 'plain_text', text: '🔴 High' }, value: 'high' }, { text: { type: 'plain_text', text: '🟡 Medium' }, value: 'medium' }, { text: { type: 'plain_text', text: '🟢 Low' }, value: 'low' }] } },
-        { type: 'input', block_id: 'milestone', label: { type: 'plain_text', text: '🏁 Milestone' }, optional: true, element: { type: 'plain_text_input', action_id: 'milestone_input', placeholder: { type: 'plain_text', text: 'e.g. Q2 Launch, Phase 1, Sprint 3...' }, max_length: 100 } },
-      ],
-    },
-  });
-});
-
-// ─── Modal Submission ─────────────────────────────────────────────────────────
-app.view('create_task_modal', async ({ ack, body, view, client }) => {
-  await ack();
-  const v = view.state.values;
-  const title       = v.task_title.title_input.value;
-  const description = v.task_description.description_input.value ?? '';
-  const channelOpt  = v.assigned_channel.channel_select.selected_option;
-  const channelId   = channelOpt.value;
-  const channelName = channelOpt.text.text;
-  const assigneeId  = v.assignee.user_select.selected_user;
-  const dueDate     = v.due_date.date_input.selected_date;
-  const priority    = v.priority.priority_select.selected_option.value;
-  const milestone   = v.milestone.milestone_input.value ?? '';
-  const createdBy   = body.user.id;
-  if (channelId === 'none') return;
-
-  const { data: task, error } = await supabase.from('tasks')
-    .insert({ title, description, channel_id: channelId, channel_name: channelName, assignee_id: assigneeId, due_date: dueDate, priority, milestone, created_by: createdBy, status: 'todo' })
-    .select().single();
-  if (error) { console.error('Supabase insert error:', error); return; }
-
-  // Add to Slack Lists (best-effort, non-blocking)
-  addTaskToSlackList(task).catch(() => {});
-
-  await client.chat.postMessage({ channel: channelId, text: `📋 New task assigned: ${title}`, blocks: buildTaskBlocks(task) });
-  try {
-    await client.chat.postMessage({ channel: assigneeId, text: `You've been assigned a task: *${title}*`, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `👋 Hey! You've been assigned a new task by <@${createdBy}>.\n\n*${title}*\n${description ? `>${description}\n` : ''}\n*${priorityEmoji(priority)} Priority:* ${priority} · *📅 Due:* ${dueDate}${milestone ? ` · *🏁 Milestone:* ${milestone}` : ''}\n\n👉 Check <#${channelId}> to update the task status.` } }] });
-  } catch (dmErr) { console.warn('DM to assignee failed:', dmErr.message); }
-  await client.chat.postMessage({ channel: CHIEFS_CHANNEL_ID, text: `✅ Task created: ${title}`, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `✅ Task *#${task.id}* created!\n*${title}* → <@${assigneeId}> in ${channelName}\n${priorityEmoji(priority)} ${priority} · Due: ${dueDate}${milestone ? ` · 🏁 ${milestone}` : ''}` } }] });
-});
-
-// ─── Status Actions ───────────────────────────────────────────────────────────
-async function handleStatusUpdate(ack, body, action, client, newStatus) {
-  await ack();
-  const taskId = parseInt(action.value, 10);
-  const completedAt = newStatus === 'done' ? new Date().toISOString() : null;
-  const { data: task } = await supabase.from('tasks').update({ status: newStatus, completed_at: completedAt, updated_at: new Date().toISOString() }).eq('id', taskId).select().single();
-  if (!task) return;
-
-  updateTaskInSlackList(task).catch(() => {});
-
-  const updatedBlocks = body.message.blocks.map(block => {
-    if (block.type === 'section' && Array.isArray(block.fields)) {
-      return { ...block, fields: block.fields.map(f => f.text?.includes('*📊 Status:*') ? { ...f, text: `*📊 Status:*\n${statusLabel(newStatus)}` } : f) };
-    }
-    return block;
-  });
-  await client.chat.update({ channel: body.channel.id, ts: body.message.ts, blocks: updatedBlocks, text: body.message.text });
-  await client.chat.postMessage({ channel: CHIEFS_CHANNEL_ID, text: `Task #${taskId} status updated`, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `📊 Task *#${taskId}* — *${task.title}*\nStatus → *${statusLabel(newStatus)}* by <@${body.user.id}> in <#${body.channel.id}>` } }] });
-}
-
-app.action('status_in_progress', p => handleStatusUpdate(p.ack, p.body, p.action, p.client, 'in_progress'));
-app.action('status_done',        p => handleStatusUpdate(p.ack, p.body, p.action, p.client, 'done'));
-app.action('status_todo',        p => handleStatusUpdate(p.ack, p.body, p.action, p.client, 'todo'));
-
-// ─── Task Board — Update a Task button ───────────────────────────────────────
-app.action('update_task_button', async ({ ack, body, action, client }) => {
-  await ack();
-  const channelId = action.value;
-  const userId    = body.user.id;
-
-  // Show the user's own tasks first, fall back to all non-done channel tasks
-  const { data: all } = await supabase.from('tasks').select('*')
-    .eq('channel_id', channelId).neq('status', 'done').order('due_date', { ascending: true });
-  if (!all || all.length === 0) return; // nothing to update
-
-  const mine  = all.filter(t => t.assignee_id === userId);
-  const tasks = mine.length > 0 ? mine : all;
-
-  const taskOptions = tasks.map(t => ({
-    text:  { type: 'plain_text', text: `${priorityEmoji(t.priority)} ${t.title.substring(0, 74)}` },
-    value: String(t.id),
-  }));
-
-  await client.views.open({
-    trigger_id: body.trigger_id,
-    view: {
-      type: 'modal', callback_id: 'update_task_modal',
-      private_metadata: channelId,
-      title:  { type: 'plain_text', text: '🔄 Update Task Status' },
-      submit: { type: 'plain_text', text: 'Update' },
-      close:  { type: 'plain_text', text: 'Cancel' },
-      blocks: [
-        { type: 'input', block_id: 'task_select', label: { type: 'plain_text', text: 'Task' },
-          element: { type: 'static_select', action_id: 'task_input',
-            placeholder: { type: 'plain_text', text: 'Choose a task…' }, options: taskOptions } },
-        { type: 'input', block_id: 'status_select', label: { type: 'plain_text', text: 'New Status' },
-          element: { type: 'static_select', action_id: 'status_input', options: [
-            { text: { type: 'plain_text', text: '⏳ To Do'        }, value: 'todo'        },
-            { text: { type: 'plain_text', text: '▶️ In Progress'  }, value: 'in_progress' },
-            { text: { type: 'plain_text', text: '✅ Done'         }, value: 'done'        },
-          ]}},
-      ],
-    },
-  });
-});
-
-app.view('update_task_modal', async ({ ack, body, view, client }) => {
-  await ack();
-  const channelId = view.private_metadata;
-  const taskId    = parseInt(view.state.values.task_select.task_input.selected_option.value, 10);
-  const newStatus = view.state.values.status_select.status_input.selected_option.value;
-
-  const completedAt2 = newStatus === 'done' ? new Date().toISOString() : null;
-  const { data: task } = await supabase.from('tasks')
-    .update({ status: newStatus, completed_at: completedAt2, updated_at: new Date().toISOString() })
-    .eq('id', taskId).select().single();
-  if (!task) return;
-
-  // Refresh the pinned task board
-  await updateChannelTaskBoard(channelId, task.channel_name);
-
-  // Notify chiefs
-  try {
-    await client.chat.postMessage({ channel: CHIEFS_CHANNEL_ID, text: `Task #${taskId} updated`,
-      blocks: [{ type: 'section', text: { type: 'mrkdwn',
-        text: `📊 Task *#${taskId}* — *${task.title}*\nStatus → *${statusLabel(newStatus)}* by <@${body.user.id}> in <#${channelId}>` } }] });
-  } catch (e) { console.warn('Chiefs notify failed:', e.message); }
-});
-
-// ─── /task-list ───────────────────────────────────────────────────────────────
-app.command('/task-list', async ({ command, ack, client, respond }) => {
-  await ack();
-  const channelId = command.channel_id;
-  const chief = await isChief(client, command.user_id);
-  let query = supabase.from('tasks').select('*').order('created_at', { ascending: false }).limit(20);
-  if (!chief) query = query.eq('channel_id', channelId);
-  const { data: tasks, error } = await query;
-  if (error || !tasks || tasks.length === 0) {
-    await respond({ response_type: 'ephemeral', text: chief ? '📭 No tasks yet. Use `/task-create`.' : '📭 No tasks in this channel yet.' });
-    return;
-  }
-  const grouped = { todo: [], in_progress: [], done: [] };
-  tasks.forEach(t => grouped[t.status]?.push(t));
-  const line = t => `${priorityEmoji(t.priority)} *${t.title}* — <@${t.assignee_id}> · Due: \`${t.due_date}\`${t.milestone ? ` · 🏁 ${t.milestone}` : ''}${chief ? ` · <#${t.channel_id}>` : ''}`;
-  const blocks = [{ type: 'header', text: { type: 'plain_text', text: chief ? '📊 All Tasks (Chiefs View)' : '📋 Tasks in This Channel' } }];
-  if (grouped.todo.length)        { blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*⏳ To Do (${grouped.todo.length})*` } }); grouped.todo.forEach(t => blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `• ${line(t)}` } })); blocks.push({ type: 'divider' }); }
-  if (grouped.in_progress.length) { blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*▶️ In Progress (${grouped.in_progress.length})*` } }); grouped.in_progress.forEach(t => blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `• ${line(t)}` } })); blocks.push({ type: 'divider' }); }
-  if (grouped.done.length)        { blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*✅ Done (${grouped.done.length})*` } }); grouped.done.forEach(t => blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `• ${line(t)}` } })); }
-  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `Showing ${tasks.length} task(s)` }] });
-  await respond({ response_type: 'ephemeral', blocks });
-});
-
-// ─── /task-delete ─────────────────────────────────────────────────────────────
-app.command('/task-delete', async ({ command, ack, client, respond }) => {
-  await ack();
-  if (!await isChief(client, command.user_id)) { await respond({ response_type: 'ephemeral', text: '🚫 Only chiefs can delete tasks.' }); return; }
-  const taskId = parseInt(command.text.trim(), 10);
-  if (!taskId) { await respond({ response_type: 'ephemeral', text: '⚠️ Usage: `/task-delete <task_id>`' }); return; }
-  const { data: taskToDelete } = await supabase.from('tasks').select('*').eq('id', taskId).single();
-  if (taskToDelete) await removeTaskFromSlackList(taskToDelete).catch(() => {});
-  const { error } = await supabase.from('tasks').delete().eq('id', taskId);
-  await respond({ response_type: 'ephemeral', text: error ? `❌ Failed to delete task #${taskId}.` : `🗑️ Task *#${taskId}* deleted.` });
-});
-
-// ─── /task-stats ──────────────────────────────────────────────────────────────
-app.command('/task-stats', async ({ command, ack, client, respond }) => {
-  await ack();
-  if (!await isChief(client, command.user_id)) { await respond({ response_type: 'ephemeral', text: '🚫 Only chiefs can view stats.' }); return; }
-  const { data: tasks } = await supabase.from('tasks').select('*');
-  if (!tasks || tasks.length === 0) { await respond({ response_type: 'ephemeral', text: '📭 No tasks yet.' }); return; }
-  const total = tasks.length, done = tasks.filter(t => t.status === 'done').length;
-  const inProgress = tasks.filter(t => t.status === 'in_progress').length, todo = tasks.filter(t => t.status === 'todo').length;
-  const highPriority = tasks.filter(t => t.priority === 'high' && t.status !== 'done').length;
-  const byChannel = {};
-  tasks.forEach(t => { byChannel[t.channel_name] = (byChannel[t.channel_name] || 0) + 1; });
-  await respond({ response_type: 'ephemeral', blocks: [
-    { type: 'header', text: { type: 'plain_text', text: '📈 Task Statistics' } },
-    { type: 'section', fields: [{ type: 'mrkdwn', text: `*📦 Total:*\n${total}` }, { type: 'mrkdwn', text: `*✅ Done:*\n${done} (${Math.round((done/total)*100)}%)` }, { type: 'mrkdwn', text: `*▶️ In Progress:*\n${inProgress}` }, { type: 'mrkdwn', text: `*⏳ To Do:*\n${todo}` }, { type: 'mrkdwn', text: `*🔴 High Priority (open):*\n${highPriority}` }] },
-    { type: 'divider' },
-    { type: 'section', text: { type: 'mrkdwn', text: `*📢 By Channel:*\n${Object.entries(byChannel).map(([ch, c]) => `${ch}: ${c}`).join(' · ')}` } },
-  ]});
-});
-
-} // end if (app)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Static Assets (PWA icons, manifests, service workers) ───────────────────
@@ -560,13 +176,6 @@ receiver.router.get('/api/auth/check', requireAuth, (req, res) => {
   res.json({ ok: true, username: sessions.get(token)?.username });
 });
 
-// ── Slack data ────────────────────────────────────────────────────────────────
-receiver.router.get('/api/dashboard/users', requireAuth, async (_req, res) => {
-  try { res.json(await getSlackUsers()); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-receiver.router.get('/api/dashboard/channels', requireAuth, async (_req, res) => {
-  try { res.json(await getSlackChannels()); } catch (e) { res.status(500).json({ error: e.message }); }
-});
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
 receiver.router.get('/api/dashboard/tasks', requireAuth, async (_req, res) => {
@@ -595,41 +204,30 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-receiver.router.post('/api/dashboard/tasks/sync-lists', requireAuth, async (_req, res) => {
-  try {
-    const { data: tasks, error } = await supabase.from('tasks').select('channel_id, channel_name');
-    if (error) throw error;
-    // Deduplicate channels
-    const channels = {};
-    tasks.forEach(t => { channels[t.channel_id] = t.channel_name; });
-    const channelList = Object.entries(channels);
-    res.json({ queued: channelList.length, message: `Posting task boards to ${channelList.length} channel(s) in Slack...` });
-    (async () => {
-      for (const [channelId, channelName] of channelList) {
-        await updateChannelTaskBoard(channelId, channelName);
-        await new Promise(r => setTimeout(r, 800));
-      }
-      console.log(`Task board sync complete: ${channelList.length} channels updated`);
-    })();
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+
+// Normalize the assignee input: accepts assignee_ids (array) and/or assignee_id.
+// Returns { primary, list } where primary keeps the legacy single column populated.
+function normalizeAssignees(body) {
+  let list = Array.isArray(body.assignee_ids) ? body.assignee_ids.map(String).filter(Boolean) : [];
+  if (!list.length && body.assignee_id) list = [String(body.assignee_id)];
+  list = [...new Set(list)];
+  return { primary: list[0] || null, list };
+}
+function taskAssigneeList(task) {
+  const list = Array.isArray(task?.assignee_ids) && task.assignee_ids.length ? task.assignee_ids.map(String) : (task?.assignee_id ? [String(task.assignee_id)] : []);
+  return [...new Set(list)];
+}
 
 receiver.router.post('/api/dashboard/tasks', requireAuth, express.json(), async (req, res) => {
-  const { title, description, assignee_id, due_date, priority, milestone } = req.body;
-  if (!title || !assignee_id || !due_date || !priority)
-    return res.status(400).json({ error: 'Missing required fields: title, assignee_id, due_date, priority' });
+  const { title, description, due_date, priority, milestone } = req.body;
+  const { primary, list } = normalizeAssignees(req.body);
+  if (!title || !primary || !due_date || !priority)
+    return res.status(400).json({ error: 'Missing required fields: title, assignee(s), due_date, priority' });
   const { data: task, error } = await supabase.from('tasks')
-    .insert({ title, description: description || '', channel_id: '', channel_name: '', assignee_id, due_date, priority, milestone: milestone || '', created_by: 'dashboard', status: 'todo' })
+    .insert({ title, description: description || '', channel_id: '', channel_name: '', assignee_id: primary, assignee_ids: list, due_date, priority, milestone: milestone || '', created_by: 'dashboard', status: 'todo' })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
-  // Best-effort Slack notifications and Lists sync
-  if (slackClient) {
-    addTaskToSlackList(task).catch(() => {});
-    try {
-      await slackClient.chat.postMessage({ channel: CHIEFS_CHANNEL_ID, text: `✅ Task #${task.id} created via dashboard: ${title}` });
-    } catch (e) { console.warn('Slack notify failed:', e.message); }
-  }
-  // Notify assignee via SSE (if portal is open) and push (always)
+  // Notify every assignee via SSE (if portal is open) and push (always)
   notifyEmployeeTaskAssigned(task);
   res.json(task);
 });
@@ -638,21 +236,23 @@ receiver.router.put('/api/dashboard/tasks/:id', requireAuth, express.json(), asy
   const updates = { ...req.body, updated_at: new Date().toISOString() };
   if (updates.status === 'done' && !updates.completed_at) updates.completed_at = new Date().toISOString();
   if (updates.status && updates.status !== 'done') updates.completed_at = null;
-  // Capture prior assignee to detect (re)assignment
-  const { data: prev } = await supabase.from('tasks').select('assignee_id').eq('id', req.params.id).single();
+  if (updates.assignee_ids !== undefined || updates.assignee_id !== undefined) {
+    const { primary, list } = normalizeAssignees(updates);
+    updates.assignee_id = primary;
+    updates.assignee_ids = list;
+  }
+  // Capture prior assignees to detect (re)assignment
+  const { data: prev } = await supabase.from('tasks').select('assignee_id, assignee_ids').eq('id', req.params.id).single();
   const { data, error } = await supabase.from('tasks').update(updates).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
-  updateTaskInSlackList(data).catch(() => {});
-  // Notify the assignee only when the task was assigned to a different person
-  if (data?.assignee_id && String(data.assignee_id) !== String(prev?.assignee_id || '')) {
-    notifyEmployeeTaskAssigned(data);
-  }
+  // Notify only newly-added assignees
+  const before = new Set(taskAssigneeList(prev));
+  const added = taskAssigneeList(data).filter(id => !before.has(id));
+  if (added.length) notifyEmployeeTaskAssigned({ ...data, assignee_ids: added });
   res.json(data);
 });
 
 receiver.router.delete('/api/dashboard/tasks/:id', requireAuth, async (req, res) => {
-  const { data: taskToRemove } = await supabase.from('tasks').select('*').eq('id', req.params.id).single();
-  if (taskToRemove) await removeTaskFromSlackList(taskToRemove).catch(() => {});
   const { error } = await supabase.from('tasks').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
@@ -700,30 +300,148 @@ function parseCSV(text) {
 receiver.router.post('/api/dashboard/tasks/bulk', requireAuth, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No CSV file uploaded' });
   const rows = parseCSV(req.file.buffer.toString('utf-8'));
-  const channels = await getSlackChannels();
-  const channelMap = {};
-  channels.forEach(c => { channelMap[c.name] = c.id; channelMap[c.name.replace('#', '')] = c.id; });
-
   const inserts = [], errors = [];
   rows.forEach((row, i) => {
-    const chId = channelMap[row.channel_name] || channelMap['#' + row.channel_name] || row.channel_id;
-    if (!row.title || !chId || !row.assignee_id || !row.due_date) {
-      errors.push(`Row ${i + 2}: missing required fields (title, channel_name, assignee_id, due_date)`); return;
+    if (!row.title || !row.assignee_id || !row.due_date) {
+      errors.push(`Row ${i + 2}: missing required fields (title, assignee_id, due_date)`); return;
     }
-    const chName = row.channel_name.startsWith('#') ? row.channel_name : '#' + row.channel_name;
-    inserts.push({ title: row.title, description: row.description || '', channel_id: chId, channel_name: chName, assignee_id: row.assignee_id, due_date: normalizeDate(row.due_date), priority: ['high', 'medium', 'low'].includes(row.priority) ? row.priority : 'medium', milestone: row.milestone || '', created_by: 'dashboard_bulk', status: row.status && ['todo','in_progress','done'].includes(row.status) ? row.status : 'todo' });
+    inserts.push({ title: row.title, description: row.description || '', channel_id: '', channel_name: '', assignee_id: String(row.assignee_id), assignee_ids: [String(row.assignee_id)], due_date: normalizeDate(row.due_date), priority: ['high', 'medium', 'low'].includes(row.priority) ? row.priority : 'medium', milestone: row.milestone || '', created_by: 'dashboard_bulk', status: row.status && ['todo','in_progress','done'].includes(row.status) ? row.status : 'todo' });
   });
 
   if (inserts.length) {
     const { data, error } = await supabase.from('tasks').insert(inserts).select();
     if (error) return res.status(500).json({ error: error.message });
-    // Update task board for each affected channel (best-effort)
-    const affected = {};
-    data.forEach(t => { affected[t.channel_id] = t.channel_name; });
-    Object.entries(affected).forEach(([cid, cname]) => updateChannelTaskBoard(cid, cname).catch(() => {}));
     return res.json({ inserted: data.length, errors });
   }
   res.json({ inserted: 0, errors });
+});
+
+// ── Task Comments (with @mentions) ────────────────────────────────────────────
+async function listTaskComments(taskId, res) {
+  const { data, error } = await supabase.from('task_comments').select('*').eq('task_id', taskId).order('created_at', { ascending: true }).limit(200);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+}
+
+async function postTaskComment(taskId, authorKey, authorName, body, res) {
+  const text = String(body || '').trim().slice(0, 2000);
+  if (!text) return res.status(400).json({ error: 'Comment is empty' });
+  const { data: task } = await supabase.from('tasks').select('id,title').eq('id', taskId).single();
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  const { data, error } = await supabase.from('task_comments')
+    .insert({ task_id: taskId, author_key: authorKey, author_name: authorName, body: text })
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+  // Notify @mentioned employees (best-effort, after response)
+  try {
+    const { data: emps } = await supabase.from('employees').select('id,name,username');
+    const lower = text.toLowerCase();
+    for (const e of emps || []) {
+      const mentioned = (e.name && lower.includes('@' + e.name.toLowerCase())) || (e.username && lower.includes('@' + e.username.toLowerCase()));
+      if (!mentioned || `employee_${e.id}` === authorKey) continue;
+      createNotification(`employee_${e.id}`, {
+        type: 'task',
+        title: `${authorName} mentioned you in a comment`,
+        body: `${task.title}: ${text.slice(0, 140)}`,
+        url: '/employee#tasks',
+      }, 'always');
+    }
+  } catch (_) {}
+}
+
+receiver.router.get('/api/dashboard/tasks/:id/comments', requireAuth, (req, res) => listTaskComments(parseInt(req.params.id), res));
+receiver.router.post('/api/dashboard/tasks/:id/comments', requireAuth, express.json(), (req, res) =>
+  postTaskComment(parseInt(req.params.id), 'admin', 'Admin', req.body?.body, res));
+receiver.router.get('/api/employee/tasks/:id/comments', requireEmployeeAuth, (req, res) => listTaskComments(parseInt(req.params.id), res));
+receiver.router.post('/api/employee/tasks/:id/comments', requireEmployeeAuth, express.json(), (req, res) =>
+  postTaskComment(parseInt(req.params.id), `employee_${req.employee.id}`, req.employee.name, req.body?.body, res));
+
+// Coworker names (for @mention autocomplete in comments)
+receiver.router.get('/api/employee/coworkers', requireEmployeeAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('employees').select('id,name,username,avatar_url').order('name');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// ── Report an Issue (employee → CTO) ──────────────────────────────────────────
+const issueUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+receiver.router.post('/api/employee/report-issue', requireEmployeeAuth, issueUpload.single('file'), async (req, res) => {
+  try {
+    const title = String(req.body?.title || '').trim().slice(0, 150);
+    const description = String(req.body?.description || '').trim().slice(0, 2000);
+    if (!title && !description) return res.status(400).json({ error: 'Please describe the issue' });
+    let fileUrl = '';
+    if (req.file) {
+      const safe = (req.file.originalname || 'attachment').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+      const p = `issues/${Date.now()}_${safe}`;
+      const { data, error } = await supabase.storage.from('chat-files').upload(p, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+      if (error) return res.status(500).json({ error: 'Attachment upload failed: ' + error.message });
+      const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(data.path);
+      fileUrl = urlData?.publicUrl || '';
+    }
+    const bodyTxt = [description || title, fileUrl ? `Attachment: ${fileUrl}` : ''].filter(Boolean).join('\n');
+    // Route to every employee whose job title is Chief Technical Officer (fallback: admin)
+    const { data: ctos } = await supabase.from('employees').select('id,name').ilike('job_title', '%chief technical officer%');
+    if (ctos?.length) {
+      for (const cto of ctos) {
+        await createNotification(`employee_${cto.id}`, {
+          type: 'issue',
+          title: `Issue reported by ${req.employee.name}: ${title || 'System issue'}`,
+          body: bodyTxt,
+          url: '/employee#notif',
+        }, 'always');
+      }
+    } else {
+      await createNotification('admin', {
+        type: 'issue',
+        title: `Issue reported by ${req.employee.name}: ${title || 'System issue'}`,
+        body: bodyTxt,
+        url: '/dashboard#notif',
+      }, 'always');
+    }
+    res.json({ ok: true, file: fileUrl });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Employee profile: status, avatar, username ────────────────────────────────
+receiver.router.put('/api/employee/status', requireEmployeeAuth, express.json(), async (req, res) => {
+  const status_text  = String(req.body?.text  || '').trim().slice(0, 100);
+  const status_emoji = String(req.body?.emoji || '').trim().slice(0, 8);
+  const { data, error } = await supabase.from('employees')
+    .update({ status_text, status_emoji }).eq('id', req.employee.id)
+    .select('status_text,status_emoji').single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+const avatarUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+receiver.router.post('/api/employee/avatar', requireEmployeeAuth, avatarUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file || !req.file.mimetype?.startsWith('image/')) return res.status(400).json({ error: 'Please upload an image' });
+    const ext = (req.file.mimetype.split('/')[1] || 'png').split(';')[0].replace(/[^a-z0-9]/gi, '') || 'png';
+    const p = `avatars/${req.employee.id}_${Date.now()}.${ext}`;
+    const { data, error } = await supabase.storage.from('chat-files').upload(p, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+    if (error) return res.status(500).json({ error: error.message });
+    const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(data.path);
+    const avatar_url = urlData?.publicUrl || '';
+    await supabase.from('employees').update({ avatar_url }).eq('id', req.employee.id);
+    res.json({ avatar_url });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+receiver.router.put('/api/employee/username', requireEmployeeAuth, express.json(), async (req, res) => {
+  const username = String(req.body?.username || '').trim();
+  if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) return res.status(400).json({ error: 'Username must be 3-32 characters (letters, numbers, . _ -)' });
+  const { data: existing } = await supabase.from('employees').select('id').eq('username', username).neq('id', req.employee.id).limit(1);
+  if (existing?.length) return res.status(409).json({ error: 'Username already taken' });
+  const { error } = await supabase.from('employees').update({ username }).eq('id', req.employee.id);
+  if (error) return res.status(500).json({ error: error.message });
+  // Keep the live session in sync
+  req.employee.username = username;
+  const token = (req.headers['authorization'] || '').slice(7);
+  if (token && employeeSessions.has(token)) employeeSessions.set(token, { ...employeeSessions.get(token), username });
+  res.json({ ok: true, username });
 });
 
 // ── Hours Logs ────────────────────────────────────────────────────────────────
@@ -1146,27 +864,6 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json
       url: '/dashboard#requests',
     }, 'offline');
   }
-  // Notify chiefs channel on Slack
-  if (slackClient && CHIEFS_CHANNEL_ID && data) {
-    const prioEmoji = { high: '🔴', medium: '🟡', low: '🟢' }[priority || 'medium'] || '🟡';
-    try {
-      await slackClient.chat.postMessage({
-        channel: CHIEFS_CHANNEL_ID,
-        text: `New request from ${req.employee.name}: ${title}`,
-        blocks: [{
-          type: 'section',
-          text: { type: 'mrkdwn', text: `*New Request* from *${req.employee.name}*\n*${title}*${description ? `\n${description}` : ''}` }
-        }, {
-          type: 'context',
-          elements: [
-            { type: 'mrkdwn', text: `${prioEmoji} ${(priority||'medium').charAt(0).toUpperCase()+(priority||'medium').slice(1)} priority` },
-            ...(category ? [{ type: 'mrkdwn', text: `Category: ${category}` }] : []),
-            { type: 'mrkdwn', text: `Request #${data.id}` }
-          ]
-        }]
-      });
-    } catch (_) {}
-  }
   res.json(data);
 });
 
@@ -1198,23 +895,26 @@ receiver.router.post('/api/employee/login', express.json(), async (req, res) => 
   const token = generateToken();
   const permissions = { ...DEFAULT_PERMISSIONS, ...(emp.permissions || {}) };
   employeeSessions.set(token, { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions });
-  res.json({ token, name: emp.name, username: emp.username, id: emp.id, job_title: emp.job_title || '', permissions });
+  res.json({ token, name: emp.name, username: emp.username, id: emp.id, job_title: emp.job_title || '', permissions, avatar_url: emp.avatar_url || '', status_text: emp.status_text || '', status_emoji: emp.status_emoji || '' });
 });
 receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res) => {
+  let profile = {};
   try {
-    const { data } = await supabase.from('employees').select('permissions,job_title').eq('id', req.employee.id).single();
+    const { data } = await supabase.from('employees').select('permissions,job_title,avatar_url,status_text,status_emoji,username').eq('id', req.employee.id).single();
     if (data) {
       const permissions = { ...DEFAULT_PERMISSIONS, ...(data.permissions || {}) };
       req.employee.permissions = permissions;
       req.employee.job_title = data.job_title || '';
+      req.employee.username = data.username || req.employee.username;
+      profile = { avatar_url: data.avatar_url || '', status_text: data.status_text || '', status_emoji: data.status_emoji || '' };
       const token = (req.headers['authorization'] || '').slice(7);
       if (token && employeeSessions.has(token)) {
         const sess = employeeSessions.get(token);
-        employeeSessions.set(token, { ...sess, permissions, job_title: data.job_title || '' });
+        employeeSessions.set(token, { ...sess, permissions, job_title: data.job_title || '', username: req.employee.username });
       }
     }
   } catch (_) {}
-  res.json({ ok: true, ...req.employee });
+  res.json({ ok: true, ...req.employee, ...profile });
 });
 receiver.router.post('/api/employee/logout', requireEmployeeAuth, (req, res) => {
   const token = (req.headers['authorization'] || '').slice(7);
@@ -1275,25 +975,30 @@ receiver.router.post('/api/employee/reset-password', express.json(), async (req,
 // Employee tasks list (for dropdown — only their assigned, non-done tasks)
 receiver.router.get('/api/employee/tasks', requireEmployeeAuth, async (req, res) => {
   try {
-    // Match tasks by employee id (new) with legacy slack_user_id fallback
-    const { data: emp } = await supabase.from('employees').select('slack_user_id').eq('id', req.employee.id).single();
-    const ids = [String(req.employee.id), emp?.slack_user_id].filter(Boolean);
-    const { data, error } = await supabase.from('tasks')
-      .select('id, title, channel_name, status').neq('status', 'done')
-      .in('assignee_id', ids).order('created_at', { ascending: false });
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data || []);
+    const all = await fetchEmployeeTasks(req.employee.id);
+    res.json(all.filter(t => t.status !== 'done').map(t => ({ id: t.id, title: t.title, channel_name: t.channel_name, status: t.status })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// Fetch all tasks assigned to an employee — matches the legacy single assignee_id
+// (employee id or old Slack user id) OR membership in the assignee_ids array.
+async function fetchEmployeeTasks(employeeId) {
+  const { data: emp } = await supabase.from('employees').select('slack_user_id').eq('id', employeeId).single();
+  const ids = [String(employeeId), emp?.slack_user_id].filter(Boolean);
+  const [single, multi] = await Promise.all([
+    supabase.from('tasks').select('*').in('assignee_id', ids),
+    supabase.from('tasks').select('*').contains('assignee_ids', [String(employeeId)]),
+  ]);
+  const seen = new Set();
+  const all = [...(single.data || []), ...(multi.data || [])].filter(t => !seen.has(t.id) && seen.add(t.id));
+  all.sort((a, b) => String(a.due_date || '').localeCompare(String(b.due_date || '')));
+  return all;
+}
 
 // All employee tasks (current + completed) for My Tasks page
 receiver.router.get('/api/employee/my-tasks', requireEmployeeAuth, async (req, res) => {
   try {
-    const { data: emp } = await supabase.from('employees').select('slack_user_id').eq('id', req.employee.id).single();
-    const ids = [String(req.employee.id), emp?.slack_user_id].filter(Boolean);
-    const { data, error } = await supabase.from('tasks').select('*').in('assignee_id', ids).order('due_date', { ascending: true });
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data || []);
+    res.json(await fetchEmployeeTasks(req.employee.id));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1301,22 +1006,17 @@ receiver.router.get('/api/employee/my-tasks', requireEmployeeAuth, async (req, r
 receiver.router.put('/api/employee/my-tasks/:id', requireEmployeeAuth, express.json(), async (req, res) => {  try {
     const { data: emp } = await supabase.from('employees').select('slack_user_id').eq('id', req.employee.id).single();
     const ids = [String(req.employee.id), emp?.slack_user_id].filter(Boolean);
-    // Verify the task is actually assigned to this employee
-    const { data: task } = await supabase.from('tasks').select('id, assignee_id').eq('id', req.params.id).single();
-    if (!task || !ids.includes(task.assignee_id)) return res.status(403).json({ error: 'Task not assigned to you' });
+    // Verify the task is actually assigned to this employee (single or multi assignee)
+    const { data: task } = await supabase.from('tasks').select('id, assignee_id, assignee_ids').eq('id', req.params.id).single();
+    const assigned = task && (ids.includes(task.assignee_id) || (Array.isArray(task.assignee_ids) && task.assignee_ids.map(String).includes(String(req.employee.id))));
+    if (!assigned) return res.status(403).json({ error: 'Task not assigned to you' });
     const completedAt = new Date().toISOString();
     const { data, error } = await supabase.from('tasks')
       .update({ status: 'done', completed_at: completedAt, updated_at: completedAt })
       .eq('id', req.params.id).select().single();
     if (error) return res.status(500).json({ error: error.message });
-    // Refresh channel task board
-    updateChannelTaskBoard(data.channel_id, data.channel_name).catch(() => {});
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
-});
-// Employee channels list (for task creation)
-receiver.router.get('/api/employee/channels', requireEmployeeAuth, async (_req, res) => {
-  try { res.json(await getSlackChannels()); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Employee creates a new task (assigned to themselves)
@@ -1325,7 +1025,7 @@ receiver.router.post('/api/employee/my-tasks', requireEmployeeAuth, express.json
     const { title, description, due_date, priority, milestone } = req.body;
     if (!title || !due_date) return res.status(400).json({ error: 'Title and due date are required' });
     const { data: task, error } = await supabase.from('tasks')
-      .insert({ title, description: description || '', channel_id: '', channel_name: '', assignee_id: String(req.employee.id), due_date, priority: priority || 'medium', milestone: milestone || '', created_by: req.employee.username, status: 'todo' })
+      .insert({ title, description: description || '', channel_id: '', channel_name: '', assignee_id: String(req.employee.id), assignee_ids: [String(req.employee.id)], due_date, priority: priority || 'medium', milestone: milestone || '', created_by: req.employee.username, status: 'todo' })
       .select().single();
     if (error) return res.status(500).json({ error: error.message });
     res.json(task);
@@ -1361,7 +1061,7 @@ receiver.router.post('/api/employee/hours', requireEmployeeAuth, express.json(),
 
 // ── Admin: Employee management ────────────────────────────────────────────────
 receiver.router.get('/api/dashboard/employees', requireAuth, async (_req, res) => {
-  const { data, error } = await supabase.from('employees').select('id, name, username, email, job_title, slack_user_id, permissions, created_at').order('name');
+  const { data, error } = await supabase.from('employees').select('id, name, username, email, job_title, slack_user_id, permissions, created_at, avatar_url, status_text, status_emoji').order('name');
   if (error) return res.status(500).json({ error: error.message });
   res.json((data || []).map(e => ({ ...e, permissions: { ...DEFAULT_PERMISSIONS, ...(e.permissions || {}) } })));
 });
@@ -1373,7 +1073,7 @@ receiver.router.post('/api/dashboard/employees', requireAuth, express.json(), as
   const perms = { ...DEFAULT_PERMISSIONS, ...(permissions || {}) };
   const { data, error } = await supabase.from('employees')
     .insert({ name, username, password_hash: hashPassword(password), email: (email || '').toLowerCase().trim(), job_title: job_title || '', slack_user_id: slack_user_id || '', permissions: perms })
-    .select('id, name, username, email, job_title, slack_user_id, permissions, created_at').single();
+    .select('id, name, username, email, job_title, slack_user_id, permissions, created_at, avatar_url, status_text, status_emoji').single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
@@ -1383,7 +1083,7 @@ receiver.router.put('/api/dashboard/employees/:id', requireAuth, express.json(),
   if (password) updates.password_hash = hashPassword(password);
   if (permissions) updates.permissions = { ...DEFAULT_PERMISSIONS, ...permissions };
   const { data, error } = await supabase.from('employees').update(updates).eq('id', req.params.id)
-    .select('id, name, username, email, job_title, slack_user_id, permissions, created_at').single();
+    .select('id, name, username, email, job_title, slack_user_id, permissions, created_at, avatar_url, status_text, status_emoji').single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
@@ -1692,16 +1392,19 @@ async function memberKeyForAssignee(assigneeId) {
   return `employee_${assigneeId}`;
 }
 
+// Notify every assignee of a task (multi-assignee aware; falls back to assignee_id)
 async function notifyEmployeeTaskAssigned(task) {
-  if (!task?.assignee_id) return;
-  const key = await memberKeyForAssignee(task.assignee_id);
-  if (!key) return;
-  createNotification(key, {
-    type: 'task',
-    title: 'New task assigned',
-    body: `${task.title} · due ${task.due_date} · ${task.priority} priority`,
-    url: '/employee#tasks',
-  }, 'always');
+  const list = Array.isArray(task?.assignee_ids) && task.assignee_ids.length ? task.assignee_ids : (task?.assignee_id ? [task.assignee_id] : []);
+  for (const aid of [...new Set(list.map(String))]) {
+    const key = await memberKeyForAssignee(aid);
+    if (!key) continue;
+    createNotification(key, {
+      type: 'task',
+      title: 'New task assigned',
+      body: `${task.title} · due ${task.due_date} · ${task.priority} priority`,
+      url: '/employee#tasks',
+    }, 'always');
+  }
 }
 
 async function chatListRooms(callerKey) {
@@ -2672,29 +2375,6 @@ receiver.router.post('/api/submissions', express.json(), async (req, res) => {
   };
   submissions.unshift(sub);
 
-  // Slack notification
-  if (slackClient && CHIEFS_CHANNEL_ID) {
-    try {
-      await slackClient.chat.postMessage({
-        channel: CHIEFS_CHANNEL_ID,
-        text: `📩 New website submission from *${sub.name}*`,
-        blocks: [
-          { type: 'header', text: { type: 'plain_text', text: '📩 New Form Submission' } },
-          {
-            type: 'section',
-            fields: [
-              { type: 'mrkdwn', text: `*Name:*\n${sub.name}` },
-              { type: 'mrkdwn', text: `*Email:*\n${sub.email}` },
-              { type: 'mrkdwn', text: `*Phone:*\n${sub.phone || '—'}` },
-              { type: 'mrkdwn', text: `*Car Interest:*\n${sub.car_interest || '—'}` },
-            ],
-          },
-          sub.message ? { type: 'section', text: { type: 'mrkdwn', text: `*Message:*\n${sub.message}` } } : null,
-          { type: 'context', elements: [{ type: 'mrkdwn', text: `Submitted at ${new Date(sub.submitted_at).toLocaleString()}` }] },
-        ].filter(Boolean),
-      });
-    } catch (e) { console.warn('[submissions] Slack notify failed:', e.message); }
-  }
 
   res.json({ ok: true, id: sub.id });
 });
@@ -2718,19 +2398,17 @@ async function sendDueDateReminders() {
   const today    = new Date().toISOString().split('T')[0];
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
   const [{ data: dueTomorrow }, { data: overdue }] = await Promise.all([
-    supabase.from('tasks').select('id,title,assignee_id').eq('due_date', tomorrow).neq('status', 'done'),
-    supabase.from('tasks').select('id,title,assignee_id').lt('due_date', today).neq('status', 'done'),
+    supabase.from('tasks').select('id,title,assignee_id,assignee_ids').eq('due_date', tomorrow).neq('status', 'done'),
+    supabase.from('tasks').select('id,title,assignee_id,assignee_ids').lt('due_date', today).neq('status', 'done'),
   ]);
-  for (const t of dueTomorrow || []) {
-    if (!t.assignee_id) continue;
-    const key = await memberKeyForAssignee(t.assignee_id);
-    if (key) createNotification(key, { type: 'reminder', title: 'Task due tomorrow', body: t.title, url: '/employee#tasks' }, 'offline');
-  }
-  for (const t of overdue || []) {
-    if (!t.assignee_id) continue;
-    const key = await memberKeyForAssignee(t.assignee_id);
-    if (key) createNotification(key, { type: 'reminder', title: 'Overdue task', body: t.title, url: '/employee#tasks' }, 'offline');
-  }
+  const remind = async (t, title) => {
+    for (const aid of taskAssigneeList(t)) {
+      const key = await memberKeyForAssignee(aid);
+      if (key) createNotification(key, { type: 'reminder', title, body: t.title, url: '/employee#tasks' }, 'offline');
+    }
+  };
+  for (const t of dueTomorrow || []) await remind(t, 'Task due tomorrow');
+  for (const t of overdue || []) await remind(t, 'Overdue task');
 }
 
 function scheduleDueDateReminders() {
@@ -2784,15 +2462,9 @@ function scheduleHoursLogReminder() {
   scheduleHoursLogReminder();
   if (process.env.WHATSAPP_ENABLED === 'true') initWhatsApp().catch(console.error);
   const port = process.env.PORT || 3000;
-  if (app) {
-    await app.start(port);
-  } else {
-    // Start Express directly when Slack is disabled
-    receiver.app.listen(port, () => {
-      console.log(`⚡️  MotoLinker running on port ${port} (Slack disabled)`);
-    });
-  }
-  console.log(`⚡️  MotoLinker Task Bot running on port ${port}`);
+  receiver.app.listen(port, () => {
+    console.log(`⚡️  MotoLinker running on port ${port}`);
+  });
   console.log(`📊  Admin dashboard → http://localhost:${port}/dashboard`);
   if (!ADMIN_PASSWORD) console.warn('⚠️   ADMIN_PASSWORD is not set — dashboard login will fail!');
 })();
