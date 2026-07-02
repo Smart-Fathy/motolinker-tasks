@@ -16,6 +16,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
+    // Icons/charts degrade gracefully; the page itself must always open.
+    if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
+    if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -3222,6 +3228,14 @@ function adminJoinMeeting() {
   window.open('https://meet.google.com/' + code, '_blank', 'noopener');
 }
 
+// ── Notification center state ─────────────────────────────────────────────────
+// Declared BEFORE the init IIFE: checkAuth() → showAuthScreen() → closeNotifStream()
+// runs synchronously on a token-less load, and a later `let` would still be in its
+// temporal dead zone — crashing init and blanking the whole page.
+let notifSse    = null;
+let notifItems  = [];
+let notifUnread = 0;
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
   lucide.createIcons();
@@ -3238,9 +3252,6 @@ function adminJoinMeeting() {
 })();
 
 // ── Notification center (bell + counter) ──────────────────────────────────────
-let notifSse    = null;
-let notifItems  = [];
-let notifUnread = 0;
 
 function openNotifStream() {
   if (notifSse) { notifSse.close(); notifSse = null; }
