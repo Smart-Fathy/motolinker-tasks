@@ -1411,10 +1411,10 @@ receiver.router.get('/api/dashboard/customers', requireAuth, async (req, res) =>
 });
 
 receiver.router.post('/api/dashboard/customers', requireAuth, express.json(), async (req, res) => {
-  const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, next_action, been_contacted, sales_feedback, inquiry } = req.body;
+  const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, next_action, been_contacted, sales_feedback, inquiry, custom_fields } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
   const { data, error } = await supabase.from('customers')
-    .insert({ name, phone: phone||'', email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', created_by: 'dashboard' })
+    .insert({ name, phone: phone||'', email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', ...(custom_fields && Object.keys(custom_fields).length ? { custom_fields } : {}), created_by: 'dashboard' })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   // Auto-create deal if status is Hot on creation
@@ -1522,6 +1522,24 @@ receiver.router.put('/api/dashboard/customers/:id', requireAuth, express.json(),
 
 receiver.router.delete('/api/dashboard/customers/:id', requireAuth, async (req, res) => {
   const { error } = await supabase.from('customers').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// ── Leads table column configuration (order, visibility, labels, dropdown options,
+//    custom columns) — persisted in the quotation_settings KV table ──
+receiver.router.get('/api/dashboard/leads/columns', requireAuth, async (_req, res) => {
+  const { data } = await supabase.from('quotation_settings').select('value').eq('key', 'leads_columns_config').single();
+  let columns = null;
+  try { if (data?.value) columns = JSON.parse(data.value); } catch (_) {}
+  res.json({ columns });
+});
+
+receiver.router.put('/api/dashboard/leads/columns', requireAuth, express.json(), async (req, res) => {
+  const columns = req.body?.columns;
+  if (!Array.isArray(columns)) return res.status(400).json({ error: 'columns array required' });
+  const { error } = await supabase.from('quotation_settings')
+    .upsert({ key: 'leads_columns_config', value: JSON.stringify(columns) }, { onConflict: 'key' });
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
