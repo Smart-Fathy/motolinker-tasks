@@ -469,6 +469,36 @@
     outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(201,163,94,.15);
   }
   select.form-input option, select.form-control option, select.filter-input option { background:#141416; color:var(--text); }
+  /* ── Brand dropdown component (replaces native select menus) ── */
+  .bselect-hidden{ display:none !important; }
+  .bselect-trigger{
+    display:flex; align-items:center; width:100%; text-align:left; position:relative;
+    background-color:#101013; color:var(--text); font:inherit; font-size:13px;
+    border:1px solid var(--border); border-radius:8px; cursor:pointer;
+    padding:9px 34px 9px 12px; min-height:38px;
+    background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23c9a35e' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 12px center;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .bselect-trigger:hover{ border-color:rgba(201,163,94,.45); }
+  .bselect-trigger:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(201,163,94,.15); }
+  .bselect-trigger.open{ border-color:var(--primary); box-shadow:0 0 0 3px rgba(201,163,94,.15); }
+  .bselect-label{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bselect-menu{
+    position:fixed; z-index:10050; display:none; min-width:150px; max-height:280px; overflow-y:auto;
+    background:var(--surface); border:1px solid rgba(201,163,94,.28); border-radius:12px;
+    box-shadow:0 14px 44px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.4); padding:6px;
+  }
+  .bselect-menu.open{ display:block; animation:bselectIn .12s ease; }
+  @keyframes bselectIn{ from{ opacity:0; transform:translateY(-4px); } to{ opacity:1; transform:translateY(0); } }
+  .bselect-opt{
+    display:flex; align-items:center; gap:8px; width:100%; text-align:left;
+    background:none; border:none; color:var(--text); font-size:13px;
+    padding:9px 12px; border-radius:8px; cursor:pointer; transition:background .12s, color .12s;
+  }
+  .bselect-opt:hover{ background:rgba(201,163,94,.12); color:var(--primary); }
+  .bselect-opt.selected{ color:var(--primary); font-weight:600; }
+  .bselect-check{ width:14px; flex-shrink:0; color:var(--primary); font-size:12px; text-align:center; }
 </style>
 </head>
 <body>
@@ -3735,6 +3765,107 @@ function dismissIOSHint() {
   localStorage.setItem('iosHintDismissed', '1');
   document.getElementById('pwa-ios-hint').style.display = 'none';
 }
+
+// ── Brand dropdowns ───────────────────────────────────────────────────────────
+// Replaces every native <select> (form-input / form-control / filter-input) with
+// a styled trigger + floating gold-on-dark options panel. The original select
+// stays in the DOM (hidden) as the source of truth, so all existing code that
+// reads/writes .value, rebuilds options via innerHTML, or listens to `change`
+// keeps working unchanged. New selects added later (modals) are auto-enhanced.
+(function () {
+  const SELECTOR = 'select.form-input, select.form-control, select.filter-input';
+  let menuEl = null, openFor = null;
+
+  function ensureMenu() {
+    if (menuEl) return menuEl;
+    menuEl = document.createElement('div');
+    menuEl.className = 'bselect-menu';
+    document.body.appendChild(menuEl);
+    document.addEventListener('click', e => {
+      if (openFor && !menuEl.contains(e.target) && !(openFor.trigger && openFor.trigger.contains(e.target))) closeBrandMenu();
+    }, true);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeBrandMenu(); });
+    window.addEventListener('resize', closeBrandMenu);
+  }
+  function closeBrandMenu() {
+    if (menuEl) menuEl.classList.remove('open');
+    if (openFor?.trigger) openFor.trigger.classList.remove('open');
+    openFor = null;
+  }
+
+  window.brandMenu = function (anchorEl, items, onPick, trigger) {
+    ensureMenu();
+    if (openFor && openFor.anchor === anchorEl) return closeBrandMenu();
+    menuEl.innerHTML = items.map((it, i) => `
+      <button type="button" class="bselect-opt${it.selected ? ' selected' : ''}" data-i="${i}">
+        <span class="bselect-check">${it.selected ? '✓' : ''}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.label || '—')}</span>
+      </button>`).join('');
+    menuEl.querySelectorAll('.bselect-opt').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const it = items[parseInt(btn.dataset.i)];
+      closeBrandMenu();
+      onPick(it.key, it);
+    }));
+    const r = anchorEl.getBoundingClientRect();
+    menuEl.style.minWidth = Math.max(r.width, 150) + 'px';
+    menuEl.classList.add('open');
+    const mh = Math.min(menuEl.scrollHeight, 280);
+    const spaceBelow = window.innerHeight - r.bottom;
+    menuEl.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menuEl.offsetWidth - 8)) + 'px';
+    menuEl.style.top = (spaceBelow > mh + 12 || spaceBelow > r.top ? r.bottom + 6 : Math.max(8, r.top - mh - 6)) + 'px';
+    openFor = { anchor: anchorEl, trigger: trigger || null };
+    if (trigger) trigger.classList.add('open');
+    menuEl.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
+  };
+
+  function labelFor(sel) {
+    const o = sel.options[sel.selectedIndex];
+    return o ? o.text : '';
+  }
+  function syncLabel(sel) {
+    const lbl = sel._bTrigger?.querySelector('.bselect-label');
+    if (lbl) lbl.textContent = labelFor(sel) || ' ';
+  }
+
+  function enhanceSelect(sel) {
+    if (sel._bTrigger || sel.dataset.native != null || sel.multiple) return;
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'bselect-trigger';
+    trigger.style.cssText = sel.style.cssText;
+    trigger.innerHTML = '<span class="bselect-label"> </span>';
+    sel.after(trigger);
+    sel.classList.add('bselect-hidden');
+    sel._bTrigger = trigger;
+    trigger.addEventListener('click', e => {
+      e.stopPropagation();
+      window.brandMenu(trigger, [...sel.options].map((o, i) => ({ key: i, label: o.text, selected: i === sel.selectedIndex })), i => {
+        sel.selectedIndex = i;
+        syncLabel(sel);
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }, trigger);
+    });
+    sel.addEventListener('change', () => syncLabel(sel));
+    const proto = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    Object.defineProperty(sel, 'value', {
+      get() { return proto.get.call(this); },
+      set(v) { proto.set.call(this, v); syncLabel(this); },
+    });
+    new MutationObserver(() => syncLabel(sel)).observe(sel, { childList: true, subtree: true });
+    syncLabel(sel);
+  }
+
+  function enhanceAll(root) { (root && root.querySelectorAll ? root : document).querySelectorAll(SELECTOR).forEach(enhanceSelect); }
+  window.enhanceBrandSelects = enhanceAll;
+  enhanceAll();
+  new MutationObserver(muts => {
+    for (const mu of muts) {
+      for (const n of mu.addedNodes) {
+        if (n.nodeType === 1 && (n.matches?.(SELECTOR) || n.querySelector?.(SELECTOR))) { enhanceAll(); return; }
+      }
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+})();
 </script>
 
 <!-- ── New DM Modal ── -->
