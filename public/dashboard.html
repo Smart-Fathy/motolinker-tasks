@@ -970,6 +970,30 @@
   .bselect-opt:hover{ background:rgba(201,163,94,.12); color:var(--primary); }
   .bselect-opt.selected{ color:var(--primary); font-weight:600; }
   .bselect-check{ width:14px; flex-shrink:0; color:var(--primary); font-size:12px; text-align:center; }
+  /* ── Lead 360° drawer ── */
+  .lead-drawer-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:700; opacity:0; pointer-events:none; transition:opacity .25s; }
+  .lead-drawer-overlay.open{ opacity:1; pointer-events:auto; }
+  .lead-drawer{ position:fixed; top:0; right:0; bottom:0; width:580px; max-width:96vw; background:var(--surface); border-left:1px solid rgba(201,163,94,.25); z-index:701; display:flex; flex-direction:column; transform:translateX(100%); transition:transform .3s cubic-bezier(.16,1,.3,1); box-shadow:-16px 0 48px rgba(0,0,0,.5); }
+  .lead-drawer.open{ transform:translateX(0); }
+  .lead-drawer-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:20px 22px 12px; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .ld-avatar{ width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,var(--primary),#8a6a30); color:#0c0c0e; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:800; flex-shrink:0; }
+  .ld-status-badge{ padding:2px 10px; border-radius:20px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; }
+  .lead-drawer-actions{ display:flex; gap:8px; flex-wrap:wrap; padding:12px 22px; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .lead-drawer-body{ flex:1; overflow-y:auto; padding:18px 22px 32px; }
+  .ld-section{ margin-bottom:22px; }
+  .ld-section-title{ font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; }
+  .ld-info-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; background:rgba(255,255,255,.02); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+  .ld-info-item{ min-width:0; }
+  .ld-info-label{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .ld-info-value{ font-size:13px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; }
+  .ld-fu-card{ display:flex; align-items:center; gap:12px; background:rgba(201,163,94,.07); border:1px solid rgba(201,163,94,.3); border-radius:10px; padding:12px 14px; margin-bottom:8px; }
+  .ld-fu-card.overdue{ background:rgba(239,68,68,.07); border-color:rgba(239,68,68,.35); }
+  .ld-tl-item{ display:flex; gap:12px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+  .ld-tl-icon{ width:30px; height:30px; border-radius:8px; background:rgba(201,163,94,.12); color:var(--primary); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .ld-tl-icon svg{ width:15px; height:15px; }
+  .ld-tl-meta{ font-size:10.5px; color:var(--muted); margin-top:3px; }
+  .ld-quote-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; background:rgba(255,255,255,.02); border:1px solid var(--border); border-radius:8px; margin-bottom:6px; }
+  .ld-stage-pill{ padding:2px 9px; border-radius:20px; font-size:10.5px; font-weight:700; background:rgba(201,163,94,.15); color:var(--primary); white-space:nowrap; }
   .notif-body{ flex:1; min-width:0; }
   .notif-title{ font-size:13px; font-weight:600; margin-bottom:2px; }
   .notif-text{ font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
@@ -1355,7 +1379,13 @@
             <label class="form-label">Customer Name</label>
             <input class="form-input" id="qt-name" placeholder="e.g. Hesham Dorghamy">
           </div>
-          <div style="grid-column:span 2">
+          <div>
+            <label class="form-label">Lead <span style="color:var(--muted);font-weight:400">(attach to profile)</span></label>
+            <select class="form-input" id="qt-customer-id">
+              <option value="">— No lead —</option>
+            </select>
+          </div>
+          <div>
             <label class="form-label">Vehicle Model</label>
             <input class="form-input" id="qt-vehicle" placeholder="e.g. Deepal S05 620 Plus">
           </div>
@@ -1602,6 +1632,7 @@
         </select>
         <button class="btn btn-sm btn-outline" onclick="clearLeadFilters()">Clear</button>
         <button class="btn btn-sm btn-outline" id="lead-cols-btn" onclick="openLeadColsPicker(event)" title="Show / hide columns"><i data-lucide="columns-3" style="width:13px;height:13px"></i> Columns</button>
+        <button class="btn btn-sm btn-outline" id="fu-chip" onclick="toggleFuFilter()" title="Show leads with follow-ups due" style="display:none"></button>
       </div>
       <div class="table-card" style="overflow-x:auto">
         <table class="table" id="customers-table" style="min-width:1200px">
@@ -1788,6 +1819,33 @@
         <button class="btn btn-outline" onclick="document.getElementById('lead-opts-modal').style.display='none'">Cancel</button>
         <button class="btn btn-primary" onclick="saveLeadOpts()">Save Options</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ── Lead 360° Profile Drawer ── -->
+  <div id="lead-drawer-overlay" class="lead-drawer-overlay" onclick="closeLeadProfile()"></div>
+  <div id="lead-drawer" class="lead-drawer">
+    <div class="lead-drawer-head">
+      <div style="display:flex;align-items:center;gap:12px;min-width:0">
+        <div id="ld-avatar" class="ld-avatar">?</div>
+        <div style="min-width:0">
+          <div id="ld-name" style="font-size:17px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+            <span id="ld-status" class="ld-status-badge" onclick="ldStatusMenu(event)" title="Change status">—</span>
+            <span id="ld-phone" style="font-size:12px;color:var(--muted)"></span>
+          </div>
+        </div>
+      </div>
+      <button onclick="closeLeadProfile()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:22px;line-height:1;padding:4px 8px;flex-shrink:0">×</button>
+    </div>
+    <div class="lead-drawer-actions">
+      <a id="ld-call" class="btn btn-sm btn-outline" href="#" style="text-decoration:none"><i data-lucide="phone" style="width:13px;height:13px"></i> Call</a>
+      <a id="ld-wa" class="btn btn-sm btn-outline" href="#" target="_blank" rel="noopener" style="text-decoration:none"><i data-lucide="message-circle" style="width:13px;height:13px"></i> WhatsApp</a>
+      <button class="btn btn-sm btn-outline" onclick="ldEdit()"><i data-lucide="edit-2" style="width:13px;height:13px"></i> Edit</button>
+      <button class="btn btn-sm btn-primary" onclick="ldGenerateQuote()"><i data-lucide="file-badge" style="width:13px;height:13px"></i> Generate Quotation</button>
+    </div>
+    <div class="lead-drawer-body" id="lead-drawer-body">
+      <div class="loading"><div class="spinner"></div></div>
     </div>
   </div>
 
@@ -3366,7 +3424,7 @@ function renderNotifs() {
 }
 
 function notifIcon(type) {
-  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox', issue: 'bug' };
+  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox', issue: 'bug', followup: 'alarm-clock' };
   return m[type] || 'bell';
 }
 // Strip any leading emoji/symbols so legacy notifications render clean text (new ones already clean)
@@ -3392,7 +3450,7 @@ async function markAllNotifsRead() {
 function notifRoute(url, type) {
   const hash = (url || '').split('#')[1];
   if (hash && document.getElementById('page-' + hash)) { navigate(hash); return; }
-  const map = { request: 'requests', task: 'tasks', hours: 'hours', quotation: 'quotation', lead: 'customers', deal: 'deals' };
+  const map = { request: 'requests', task: 'tasks', hours: 'hours', quotation: 'quotation', lead: 'customers', deal: 'deals', followup: 'customers' };
   if (map[type]) navigate(map[type]);
 }
 // Mark a single notification read (local + server)
@@ -4108,6 +4166,21 @@ async function loadQuotation() {
     }
   } catch (_) {}
 
+  // Populate the lead picker (attaches the quotation to a lead's 360° profile)
+  try {
+    const pick = document.getElementById('qt-customer-id');
+    if (pick) {
+      const cur = pick.value;
+      const leads = _allCustomers.length ? _allCustomers : await apiFetch('/api/dashboard/customers').then(r => r.json());
+      if (Array.isArray(leads)) {
+        if (!_allCustomers.length) _allCustomers = leads;
+        pick.innerHTML = '<option value="">— No lead —</option>' +
+          [...leads].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(l => `<option value="${l.id}">${esc(l.name)}${l.phone ? ' · ' + esc(l.phone) : ''}</option>`).join('');
+        if (cur && [...pick.options].some(o => o.value === cur)) pick.value = cur;
+      }
+    }
+  } catch (_) {}
+
   // Generate ID if empty
   if (!document.getElementById('qt-id').value) await refreshQuoteId();
 
@@ -4365,6 +4438,8 @@ async function generateQuotation() {
     formData.append('items',       JSON.stringify(items));
     formData.append('logistics',   JSON.stringify(logistics));
     formData.append('customSpecs', JSON.stringify(customSpecs));
+    const qtLeadId = document.getElementById('qt-customer-id')?.value || '';
+    if (qtLeadId) formData.append('customer_id', qtLeadId);
     qtImages.forEach(f => formData.append('images', f));
 
     const res = await fetch('/api/dashboard/quotation/generate', {
@@ -4727,6 +4802,7 @@ const LEAD_DEFAULT_COLS = [
   { key:'notes',           label:'Notes',       type:'text',     builtin:true, visible:true },
   { key:'sales_feedback',  label:'Sales Feedback', type:'text',  builtin:true, visible:true },
   { key:'inquiry',         label:'Inquiry',     type:'text',     builtin:true, visible:true },
+  { key:'next_followup',   label:'Follow-up',   type:'virtual',  builtin:true, visible:true },
 ];
 let _leadCols = null;
 let _leadColsLoaded = false;
@@ -5002,6 +5078,8 @@ function leadCellClick(e, id, key) {
   const col = leadCol(key);
   const c = _allCustomers.find(x => x.id === id);
   if (!col || !c) return;
+  // Name + follow-up cells open the Lead 360° profile instead of inline editing
+  if (col.key === 'name' || col.key === 'next_followup') return openLeadProfile(id);
   const raw = col.builtin ? c[key] : (c.custom_fields || {})[key];
   if (col.type === 'checkbox') return saveLeadCell(id, col, !raw);
   const td = e.currentTarget;
@@ -5068,7 +5146,14 @@ async function saveLeadCell(id, col, val) {
 function leadCellHtml(c, col) {
   const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
   const attrs = `class="lead-cell" onclick="leadCellClick(event, ${c.id}, '${esc(col.key)}')"`;
-  if (col.key === 'name') return `<td ${attrs}><strong>${esc(raw || '—')}</strong></td>`;
+  if (col.key === 'name') return `<td ${attrs} title="Open profile"><strong style="color:var(--primary);cursor:pointer">${esc(raw || '—')}</strong></td>`;
+  if (col.key === 'next_followup') {
+    const due = _pendingFollowups[c.id];
+    if (!due) return `<td ${attrs} style="font-size:12px;color:var(--muted)">—</td>`;
+    const overdue = new Date(due) < new Date();
+    const label = new Date(due).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return `<td ${attrs} style="font-size:11.5px;white-space:nowrap;color:${overdue ? 'var(--danger)' : 'var(--primary)'};font-weight:600">⏰ ${label}${overdue ? ' · overdue' : ''}</td>`;
+  }
   if (col.key === 'lead_status') {
     const m = colOptMap(col);
     const k = normKey(raw || 'cold', m);
@@ -5084,16 +5169,52 @@ function leadCellHtml(c, col) {
   return `<td ${attrs} style="font-size:12px;white-space:nowrap">${esc(raw || '—')}</td>`;
 }
 
+let _pendingFollowups = {}; // customer_id -> earliest pending due_at (ISO)
+let _fuFilterOn = false;
+
 async function loadCustomers() {
   try {
     await loadLeadCols();
     renderLeadHead();
     renderLeadFilterOptions();
-    _allCustomers = await apiFetch('/api/dashboard/customers').then(r => r.json());
+    const [customers, followups] = await Promise.all([
+      apiFetch('/api/dashboard/customers').then(r => r.json()),
+      apiFetch('/api/dashboard/followups/pending').then(r => r.json()).catch(() => []),
+    ]);
+    _allCustomers = customers;
+    _pendingFollowups = {};
+    (Array.isArray(followups) ? followups : []).forEach(f => {
+      if (!_pendingFollowups[f.customer_id]) _pendingFollowups[f.customer_id] = f.due_at; // sorted asc → first = earliest
+    });
+    renderFuChip();
     filterCustomers();
   } catch (e) {
     document.getElementById('customers-tbody').innerHTML = `<tr><td colspan="20" style="color:var(--danger);text-align:center;padding:24px">${esc(e.message)}</td></tr>`;
   }
+}
+
+function renderFuChip() {
+  const chip = document.getElementById('fu-chip');
+  if (!chip) return;
+  const now = new Date();
+  const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
+  let dueToday = 0, overdue = 0;
+  Object.values(_pendingFollowups).forEach(d => {
+    const t = new Date(d);
+    if (t < now) overdue++;
+    else if (t <= endOfDay) dueToday++;
+  });
+  if (!dueToday && !overdue) { chip.style.display = 'none'; if (_fuFilterOn) { _fuFilterOn = false; } return; }
+  chip.style.display = '';
+  chip.innerHTML = `⏰ ${overdue ? `<span style="color:var(--danger);font-weight:700">${overdue} overdue</span>` : ''}${overdue && dueToday ? ' · ' : ''}${dueToday ? `${dueToday} due today` : ''}`;
+  chip.style.borderColor = _fuFilterOn ? 'var(--primary)' : '';
+  chip.style.color = _fuFilterOn ? 'var(--primary)' : '';
+}
+
+function toggleFuFilter() {
+  _fuFilterOn = !_fuFilterOn;
+  renderFuChip();
+  filterCustomers();
 }
 
 // Canonicalize a stored value (which may be a key OR human label, any casing) to its key.
@@ -5121,6 +5242,10 @@ function filterCustomers() {
   if (to)   list = list.filter(c => c.lead_date && c.lead_date <= to);
   if (sf) list = list.filter(c => normKey(c.lead_status || 'cold', colOptMap(leadCol('lead_status'))) === sf);
   if (of) list = list.filter(c => normKey(c.source, colOptMap(leadCol('source'))) === of);
+  if (_fuFilterOn) {
+    const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
+    list = list.filter(c => _pendingFollowups[c.id] && new Date(_pendingFollowups[c.id]) <= endOfDay);
+  }
   renderCustomers(list);
 }
 
@@ -5140,6 +5265,7 @@ function renderCustomers(list) {
       ${vis.map(col => leadCellHtml(c, col)).join('')}
       <td></td>
       <td style="display:flex;gap:5px;flex-wrap:nowrap">
+        <button class="btn btn-sm btn-outline" onclick="openLeadProfile(${c.id})" title="Profile"><i data-lucide="user" style="width:12px;height:12px"></i></button>
         <button class="btn btn-sm btn-outline" onclick="openCustomerModal(${c.id})" title="Edit"><i data-lucide="edit-2" style="width:12px;height:12px"></i></button>
         <button class="btn btn-sm btn-outline" onclick="navigate('deals');filterDealsByCustomer(${c.id})" title="View Deals"><i data-lucide="kanban-square" style="width:12px;height:12px"></i></button>
         <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--danger);border:none" onclick="deleteCustomer(${c.id})" title="Delete"><i data-lucide="trash-2" style="width:12px;height:12px"></i></button>
@@ -5149,6 +5275,246 @@ function renderCustomers(list) {
   const allCb = document.getElementById('select-all-leads');
   if (allCb) allCb.checked = list.length > 0 && list.every(c => _selectedLeads.has(c.id));
   requestAnimationFrame(() => lucide.createIcons());
+}
+
+// ── Lead 360° profile drawer ─────────────────────────────────────────────────
+let _ldProfile = null; // { customer, activities, followups, quotations, deals }
+const LD_ACT_ICONS = { note: 'sticky-note', call: 'phone', whatsapp: 'message-circle', meeting: 'users', status_change: 'refresh-ccw', quote: 'file-badge', deal: 'kanban-square', follow_up: 'alarm-clock', system: 'info' };
+
+async function openLeadProfile(id) {
+  document.getElementById('lead-drawer-overlay').classList.add('open');
+  document.getElementById('lead-drawer').classList.add('open');
+  document.getElementById('lead-drawer-body').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const p = await apiFetch(`/api/dashboard/customers/${id}/profile`).then(r => r.json());
+    if (p.error) throw new Error(p.error);
+    _ldProfile = p;
+    renderLeadDrawer();
+  } catch (e) {
+    document.getElementById('lead-drawer-body').innerHTML = `<div class="error-msg">${esc(e.message)}</div>`;
+  }
+}
+
+function closeLeadProfile() {
+  document.getElementById('lead-drawer-overlay').classList.remove('open');
+  document.getElementById('lead-drawer').classList.remove('open');
+}
+
+async function refreshLeadProfile() {
+  if (!_ldProfile) return;
+  try {
+    const p = await apiFetch(`/api/dashboard/customers/${_ldProfile.customer.id}/profile`).then(r => r.json());
+    if (!p.error) { _ldProfile = p; renderLeadDrawer(); }
+  } catch (_) {}
+}
+
+function ldWaDigits(phone) {
+  let d = String(phone || '').replace(/\D/g, '');
+  if (d.startsWith('0')) d = '2' + d;       // Egyptian local → +20…
+  else if (d.startsWith('1') && d.length === 10) d = '20' + d;
+  return d;
+}
+
+function renderLeadDrawer() {
+  const c = _ldProfile.customer;
+  const stCol = leadCol('lead_status');
+  const stMap = colOptMap(stCol);
+  const stKey = normKey(c.lead_status || 'cold', stMap);
+  // Head
+  document.getElementById('ld-avatar').textContent = (c.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  document.getElementById('ld-name').textContent = c.name || '—';
+  const badge = document.getElementById('ld-status');
+  badge.textContent = (stMap[stKey] || c.lead_status || 'Cold') + ' ▾';
+  badge.style.background = LEAD_STATUS_COLORS[stKey] || 'rgba(255,255,255,.06)';
+  badge.style.color = LEAD_STATUS_TEXT[stKey] || '#b9b3a4';
+  document.getElementById('ld-phone').textContent = c.phone || '';
+  document.getElementById('ld-call').href = c.phone ? 'tel:' + c.phone : '#';
+  document.getElementById('ld-wa').href = c.phone ? 'https://wa.me/' + ldWaDigits(c.phone) : '#';
+
+  // Info grid — all builtin data columns except the ones in the header, plus customs
+  const skip = new Set(['name', 'phone', 'lead_status', 'next_followup']);
+  const infoItems = (_leadCols || []).filter(col => !skip.has(col.key) && col.type !== 'virtual').map(col => {
+    const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
+    let val;
+    if (col.type === 'select') { const m = colOptMap(col); val = m[normKey(raw, m)] || raw || '—'; }
+    else if (col.type === 'checkbox') val = raw ? '✅ Yes' : '—';
+    else if (col.key === 'budget_lead' || col.type === 'number') val = raw ? Number(raw).toLocaleString() + (col.key === 'budget_lead' ? ' EGP' : '') : '—';
+    else val = raw || '—';
+    return `<div class="ld-info-item"><div class="ld-info-label">${esc(col.label)}</div><div class="ld-info-value" title="${esc(String(raw ?? ''))}">${esc(String(val))}</div></div>`;
+  }).join('');
+
+  // Follow-ups
+  const pending = (_ldProfile.followups || []).filter(f => f.status === 'pending');
+  const fuCards = pending.map(f => {
+    const overdue = new Date(f.due_at) < new Date();
+    const assignee = (employeesForTasks || []).find(e => String(e.id) === String(f.assigned_to));
+    return `<div class="ld-fu-card${overdue ? ' overdue' : ''}">
+      <i data-lucide="alarm-clock" style="width:18px;height:18px;color:${overdue ? 'var(--danger)' : 'var(--primary)'};flex-shrink:0"></i>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:${overdue ? 'var(--danger)' : 'var(--text)'}">${new Date(f.due_at).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}${overdue ? ' — overdue' : ''}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(f.note || 'Follow up with the lead')}${assignee ? ` · ${esc(assignee.name)}` : ' · Admin'}</div>
+      </div>
+      <button class="btn btn-sm btn-primary" onclick="ldFollowupStatus(${f.id},'done')">Done</button>
+      <button class="btn btn-sm btn-outline" onclick="ldFollowupStatus(${f.id},'cancelled')" title="Cancel">✕</button>
+    </div>`;
+  }).join('');
+  const empOpts = (employeesForTasks || []).map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+
+  // Timeline
+  const acts = _ldProfile.activities || [];
+  const tl = acts.length ? acts.map(a => {
+    let bodyHtml = esc(a.body || '');
+    if (a.type === 'status_change' && a.meta?.to) {
+      const fk = normKey(a.meta.from, stMap), tk = normKey(a.meta.to, stMap);
+      bodyHtml = `Status: <span class="ld-stage-pill" style="background:${LEAD_STATUS_COLORS[fk] || 'rgba(255,255,255,.06)'};color:${LEAD_STATUS_TEXT[fk] || '#b9b3a4'}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="background:${LEAD_STATUS_COLORS[tk] || 'rgba(255,255,255,.06)'};color:${LEAD_STATUS_TEXT[tk] || '#b9b3a4'}">${esc(stMap[tk] || a.meta.to)}</span>`;
+    }
+    return `<div class="ld-tl-item">
+      <div class="ld-tl-icon"><i data-lucide="${LD_ACT_ICONS[a.type] || 'circle'}"></i></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;line-height:1.5;word-break:break-word">${bodyHtml}</div>
+        <div class="ld-tl-meta">${esc(a.author_name || '—')} · ${esc(notifRelTime(a.created_at))}</div>
+      </div>
+    </div>`;
+  }).join('') : '<div style="color:var(--muted);font-size:12px;padding:10px 0">No activity yet — log the first touch below.</div>';
+
+  // Quotations
+  const quotes = _ldProfile.quotations || [];
+  const quotesHtml = quotes.length ? quotes.map(q => `
+    <div class="ld-quote-row">
+      <div style="min-width:0">
+        <div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(q.title)}</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px"><code>${esc(q.quote_id)}</code> · ${new Date(q.created_at).toLocaleDateString()} · ${esc(q.created_by)}</div>
+      </div>
+      <button class="btn btn-sm btn-outline" style="flex-shrink:0" onclick="closeLeadProfile();navigate('quotation');duplicateQuotation(${q.id})">Open in draft</button>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:12px">No quotations yet — use "Generate Quotation" above.</div>';
+
+  // Deals
+  const deals = _ldProfile.deals || [];
+  const dealsHtml = deals.length ? deals.map(d => `
+    <div class="ld-quote-row">
+      <div style="min-width:0">
+        <div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title)}</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px">${d.budget_egp ? Number(d.budget_egp).toLocaleString() + ' EGP · ' : ''}${new Date(d.created_at).toLocaleDateString()}</div>
+      </div>
+      <span class="ld-stage-pill">${esc(DEAL_STAGE_LABELS[d.stage] || d.stage)}</span>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:12px">No deals yet.</div>';
+
+  document.getElementById('lead-drawer-body').innerHTML = `
+    <div class="ld-section">
+      <div class="ld-info-grid">${infoItems}</div>
+    </div>
+    <div class="ld-section">
+      <div class="ld-section-title">Follow-ups</div>
+      ${fuCards}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:${pending.length ? '10px' : '0'}">
+        <input class="form-input" id="ld-fu-when" type="datetime-local" style="max-width:190px;font-size:12px;padding:8px 10px">
+        <input class="form-input" id="ld-fu-note" placeholder="What to do…" style="flex:1;min-width:130px;font-size:12px;padding:8px 10px">
+        <select class="form-input" id="ld-fu-who" style="max-width:150px;font-size:12px"><option value="">Remind me (Admin)</option>${empOpts}</select>
+        <button class="btn btn-sm btn-primary" onclick="ldScheduleFollowup()">Schedule</button>
+      </div>
+    </div>
+    <div class="ld-section">
+      <div class="ld-section-title">Quotations <span style="font-weight:400;text-transform:none;letter-spacing:0">${quotes.length || ''}</span></div>
+      ${quotesHtml}
+    </div>
+    <div class="ld-section">
+      <div class="ld-section-title">Deals ${deals.length ? `<button class="btn btn-sm btn-outline" style="font-size:10px;padding:3px 8px" onclick="closeLeadProfile();navigate('deals');filterDealsByCustomer(${c.id})">View in pipeline</button>` : ''}</div>
+      ${dealsHtml}
+    </div>
+    <div class="ld-section">
+      <div class="ld-section-title">Activity</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <select class="form-input" id="ld-act-type" style="max-width:120px;font-size:12px">
+          <option value="note">📝 Note</option><option value="call">📞 Call</option>
+          <option value="whatsapp">💬 WhatsApp</option><option value="meeting">🤝 Meeting</option>
+        </select>
+        <input class="form-input" id="ld-act-body" placeholder="Log a call, note, meeting…" style="flex:1;font-size:12px" onkeydown="if(event.key==='Enter')ldLogActivity()">
+        <button class="btn btn-sm btn-primary" onclick="ldLogActivity()">Log</button>
+      </div>
+      <div id="ld-timeline">${tl}</div>
+    </div>`;
+  requestAnimationFrame(() => { lucide.createIcons(); enhanceBrandSelects(); });
+}
+
+function ldStatusMenu(e) {
+  e.stopPropagation();
+  if (!_ldProfile) return;
+  const col = leadCol('lead_status');
+  const m = colOptMap(col);
+  const cur = normKey(_ldProfile.customer.lead_status || 'cold', m);
+  brandMenu(e.currentTarget, (col.options || []).map(o => ({ key: o.key, label: o.label, selected: o.key === cur })), async key => {
+    try {
+      const updated = await apiFetch(`/api/dashboard/customers/${_ldProfile.customer.id}`, { method: 'PUT', body: JSON.stringify({ lead_status: key }) }).then(r => r.json());
+      if (updated.error) throw new Error(updated.error);
+      const i = _allCustomers.findIndex(x => x.id === updated.id);
+      if (i >= 0) _allCustomers[i] = updated;
+      filterCustomers();
+      refreshLeadProfile();
+    } catch (err) { showAdminToast('Status change failed: ' + err.message); }
+  });
+}
+
+async function ldScheduleFollowup() {
+  const when = document.getElementById('ld-fu-when').value;
+  if (!when) return showAdminToast('Pick a date & time for the follow-up');
+  const body = {
+    due_at: new Date(when).toISOString(),
+    note: document.getElementById('ld-fu-note').value.trim(),
+    assigned_to: document.getElementById('ld-fu-who').value || null,
+  };
+  const r = await apiFetch(`/api/dashboard/customers/${_ldProfile.customer.id}/followups`, { method: 'POST', body: JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok || d.error) return showAdminToast('Error: ' + (d.error || r.status));
+  showAdminToast('Follow-up scheduled — a reminder will fire when it\'s due');
+  _pendingFollowups[_ldProfile.customer.id] = _pendingFollowups[_ldProfile.customer.id] && new Date(_pendingFollowups[_ldProfile.customer.id]) < new Date(d.due_at) ? _pendingFollowups[_ldProfile.customer.id] : d.due_at;
+  renderFuChip(); filterCustomers();
+  refreshLeadProfile();
+}
+
+async function ldFollowupStatus(id, status) {
+  const r = await apiFetch(`/api/dashboard/followups/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+  const d = await r.json();
+  if (!r.ok || d.error) return showAdminToast('Error: ' + (d.error || r.status));
+  // Recompute the table's earliest-pending map for this lead
+  delete _pendingFollowups[d.customer_id];
+  const rest = (_ldProfile.followups || []).filter(f => f.status === 'pending' && f.id !== id).sort((a, b) => a.due_at.localeCompare(b.due_at));
+  if (rest[0]) _pendingFollowups[d.customer_id] = rest[0].due_at;
+  renderFuChip(); filterCustomers();
+  refreshLeadProfile();
+}
+
+async function ldLogActivity() {
+  const input = document.getElementById('ld-act-body');
+  const body = input.value.trim();
+  if (!body) return;
+  const type = document.getElementById('ld-act-type').value;
+  const r = await apiFetch(`/api/dashboard/customers/${_ldProfile.customer.id}/activities`, { method: 'POST', body: JSON.stringify({ type, body }) });
+  const d = await r.json();
+  if (!r.ok || d.error) return showAdminToast('Error: ' + (d.error || r.status));
+  input.value = '';
+  refreshLeadProfile();
+}
+
+function ldEdit() {
+  if (!_ldProfile) return;
+  openCustomerModal(_ldProfile.customer.id);
+}
+
+function ldGenerateQuote() {
+  if (!_ldProfile) return;
+  const c = _ldProfile.customer;
+  closeLeadProfile();
+  navigate('quotation');
+  if (typeof switchQtTab === 'function') switchQtTab('draft');
+  setTimeout(() => {
+    const nameEl = document.getElementById('qt-name');
+    const vehEl = document.getElementById('qt-vehicle');
+    if (nameEl && !nameEl.value) nameEl.value = c.name || '';
+    if (nameEl && c.name) nameEl.value = c.name;
+    if (vehEl && c.car_in_question) vehEl.value = c.car_in_question;
+    const pick = document.getElementById('qt-customer-id');
+    if (pick) pick.value = String(c.id);
+  }, 350);
 }
 
 function toggleSelectAllLeads(cb) {
