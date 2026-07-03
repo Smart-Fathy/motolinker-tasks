@@ -2279,24 +2279,30 @@ function buildQuotationHtml(data) {
     </tbody>
   </table>
 
-  <!-- KEY SPECS (left) + PAYMENT TERMS (bottom right) -->
+  <!-- KEY SPECS (left) + PAYMENT TERMS / CURRENCY / EXCHANGE (right) -->
+  ${(() => {
+    const leftContent = [
+      issuer ? `<div><strong>Issuer:</strong> ${escHtml(issuer)}</div>` : '',
+      ...(customSpecs || []).map(sp => sp.key ? `<div><strong>${escHtml(sp.key)}:</strong> ${escHtml(sp.val || '')}</div>` : `<div>${escHtml(sp.val || '')}</div>`),
+    ].filter(Boolean).join('');
+    const rightBox = `
+      <div style="width:46%;border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY};${leftContent ? '' : 'margin-left:auto'}">
+        <div style="font-weight:700;margin-bottom:4px">Payment terms</div>
+        ${(s.payment_terms || '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances').split('\n').map(l => `<div style="padding-left:14px">${escHtml(l)}</div>`).join('')}
+        <div style="margin-top:8px;border-top:1px solid ${GOLD};padding-top:6px">
+          <div><strong>Currency:</strong> ${escHtml(currency || 'EGP')}</div>
+          <div><strong>Exchange:</strong> ${fmtNum(exchange)}</div>
+        </div>
+      </div>`;
+    return `
   <div style="margin-top:14px">
     <div class="section-label" style="margin-top:0">KEY SPECS</div>
     <div style="display:flex;gap:14px;align-items:stretch">
-      <!-- Left: spec keys -->
-      <div style="flex:1;border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY}">
-        <div><strong>Currency:</strong> ${escHtml(currency || 'EGP')}</div>
-        <div><strong>Exchange:</strong> ${fmtNum(exchange)}</div>
-        ${issuer ? `<div><strong>Issuer:</strong> ${escHtml(issuer)}</div>` : ''}
-        ${(customSpecs || []).map(sp => sp.key ? `<div><strong>${escHtml(sp.key)}:</strong> ${escHtml(sp.val || '')}</div>` : `<div>${escHtml(sp.val || '')}</div>`).join('')}
-      </div>
-      <!-- Right: payment terms -->
-      <div style="width:46%;border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY}">
-        <div style="font-weight:700;margin-bottom:4px">Payment terms</div>
-        ${(s.payment_terms || '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances').split('\n').map(l => `<div style="padding-left:14px">${escHtml(l)}</div>`).join('')}
-      </div>
+      ${leftContent ? `<div style="flex:1;border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY}">${leftContent}</div>` : ''}
+      ${rightBox}
     </div>
-  </div>
+  </div>`;
+  })()}
 
   <!-- FOOTER -->
   <div class="footer">
