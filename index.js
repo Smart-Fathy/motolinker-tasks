@@ -1155,6 +1155,7 @@ receiver.router.post('/api/dashboard/customers', requireAuth, express.json(), as
     .insert({ name, phone: phone||'', email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', ...(custom_fields && Object.keys(custom_fields).length ? { custom_fields } : {}), created_by: 'dashboard' })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
+  logLeadActivity(data.id, { type: 'system', body: `Lead created${data.source ? ' · ' + data.source : ''}`, authorKey: 'admin', authorName: 'Admin' });
   // Auto-create deal if status is Hot on creation
   if (data.lead_status === 'hot') {
     supabase.from('deals').insert({ customer_id: data.id, title: `${data.name}${data.car_in_question ? ' — ' + data.car_in_question : ''}`, stage: 'lead', car_model: data.car_in_question||'', budget_egp: data.budget_lead||null, notes: 'Auto-created from Hot lead', created_by: 'system' }).then(()=>{}).catch(()=>{});
@@ -1240,17 +1241,33 @@ receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.s
   } catch (e) { console.error('[csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 
+// Best-effort insert into the lead activity timeline (never blocks the caller)
+async function logLeadActivity(customerId, { type = 'note', body = '', meta = {}, authorKey = '', authorName = '' }) {
+  if (!customerId) return;
+  try {
+    await supabase.from('lead_activities').insert({ customer_id: customerId, type, body, meta, author_key: authorKey, author_name: authorName });
+  } catch (e) { console.warn('[lead-activity] insert failed:', e.message); }
+}
+
 receiver.router.put('/api/dashboard/customers/:id', requireAuth, express.json(), async (req, res) => {
-  const { data: prev } = await supabase.from('customers').select('lead_status').eq('id', req.params.id).single();
+  const { data: prev } = await supabase.from('customers').select('lead_status,been_contacted').eq('id', req.params.id).single();
   const { data, error } = await supabase.from('customers')
     .update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
+  // Timeline: status change + contacted flip
+  if (prev && data.lead_status !== prev.lead_status) {
+    logLeadActivity(data.id, { type: 'status_change', body: `Status changed`, meta: { from: prev.lead_status || 'cold', to: data.lead_status || 'cold' }, authorKey: 'admin', authorName: 'Admin' });
+  }
+  if (prev && !prev.been_contacted && data.been_contacted) {
+    logLeadActivity(data.id, { type: 'system', body: 'Marked as contacted', authorKey: 'admin', authorName: 'Admin' });
+  }
   // Auto-create deal when status changes to Hot
   if (data.lead_status === 'hot' && prev?.lead_status !== 'hot') {
     try {
       const { data: existing } = await supabase.from('deals').select('id').eq('customer_id', data.id).limit(1);
       if (!existing?.length) {
         await supabase.from('deals').insert({ customer_id: data.id, title: `${data.name}${data.car_in_question ? ' — ' + data.car_in_question : ''}`, stage: 'lead', car_model: data.car_in_question||'', budget_egp: data.budget_lead||null, notes: 'Auto-created from Hot lead', created_by: 'system' });
+        logLeadActivity(data.id, { type: 'deal', body: 'Deal auto-created from Hot status', authorKey: 'system', authorName: 'System' });
         console.log('[leads] Auto-created deal for hot lead', data.id);
       }
     } catch (e) { console.warn('[leads] Auto-deal failed:', e.message); }
@@ -1262,6 +1279,69 @@ receiver.router.delete('/api/dashboard/customers/:id', requireAuth, async (req, 
   const { error } = await supabase.from('customers').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
+});
+
+// ── Lead 360° profile: timeline, follow-ups, linked quotations & deals ────────
+receiver.router.get('/api/dashboard/customers/:id/profile', requireAuth, async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { data: customer, error } = await supabase.from('customers').select('*').eq('id', id).single();
+  if (error || !customer) return res.status(404).json({ error: 'Lead not found' });
+  const [activities, followups, quotations, deals] = await Promise.all([
+    supabase.from('lead_activities').select('*').eq('customer_id', id).order('created_at', { ascending: false }).limit(200),
+    supabase.from('lead_followups').select('*').eq('customer_id', id).order('due_at', { ascending: true }),
+    supabase.from('quotations').select('id,quote_id,title,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
+    supabase.from('deals').select('id,title,stage,budget_egp,created_at').eq('customer_id', id).order('created_at', { ascending: false }),
+  ]);
+  res.json({
+    customer,
+    activities: activities.data || [],
+    followups: followups.data || [],
+    quotations: quotations.data || [],
+    deals: deals.data || [],
+  });
+});
+
+receiver.router.post('/api/dashboard/customers/:id/activities', requireAuth, express.json(), async (req, res) => {
+  const type = ['note', 'call', 'whatsapp', 'meeting'].includes(req.body?.type) ? req.body.type : 'note';
+  const body = String(req.body?.body || '').trim().slice(0, 2000);
+  if (!body) return res.status(400).json({ error: 'Activity text is required' });
+  const { data, error } = await supabase.from('lead_activities')
+    .insert({ customer_id: parseInt(req.params.id), type, body, author_key: 'admin', author_name: 'Admin' })
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.post('/api/dashboard/customers/:id/followups', requireAuth, express.json(), async (req, res) => {
+  const due_at = req.body?.due_at;
+  if (!due_at || isNaN(new Date(due_at).getTime())) return res.status(400).json({ error: 'A valid due date/time is required' });
+  const note = String(req.body?.note || '').trim().slice(0, 500);
+  const assigned_to = req.body?.assigned_to ? parseInt(req.body.assigned_to) : null;
+  const { data, error } = await supabase.from('lead_followups')
+    .insert({ customer_id: parseInt(req.params.id), due_at: new Date(due_at).toISOString(), note, assigned_to, created_by: 'admin' })
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  logLeadActivity(data.customer_id, { type: 'follow_up', body: `Follow-up scheduled for ${new Date(data.due_at).toLocaleString()}${note ? ' — ' + note : ''}`, authorKey: 'admin', authorName: 'Admin' });
+  res.json(data);
+});
+
+receiver.router.put('/api/dashboard/followups/:id', requireAuth, express.json(), async (req, res) => {
+  const status = ['done', 'cancelled', 'pending'].includes(req.body?.status) ? req.body.status : 'done';
+  const patch = { status, completed_at: status === 'done' ? new Date().toISOString() : null };
+  const { data, error } = await supabase.from('lead_followups').update(patch).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  if (status !== 'pending') {
+    logLeadActivity(data.customer_id, { type: 'follow_up', body: status === 'done' ? 'Follow-up completed' : 'Follow-up cancelled', authorKey: 'admin', authorName: 'Admin' });
+  }
+  res.json(data);
+});
+
+// All pending follow-ups (for the leads-table column and the due chip)
+receiver.router.get('/api/dashboard/followups/pending', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('lead_followups')
+    .select('id,customer_id,due_at,note,assigned_to').eq('status', 'pending').order('due_at', { ascending: true }).limit(500);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
 });
 
 // ── Leads table column configuration (order, visibility, labels, dropdown options,
@@ -1299,6 +1379,7 @@ receiver.router.post('/api/dashboard/deals', requireAuth, express.json(), async 
     .insert({ customer_id, title, stage: stage||'lead', car_model: car_model||'', budget_egp: budget_egp||null, notes: notes||'', assigned_to: assigned_to||'', created_by: 'dashboard' })
     .select('*, customers(name,phone,email)').single();
   if (error) return res.status(500).json({ error: error.message });
+  logLeadActivity(customer_id, { type: 'deal', body: `Deal created — ${title}`, authorKey: 'admin', authorName: 'Admin' });
   res.json(data);
 });
 
@@ -1323,6 +1404,11 @@ receiver.router.put('/api/dashboard/deals/:id', requireAuth, express.json(), asy
         await createNotification(`employee_${notifyId}`, { type: 'lead', title: 'New lead to quote — ' + (c?.name || data.title), body, url: '/employee#quotation' }, 'always');
       }
     } catch (e) { console.warn('[deals] notify-contacted failed:', e.message); }
+  }
+  // Timeline: log the stage move on the linked lead
+  if (updates.stage && prev?.stage !== updates.stage && data.customer_id) {
+    const stageLabels = { lead: 'Lead', contacted: 'Contacted', quoted: 'Quoted', negotiating: 'Negotiating', won: 'Won', lost: 'Lost' };
+    logLeadActivity(data.customer_id, { type: 'deal', body: `Deal moved to ${stageLabels[updates.stage] || updates.stage} — ${data.title}`, meta: { from: prev?.stage, to: updates.stage }, authorKey: 'admin', authorName: 'Admin' });
   }
   res.json(data);
 });
@@ -2347,13 +2433,17 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       const pdfBuffer = await renderQuotationPdf(html);
 
       res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
-      // Save quotation record (best-effort)
+      // Save quotation record (best-effort) + attach to the lead's timeline
+      const custId = req.body.customer_id ? parseInt(req.body.customer_id) : null;
       supabase.from('quotations').insert({
         quote_id: id || generateQuoteId(),
         title: `${vehicleModel || 'Quotation'} — ${name || ''}`.trim(),
         data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs },
-        created_by: 'dashboard'
-      }).then(() => {}).catch(() => {});
+        created_by: 'dashboard',
+        customer_id: custId,
+      }).select().single().then(({ data: qrow }) => {
+        if (custId && qrow) logLeadActivity(custId, { type: 'quote', body: `Quotation generated — ${qrow.title}`, meta: { quotation_id: qrow.id, quote_id: qrow.quote_id }, authorKey: 'admin', authorName: 'Admin' });
+      }).catch(() => {});
     } catch (e) {
       console.error('[quotation-gen]', e);
       res.status(500).json({ error: e.message });
@@ -2388,13 +2478,17 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
       const pdfBuffer = await renderQuotationPdf(html);
 
       res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
-      // Save quotation record (best-effort) so the employee's history is populated
+      // Save quotation record (best-effort) + attach to the lead's timeline
+      const custId = req.body.customer_id ? parseInt(req.body.customer_id) : null;
       supabase.from('quotations').insert({
         quote_id: id || generateQuoteId(),
         title: `${vehicleModel || 'Quotation'} — ${name || ''}`.trim(),
         data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs },
-        created_by: req.employee.username
-      }).then(() => {}).catch(() => {});
+        created_by: req.employee.username,
+        customer_id: custId,
+      }).select().single().then(({ data: qrow }) => {
+        if (custId && qrow) logLeadActivity(custId, { type: 'quote', body: `Quotation generated — ${qrow.title}`, meta: { quotation_id: qrow.id, quote_id: qrow.quote_id }, authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
+      }).catch(() => {});
     } catch (e) {
       console.error('[emp-quotation-gen]', e);
       res.status(500).json({ error: e.message });
@@ -2498,12 +2592,44 @@ function scheduleHoursLogReminder() {
   }, next - now);
 }
 
+// ─── Lead follow-up reminders ─────────────────────────────────────────────────
+// Fires within ~5 minutes of a follow-up's due time: notifies the assigned
+// employee (or admin when unassigned) once per follow-up.
+async function sendFollowupReminders() {
+  if (!vapidKeys) return;
+  try {
+    const { data: due } = await supabase.from('lead_followups')
+      .select('*, customers(name,phone)')
+      .eq('status', 'pending').eq('reminded', false)
+      .lte('due_at', new Date().toISOString())
+      .limit(50);
+    for (const f of due || []) {
+      const leadName = f.customers?.name || 'a lead';
+      const key = f.assigned_to ? `employee_${f.assigned_to}` : 'admin';
+      const url = f.assigned_to ? '/employee#leads' : '/dashboard#customers';
+      await createNotification(key, {
+        type: 'followup',
+        title: `Follow-up due: ${leadName}`,
+        body: [f.note, f.customers?.phone ? `Phone: ${f.customers.phone}` : ''].filter(Boolean).join(' · ') || 'Scheduled follow-up is due now.',
+        url,
+      }, 'always');
+      await supabase.from('lead_followups').update({ reminded: true }).eq('id', f.id);
+    }
+  } catch (e) { console.warn('[followups] reminder pass failed:', e.message); }
+}
+
+function scheduleFollowupReminders() {
+  setTimeout(() => sendFollowupReminders().catch(console.error), 20 * 1000); // first pass shortly after boot
+  setInterval(() => sendFollowupReminders().catch(console.error), 5 * 60 * 1000);
+}
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 (async () => {
   await loadGoogleTokens();
   await loadOrCreateVapidKeys();
   scheduleDueDateReminders();
   scheduleHoursLogReminder();
+  scheduleFollowupReminders();
   if (process.env.WHATSAPP_ENABLED === 'true') initWhatsApp().catch(console.error);
   const port = process.env.PORT || 3000;
   receiver.app.listen(port, () => {

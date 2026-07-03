@@ -1124,7 +1124,13 @@
               <label class="form-label">Customer Name</label>
               <input class="form-input" id="emp-qt-name" placeholder="e.g. Hesham Dorghamy">
             </div>
-            <div style="grid-column:span 2">
+            <div id="emp-qt-lead-wrap" style="display:none">
+              <label class="form-label">Lead <span style="color:var(--muted);font-weight:400">(attach to profile)</span></label>
+              <select class="form-input" id="emp-qt-customer-id">
+                <option value="">— No lead —</option>
+              </select>
+            </div>
+            <div>
               <label class="form-label">Vehicle Model</label>
               <input class="form-input" id="emp-qt-vehicle" placeholder="e.g. Deepal S05 620 Plus">
             </div>
@@ -2410,6 +2416,22 @@ async function loadEmpQuotation() {
   if (!document.getElementById('emp-qt-valid-to').value) document.getElementById('emp-qt-valid-to').value = fmt(valid);
   if (!document.getElementById('emp-qt-logistics').children.length) empBuildLogisticsRows();
   if (!document.getElementById('emp-qt-items').children.length) empAddPricingRow();
+  // Lead picker — only when the admin has granted the Leads permission
+  try {
+    if (empInfo?.permissions?.leads === true) {
+      const wrap = document.getElementById('emp-qt-lead-wrap');
+      const pick = document.getElementById('emp-qt-customer-id');
+      const r = await ef('/api/employee/leads');
+      if (r.ok && wrap && pick) {
+        const leads = await r.json();
+        const cur = pick.value;
+        pick.innerHTML = '<option value="">— No lead —</option>' +
+          [...leads].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(l => `<option value="${l.id}">${esc(l.name)}${l.phone ? ' · ' + esc(l.phone) : ''}</option>`).join('');
+        if (cur && [...pick.options].some(o => o.value === cur)) pick.value = cur;
+        wrap.style.display = '';
+      }
+    }
+  } catch (_) {}
   requestAnimationFrame(() => lucide.createIcons());
 }
 
@@ -2612,6 +2634,8 @@ async function empGenerateQuotation() {
     formData.append('items',        JSON.stringify(items));
     formData.append('logistics',    JSON.stringify(logistics));
     formData.append('customSpecs',  JSON.stringify(customSpecs));
+    const empQtLeadId = document.getElementById('emp-qt-customer-id')?.value || '';
+    if (empQtLeadId) formData.append('customer_id', empQtLeadId);
     empQtImages.forEach(f => formData.append('images', f));
 
     const res = await fetch('/api/employee/quotation/generate', {
@@ -2967,7 +2991,7 @@ function notifRelTime(ts) {
 }
 
 function notifIcon(type) {
-  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox', issue: 'bug' };
+  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox', issue: 'bug', followup: 'alarm-clock' };
   return m[type] || 'bell';
 }
 // Strip any leading emoji/symbols so legacy notifications render clean text (new ones already clean)
@@ -3021,7 +3045,7 @@ async function markAllNotifsRead() {
 function notifRoute(url, type) {
   const hash = (url || '').split('#')[1];
   if (hash && pageTitles[hash]) { navigate(hash); return; }
-  const map = { hours: 'log', task: 'tasks', reminder: 'tasks', lead: 'quotation', deal: 'deals', request: 'requests' };
+  const map = { hours: 'log', task: 'tasks', reminder: 'tasks', lead: 'quotation', deal: 'deals', request: 'requests', followup: 'leads' };
   navigate(map[type] || 'log');
 }
 // Mark a single notification read (local + server)

@@ -441,6 +441,39 @@ CREATE TABLE IF NOT EXISTS issues (
 );
 ALTER TABLE IF EXISTS public.issues ENABLE ROW LEVEL SECURITY;
 
+-- Lead 360°: activity timeline (auto-logged + manual entries per lead)
+CREATE TABLE IF NOT EXISTS lead_activities (
+  id BIGSERIAL PRIMARY KEY,
+  customer_id BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  type TEXT NOT NULL DEFAULT 'note',   -- note|call|whatsapp|meeting|status_change|quote|deal|follow_up|system
+  body TEXT DEFAULT '',
+  meta JSONB DEFAULT '{}'::jsonb,
+  author_key TEXT DEFAULT '',          -- 'admin' or 'employee_<id>'
+  author_name TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_lead_activities ON lead_activities(customer_id, created_at DESC);
+ALTER TABLE IF EXISTS public.lead_activities ENABLE ROW LEVEL SECURITY;
+
+-- Lead 360°: scheduled follow-ups (reminder fires when due_at passes)
+CREATE TABLE IF NOT EXISTS lead_followups (
+  id BIGSERIAL PRIMARY KEY,
+  customer_id BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  due_at TIMESTAMPTZ NOT NULL,
+  note TEXT DEFAULT '',
+  assigned_to BIGINT,                  -- employee id; NULL -> reminder goes to admin
+  status TEXT DEFAULT 'pending',       -- pending | done | cancelled
+  reminded BOOLEAN DEFAULT FALSE,
+  created_by TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_lead_followups_due ON lead_followups(status, due_at);
+ALTER TABLE IF EXISTS public.lead_followups ENABLE ROW LEVEL SECURITY;
+
+-- Quotations belong to a lead (customer_id also in the CREATE for fresh installs)
+ALTER TABLE quotations ADD COLUMN IF NOT EXISTS customer_id BIGINT DEFAULT NULL;
+
 -- Notification setting for deal-contacted alert
 INSERT INTO quotation_settings (key, value) VALUES ('contact_notify_employee_id', '')
   ON CONFLICT (key) DO NOTHING;
