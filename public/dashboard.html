@@ -1056,6 +1056,7 @@
         <div class="nav-group-items">
           <div class="nav-item"        onclick="navigate('customers')"  id="nav-customers">    <span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads</div>
           <div class="nav-item"        onclick="navigate('deals')"      id="nav-deals">        <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals</div>
+          <div class="nav-item"        onclick="navigate('reports')"    id="nav-reports">      <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span> Reports</div>
         </div>
       </div>
       <div class="nav-group" data-group="integrations">
@@ -1661,6 +1662,52 @@
       </div>
       <div id="deals-kanban" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:start;overflow-x:auto;min-width:900px">
         <!-- Columns rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Reports / Sales Analytics -->
+  <div id="page-reports" class="page">
+    <div class="page-body" style="max-width:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="page-title">Sales &amp; Revenue</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Pipeline, win-rate, revenue and conversion — computed live from your deals.</div>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+          <div><label class="form-label" style="font-size:11px">From</label><input class="form-input" id="rep-from" type="date" style="padding:6px 8px;font-size:12px"></div>
+          <div><label class="form-label" style="font-size:11px">To</label><input class="form-input" id="rep-to" type="date" style="padding:6px 8px;font-size:12px"></div>
+          <div><label class="form-label" style="font-size:11px">Source</label>
+            <select class="form-input" id="rep-source" style="padding:6px 8px;font-size:12px">
+              <option value="">All sources</option>
+              <option value="fb_ad">FB Ad.</option><option value="whatsapp">Whatsapp</option>
+              <option value="messenger">Messenger</option><option value="direct_call">Direct Call</option>
+              <option value="ig_ads">IG ads</option><option value="website">Website</option>
+              <option value="walk_in">Walk-in</option><option value="marketplace">Marketplace</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="loadReports()" style="font-size:12px"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Apply</button>
+          <button class="btn btn-outline" onclick="exportReport('summary')" style="font-size:12px"><i data-lucide="download" style="width:14px;height:14px"></i> CSV</button>
+        </div>
+      </div>
+      <div id="reports-stats" class="stats-grid" style="margin-bottom:22px"></div>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Conversion funnel</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('pipeline')">CSV</button></div>
+          <div class="chart-wrap"><canvas id="repFunnel"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Revenue won by month</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('revenue_by_month')">CSV</button></div>
+          <div class="chart-wrap"><canvas id="repRevenue"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Deals by source</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('by_source')">CSV</button></div>
+          <div class="chart-wrap"><canvas id="repSource"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Rep leaderboard (revenue won)</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('by_rep')">CSV</button></div>
+          <div class="chart-wrap"><canvas id="repRep"></canvas></div>
+        </div>
       </div>
     </div>
   </div>
@@ -2364,6 +2411,82 @@ function renderCharts(s) {
   });
 }
 
+// ── Reports / Sales Analytics ──────────────────────────────────────────────────
+let _reportData = null;
+function repDateDefaults() {
+  const to = document.getElementById('rep-to'), from = document.getElementById('rep-from');
+  if (to && !to.value) to.value = new Date().toISOString().slice(0, 10);
+  if (from && !from.value) from.value = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+}
+function repQuery() {
+  const p = new URLSearchParams();
+  const f = document.getElementById('rep-from')?.value, t = document.getElementById('rep-to')?.value, s = document.getElementById('rep-source')?.value;
+  if (f) p.set('from', f); if (t) p.set('to', t); if (s) p.set('source', s);
+  return p.toString();
+}
+async function loadReports() {
+  repDateDefaults();
+  const grid = document.getElementById('reports-stats');
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
+  try {
+    const r = await apiFetch('/api/dashboard/reports/summary?' + repQuery());
+    const s = await r.json();
+    if (!r.ok) throw new Error(s.error || 'Failed');
+    _reportData = s;
+    renderReportStats(s);
+    renderReportCharts(s);
+  } catch (e) {
+    grid.innerHTML = `<div class="error-msg" style="grid-column:1/-1">${esc(e.message)}</div>`;
+  }
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function egp(n) { return (Number(n) || 0).toLocaleString() + ' EGP'; }
+function renderReportStats(s) {
+  document.getElementById('reports-stats').innerHTML = `
+    <div class="stat-card total"><div class="stat-label">Open Pipeline</div><div class="stat-value" style="font-size:22px">${egp(s.totalPipeline)}</div><div class="stat-sub">${s.range.from} → ${s.range.to}</div></div>
+    <div class="stat-card in-progress"><div class="stat-label">Weighted Pipeline</div><div class="stat-value" style="font-size:22px">${egp(s.weightedPipeline)}</div><div class="stat-sub">Probability-adjusted</div></div>
+    <div class="stat-card done"><div class="stat-label">Revenue Won</div><div class="stat-value" style="font-size:22px">${egp(s.revenueWon)}</div><div class="stat-sub">${s.wonCount} deal${s.wonCount === 1 ? '' : 's'}</div></div>
+    <div class="stat-card high-pri"><div class="stat-label">Win Rate</div><div class="stat-value">${s.winRate}%</div><div class="stat-sub">Won vs lost</div></div>
+    <div class="stat-card todo"><div class="stat-label">Avg Deal</div><div class="stat-value" style="font-size:22px">${egp(s.avgDeal)}</div><div class="stat-sub">Per won deal</div></div>
+    <div class="stat-card overdue"><div class="stat-label">Quotes Generated</div><div class="stat-value">${s.quotesCount}</div><div class="stat-sub">In range</div></div>`;
+}
+function renderReportCharts(s) {
+  const gold = '#e6c98a', primary = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#c99a4e';
+  // Funnel (horizontal bar)
+  if (charts.repFunnel) charts.repFunnel.destroy();
+  charts.repFunnel = new Chart(document.getElementById('repFunnel'), {
+    type: 'bar',
+    data: { labels: s.funnel.map(f => f.stage), datasets: [{ label: 'Deals', data: s.funnel.map(f => f.count), backgroundColor: primary, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } },
+  });
+  // Revenue by month (bar)
+  if (charts.repRevenue) charts.repRevenue.destroy();
+  charts.repRevenue = new Chart(document.getElementById('repRevenue'), {
+    type: 'bar',
+    data: { labels: s.revenueByMonth.map(m => m.month), datasets: [{ label: 'Revenue (EGP)', data: s.revenueByMonth.map(m => m.value), backgroundColor: gold, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
+  });
+  // Deals by source (doughnut)
+  if (charts.repSource) charts.repSource.destroy();
+  charts.repSource = new Chart(document.getElementById('repSource'), {
+    type: 'doughnut',
+    data: { labels: s.bySource.map(x => x.source), datasets: [{ data: s.bySource.map(x => x.deals), backgroundColor: ['#c99a4e','#f59e0b','#10b981','#3b82f6','#a855f7','#ef4444','#14b8a6','#64748b','#e6c98a'], borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8 } } } },
+  });
+  // Rep leaderboard (horizontal bar, revenue won)
+  if (charts.repRep) charts.repRep.destroy();
+  charts.repRep = new Chart(document.getElementById('repRep'), {
+    type: 'bar',
+    data: { labels: s.byRep.map(x => x.rep), datasets: [{ label: 'Revenue won (EGP)', data: s.byRep.map(x => x.value), backgroundColor: gold, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } },
+  });
+}
+function exportReport(which) {
+  const p = repQuery();
+  const tok = encodeURIComponent(authToken || '');
+  window.location = `/api/dashboard/reports/export.csv?report=${encodeURIComponent(which)}${p ? '&' + p : ''}&_t=${tok}`;
+}
+
 // ── Table ────────────────────────────────────────────────────────────────────
 function populateChannelFilter(tasks) {
   const sel = document.getElementById('f-channel');
@@ -2733,7 +2856,7 @@ async function uploadCSV() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp, notif: loadNotifPage };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();

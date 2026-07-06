@@ -183,18 +183,14 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
   try {
     const { data: tasks, error } = await supabase.from('tasks').select('*');
     if (error) throw error;
-    if (!tasks || tasks.length === 0) return res.json({ total: 0, done: 0, inProgress: 0, todo: 0, highPriority: 0, overdue: 0, byChannel: {}, byPriority: { high: 0, medium: 0, low: 0 }, byEmployee: [], completionRate: 0 });
+    if (!tasks || tasks.length === 0) return res.json({ total: 0, done: 0, inProgress: 0, todo: 0, highPriority: 0, overdue: 0, byPriority: { high: 0, medium: 0, low: 0 }, byEmployee: [], completionRate: 0 });
     const total = tasks.length, done = tasks.filter(t => t.status === 'done').length;
     const inProgress = tasks.filter(t => t.status === 'in_progress').length, todo = tasks.filter(t => t.status === 'todo').length;
     const highPriority = tasks.filter(t => t.priority === 'high' && t.status !== 'done').length;
     const today = new Date().toISOString().split('T')[0];
     const overdue = tasks.filter(t => t.due_date < today && t.status !== 'done').length;
-    const byChannel = {}, byPriority = { high: 0, medium: 0, low: 0 };
-    tasks.forEach(t => {
-      if (!byChannel[t.channel_name]) byChannel[t.channel_name] = { todo: 0, in_progress: 0, done: 0, total: 0 };
-      byChannel[t.channel_name][t.status]++; byChannel[t.channel_name].total++;
-      if (byPriority[t.priority] !== undefined) byPriority[t.priority]++;
-    });
+    const byPriority = { high: 0, medium: 0, low: 0 };
+    tasks.forEach(t => { if (byPriority[t.priority] !== undefined) byPriority[t.priority]++; });
     // Per-employee performance: total/done counted for every assignee of each task
     // (multi-assignee aware; matches internal id or legacy slack_user_id)
     const { data: emps } = await supabase.from('employees').select('id,name,slack_user_id,avatar_url');
@@ -208,8 +204,142 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
       });
       return { id: e.id, name: e.name, avatar_url: e.avatar_url || '', total: empTotal, done: empDone };
     }).filter(e => e.total > 0).sort((a, b) => b.done - a.done || b.total - a.total);
-    res.json({ total, done, inProgress, todo, highPriority, overdue, byChannel, byPriority, byEmployee, completionRate: Math.round((done / total) * 100) });
+    res.json({ total, done, inProgress, todo, highPriority, overdue, byPriority, byEmployee, completionRate: Math.round((done / total) * 100) });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Sales & revenue analytics (read-only aggregation over deals/quotations/hours) ───
+const DEFAULT_STAGE_PROB = { lead: 10, contacted: 25, quoted: 50, negotiating: 75, won: 100, lost: 0 };
+const DEAL_STAGES = ['lead', 'contacted', 'quoted', 'negotiating', 'won', 'lost'];
+
+// Parse ?from&to (YYYY-MM-DD) into an inclusive [startISO, endISO] window; defaults to last 90 days.
+function reportRange(q) {
+  const to = q.to ? new Date(q.to + 'T23:59:59.999Z') : new Date();
+  const from = q.from ? new Date(q.from + 'T00:00:00.000Z') : new Date(to.getTime() - 90 * 86400000);
+  return { fromISO: from.toISOString(), toISO: to.toISOString() };
+}
+
+async function buildSalesReport(q) {
+  const { fromISO, toISO } = reportRange(q);
+  const sourceFilter = q.source ? String(q.source) : '';
+  // Stage probabilities (weighted pipeline)
+  let prob = { ...DEFAULT_STAGE_PROB };
+  try {
+    const { data: row } = await supabase.from('quotation_settings').select('value').eq('key', 'stage_probabilities').single();
+    if (row?.value) prob = { ...prob, ...JSON.parse(row.value) };
+  } catch (_) {}
+  // Deals joined to their lead's source (for by-source conversion)
+  const { data: deals } = await supabase.from('deals').select('id,stage,budget_egp,assigned_to,closed_at,created_at,customer_id,customers(source)');
+  const inRange = (iso) => iso && iso >= fromISO && iso <= toISO;
+  const rows = (deals || []).filter(d => {
+    if (sourceFilter && (d.customers?.source || '') !== sourceFilter) return false;
+    // A deal counts for the window if it was created in it, or closed in it.
+    return inRange(d.created_at) || inRange(d.closed_at);
+  });
+  const num = (v) => Number(v) || 0;
+  const pipelineByStage = DEAL_STAGES.map(stage => {
+    const ds = rows.filter(d => d.stage === stage);
+    return { stage, count: ds.length, value: ds.reduce((s, d) => s + num(d.budget_egp), 0) };
+  });
+  const openStages = ['lead', 'contacted', 'quoted', 'negotiating'];
+  const totalPipeline = pipelineByStage.filter(p => openStages.includes(p.stage)).reduce((s, p) => s + p.value, 0);
+  const weightedPipeline = rows.filter(d => openStages.includes(d.stage))
+    .reduce((s, d) => s + num(d.budget_egp) * (num(prob[d.stage]) / 100), 0);
+  const wonRows = rows.filter(d => d.stage === 'won');
+  const lostCount = rows.filter(d => d.stage === 'lost').length;
+  const revenueWon = wonRows.reduce((s, d) => s + num(d.budget_egp), 0);
+  const winRate = (wonRows.length + lostCount) ? Math.round((wonRows.length / (wonRows.length + lostCount)) * 100) : 0;
+  // Funnel: cumulative reach of each stage (a won deal also passed through lead/contacted/…)
+  const order = ['lead', 'contacted', 'quoted', 'negotiating', 'won'];
+  const idx = (st) => order.indexOf(st);
+  const funnel = order.map(stage => ({
+    stage,
+    count: rows.filter(d => d.stage !== 'lost' && idx(d.stage) >= idx(stage)).length,
+  }));
+  // Revenue won by month (from closed_at)
+  const byMonth = {};
+  wonRows.forEach(d => { if (d.closed_at) { const m = d.closed_at.slice(0, 7); byMonth[m] = (byMonth[m] || 0) + num(d.budget_egp); } });
+  const revenueByMonth = Object.keys(byMonth).sort().map(m => ({ month: m, value: byMonth[m] }));
+  // Conversion by source
+  const srcMap = {};
+  rows.forEach(d => {
+    const s = d.customers?.source || '(unknown)';
+    if (!srcMap[s]) srcMap[s] = { source: s, deals: 0, won: 0, value: 0 };
+    srcMap[s].deals++;
+    if (d.stage === 'won') { srcMap[s].won++; srcMap[s].value += num(d.budget_egp); }
+  });
+  const bySource = Object.values(srcMap).sort((a, b) => b.deals - a.deals);
+  // Rep leaderboard (won count + value by assigned_to)
+  const { data: emps } = await supabase.from('employees').select('id,name');
+  const empName = (id) => (emps || []).find(e => String(e.id) === String(id))?.name || (id ? '#' + id : 'Unassigned');
+  const repMap = {};
+  rows.forEach(d => {
+    const key = d.assigned_to || '';
+    if (!repMap[key]) repMap[key] = { rep: empName(key), deals: 0, won: 0, value: 0 };
+    repMap[key].deals++;
+    if (d.stage === 'won') { repMap[key].won++; repMap[key].value += num(d.budget_egp); }
+  });
+  const byRep = Object.values(repMap).sort((a, b) => b.value - a.value);
+  // Quotations generated in range
+  const { count: quotesCount } = await supabase.from('quotations').select('id', { count: 'exact', head: true }).gte('created_at', fromISO).lte('created_at', toISO);
+  // Hours logged by employee in range
+  const { data: hours } = await supabase.from('hours_logs').select('employee_id,hours,log_date').gte('log_date', fromISO.slice(0, 10)).lte('log_date', toISO.slice(0, 10));
+  const hoursMap = {};
+  (hours || []).forEach(h => { const k = h.employee_id || ''; hoursMap[k] = (hoursMap[k] || 0) + num(h.hours); });
+  const hoursByEmployee = Object.keys(hoursMap).map(k => ({ employee: empName(k), hours: Math.round(hoursMap[k] * 10) / 10 })).sort((a, b) => b.hours - a.hours);
+  const wonCount = wonRows.length;
+  return {
+    range: { from: fromISO.slice(0, 10), to: toISO.slice(0, 10) }, source: sourceFilter,
+    pipelineByStage, totalPipeline, weightedPipeline: Math.round(weightedPipeline),
+    winRate, revenueWon, wonCount, avgDeal: wonCount ? Math.round(revenueWon / wonCount) : 0,
+    funnel, revenueByMonth, bySource, byRep, quotesCount: quotesCount || 0, hoursByEmployee, stageProb: prob,
+  };
+}
+
+receiver.router.get('/api/dashboard/reports/summary', requireAuth, async (req, res) => {
+  try { res.json(await buildSalesReport(req.query)); }
+  catch (e) { console.error('[reports]', e); res.status(500).json({ error: e.message }); }
+});
+
+// Serialize an array of flat objects to RFC-4180 CSV.
+function csvSerialize(rows, columns) {
+  const cols = columns || (rows.length ? Object.keys(rows[0]) : []);
+  const esc = (v) => {
+    const s = v == null ? '' : String(v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [cols.map(esc).join(',')];
+  for (const r of rows) lines.push(cols.map(c => esc(r[c])).join(','));
+  return lines.join('\r\n');
+}
+
+receiver.router.get('/api/dashboard/reports/export.csv', requireAuth, async (req, res) => {
+  try {
+    const rep = await buildSalesReport(req.query);
+    const which = String(req.query.report || 'pipeline');
+    let rows = [], cols = null, fname = which;
+    if (which === 'pipeline') { rows = rep.pipelineByStage; cols = ['stage', 'count', 'value']; }
+    else if (which === 'by_source') { rows = rep.bySource; cols = ['source', 'deals', 'won', 'value']; }
+    else if (which === 'by_rep') { rows = rep.byRep; cols = ['rep', 'deals', 'won', 'value']; }
+    else if (which === 'revenue_by_month') { rows = rep.revenueByMonth; cols = ['month', 'value']; }
+    else if (which === 'hours') { rows = rep.hoursByEmployee; cols = ['employee', 'hours']; }
+    else if (which === 'summary') {
+      rows = [
+        { metric: 'Date range', value: `${rep.range.from} → ${rep.range.to}` },
+        { metric: 'Open pipeline (EGP)', value: rep.totalPipeline },
+        { metric: 'Weighted pipeline (EGP)', value: rep.weightedPipeline },
+        { metric: 'Win rate (%)', value: rep.winRate },
+        { metric: 'Revenue won (EGP)', value: rep.revenueWon },
+        { metric: 'Deals won', value: rep.wonCount },
+        { metric: 'Avg deal (EGP)', value: rep.avgDeal },
+        { metric: 'Quotes generated', value: rep.quotesCount },
+      ];
+      cols = ['metric', 'value'];
+    } else { return res.status(400).json({ error: 'Unknown report' }); }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="motolinker-${fname}-${rep.range.from}_${rep.range.to}.csv"`);
+    res.send(csvSerialize(rows, cols));
+  } catch (e) { console.error('[reports-csv]', e); res.status(500).json({ error: e.message }); }
 });
 
 
