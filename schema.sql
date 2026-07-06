@@ -474,6 +474,19 @@ ALTER TABLE IF EXISTS public.lead_followups ENABLE ROW LEVEL SECURITY;
 -- Quotations belong to a lead (customer_id also in the CREATE for fresh installs)
 ALTER TABLE quotations ADD COLUMN IF NOT EXISTS customer_id BIGINT DEFAULT NULL;
 
+-- Requests: assign to a specific employee + threaded comments
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS assignee_id BIGINT;
+CREATE TABLE IF NOT EXISTS request_comments (
+  id BIGSERIAL PRIMARY KEY,
+  request_id BIGINT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+  author_key TEXT NOT NULL,            -- 'admin' or 'employee_<id>'
+  author_name TEXT DEFAULT '',
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_request_comments ON request_comments(request_id, created_at);
+ALTER TABLE IF EXISTS public.request_comments ENABLE ROW LEVEL SECURITY;
+
 -- Notification setting for deal-contacted alert
 INSERT INTO quotation_settings (key, value) VALUES ('contact_notify_employee_id', '')
   ON CONFLICT (key) DO NOTHING;
