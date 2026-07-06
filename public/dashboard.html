@@ -1715,6 +1715,9 @@
               <option value="messenger">Messenger</option>
               <option value="direct_call">Direct Call</option>
               <option value="ig_ads">IG ads</option>
+              <option value="website">Website</option>
+              <option value="walk_in">Walk-in</option>
+              <option value="marketplace">Marketplace</option>
             </select>
           </div>
         </div>
@@ -1745,6 +1748,14 @@
               <input type="checkbox" id="cm-been-contacted" style="width:16px;height:16px;accent-color:var(--gold)">
               <label for="cm-been-contacted" style="font-size:13px;cursor:pointer">Yes, contacted</label>
             </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label class="form-label">Owner (sales rep)</label>
+            <select class="form-input" id="cm-owner">
+              <option value="">— Unassigned —</option>
+            </select>
           </div>
         </div>
         <div>
@@ -4180,6 +4191,7 @@ async function loadSubmissions() {
         <table style="width:100%;border-collapse:collapse">
           <thead><tr style="background:#f7fafc">
             <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Name</th>
+            <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Lead</th>
             <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Email</th>
             <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Phone</th>
             <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Car Interest</th>
@@ -4190,6 +4202,7 @@ async function loadSubmissions() {
           <tbody>${data.map(s => `
             <tr style="border-bottom:1px solid var(--border)">
               <td style="padding:12px 16px;font-size:13px;font-weight:600">${esc(s.name)}</td>
+              <td style="padding:12px 16px;font-size:12px">${s.customer_id ? `<span onclick="openLeadProfile(${s.customer_id})" title="Open lead profile" style="cursor:pointer;color:var(--primary);background:rgba(230,150,80,.12);padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap">→ ${esc(s.lead_name || 'lead')}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
               <td style="padding:12px 16px;font-size:13px"><a href="mailto:${esc(s.email)}" style="color:var(--primary)">${esc(s.email)}</a></td>
               <td style="padding:12px 16px;font-size:13px;color:var(--muted)">${esc(s.phone || '—')}</td>
               <td style="padding:12px 16px;font-size:13px">${esc(s.car_interest || '—')}</td>
@@ -4862,7 +4875,8 @@ const LEAD_DEFAULT_COLS = [
     { key:'immediate_delivery', label:'Immediate Delivery' }, { key:'not_interested', label:'Not Interested' }, { key:'blacklist', label:'Blacklist' }] },
   { key:'source',          label:'Origin',      type:'select',   builtin:true, visible:true, options:[
     { key:'fb_ad', label:'FB Ad.' }, { key:'whatsapp', label:'Whatsapp' }, { key:'messenger', label:'Messenger' },
-    { key:'direct_call', label:'Direct Call' }, { key:'ig_ads', label:'IG ads' }] },
+    { key:'direct_call', label:'Direct Call' }, { key:'ig_ads', label:'IG ads' },
+    { key:'website', label:'Website' }, { key:'walk_in', label:'Walk-in' }, { key:'marketplace', label:'Marketplace' }] },
   { key:'car_in_question', label:'Car',         type:'text',     builtin:true, visible:true },
   { key:'budget_lead',     label:'Budget',      type:'number',   builtin:true, visible:true },
   { key:'next_action',     label:'Next Action', type:'select',   builtin:true, visible:true, options:[
@@ -4873,6 +4887,7 @@ const LEAD_DEFAULT_COLS = [
   { key:'sales_feedback',  label:'Sales Feedback', type:'text',  builtin:true, visible:true },
   { key:'inquiry',         label:'Inquiry',     type:'text',     builtin:true, visible:true },
   { key:'next_followup',   label:'Follow-up',   type:'virtual',  builtin:true, visible:true },
+  { key:'owner',           label:'Owner',       type:'virtual',  builtin:true, visible:true },
 ];
 let _leadCols = null;
 let _leadColsLoaded = false;
@@ -5150,6 +5165,14 @@ function leadCellClick(e, id, key) {
   if (!col || !c) return;
   // Name + follow-up cells open the Lead 360° profile instead of inline editing
   if (col.key === 'name' || col.key === 'next_followup') return openLeadProfile(id);
+  // Owner cell → floating rep picker (reassign the lead)
+  if (col.key === 'owner') {
+    const cur = c.assigned_to ? String(c.assigned_to) : '';
+    brandMenu(e.currentTarget, [{ key: '', label: '— Unassigned —', selected: !cur },
+      ...(employeesForTasks || []).map(emp => ({ key: String(emp.id), label: emp.name, selected: cur === String(emp.id) }))],
+      val => saveLeadOwner(id, val));
+    return;
+  }
   const raw = col.builtin ? c[key] : (c.custom_fields || {})[key];
   if (col.type === 'checkbox') return saveLeadCell(id, col, !raw);
   const td = e.currentTarget;
@@ -5184,6 +5207,16 @@ function leadCellClick(e, id, key) {
     else if (ev.key === 'Escape') finish(false);
   });
   el.addEventListener('blur', () => finish(true));
+}
+
+async function saveLeadOwner(id, val) {
+  try {
+    const updated = await apiFetch(`/api/dashboard/customers/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ assigned_to: val ? parseInt(val) : null }) }).then(r => r.json());
+    if (updated?.error) throw new Error(updated.error);
+    const i = _allCustomers.findIndex(x => x.id === id);
+    if (i >= 0) _allCustomers[i] = updated;
+  } catch (e) { alert('Save failed: ' + e.message); }
+  filterCustomers();
 }
 
 async function saveLeadCell(id, col, val) {
@@ -5224,6 +5257,10 @@ function leadCellHtml(c, col) {
     const label = new Date(due).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     return `<td ${attrs} style="font-size:11.5px;white-space:nowrap;color:${overdue ? 'var(--danger)' : 'var(--primary)'};font-weight:600">⏰ ${label}${overdue ? ' · overdue' : ''}</td>`;
   }
+  if (col.key === 'owner') {
+    const nm = c.assigned_to ? ((employeesForTasks || []).find(x => String(x.id) === String(c.assigned_to))?.name || ('#' + c.assigned_to)) : '';
+    return `<td ${attrs} style="font-size:12px;white-space:nowrap" title="Click to assign">${nm ? esc(nm) : '<span style="color:var(--muted)">—</span>'}</td>`;
+  }
   if (col.key === 'lead_status') {
     const m = colOptMap(col);
     const k = normKey(raw || 'cold', m);
@@ -5250,6 +5287,7 @@ async function loadCustomers() {
     const [customers, followups] = await Promise.all([
       apiFetch('/api/dashboard/customers').then(r => r.json()),
       apiFetch('/api/dashboard/followups/pending').then(r => r.json()).catch(() => []),
+      preloadEmployeesForTasks(),
     ]);
     _allCustomers = customers;
     _pendingFollowups = {};
@@ -5647,6 +5685,13 @@ function openCustomerModal(id) {
   document.getElementById('cm-car').value = c?.car_in_question || '';
   document.getElementById('cm-budget').value = c?.budget_lead || '';
   document.getElementById('cm-been-contacted').checked = c?.been_contacted || false;
+  // Owner (sales rep) picker
+  const ownerSel = document.getElementById('cm-owner');
+  if (ownerSel) {
+    ownerSel.innerHTML = '<option value="">— Unassigned —</option>' +
+      (employeesForTasks || []).map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+    ownerSel.value = c?.assigned_to ? String(c.assigned_to) : '';
+  }
   document.getElementById('cm-notes').value = c?.notes || '';
   document.getElementById('cm-sales-feedback').value = c?.sales_feedback || '';
   document.getElementById('cm-inquiry').value = c?.inquiry || '';
@@ -5696,6 +5741,7 @@ async function saveCustomer() {
     notes:          document.getElementById('cm-notes').value.trim(),
     sales_feedback: document.getElementById('cm-sales-feedback').value.trim(),
     inquiry:        document.getElementById('cm-inquiry').value.trim(),
+    assigned_to:    document.getElementById('cm-owner')?.value ? parseInt(document.getElementById('cm-owner').value) : null,
   };
   const customCols = (_leadCols || []).filter(x => !x.builtin);
   if (customCols.length) {
@@ -5714,7 +5760,15 @@ async function saveCustomer() {
   try {
     const url = id ? `/api/dashboard/customers/${id}` : '/api/dashboard/customers';
     const method = id ? 'PUT' : 'POST';
-    await apiFetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    let r = await apiFetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    // Duplicate phone on create → let the admin open the existing lead or create anyway.
+    if (r.status === 409) {
+      const { existing } = await r.json();
+      const openIt = confirm(`A lead with this phone already exists: "${existing?.name || 'Unknown'}".\n\nOK = open the existing lead · Cancel = create a new one anyway.`);
+      if (openIt) { closeCustomerModal(); if (existing?.id && typeof openLeadProfile === 'function') openLeadProfile(existing.id); return; }
+      r = await apiFetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...payload, force: true }) });
+    }
+    if (!r.ok) { const err = await r.json().catch(() => ({})); alert('Error: ' + (err.error || r.status)); return; }
     closeCustomerModal();
     await loadCustomers();
   } catch (e) { alert('Error: ' + e.message); }

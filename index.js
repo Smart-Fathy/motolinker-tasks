@@ -93,11 +93,6 @@ async function saveGoogleToken(userKey, tokens) {
   } catch (e) { console.warn('[tokens] Could not save to DB:', e.message); }
 }
 
-// ─── Form Submissions (in-memory) ────────────────────────────────────────────
-let submissions = []; // { id, name, email, phone, message, car_interest, submitted_at }
-let submissionIdSeq = 1;
-
-
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
 function hashPassword(password) {
@@ -1248,10 +1243,16 @@ receiver.router.get('/api/dashboard/customers', requireAuth, async (req, res) =>
 });
 
 receiver.router.post('/api/dashboard/customers', requireAuth, express.json(), async (req, res) => {
-  const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, next_action, been_contacted, sales_feedback, inquiry, custom_fields } = req.body;
+  const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, next_action, been_contacted, sales_feedback, inquiry, custom_fields, assigned_to, force } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
+  const phone_norm = normalizePhone(phone);
+  // Duplicate guard: a matching normalized phone -> 409 with the existing lead (unless the caller forces).
+  if (phone_norm && !force) {
+    const { data: dup } = await supabase.from('customers').select('id,name,phone,lead_status').eq('phone_norm', phone_norm).limit(1);
+    if (dup && dup.length) return res.status(409).json({ duplicate: true, existing: dup[0] });
+  }
   const { data, error } = await supabase.from('customers')
-    .insert({ name, phone: phone||'', email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', ...(custom_fields && Object.keys(custom_fields).length ? { custom_fields } : {}), created_by: 'dashboard' })
+    .insert({ name, phone: phone||'', phone_norm, email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', assigned_to: assigned_to||null, ...(custom_fields && Object.keys(custom_fields).length ? { custom_fields } : {}), created_by: 'dashboard' })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   logLeadActivity(data.id, { type: 'system', body: `Lead created${data.source ? ' · ' + data.source : ''}`, authorKey: 'admin', authorName: 'Admin' });
@@ -1303,6 +1304,17 @@ function normalizeLeadDate(raw) {
   return null;
 }
 
+// Canonicalize a phone number for duplicate detection (Egypt-aware): digits only,
+// drop 0020 / leading 20 country code -> local 01XXXXXXXXX form.
+function normalizePhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('0020')) d = d.slice(4);
+  else if (d.startsWith('20') && d.length === 12) d = '0' + d.slice(2);
+  if (d.length === 10 && d.startsWith('1')) d = '0' + d;
+  return d;
+}
+
 receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.single('file'), express.json(), async (req, res) => {
   try {
     let csvText = '';
@@ -1320,23 +1332,42 @@ receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.s
     const lines = csvText.split('\n').map(l => l.trim()).filter(l => l);
     if (lines.length < 2) return res.status(400).json({ error: 'Need header row + at least one data row' });
     const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, '').replace(/ /g, '_'));
-    const toInsert = lines.slice(1).map(line => {
+    const rows = lines.slice(1).map(line => {
       const vals = parseCsvLine(line);
       const r = {};
       headers.forEach((h, i) => { r[h] = (vals[i] || '').trim().replace(/^"|"$/g, ''); });
       return r;
-    }).filter(r => r.name).map(r => ({
-      name: r.name, phone: r.phone||'', email: r.email||'', source: r.origin||r.source||'',
-      notes: r.notes||'', lead_date: normalizeLeadDate(r.date), lead_time: r.time||'',
-      lead_status: r.status||'cold', car_in_question: r.car||r.car_in_question||'',
-      budget_lead: r.budget ? (parseInt(String(r.budget).replace(/[^0-9]/g, ''), 10) || null) : null,
-      next_action: r.next_action||'', been_contacted: /^(true|1|yes|y)$/i.test((r.been_contacted||'').trim()),
-      sales_feedback: r.sales_feedback||'', inquiry: r.inquiry||'', created_by: 'csv_import',
-    }));
-    if (!toInsert.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
-    const { error } = await supabase.from('customers').insert(toInsert);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ count: toInsert.length });
+    }).filter(r => r.name).map(r => {
+      const phone = r.phone||'';
+      return {
+        name: r.name, phone, phone_norm: normalizePhone(phone), email: r.email||'', source: r.origin||r.source||'',
+        notes: r.notes||'', lead_date: normalizeLeadDate(r.date), lead_time: r.time||'',
+        lead_status: r.status||'cold', car_in_question: r.car||r.car_in_question||'',
+        budget_lead: r.budget ? (parseInt(String(r.budget).replace(/[^0-9]/g, ''), 10) || null) : null,
+        next_action: r.next_action||'', been_contacted: /^(true|1|yes|y)$/i.test((r.been_contacted||'').trim()),
+        sales_feedback: r.sales_feedback||'', inquiry: r.inquiry||'', created_by: 'csv_import',
+      };
+    });
+    if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
+    // Dedup: skip rows whose normalized phone already exists in the DB OR repeats within this file.
+    const norms = [...new Set(rows.map(r => r.phone_norm).filter(Boolean))];
+    const existing = new Set();
+    for (let i = 0; i < norms.length; i += 200) {
+      const { data: ex } = await supabase.from('customers').select('phone_norm').in('phone_norm', norms.slice(i, i + 200));
+      (ex || []).forEach(e => existing.add(e.phone_norm));
+    }
+    const seen = new Set();
+    const skippedNames = [];
+    const toInsert = rows.filter(r => {
+      if (r.phone_norm && (existing.has(r.phone_norm) || seen.has(r.phone_norm))) { skippedNames.push(r.name); return false; }
+      if (r.phone_norm) seen.add(r.phone_norm);
+      return true;
+    });
+    if (toInsert.length) {
+      const { error } = await supabase.from('customers').insert(toInsert);
+      if (error) return res.status(500).json({ error: error.message });
+    }
+    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50) });
   } catch (e) { console.error('[csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 
@@ -1350,8 +1381,11 @@ async function logLeadActivity(customerId, { type = 'note', body = '', meta = {}
 
 receiver.router.put('/api/dashboard/customers/:id', requireAuth, express.json(), async (req, res) => {
   const { data: prev } = await supabase.from('customers').select('lead_status,been_contacted').eq('id', req.params.id).single();
+  const patch = { ...req.body, updated_at: new Date().toISOString() };
+  delete patch.force;
+  if (Object.prototype.hasOwnProperty.call(patch, 'phone')) patch.phone_norm = normalizePhone(patch.phone);
   const { data, error } = await supabase.from('customers')
-    .update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
+    .update(patch).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
   // Timeline: status change + contacted flip
   if (prev && data.lead_status !== prev.lead_status) {
@@ -2596,37 +2630,73 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
 );
 
 // ─── Form Submissions ─────────────────────────────────────────────────────────
-// Public endpoint — no auth required (customers submit from the website)
+// Public endpoint — no auth required (customers submit from the website).
+// Every submission is persisted AND turned into a lead (deduped on normalized phone),
+// so inbound inquiries land in the CRM instead of vanishing.
 receiver.router.post('/api/submissions', express.json(), async (req, res) => {
-  const { name, email, phone, message, car_interest } = req.body || {};
-  if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
-
-  const sub = {
-    id: submissionIdSeq++,
-    name: String(name).trim(),
-    email: String(email).trim(),
-    phone: phone ? String(phone).trim() : '',
-    message: message ? String(message).trim() : '',
-    car_interest: car_interest ? String(car_interest).trim() : '',
-    submitted_at: new Date().toISOString(),
-  };
-  submissions.unshift(sub);
-
-
-  res.json({ ok: true, id: sub.id });
+  const { name, email, phone, message, car_interest, source } = req.body || {};
+  if (!name || (!email && !phone)) return res.status(400).json({ error: 'Name and a phone or email are required' });
+  const cleanName = String(name).trim();
+  const cleanEmail = email ? String(email).trim() : '';
+  const cleanPhone = phone ? String(phone).trim() : '';
+  const cleanMsg = message ? String(message).trim() : '';
+  const cleanCar = car_interest ? String(car_interest).trim() : '';
+  const src = (source ? String(source).trim() : '') || 'website';
+  const phone_norm = normalizePhone(cleanPhone);
+  try {
+    let customerId = null, isNew = false;
+    if (phone_norm) {
+      const { data: existing } = await supabase.from('customers').select('id').eq('phone_norm', phone_norm).limit(1);
+      if (existing && existing.length) customerId = existing[0].id;
+    }
+    if (customerId) {
+      // Known lead re-inquired — fill any blanks, then log it to the timeline (no duplicate lead).
+      const patch = {};
+      if (cleanEmail) patch.email = cleanEmail;
+      if (cleanCar) patch.car_in_question = cleanCar;
+      if (Object.keys(patch).length) await supabase.from('customers').update(patch).eq('id', customerId);
+      logLeadActivity(customerId, { type: 'system', body: `Re-inquiry via ${src}${cleanMsg ? ' — ' + cleanMsg : ''}`, meta: { source: src }, authorKey: 'system', authorName: 'System' });
+    } else {
+      const { data: lead } = await supabase.from('customers').insert({
+        name: cleanName, phone: cleanPhone, phone_norm, email: cleanEmail,
+        source: src, lead_status: 'warm', car_in_question: cleanCar,
+        inquiry: cleanMsg, notes: cleanMsg, created_by: 'web_form',
+      }).select().single();
+      if (lead) {
+        customerId = lead.id; isNew = true;
+        logLeadActivity(customerId, { type: 'system', body: `Lead created · ${src}`, meta: { source: src }, authorKey: 'system', authorName: 'System' });
+      }
+    }
+    // Persist the raw submission (audit trail), linked to the lead it created/matched.
+    const { data: sub } = await supabase.from('form_submissions').insert({
+      name: cleanName, email: cleanEmail, phone: cleanPhone, message: cleanMsg,
+      car_interest: cleanCar, source: src, customer_id: customerId,
+    }).select().single();
+    createNotification('admin', {
+      type: 'lead',
+      title: isNew ? `New website lead: ${cleanName}` : `Re-inquiry: ${cleanName}`,
+      body: [cleanPhone && `Phone: ${cleanPhone}`, cleanCar && `Interest: ${cleanCar}`, cleanMsg].filter(Boolean).join(' · ') || 'New website submission',
+      url: customerId ? '/dashboard#customers' : '/dashboard#submissions',
+    }, 'always').catch(() => {});
+    res.json({ ok: true, id: sub?.id, customer_id: customerId, lead_created: isNew });
+  } catch (e) {
+    console.error('[submissions]', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// Admin — list all submissions
-receiver.router.get('/api/submissions', requireAuth, (_req, res) => {
-  res.json(submissions);
+// Admin — list all submissions (with the linked lead name)
+receiver.router.get('/api/submissions', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('form_submissions')
+    .select('*, customers(name)').order('created_at', { ascending: false }).limit(200);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json((data || []).map(s => ({ ...s, submitted_at: s.created_at, lead_name: s.customers?.name || '' })));
 });
 
 // Admin — delete a submission
-receiver.router.delete('/api/submissions/:id', requireAuth, (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const idx = submissions.findIndex(s => s.id === id);
-  if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  submissions.splice(idx, 1);
+receiver.router.delete('/api/submissions/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('form_submissions').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
 
