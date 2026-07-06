@@ -1390,6 +1390,7 @@ receiver.router.post('/api/dashboard/customers', requireAuth, express.json(), as
   if (data.lead_status === 'hot') {
     supabase.from('deals').insert({ customer_id: data.id, title: `${data.name}${data.car_in_question ? ' — ' + data.car_in_question : ''}`, stage: 'lead', car_model: data.car_in_question||'', budget_egp: data.budget_lead||null, notes: 'Auto-created from Hot lead', created_by: 'system' }).then(()=>{}).catch(()=>{});
   }
+  runAutomations('lead.created', leadCtx(data));
   res.json(data);
 });
 
@@ -1535,6 +1536,8 @@ receiver.router.put('/api/dashboard/customers/:id', requireAuth, express.json(),
       }
     } catch (e) { console.warn('[leads] Auto-deal failed:', e.message); }
   }
+  if (prev && data.lead_status !== prev.lead_status) runAutomations('lead.status_changed', { ...leadCtx(data), from: prev.lead_status, to: data.lead_status });
+  if (prev && !prev.been_contacted && data.been_contacted) runAutomations('lead.contacted', leadCtx(data));
   res.json(data);
 });
 
@@ -1643,6 +1646,7 @@ receiver.router.post('/api/dashboard/deals', requireAuth, express.json(), async 
     .select('*, customers(name,phone,email)').single();
   if (error) return res.status(500).json({ error: error.message });
   logLeadActivity(customer_id, { type: 'deal', body: `Deal created — ${title}`, authorKey: 'admin', authorName: 'Admin' });
+  runAutomations('deal.created', dealCtx(data));
   res.json(data);
 });
 
@@ -1673,6 +1677,7 @@ receiver.router.put('/api/dashboard/deals/:id', requireAuth, express.json(), asy
     const stageLabels = { lead: 'Lead', contacted: 'Contacted', quoted: 'Quoted', negotiating: 'Negotiating', won: 'Won', lost: 'Lost' };
     logLeadActivity(data.customer_id, { type: 'deal', body: `Deal moved to ${stageLabels[updates.stage] || updates.stage} — ${data.title}`, meta: { from: prev?.stage, to: updates.stage }, authorKey: 'admin', authorName: 'Admin' });
   }
+  if (updates.stage && prev?.stage !== updates.stage) runAutomations('deal.stage_changed', { ...dealCtx(data), from: prev?.stage, to: updates.stage });
   res.json(data);
 });
 
@@ -1680,6 +1685,196 @@ receiver.router.delete('/api/dashboard/deals/:id', requireAuth, async (req, res)
   const { error } = await supabase.from('deals').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
+});
+
+// ─── No-code automation engine ──────────────────────────────────────────────────
+// Config-driven trigger -> conditions -> actions rules (automation_rules table),
+// fired best-effort from the lead/deal/quote mutation seams and an hourly sweep.
+// Never throws into a request path.
+function leadCtx(c) {
+  return {
+    entityType: 'lead', entityId: c.id, customerId: c.id, ownerId: c.assigned_to || null,
+    fields: { name: c.name, phone: c.phone, source: c.source, lead_status: c.lead_status,
+      car_in_question: c.car_in_question, budget_lead: c.budget_lead, been_contacted: c.been_contacted, assigned_to: c.assigned_to },
+  };
+}
+function dealCtx(d) {
+  return {
+    entityType: 'deal', entityId: d.id, customerId: d.customer_id || null, ownerId: d.assigned_to || null,
+    fields: { title: d.title, stage: d.stage, car_model: d.car_model, budget_egp: d.budget_egp,
+      assigned_to: d.assigned_to, name: d.customers?.name, phone: d.customers?.phone, car_in_question: d.customers?.car_in_question, budget_lead: d.customers?.budget_lead },
+  };
+}
+function autoTmpl(str, ctx) {
+  const f = ctx.fields || {};
+  return String(str || '').replace(/\{\{(\w+)\}\}/g, (_, k) => (f[k] != null ? String(f[k]) : ''));
+}
+function autoTarget(a, ctx) {
+  const to = a.to || 'admin';
+  if (to === 'owner') return ctx.ownerId ? `employee_${ctx.ownerId}` : 'admin';
+  if (to === 'employee') return a.employee_id ? `employee_${a.employee_id}` : 'admin';
+  return 'admin';
+}
+function automationMatches(rule, ctx) {
+  const conds = Array.isArray(rule.conditions) ? rule.conditions : [];
+  const vals = { ...(ctx.fields || {}), from: ctx.from, to: ctx.to };
+  return conds.every(c => {
+    const cur = vals[c.field], v = c.value;
+    switch (c.op) {
+      case 'equals': return String(cur ?? '') === String(v ?? '');
+      case 'not_equals': return String(cur ?? '') !== String(v ?? '');
+      case 'contains': return String(cur ?? '').toLowerCase().includes(String(v ?? '').toLowerCase());
+      case 'changed_to': return String(ctx.to ?? '') === String(v ?? '');
+      case 'gt': return Number(cur) > Number(v);
+      case 'lt': return Number(cur) < Number(v);
+      case 'is_empty': return !cur;
+      case 'not_empty': return !!cur;
+      default: return true;
+    }
+  });
+}
+async function autoRoundRobin() {
+  const { data: emps } = await supabase.from('employees').select('id').order('id', { ascending: true });
+  if (!emps || !emps.length) return null;
+  let cursor = 0;
+  try { const { data } = await supabase.from('quotation_settings').select('value').eq('key', 'automation_rr_cursor').single(); cursor = parseInt(data?.value || '0', 10) || 0; } catch (_) {}
+  const pick = emps[cursor % emps.length].id;
+  await supabase.from('quotation_settings').upsert({ key: 'automation_rr_cursor', value: String((cursor + 1) % 1000000) }, { onConflict: 'key' }).then(() => {}).catch(() => {});
+  return pick;
+}
+async function runAutomationAction(a, ctx) {
+  switch (a.type) {
+    case 'notify': {
+      await createNotification(autoTarget(a, ctx), {
+        type: 'automation', title: autoTmpl(a.title, ctx) || 'Automation',
+        body: autoTmpl(a.body, ctx), url: ctx.entityType === 'deal' ? '/dashboard#deals' : '/dashboard#customers',
+      }, 'always');
+      break;
+    }
+    case 'create_followup': {
+      if (!ctx.customerId) break;
+      const days = Number(a.days) || 1;
+      const assigned = a.assign_to === 'owner' ? (ctx.ownerId || null) : a.assign_to === 'employee' ? (a.employee_id || null) : null;
+      await supabase.from('lead_followups').insert({ customer_id: ctx.customerId, due_at: new Date(Date.now() + days * 86400000).toISOString(), note: autoTmpl(a.note, ctx) || 'Automated follow-up', assigned_to: assigned, created_by: 'automation' });
+      logLeadActivity(ctx.customerId, { type: 'follow_up', body: `Follow-up scheduled by automation (in ${days}d)`, authorKey: 'system', authorName: 'Automation' });
+      break;
+    }
+    case 'create_task': {
+      const days = Number(a.due_days) || 1;
+      const aid = a.assignee_id ? String(a.assignee_id) : (a.assign_to === 'owner' && ctx.ownerId ? String(ctx.ownerId) : null);
+      const ins = { title: autoTmpl(a.title, ctx) || 'Automated task', priority: a.priority || 'medium', due_date: new Date(Date.now() + days * 86400000).toISOString().slice(0, 10), status: 'todo', created_by: 'automation', channel_id: '', channel_name: '' };
+      if (aid) { ins.assignee_id = aid; ins.assignee_ids = [aid]; }
+      const { data: t } = await supabase.from('tasks').insert(ins).select().single();
+      if (aid && t) { const mk = await memberKeyForAssignee(aid); if (mk) createNotification(mk, { type: 'task', title: 'New task assigned', body: t.title, url: '/employee#tasks' }, 'always'); }
+      break;
+    }
+    case 'create_deal': {
+      if (!ctx.customerId) break;
+      const { data: existing } = await supabase.from('deals').select('id').eq('customer_id', ctx.customerId).limit(1);
+      if (!existing?.length) {
+        await supabase.from('deals').insert({ customer_id: ctx.customerId, title: autoTmpl(a.title, ctx) || ctx.fields?.name || 'Deal', stage: a.stage || 'lead', car_model: ctx.fields?.car_in_question || '', budget_egp: ctx.fields?.budget_lead || null, notes: 'Created by automation', created_by: 'automation' });
+        logLeadActivity(ctx.customerId, { type: 'deal', body: 'Deal created by automation', authorKey: 'system', authorName: 'Automation' });
+      }
+      break;
+    }
+    case 'set_lead_status': {
+      if (!ctx.customerId || !a.status) break;
+      // Direct update (bypasses the PUT handler) so this never re-triggers automations.
+      await supabase.from('customers').update({ lead_status: a.status, updated_at: new Date().toISOString() }).eq('id', ctx.customerId);
+      logLeadActivity(ctx.customerId, { type: 'status_change', body: 'Status set by automation', meta: { to: a.status }, authorKey: 'system', authorName: 'Automation' });
+      break;
+    }
+    case 'assign_lead': {
+      if (!ctx.customerId) break;
+      const empId = a.mode === 'specific' ? (a.employee_id || null) : await autoRoundRobin();
+      if (empId) {
+        await supabase.from('customers').update({ assigned_to: empId, updated_at: new Date().toISOString() }).eq('id', ctx.customerId);
+        logLeadActivity(ctx.customerId, { type: 'system', body: 'Lead assigned by automation', authorKey: 'system', authorName: 'Automation' });
+        createNotification(`employee_${empId}`, { type: 'lead', title: 'Lead assigned to you', body: autoTmpl('{{name}} — {{phone}}', ctx), url: '/employee#leads' }, 'always');
+      }
+      break;
+    }
+  }
+}
+async function runAutomationActions(rule, ctx, eventName) {
+  const actions = Array.isArray(rule.actions) ? rule.actions : [];
+  const done = [];
+  for (const a of actions) { await runAutomationAction(a, ctx); done.push(a.type); }
+  await supabase.from('automation_runs').insert({ rule_id: rule.id, event: eventName, entity_type: ctx.entityType, entity_id: ctx.entityId, status: 'ok', detail: done.join(',') }).then(() => {}).catch(() => {});
+}
+async function runAutomations(eventName, ctx) {
+  try {
+    const { data: rules } = await supabase.from('automation_rules').select('*').eq('enabled', true).eq('trigger_type', eventName);
+    for (const rule of rules || []) {
+      try {
+        if (!automationMatches(rule, ctx)) continue;
+        await runAutomationActions(rule, ctx, eventName);
+      } catch (e) {
+        console.warn('[automations] rule', rule.id, 'failed:', e.message);
+        await supabase.from('automation_runs').insert({ rule_id: rule.id, event: eventName, entity_type: ctx.entityType, entity_id: ctx.entityId, status: 'error', detail: e.message }).then(() => {}).catch(() => {});
+      }
+    }
+  } catch (e) { console.warn('[automations] run failed:', e.message); }
+}
+// Scheduled trigger: leads with no activity for N days (once per lead per window).
+async function runNoActivitySweep() {
+  try {
+    const { data: rules } = await supabase.from('automation_rules').select('*').eq('enabled', true).eq('trigger_type', 'no_activity_days');
+    if (!rules || !rules.length) return;
+    const { data: leadsAll } = await supabase.from('customers').select('id,name,phone,source,lead_status,assigned_to,car_in_question,budget_lead').limit(1000);
+    const leads = (leadsAll || []).filter(c => !['blacklist', 'not_interested'].includes(c.lead_status));
+    for (const rule of rules) {
+      const days = Number(rule.trigger_config?.days) || 3;
+      const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+      for (const c of leads) {
+        const { data: la } = await supabase.from('lead_activities').select('created_at').eq('customer_id', c.id).order('created_at', { ascending: false }).limit(1);
+        if (la?.[0]?.created_at && la[0].created_at > cutoff) continue;       // recent activity → skip
+        const { data: fired } = await supabase.from('automation_runs').select('id').eq('rule_id', rule.id).eq('entity_id', c.id).gte('created_at', cutoff).limit(1);
+        if (fired?.length) continue;                                          // already fired this window
+        const ctx = leadCtx(c);
+        if (!automationMatches(rule, ctx)) continue;
+        await runAutomationActions(rule, ctx, 'no_activity_days');
+      }
+    }
+  } catch (e) { console.warn('[automations] no-activity sweep failed:', e.message); }
+}
+function scheduleAutomationSweep() {
+  setTimeout(() => runNoActivitySweep().catch(console.error), 60 * 1000);
+  setInterval(() => runNoActivitySweep().catch(console.error), 60 * 60 * 1000);
+}
+
+// Automation rules CRUD
+receiver.router.get('/api/dashboard/automations', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('automation_rules').select('*').order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+receiver.router.post('/api/dashboard/automations', requireAuth, express.json(), async (req, res) => {
+  const { name, trigger_type, trigger_config, conditions, actions, enabled } = req.body || {};
+  if (!name || !trigger_type) return res.status(400).json({ error: 'name and trigger_type are required' });
+  const { data, error } = await supabase.from('automation_rules').insert({
+    name, trigger_type, trigger_config: trigger_config || {}, conditions: conditions || [], actions: actions || [],
+    enabled: !!enabled, created_by: 'admin',
+  }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+receiver.router.put('/api/dashboard/automations/:id', requireAuth, express.json(), async (req, res) => {
+  const patch = { ...req.body, updated_at: new Date().toISOString() };
+  delete patch.id; delete patch.created_at;
+  const { data, error } = await supabase.from('automation_rules').update(patch).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+receiver.router.delete('/api/dashboard/automations/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('automation_rules').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+receiver.router.get('/api/dashboard/automations/:id/runs', requireAuth, async (req, res) => {
+  const { data, error } = await supabase.from('automation_runs').select('*').eq('rule_id', req.params.id).order('created_at', { ascending: false }).limit(50);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
 });
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
@@ -2706,6 +2901,7 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
         customer_id: custId,
       }).select().single().then(({ data: qrow }) => {
         if (custId && qrow) logLeadActivity(custId, { type: 'quote', body: `Quotation generated — ${qrow.title}`, meta: { quotation_id: qrow.id, quote_id: qrow.quote_id }, authorKey: 'admin', authorName: 'Admin' });
+        if (qrow) runAutomations('quote.generated', { entityType: 'quote', entityId: qrow.id, customerId: custId, ownerId: null, fields: { name: name || '', vehicleModel: vehicleModel || '', title: qrow.title } });
       }).catch(() => {});
     } catch (e) {
       console.error('[quotation-gen]', e);
@@ -2751,6 +2947,7 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
         customer_id: custId,
       }).select().single().then(({ data: qrow }) => {
         if (custId && qrow) logLeadActivity(custId, { type: 'quote', body: `Quotation generated — ${qrow.title}`, meta: { quotation_id: qrow.id, quote_id: qrow.quote_id }, authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
+        if (qrow) runAutomations('quote.generated', { entityType: 'quote', entityId: qrow.id, customerId: custId, ownerId: null, fields: { name: name || '', vehicleModel: vehicleModel || '', title: qrow.title } });
       }).catch(() => {});
     } catch (e) {
       console.error('[emp-quotation-gen]', e);
@@ -2929,6 +3126,7 @@ function scheduleFollowupReminders() {
   scheduleDueDateReminders();
   scheduleHoursLogReminder();
   scheduleFollowupReminders();
+  scheduleAutomationSweep();
   if (process.env.WHATSAPP_ENABLED === 'true') initWhatsApp().catch(console.error);
   const port = process.env.PORT || 3000;
   receiver.app.listen(port, () => {

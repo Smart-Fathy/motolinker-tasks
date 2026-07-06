@@ -1057,6 +1057,7 @@
           <div class="nav-item"        onclick="navigate('customers')"  id="nav-customers">    <span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads</div>
           <div class="nav-item"        onclick="navigate('deals')"      id="nav-deals">        <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals</div>
           <div class="nav-item"        onclick="navigate('reports')"    id="nav-reports">      <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span> Reports</div>
+          <div class="nav-item"        onclick="navigate('automations')" id="nav-automations"> <span class="nav-icon"><i data-lucide="workflow"></i></span> Automations</div>
         </div>
       </div>
       <div class="nav-group" data-group="integrations">
@@ -1708,6 +1709,75 @@
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Rep leaderboard (revenue won)</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('by_rep')">CSV</button></div>
           <div class="chart-wrap"><canvas id="repRep"></canvas></div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Automations -->
+  <div id="page-automations" class="page">
+    <div class="page-body" style="max-width:1000px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="page-title">Automations</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">When something happens, automatically do something — routing, follow-ups, reminders.</div>
+        </div>
+        <button class="btn btn-primary" onclick="openAutomationModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> New Automation</button>
+      </div>
+      <div id="automations-list"></div>
+    </div>
+  </div>
+
+  <!-- Automation Builder Modal -->
+  <div id="automation-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:640;align-items:center;justify-content:center">
+    <div class="modal" style="width:100%;max-width:640px;max-height:92vh;overflow-y:auto">
+      <div class="modal-header">
+        <div class="modal-title" id="automation-modal-title">New Automation</div>
+        <button class="modal-close" onclick="document.getElementById('automation-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body" style="padding:24px;display:grid;gap:16px">
+        <input type="hidden" id="am-id">
+        <div>
+          <label class="form-label">Name</label>
+          <input class="form-input" id="am-name" placeholder="e.g. Route FB-ad leads to a rep">
+        </div>
+        <div>
+          <label class="form-label">When… (trigger)</label>
+          <select class="form-input" id="am-trigger" onchange="amTriggerChanged()">
+            <option value="lead.created">A lead is created</option>
+            <option value="lead.status_changed">A lead's status changes</option>
+            <option value="lead.contacted">A lead is marked contacted</option>
+            <option value="deal.created">A deal is created</option>
+            <option value="deal.stage_changed">A deal's stage changes</option>
+            <option value="quote.generated">A quotation is generated</option>
+            <option value="no_activity_days">A lead has no activity for N days</option>
+          </select>
+        </div>
+        <div id="am-days-wrap" style="display:none">
+          <label class="form-label">Days with no activity</label>
+          <input class="form-input" id="am-days" type="number" min="1" value="3" style="max-width:120px">
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <label class="form-label" style="margin:0">Only if… (conditions)</label>
+            <button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="amAddCondition()">+ Condition</button>
+          </div>
+          <div id="am-conditions" style="display:grid;gap:8px"></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px">All conditions must match. Leave empty to always run.</div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <label class="form-label" style="margin:0">Then… (actions)</label>
+            <button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="amAddAction()">+ Action</button>
+          </div>
+          <div id="am-actions" style="display:grid;gap:10px"></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="am-enabled" style="width:16px;height:16px;accent-color:var(--gold)"> Enabled
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('automation-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" onclick="saveAutomation()">Save Automation</button>
       </div>
     </div>
   </div>
@@ -2487,6 +2557,185 @@ function exportReport(which) {
   window.location = `/api/dashboard/reports/export.csv?report=${encodeURIComponent(which)}${p ? '&' + p : ''}&_t=${tok}`;
 }
 
+// ── Automations ────────────────────────────────────────────────────────────────
+let _autoRules = [];
+let _autoDraft = { conditions: [], actions: [] };
+const AM_TRIGGER_LABELS = { 'lead.created':'Lead created', 'lead.status_changed':'Lead status changed', 'lead.contacted':'Lead marked contacted', 'deal.created':'Deal created', 'deal.stage_changed':'Deal stage changed', 'quote.generated':'Quote generated', 'no_activity_days':'No activity for N days' };
+const AM_FIELDS = ['source','lead_status','stage','been_contacted','budget_lead','budget_egp','name','car_in_question','to'];
+const AM_OPS = [['equals','is'],['not_equals','is not'],['contains','contains'],['changed_to','changed to'],['gt','>'],['lt','<'],['is_empty','is empty'],['not_empty','is not empty']];
+const AM_ACTIONS = [['notify','Send a notification'],['create_followup','Create a follow-up'],['create_task','Create a task'],['create_deal','Create a deal'],['set_lead_status','Set lead status'],['assign_lead','Assign the lead to a rep']];
+const AM_LEAD_STATUSES = [['cold','Cold'],['warm','Warm'],['hot','Hot'],['immediate_delivery','Immediate Delivery'],['not_interested','Not Interested'],['blacklist','Blacklist']];
+function amActionLabel(t){ const f = AM_ACTIONS.find(a => a[0] === t); return f ? f[1] : t; }
+function amEmpOptions(sel){ return '<option value="">— select rep —</option>' + (employeesForTasks || []).map(e => `<option value="${e.id}"${String(sel) === String(e.id) ? ' selected' : ''}>${esc(e.name)}</option>`).join(''); }
+
+async function loadAutomations() {
+  const c = document.getElementById('automations-list');
+  c.innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
+  try {
+    await preloadEmployeesForTasks();
+    const r = await apiFetch('/api/dashboard/automations');
+    const rules = await r.json();
+    if (!r.ok) throw new Error(rules.error || 'Failed');
+    _autoRules = Array.isArray(rules) ? rules : [];
+    renderAutomations(_autoRules);
+  } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function renderAutomations(rules) {
+  const c = document.getElementById('automations-list');
+  if (!rules.length) {
+    c.innerHTML = `<div style="text-align:center;padding:60px 0;color:var(--muted)">
+      <div style="font-size:40px;margin-bottom:10px">⚡</div>
+      <div style="font-size:15px;font-weight:600">No automations yet</div>
+      <div style="font-size:13px;margin-top:6px">Create one to route leads, schedule follow-ups, or send reminders automatically.</div></div>`;
+    return;
+  }
+  c.innerHTML = rules.map(r => `
+    <div class="card" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:10px">
+      <input type="checkbox" ${r.enabled ? 'checked' : ''} onchange="toggleAutomation(${r.id}, this.checked)" title="${r.enabled ? 'Enabled' : 'Disabled'}" style="width:20px;height:20px;accent-color:var(--gold);flex:none;cursor:pointer">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:14px">${esc(r.name)}${r.enabled ? '' : ' <span style="font-size:11px;color:var(--muted);font-weight:400">(off)</span>'}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">
+          <span style="color:var(--primary)">${esc(AM_TRIGGER_LABELS[r.trigger_type] || r.trigger_type)}</span>${(r.conditions && r.conditions.length) ? ` · ${r.conditions.length} condition${r.conditions.length > 1 ? 's' : ''}` : ''} · ${(r.actions || []).length} action${(r.actions || []).length === 1 ? '' : 's'}${(r.actions || []).length ? ` (${(r.actions || []).map(a => amActionLabel(a.type)).join(', ')})` : ''}
+        </div>
+      </div>
+      <button class="btn btn-outline" style="font-size:12px;padding:4px 10px" onclick="openAutomationModal(${r.id})">Edit</button>
+      <button class="btn btn-outline" style="font-size:12px;padding:4px 10px;color:var(--danger);border-color:var(--danger)" onclick="deleteAutomation(${r.id})">Delete</button>
+    </div>`).join('');
+}
+function openAutomationModal(id) {
+  const rule = id ? _autoRules.find(r => r.id === id) : null;
+  document.getElementById('automation-modal-title').textContent = rule ? 'Edit Automation' : 'New Automation';
+  document.getElementById('am-id').value = rule?.id || '';
+  document.getElementById('am-name').value = rule?.name || '';
+  document.getElementById('am-trigger').value = rule?.trigger_type || 'lead.created';
+  document.getElementById('am-days').value = rule?.trigger_config?.days || 3;
+  document.getElementById('am-enabled').checked = rule?.enabled || false;
+  _autoDraft = { conditions: JSON.parse(JSON.stringify(rule?.conditions || [])), actions: JSON.parse(JSON.stringify(rule?.actions || [])) };
+  amTriggerChanged();
+  amRenderConditions();
+  amRenderActions();
+  document.getElementById('automation-modal').style.display = 'flex';
+}
+function amTriggerChanged() {
+  document.getElementById('am-days-wrap').style.display = document.getElementById('am-trigger').value === 'no_activity_days' ? 'block' : 'none';
+}
+function amAddCondition() { _autoDraft.conditions.push({ field: 'source', op: 'equals', value: '' }); amRenderConditions(); }
+function amDelCondition(i) { _autoDraft.conditions.splice(i, 1); amRenderConditions(); }
+function amRenderConditions() {
+  document.getElementById('am-conditions').innerHTML = _autoDraft.conditions.map((cd, i) => `
+    <div style="display:flex;gap:6px;align-items:center">
+      <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="_autoDraft.conditions[${i}].field=this.value">
+        ${AM_FIELDS.map(f => `<option value="${f}"${cd.field === f ? ' selected' : ''}>${f}</option>`).join('')}
+      </select>
+      <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="_autoDraft.conditions[${i}].op=this.value">
+        ${AM_OPS.map(o => `<option value="${o[0]}"${cd.op === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}
+      </select>
+      <input class="form-input" style="flex:1;padding:6px 8px;font-size:12px" value="${esc(cd.value || '')}" placeholder="value" oninput="_autoDraft.conditions[${i}].value=this.value">
+      <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger)" onclick="amDelCondition(${i})">×</button>
+    </div>`).join('') || '<div style="font-size:12px;color:var(--muted)">No conditions — runs every time.</div>';
+}
+function amAddAction() { _autoDraft.actions.push({ type: 'notify', to: 'admin', title: '', body: '' }); amRenderActions(); }
+function amDelAction(i) { _autoDraft.actions.splice(i, 1); amRenderActions(); }
+function amChangeActionType(i, type) {
+  const base = { type };
+  if (type === 'notify') Object.assign(base, { to: 'admin', title: '', body: '' });
+  if (type === 'create_followup') Object.assign(base, { days: 1, note: '', assign_to: 'none' });
+  if (type === 'create_task') Object.assign(base, { title: '', priority: 'medium', due_days: 1 });
+  if (type === 'create_deal') Object.assign(base, { stage: 'lead' });
+  if (type === 'set_lead_status') Object.assign(base, { status: 'warm' });
+  if (type === 'assign_lead') Object.assign(base, { mode: 'round_robin' });
+  _autoDraft.actions[i] = base;
+  amRenderActions();
+}
+function amActionParams(a, i) {
+  const inp = (ph, key, val, type) => `<input class="form-input" ${type ? `type="${type}"` : ''} style="padding:6px 8px;font-size:12px" placeholder="${ph}" value="${esc(String(val != null ? val : ''))}" oninput="_autoDraft.actions[${i}].${key}=this.value">`;
+  if (a.type === 'notify') return `
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].to=this.value;amRenderActions()">
+      <option value="admin"${a.to === 'admin' ? ' selected' : ''}>Notify admin</option>
+      <option value="owner"${a.to === 'owner' ? ' selected' : ''}>Notify lead owner</option>
+      <option value="employee"${a.to === 'employee' ? ' selected' : ''}>Notify specific rep</option>
+    </select>
+    ${a.to === 'employee' ? `<select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].employee_id=this.value">${amEmpOptions(a.employee_id)}</select>` : ''}
+    ${inp('Title (use {{name}}, {{phone}})', 'title', a.title)}
+    ${inp('Message body', 'body', a.body)}`;
+  if (a.type === 'create_followup') return `
+    ${inp('in N days', 'days', a.days != null ? a.days : 1, 'number')}
+    ${inp('Note', 'note', a.note)}
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].assign_to=this.value;amRenderActions()">
+      <option value="none"${(a.assign_to || 'none') === 'none' ? ' selected' : ''}>Assign to: admin</option>
+      <option value="owner"${a.assign_to === 'owner' ? ' selected' : ''}>Assign to: lead owner</option>
+      <option value="employee"${a.assign_to === 'employee' ? ' selected' : ''}>Assign to: specific rep</option>
+    </select>
+    ${a.assign_to === 'employee' ? `<select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].employee_id=this.value">${amEmpOptions(a.employee_id)}</select>` : ''}`;
+  if (a.type === 'create_task') return `
+    ${inp('Task title', 'title', a.title)}
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].priority=this.value">
+      ${['high','medium','low'].map(p => `<option value="${p}"${(a.priority || 'medium') === p ? ' selected' : ''}>${p}</option>`).join('')}
+    </select>
+    ${inp('due in N days', 'due_days', a.due_days != null ? a.due_days : 1, 'number')}
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].assignee_id=this.value">${amEmpOptions(a.assignee_id)}</select>`;
+  if (a.type === 'create_deal') return `
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].stage=this.value">
+      ${['lead','contacted','quoted','negotiating'].map(s => `<option value="${s}"${(a.stage || 'lead') === s ? ' selected' : ''}>${s}</option>`).join('')}
+    </select>`;
+  if (a.type === 'set_lead_status') return `
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].status=this.value">
+      ${AM_LEAD_STATUSES.map(s => `<option value="${s[0]}"${a.status === s[0] ? ' selected' : ''}>${s[1]}</option>`).join('')}
+    </select>`;
+  if (a.type === 'assign_lead') return `
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].mode=this.value;amRenderActions()">
+      <option value="round_robin"${(a.mode || 'round_robin') === 'round_robin' ? ' selected' : ''}>Round-robin</option>
+      <option value="specific"${a.mode === 'specific' ? ' selected' : ''}>Specific rep</option>
+    </select>
+    ${a.mode === 'specific' ? `<select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].employee_id=this.value">${amEmpOptions(a.employee_id)}</select>` : ''}`;
+  return '';
+}
+function amRenderActions() {
+  document.getElementById('am-actions').innerHTML = _autoDraft.actions.map((a, i) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;gap:6px">
+      <div style="display:flex;gap:6px;align-items:center">
+        <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="amChangeActionType(${i}, this.value)">
+          ${AM_ACTIONS.map(t => `<option value="${t[0]}"${a.type === t[0] ? ' selected' : ''}>${t[1]}</option>`).join('')}
+        </select>
+        <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger)" onclick="amDelAction(${i})">×</button>
+      </div>
+      <div style="display:grid;gap:6px">${amActionParams(a, i)}</div>
+    </div>`).join('') || '<div style="font-size:12px;color:var(--muted)">Add at least one action.</div>';
+}
+async function saveAutomation() {
+  const id = document.getElementById('am-id').value;
+  const name = document.getElementById('am-name').value.trim();
+  if (!name) { alert('Name is required.'); return; }
+  if (!_autoDraft.actions.length) { alert('Add at least one action.'); return; }
+  const trigger_type = document.getElementById('am-trigger').value;
+  const trigger_config = trigger_type === 'no_activity_days' ? { days: parseInt(document.getElementById('am-days').value) || 3 } : {};
+  const actions = _autoDraft.actions.map(a => {
+    const o = { ...a };
+    if (o.days != null) o.days = parseInt(o.days) || 0;
+    if (o.due_days != null) o.due_days = parseInt(o.due_days) || 0;
+    return o;
+  });
+  const payload = { name, trigger_type, trigger_config, conditions: _autoDraft.conditions, actions, enabled: document.getElementById('am-enabled').checked };
+  try {
+    const url = id ? `/api/dashboard/automations/${id}` : '/api/dashboard/automations';
+    const r = await apiFetch(url, { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); alert('Error: ' + (e.error || r.status)); return; }
+    document.getElementById('automation-modal').style.display = 'none';
+    await loadAutomations();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+async function toggleAutomation(id, enabled) {
+  try { await apiFetch(`/api/dashboard/automations/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) }); }
+  catch (e) { alert('Error: ' + e.message); }
+  const r = _autoRules.find(x => x.id === id); if (r) r.enabled = enabled;
+}
+async function deleteAutomation(id) {
+  if (!confirm('Delete this automation?')) return;
+  try { await apiFetch(`/api/dashboard/automations/${id}`, { method: 'DELETE' }); await loadAutomations(); }
+  catch (e) { alert('Error: ' + e.message); }
+}
+
 // ── Table ────────────────────────────────────────────────────────────────────
 function populateChannelFilter(tasks) {
   const sel = document.getElementById('f-channel');
@@ -2856,7 +3105,7 @@ async function uploadCSV() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
