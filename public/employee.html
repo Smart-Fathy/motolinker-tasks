@@ -925,6 +925,12 @@
           </div>
         </div>
         <div class="form-group">
+          <label class="form-label">Send to <span style="color:var(--muted);font-weight:400">(optional — a colleague or leave for admin)</span></label>
+          <select class="form-control" id="req-assignee">
+            <option value="">— Admin —</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label class="form-label">Details</label>
           <textarea class="form-control" id="req-description" rows="4" placeholder="Provide any additional details…" style="resize:vertical"></textarea>
         </div>
@@ -1592,13 +1598,14 @@ async function submitIssue() {
 }
 
 /* ── Task comments (with @mentions) ── */
-let _empcTaskId = null, _coworkers = null;
+let _empcTaskId = null, _coworkers = null, _empcKind = 'task';
+function _empcBase() { return _empcKind === 'request' ? 'requests' : 'tasks'; }
 async function loadCoworkers() {
   if (_coworkers) return;
   try { _coworkers = await ef('/api/employee/coworkers').then(r => r.json()); } catch (_) { _coworkers = []; }
 }
 async function openEmpTaskComments(id) {
-  _empcTaskId = id;
+  _empcKind = 'task'; _empcTaskId = id;
   await loadCoworkers();
   const t = (myTasks || []).find(x => x.id === id);
   document.getElementById('empc-title').textContent = 'Comments — ' + (t ? t.title : '#' + id);
@@ -1607,8 +1614,18 @@ async function openEmpTaskComments(id) {
   document.getElementById('emp-comments-modal').style.display = 'flex';
   empcLoad();
 }
+async function openEmpReqComments(id) {
+  _empcKind = 'request'; _empcTaskId = id;
+  await loadCoworkers();
+  const r = (_myRequests || []).find(x => x.id === id);
+  document.getElementById('empc-title').textContent = 'Comments — ' + (r ? r.title : '#' + id);
+  document.getElementById('empc-list').innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+  document.getElementById('empc-input').value = '';
+  document.getElementById('emp-comments-modal').style.display = 'flex';
+  empcLoad();
+}
 async function empcLoad() {
-  const rows = await ef(`/api/employee/tasks/${_empcTaskId}/comments`).then(r => r.json()).catch(() => []);
+  const rows = await ef(`/api/employee/${_empcBase()}/${_empcTaskId}/comments`).then(r => r.json()).catch(() => []);
   const list = document.getElementById('empc-list');
   list.innerHTML = (Array.isArray(rows) && rows.length) ? rows.map(c => `
     <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:8px 12px">
@@ -1645,7 +1662,7 @@ async function empcPost() {
   const ta = document.getElementById('empc-input');
   const body = ta.value.trim();
   if (!body) return;
-  const r = await ef(`/api/employee/tasks/${_empcTaskId}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
+  const r = await ef(`/api/employee/${_empcBase()}/${_empcTaskId}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
   if (!r.ok) { const e = await r.json().catch(() => ({})); return showToast('Error: ' + (e.error || r.status)); }
   ta.value = '';
   empcLoad();
@@ -1979,27 +1996,50 @@ const reqStatusLabel = { pending: 'Pending', in_review: 'In Review', approved: '
 const reqStatusClass = { pending: 'badge-todo', in_review: 'badge-in_progress', approved: 'badge-done', rejected: 'badge-high' };
 const reqPriorityClass = { low: 'badge-low', medium: 'badge-medium', high: 'badge-high' };
 
+let _myRequests = [];
+function reqPartyName(usernameOrNull, assigneeId) {
+  // creator side (username) vs assignee side (id) resolved via _coworkers
+  if (assigneeId != null) {
+    if (String(assigneeId) === String(empInfo?.id)) return 'You';
+    const e = (_coworkers || []).find(x => String(x.id) === String(assigneeId));
+    return e ? e.name : 'Admin';
+  }
+  if (!usernameOrNull || usernameOrNull === 'dashboard') return 'Admin';
+  if (usernameOrNull === empInfo?.username) return 'You';
+  const e = (_coworkers || []).find(x => x.username === usernameOrNull);
+  return e ? e.name : usernameOrNull;
+}
+
 async function loadMyRequests() {
   const list = document.getElementById('my-requests-list');
   if (!list) return;
   list.innerHTML = '<div class="loading"><span class="spinner"></span> Loading…</div>';
   const canViewAll = empInfo?.permissions?.viewAllRequests === true;
-  // Show/hide the "All Employees" badge in the page title
   const badge = document.getElementById('req-scope-badge');
   if (badge) badge.style.display = canViewAll ? '' : 'none';
+  await loadCoworkers();
+  // Populate the "Send to" picker (colleagues, excluding self)
+  const pick = document.getElementById('req-assignee');
+  if (pick && pick.options.length <= 1) {
+    pick.innerHTML = '<option value="">— Admin —</option>' +
+      (_coworkers || []).filter(e => String(e.id) !== String(empInfo?.id)).map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+    if (pick._bTrigger) enhanceBrandSelects?.(); // resync brand dropdown label if present
+  }
   try {
-    const requests = await ef('/api/employee/requests').then(r => r.json());
-    if (!requests.length) {
+    _myRequests = await ef('/api/employee/requests').then(r => r.json());
+    if (!_myRequests.length) {
       list.innerHTML = '<div class="empty" style="padding:32px">No requests yet — submit your first one above.</div>';
       return;
     }
     list.innerHTML = `<table>
       <thead><tr>
-        <th>Title</th><th>Category</th><th>Priority</th><th>Status</th>
-        ${canViewAll ? '<th>By</th>' : ''}
-        <th>Submitted</th>
+        <th>Title</th><th>Category</th><th>Priority</th><th>Status</th><th>From → To</th>
+        <th>Submitted</th><th></th>
       </tr></thead>
-      <tbody>${requests.map(r => `<tr>
+      <tbody>${_myRequests.map(r => {
+        const from = reqPartyName(r.created_by, null);
+        const to = reqPartyName(null, r.assignee_id);
+        return `<tr>
         <td style="max-width:220px">
           <div style="font-weight:500;font-size:13px">${esc(r.title)}</div>
           ${r.description ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${esc(r.description)}</div>` : ''}
@@ -2007,11 +2047,13 @@ async function loadMyRequests() {
         <td><span style="font-size:12px;color:var(--muted)">${esc(r.category||'—')}</span></td>
         <td><span class="badge ${reqPriorityClass[r.priority]||'badge-medium'}">${r.priority||'medium'}</span></td>
         <td><span class="badge ${reqStatusClass[r.status]||'badge-todo'}">${reqStatusLabel[r.status]||r.status}</span></td>
-        ${canViewAll ? `<td style="font-size:12px;color:var(--muted)">${esc(r.created_by||'—')}</td>` : ''}
+        <td style="font-size:12px;color:var(--muted);white-space:nowrap">${esc(from)} <span style="color:var(--primary)">→</span> ${esc(to)}</td>
         <td style="font-size:12px;color:var(--muted);white-space:nowrap">${new Date(r.created_at).toLocaleDateString()}</td>
-      </tr>`).join('')}
+        <td><button class="btn btn-outline btn-sm" onclick="openEmpReqComments(${r.id})" title="Comments"><i data-lucide="message-square" style="width:14px;height:14px"></i></button></td>
+      </tr>`; }).join('')}
       </tbody>
     </table>`;
+    requestAnimationFrame(() => lucide.createIcons());
   } catch (e) { list.innerHTML = `<div style="padding:20px;color:var(--danger);font-size:13px">${esc(e.message)}</div>`; }
 }
 
@@ -2021,16 +2063,18 @@ async function submitRequest() {
   const desc  = document.getElementById('req-description').value.trim();
   const cat   = document.getElementById('req-category').value;
   const prio  = document.getElementById('req-priority').value;
+  const assignee = document.getElementById('req-assignee')?.value || null;
   if (!title) { document.getElementById('req-title').focus(); return; }
   btn.disabled = true; btn.textContent = 'Submitting…';
   try {
-    const r = await ef('/api/employee/requests', { method: 'POST', body: JSON.stringify({ title, description: desc, category: cat, priority: prio }) });
+    const r = await ef('/api/employee/requests', { method: 'POST', body: JSON.stringify({ title, description: desc, category: cat, priority: prio, assignee_id: assignee }) });
     const d = await r.json();
     if (d.error) { alert('Error: ' + d.error); return; }
     document.getElementById('req-title').value = '';
     document.getElementById('req-description').value = '';
     document.getElementById('req-category').value = '';
     document.getElementById('req-priority').value = 'medium';
+    if (document.getElementById('req-assignee')) document.getElementById('req-assignee').value = '';
     const success = document.getElementById('req-success');
     success.style.display = 'block';
     setTimeout(() => success.style.display = 'none', 3000);

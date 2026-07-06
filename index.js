@@ -377,6 +377,76 @@ receiver.router.get('/api/employee/coworkers', requireEmployeeAuth, async (_req,
   res.json(data || []);
 });
 
+// ── Request comments (creator ↔ assignee ↔ admin discussion) ──────────────────
+async function listRequestComments(reqId, res) {
+  const { data, error } = await supabase.from('request_comments').select('*').eq('request_id', reqId).order('created_at', { ascending: true }).limit(200);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+}
+
+async function postRequestComment(reqId, authorKey, authorName, body, res) {
+  const text = String(body || '').trim().slice(0, 2000);
+  if (!text) return res.status(400).json({ error: 'Comment is empty' });
+  const { data: reqRow } = await supabase.from('requests').select('id,title,created_by,assignee_id').eq('id', reqId).single();
+  if (!reqRow) return res.status(404).json({ error: 'Request not found' });
+  const { data, error } = await supabase.from('request_comments')
+    .insert({ request_id: reqId, author_key: authorKey, author_name: authorName, body: text })
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+  // Notify the other parties (creator, assignee, admin) + @mentions — best-effort
+  try {
+    const recipients = new Set();
+    // creator (employee) — created_by is a username
+    if (reqRow.created_by && reqRow.created_by !== 'dashboard') {
+      const { data: cEmp } = await supabase.from('employees').select('id').eq('username', reqRow.created_by).single();
+      if (cEmp) recipients.add(`employee_${cEmp.id}`);
+    } else if (reqRow.created_by === 'dashboard') {
+      recipients.add('admin');
+    }
+    if (reqRow.assignee_id) recipients.add(`employee_${reqRow.assignee_id}`);
+    recipients.add('admin'); // admins always follow request threads
+    recipients.delete(authorKey); // never notify the author
+    for (const key of recipients) {
+      createNotification(key, {
+        type: 'request',
+        title: `${authorName} commented on a request`,
+        body: `${reqRow.title}: ${text.slice(0, 140)}`,
+        url: key === 'admin' ? '/dashboard#requests' : '/employee#requests',
+      }, 'always');
+    }
+    // @mentions
+    const { data: emps } = await supabase.from('employees').select('id,name,username');
+    const lower = text.toLowerCase();
+    for (const em of emps || []) {
+      const mentioned = (em.name && lower.includes('@' + em.name.toLowerCase())) || (em.username && lower.includes('@' + em.username.toLowerCase()));
+      if (!mentioned || `employee_${em.id}` === authorKey || recipients.has(`employee_${em.id}`)) continue;
+      createNotification(`employee_${em.id}`, { type: 'request', title: `${authorName} mentioned you in a request`, body: `${reqRow.title}: ${text.slice(0, 140)}`, url: '/employee#requests' }, 'always');
+    }
+  } catch (_) {}
+}
+
+// Employee may see/comment on a request only if they created it, it's assigned to
+// them, or they have the view-all permission.
+async function employeeMayAccessRequest(req, reqId) {
+  if (req.employee.permissions?.viewAllRequests === true) return true;
+  const { data } = await supabase.from('requests').select('created_by,assignee_id').eq('id', reqId).single();
+  if (!data) return false;
+  return data.created_by === req.employee.username || String(data.assignee_id || '') === String(req.employee.id);
+}
+
+receiver.router.get('/api/dashboard/requests/:id/comments', requireAuth, (req, res) => listRequestComments(parseInt(req.params.id), res));
+receiver.router.post('/api/dashboard/requests/:id/comments', requireAuth, express.json(), (req, res) =>
+  postRequestComment(parseInt(req.params.id), 'admin', 'Admin', req.body?.body, res));
+receiver.router.get('/api/employee/requests/:id/comments', requireEmployeeAuth, async (req, res) => {
+  if (!(await employeeMayAccessRequest(req, parseInt(req.params.id)))) return res.status(403).json({ error: 'Not permitted' });
+  listRequestComments(parseInt(req.params.id), res);
+});
+receiver.router.post('/api/employee/requests/:id/comments', requireEmployeeAuth, express.json(), async (req, res) => {
+  if (!(await employeeMayAccessRequest(req, parseInt(req.params.id)))) return res.status(403).json({ error: 'Not permitted' });
+  postRequestComment(parseInt(req.params.id), `employee_${req.employee.id}`, req.employee.name, req.body?.body, res);
+});
+
 // ── Report an Issue (employee → CTO) ──────────────────────────────────────────
 const issueUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 receiver.router.post('/api/employee/report-issue', requireEmployeeAuth, issueUpload.single('file'), async (req, res) => {
@@ -516,15 +586,20 @@ receiver.router.get('/api/dashboard/requests', requireAuth, async (_req, res) =>
 receiver.router.post('/api/dashboard/requests', requireAuth, express.json(), async (req, res) => {
   const { title, description, priority, assigned_to } = req.body;
   if (!title) return res.status(400).json({ error: 'Title is required' });
+  const assignee_id = req.body?.assignee_id ? parseInt(req.body.assignee_id) : null;
   const { data, error } = await supabase.from('requests')
-    .insert({ title, description: description || '', priority: priority || 'medium', assigned_to: assigned_to || '', created_by: 'dashboard', status: 'pending' })
+    .insert({ title, description: description || '', priority: priority || 'medium', assigned_to: assigned_to || '', assignee_id, created_by: 'dashboard', status: 'pending' })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
+  if (assignee_id) {
+    createNotification(`employee_${assignee_id}`, { type: 'request', title: 'A request was assigned to you', body: title, url: '/employee#requests' }, 'always');
+  }
   res.json(data);
 });
 
 receiver.router.put('/api/dashboard/requests/:id', requireAuth, express.json(), async (req, res) => {
-  const { data: existing } = await supabase.from('requests').select('status,created_by,title').eq('id', req.params.id).single();
+  const { data: existing } = await supabase.from('requests').select('status,created_by,title,assignee_id').eq('id', req.params.id).single();
+  if (req.body.assignee_id !== undefined) req.body.assignee_id = req.body.assignee_id ? parseInt(req.body.assignee_id) : null;
   const { data, error } = await supabase.from('requests')
     .update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
@@ -540,6 +615,10 @@ receiver.router.put('/api/dashboard/requests/:id', requireAuth, express.json(), 
         url: '/employee#requests',
       }, 'offline');
     }
+  }
+  // Notify a newly-assigned employee
+  if (data?.assignee_id && String(data.assignee_id) !== String(existing?.assignee_id || '')) {
+    createNotification(`employee_${data.assignee_id}`, { type: 'request', title: 'A request was assigned to you', body: data.title, url: '/employee#requests' }, 'always');
   }
   res.json(data);
 });
@@ -879,28 +958,48 @@ receiver.router.get('/employee', (_req, res) => res.sendFile(path.join(__dirname
 // Employee Requests
 receiver.router.get('/api/employee/requests', requireEmployeeAuth, async (req, res) => {
   const canViewAll = req.employee.permissions?.viewAllRequests === true;
-  let query = supabase.from('requests').select('*').order('created_at', { ascending: false });
-  if (!canViewAll) query = query.eq('created_by', req.employee.username);
-  const { data, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+  try {
+    if (canViewAll) {
+      const { data, error } = await supabase.from('requests').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      return res.json(data || []);
+    }
+    // Own requests OR requests assigned to me
+    const [mine, assigned] = await Promise.all([
+      supabase.from('requests').select('*').eq('created_by', req.employee.username),
+      supabase.from('requests').select('*').eq('assignee_id', req.employee.id),
+    ]);
+    if (mine.error) throw mine.error;
+    const seen = new Set();
+    const all = [...(mine.data || []), ...(assigned.data || [])].filter(r => !seen.has(r.id) && seen.add(r.id));
+    all.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    res.json(all);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json(), async (req, res) => {
   const { title, description, category, priority } = req.body || {};
   if (!title) return res.status(400).json({ error: 'Title is required' });
+  const assignee_id = req.body?.assignee_id ? parseInt(req.body.assignee_id) : null;
   const { data, error } = await supabase.from('requests')
-    .insert({ title, description: description || '', priority: priority || 'medium', assigned_to: '', created_by: req.employee.username, status: 'pending', category: category || '' })
+    .insert({ title, description: description || '', priority: priority || 'medium', assigned_to: '', assignee_id, created_by: req.employee.username, status: 'pending', category: category || '' })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   // Notify admin notification center
-  if (data) {
-    createNotification('admin', {
+  createNotification('admin', {
+    type: 'request',
+    title: 'New employee request',
+    body: `${req.employee.name}: ${title}`,
+    url: '/dashboard#requests',
+  }, 'offline');
+  // Notify the assigned employee (if any, and not self)
+  if (assignee_id && assignee_id !== req.employee.id) {
+    createNotification(`employee_${assignee_id}`, {
       type: 'request',
-      title: 'New employee request',
-      body: `${req.employee.name}: ${title}`,
-      url: '/dashboard#requests',
-    }, 'offline');
+      title: `${req.employee.name} sent you a request`,
+      body: title,
+      url: '/employee#requests',
+    }, 'always');
   }
   res.json(data);
 });
