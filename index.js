@@ -2597,7 +2597,13 @@ receiver.router.get('/api/dashboard/quotations/:id', requireAuth, async (req, re
   res.json(data);
 });
 
-// Employee quotation settings (read-only)
+receiver.router.delete('/api/dashboard/quotations/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('quotations').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// Employee quotation settings — read + write (shared, company-wide; gated by the quotation permission)
 receiver.router.get('/api/employee/quotation/settings', requireEmployeeAuth, async (req, res) => {
   if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
   const { data } = await supabase.from('quotation_settings').select('key,value');
@@ -2606,18 +2612,36 @@ receiver.router.get('/api/employee/quotation/settings', requireEmployeeAuth, asy
   res.json(settings);
 });
 
+receiver.router.put('/api/employee/quotation/settings', requireEmployeeAuth, express.json(), async (req, res) => {
+  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
+  const entries = Object.entries(req.body || {}).map(([key, value]) => ({ key, value: String(value) }));
+  if (!entries.length) return res.json({ ok: true });
+  const { error } = await supabase.from('quotation_settings').upsert(entries, { onConflict: 'key' });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// Employee history shows ALL quotations (shared), matching the admin dashboard.
 receiver.router.get('/api/employee/quotations', requireEmployeeAuth, async (req, res) => {
   if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
-  const { data, error } = await supabase.from('quotations').select('id,quote_id,title,created_by,created_at').eq('created_by', req.employee.username).order('created_at', { ascending: false }).limit(50);
+  const { data, error } = await supabase.from('quotations').select('id,quote_id,title,created_by,created_at').order('created_at', { ascending: false }).limit(100);
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
 
 receiver.router.get('/api/employee/quotations/:id', requireEmployeeAuth, async (req, res) => {
   if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
-  const { data, error } = await supabase.from('quotations').select('*').eq('id', req.params.id).eq('created_by', req.employee.username).single();
+  const { data, error } = await supabase.from('quotations').select('*').eq('id', req.params.id).single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
+});
+
+// Any employee with quotation access can delete any quotation from the shared history.
+receiver.router.delete('/api/employee/quotations/:id', requireEmployeeAuth, async (req, res) => {
+  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
+  const { error } = await supabase.from('quotations').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
 });
 
 receiver.router.get('/api/dashboard/quotation/newid', requireAuth, (_req, res) => {

@@ -5234,10 +5234,22 @@ async function loadQtHistory() {
         <td>${esc(q.title||'—')}</td>
         <td>${esc(q.created_by||'—')}</td>
         <td>${new Date(q.created_at).toLocaleDateString()}</td>
-        <td><button class="btn btn-sm btn-outline" onclick="duplicateQuotation(${q.id})"><i data-lucide="copy" style="width:12px;height:12px"></i> Duplicate</button></td>
+        <td style="white-space:nowrap;text-align:right">
+          <button class="btn btn-sm btn-outline" onclick="duplicateQuotation(${q.id})"><i data-lucide="copy" style="width:12px;height:12px"></i> Duplicate</button>
+          <button class="btn btn-sm btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="deleteQuotation(${q.id})"><i data-lucide="trash-2" style="width:12px;height:12px"></i> Delete</button>
+        </td>
       </tr>`).join('')}</tbody></table>`;
     requestAnimationFrame(() => lucide.createIcons());
   } catch (e) { body.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:16px">${esc(e.message)}</div>`; }
+}
+
+async function deleteQuotation(id) {
+  if (!confirm('Delete this quotation from history? This cannot be undone.')) return;
+  try {
+    const r = await apiFetch(`/api/dashboard/quotations/${id}`, { method: 'DELETE' });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); return alert('Error: ' + (e.error || r.status)); }
+    loadQtHistory();
+  } catch (e) { alert('Error: ' + e.message); }
 }
 
 async function duplicateQuotation(id) {
