@@ -427,6 +427,11 @@ CREATE TABLE IF NOT EXISTS task_comments (
 );
 CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id, created_at);
 ALTER TABLE IF EXISTS public.task_comments ENABLE ROW LEVEL SECURITY;
+-- Optional file attachment on a comment (mirrors chat_messages)
+ALTER TABLE task_comments ADD COLUMN IF NOT EXISTS file_url  TEXT DEFAULT '';
+ALTER TABLE task_comments ADD COLUMN IF NOT EXISTS file_name TEXT DEFAULT '';
+ALTER TABLE task_comments ADD COLUMN IF NOT EXISTS file_size BIGINT;
+ALTER TABLE task_comments ADD COLUMN IF NOT EXISTS file_type TEXT DEFAULT '';
 
 -- Issue tickets reported from the employee portal (viewed/managed by the CTO)
 CREATE TABLE IF NOT EXISTS issues (
@@ -486,6 +491,11 @@ CREATE TABLE IF NOT EXISTS request_comments (
 );
 CREATE INDEX IF NOT EXISTS idx_request_comments ON request_comments(request_id, created_at);
 ALTER TABLE IF EXISTS public.request_comments ENABLE ROW LEVEL SECURITY;
+-- Optional file attachment on a comment (mirrors chat_messages)
+ALTER TABLE request_comments ADD COLUMN IF NOT EXISTS file_url  TEXT DEFAULT '';
+ALTER TABLE request_comments ADD COLUMN IF NOT EXISTS file_name TEXT DEFAULT '';
+ALTER TABLE request_comments ADD COLUMN IF NOT EXISTS file_size BIGINT;
+ALTER TABLE request_comments ADD COLUMN IF NOT EXISTS file_type TEXT DEFAULT '';
 
 -- Notification setting for deal-contacted alert
 INSERT INTO quotation_settings (key, value) VALUES ('contact_notify_employee_id', '')

@@ -461,18 +461,22 @@ async function listTaskComments(taskId, res) {
   res.json(data || []);
 }
 
-async function postTaskComment(taskId, authorKey, authorName, body, res) {
-  const text = String(body || '').trim().slice(0, 2000);
-  if (!text) return res.status(400).json({ error: 'Comment is empty' });
+async function postTaskComment(taskId, authorKey, authorName, payload, res) {
+  const p = payload || {};
+  const text = String(p.body || '').trim().slice(0, 2000);
+  const file_url = String(p.file_url || '');
+  if (!text && !file_url) return res.status(400).json({ error: 'Comment is empty' });
   const { data: task } = await supabase.from('tasks').select('id,title').eq('id', taskId).single();
   if (!task) return res.status(404).json({ error: 'Task not found' });
   const { data, error } = await supabase.from('task_comments')
-    .insert({ task_id: taskId, author_key: authorKey, author_name: authorName, body: text })
+    .insert({ task_id: taskId, author_key: authorKey, author_name: authorName, body: text,
+      file_url, file_name: String(p.file_name || ''), file_size: p.file_size || null, file_type: String(p.file_type || '') })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
   // Notify @mentioned employees (best-effort, after response)
   try {
+    const notifBody = text || (file_url ? `📎 ${p.file_name || 'attachment'}` : '');
     const { data: emps } = await supabase.from('employees').select('id,name,username');
     const lower = text.toLowerCase();
     for (const e of emps || []) {
@@ -481,7 +485,7 @@ async function postTaskComment(taskId, authorKey, authorName, body, res) {
       createNotification(`employee_${e.id}`, {
         type: 'task',
         title: `${authorName} mentioned you in a comment`,
-        body: `${task.title}: ${text.slice(0, 140)}`,
+        body: `${task.title}: ${notifBody.slice(0, 140)}`,
         url: '/employee#tasks',
       }, 'always');
     }
@@ -490,10 +494,10 @@ async function postTaskComment(taskId, authorKey, authorName, body, res) {
 
 receiver.router.get('/api/dashboard/tasks/:id/comments', requireAuth, (req, res) => listTaskComments(parseInt(req.params.id), res));
 receiver.router.post('/api/dashboard/tasks/:id/comments', requireAuth, express.json(), (req, res) =>
-  postTaskComment(parseInt(req.params.id), 'admin', 'Admin', req.body?.body, res));
+  postTaskComment(parseInt(req.params.id), 'admin', 'Admin', req.body, res));
 receiver.router.get('/api/employee/tasks/:id/comments', requireEmployeeAuth, (req, res) => listTaskComments(parseInt(req.params.id), res));
 receiver.router.post('/api/employee/tasks/:id/comments', requireEmployeeAuth, express.json(), (req, res) =>
-  postTaskComment(parseInt(req.params.id), `employee_${req.employee.id}`, req.employee.name, req.body?.body, res));
+  postTaskComment(parseInt(req.params.id), `employee_${req.employee.id}`, req.employee.name, req.body, res));
 
 // Coworker names (for @mention autocomplete in comments)
 receiver.router.get('/api/employee/coworkers', requireEmployeeAuth, async (_req, res) => {
@@ -509,18 +513,22 @@ async function listRequestComments(reqId, res) {
   res.json(data || []);
 }
 
-async function postRequestComment(reqId, authorKey, authorName, body, res) {
-  const text = String(body || '').trim().slice(0, 2000);
-  if (!text) return res.status(400).json({ error: 'Comment is empty' });
+async function postRequestComment(reqId, authorKey, authorName, payload, res) {
+  const p = payload || {};
+  const text = String(p.body || '').trim().slice(0, 2000);
+  const file_url = String(p.file_url || '');
+  if (!text && !file_url) return res.status(400).json({ error: 'Comment is empty' });
   const { data: reqRow } = await supabase.from('requests').select('id,title,created_by,assignee_id').eq('id', reqId).single();
   if (!reqRow) return res.status(404).json({ error: 'Request not found' });
   const { data, error } = await supabase.from('request_comments')
-    .insert({ request_id: reqId, author_key: authorKey, author_name: authorName, body: text })
+    .insert({ request_id: reqId, author_key: authorKey, author_name: authorName, body: text,
+      file_url, file_name: String(p.file_name || ''), file_size: p.file_size || null, file_type: String(p.file_type || '') })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
   // Notify the other parties (creator, assignee, admin) + @mentions — best-effort
   try {
+    const notifBody = text || (file_url ? `📎 ${p.file_name || 'attachment'}` : '');
     const recipients = new Set();
     // creator (employee) — created_by is a username
     if (reqRow.created_by && reqRow.created_by !== 'dashboard') {
@@ -536,7 +544,7 @@ async function postRequestComment(reqId, authorKey, authorName, body, res) {
       createNotification(key, {
         type: 'request',
         title: `${authorName} commented on a request`,
-        body: `${reqRow.title}: ${text.slice(0, 140)}`,
+        body: `${reqRow.title}: ${notifBody.slice(0, 140)}`,
         url: key === 'admin' ? '/dashboard#requests' : '/employee#requests',
       }, 'always');
     }
@@ -546,7 +554,7 @@ async function postRequestComment(reqId, authorKey, authorName, body, res) {
     for (const em of emps || []) {
       const mentioned = (em.name && lower.includes('@' + em.name.toLowerCase())) || (em.username && lower.includes('@' + em.username.toLowerCase()));
       if (!mentioned || `employee_${em.id}` === authorKey || recipients.has(`employee_${em.id}`)) continue;
-      createNotification(`employee_${em.id}`, { type: 'request', title: `${authorName} mentioned you in a request`, body: `${reqRow.title}: ${text.slice(0, 140)}`, url: '/employee#requests' }, 'always');
+      createNotification(`employee_${em.id}`, { type: 'request', title: `${authorName} mentioned you in a request`, body: `${reqRow.title}: ${notifBody.slice(0, 140)}`, url: '/employee#requests' }, 'always');
     }
   } catch (_) {}
 }
@@ -562,14 +570,14 @@ async function employeeMayAccessRequest(req, reqId) {
 
 receiver.router.get('/api/dashboard/requests/:id/comments', requireAuth, (req, res) => listRequestComments(parseInt(req.params.id), res));
 receiver.router.post('/api/dashboard/requests/:id/comments', requireAuth, express.json(), (req, res) =>
-  postRequestComment(parseInt(req.params.id), 'admin', 'Admin', req.body?.body, res));
+  postRequestComment(parseInt(req.params.id), 'admin', 'Admin', req.body, res));
 receiver.router.get('/api/employee/requests/:id/comments', requireEmployeeAuth, async (req, res) => {
   if (!(await employeeMayAccessRequest(req, parseInt(req.params.id)))) return res.status(403).json({ error: 'Not permitted' });
   listRequestComments(parseInt(req.params.id), res);
 });
 receiver.router.post('/api/employee/requests/:id/comments', requireEmployeeAuth, express.json(), async (req, res) => {
   if (!(await employeeMayAccessRequest(req, parseInt(req.params.id)))) return res.status(403).json({ error: 'Not permitted' });
-  postRequestComment(parseInt(req.params.id), `employee_${req.employee.id}`, req.employee.name, req.body?.body, res);
+  postRequestComment(parseInt(req.params.id), `employee_${req.employee.id}`, req.employee.name, req.body, res);
 });
 
 // ── Report an Issue (employee → CTO) ──────────────────────────────────────────
