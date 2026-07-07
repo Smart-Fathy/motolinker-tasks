@@ -93,11 +93,6 @@ async function saveGoogleToken(userKey, tokens) {
   } catch (e) { console.warn('[tokens] Could not save to DB:', e.message); }
 }
 
-// ─── Form Submissions (in-memory) ────────────────────────────────────────────
-let submissions = []; // { id, name, email, phone, message, car_interest, submitted_at }
-let submissionIdSeq = 1;
-
-
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
 function hashPassword(password) {
@@ -188,18 +183,14 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
   try {
     const { data: tasks, error } = await supabase.from('tasks').select('*');
     if (error) throw error;
-    if (!tasks || tasks.length === 0) return res.json({ total: 0, done: 0, inProgress: 0, todo: 0, highPriority: 0, overdue: 0, byChannel: {}, byPriority: { high: 0, medium: 0, low: 0 }, byEmployee: [], completionRate: 0 });
+    if (!tasks || tasks.length === 0) return res.json({ total: 0, done: 0, inProgress: 0, todo: 0, highPriority: 0, overdue: 0, byPriority: { high: 0, medium: 0, low: 0 }, byEmployee: [], completionRate: 0 });
     const total = tasks.length, done = tasks.filter(t => t.status === 'done').length;
     const inProgress = tasks.filter(t => t.status === 'in_progress').length, todo = tasks.filter(t => t.status === 'todo').length;
     const highPriority = tasks.filter(t => t.priority === 'high' && t.status !== 'done').length;
     const today = new Date().toISOString().split('T')[0];
     const overdue = tasks.filter(t => t.due_date < today && t.status !== 'done').length;
-    const byChannel = {}, byPriority = { high: 0, medium: 0, low: 0 };
-    tasks.forEach(t => {
-      if (!byChannel[t.channel_name]) byChannel[t.channel_name] = { todo: 0, in_progress: 0, done: 0, total: 0 };
-      byChannel[t.channel_name][t.status]++; byChannel[t.channel_name].total++;
-      if (byPriority[t.priority] !== undefined) byPriority[t.priority]++;
-    });
+    const byPriority = { high: 0, medium: 0, low: 0 };
+    tasks.forEach(t => { if (byPriority[t.priority] !== undefined) byPriority[t.priority]++; });
     // Per-employee performance: total/done counted for every assignee of each task
     // (multi-assignee aware; matches internal id or legacy slack_user_id)
     const { data: emps } = await supabase.from('employees').select('id,name,slack_user_id,avatar_url');
@@ -213,8 +204,142 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
       });
       return { id: e.id, name: e.name, avatar_url: e.avatar_url || '', total: empTotal, done: empDone };
     }).filter(e => e.total > 0).sort((a, b) => b.done - a.done || b.total - a.total);
-    res.json({ total, done, inProgress, todo, highPriority, overdue, byChannel, byPriority, byEmployee, completionRate: Math.round((done / total) * 100) });
+    res.json({ total, done, inProgress, todo, highPriority, overdue, byPriority, byEmployee, completionRate: Math.round((done / total) * 100) });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Sales & revenue analytics (read-only aggregation over deals/quotations/hours) ───
+const DEFAULT_STAGE_PROB = { lead: 10, contacted: 25, quoted: 50, negotiating: 75, won: 100, lost: 0 };
+const DEAL_STAGES = ['lead', 'contacted', 'quoted', 'negotiating', 'won', 'lost'];
+
+// Parse ?from&to (YYYY-MM-DD) into an inclusive [startISO, endISO] window; defaults to last 90 days.
+function reportRange(q) {
+  const to = q.to ? new Date(q.to + 'T23:59:59.999Z') : new Date();
+  const from = q.from ? new Date(q.from + 'T00:00:00.000Z') : new Date(to.getTime() - 90 * 86400000);
+  return { fromISO: from.toISOString(), toISO: to.toISOString() };
+}
+
+async function buildSalesReport(q) {
+  const { fromISO, toISO } = reportRange(q);
+  const sourceFilter = q.source ? String(q.source) : '';
+  // Stage probabilities (weighted pipeline)
+  let prob = { ...DEFAULT_STAGE_PROB };
+  try {
+    const { data: row } = await supabase.from('quotation_settings').select('value').eq('key', 'stage_probabilities').single();
+    if (row?.value) prob = { ...prob, ...JSON.parse(row.value) };
+  } catch (_) {}
+  // Deals joined to their lead's source (for by-source conversion)
+  const { data: deals } = await supabase.from('deals').select('id,stage,budget_egp,assigned_to,closed_at,created_at,customer_id,customers(source)');
+  const inRange = (iso) => iso && iso >= fromISO && iso <= toISO;
+  const rows = (deals || []).filter(d => {
+    if (sourceFilter && (d.customers?.source || '') !== sourceFilter) return false;
+    // A deal counts for the window if it was created in it, or closed in it.
+    return inRange(d.created_at) || inRange(d.closed_at);
+  });
+  const num = (v) => Number(v) || 0;
+  const pipelineByStage = DEAL_STAGES.map(stage => {
+    const ds = rows.filter(d => d.stage === stage);
+    return { stage, count: ds.length, value: ds.reduce((s, d) => s + num(d.budget_egp), 0) };
+  });
+  const openStages = ['lead', 'contacted', 'quoted', 'negotiating'];
+  const totalPipeline = pipelineByStage.filter(p => openStages.includes(p.stage)).reduce((s, p) => s + p.value, 0);
+  const weightedPipeline = rows.filter(d => openStages.includes(d.stage))
+    .reduce((s, d) => s + num(d.budget_egp) * (num(prob[d.stage]) / 100), 0);
+  const wonRows = rows.filter(d => d.stage === 'won');
+  const lostCount = rows.filter(d => d.stage === 'lost').length;
+  const revenueWon = wonRows.reduce((s, d) => s + num(d.budget_egp), 0);
+  const winRate = (wonRows.length + lostCount) ? Math.round((wonRows.length / (wonRows.length + lostCount)) * 100) : 0;
+  // Funnel: cumulative reach of each stage (a won deal also passed through lead/contacted/…)
+  const order = ['lead', 'contacted', 'quoted', 'negotiating', 'won'];
+  const idx = (st) => order.indexOf(st);
+  const funnel = order.map(stage => ({
+    stage,
+    count: rows.filter(d => d.stage !== 'lost' && idx(d.stage) >= idx(stage)).length,
+  }));
+  // Revenue won by month (from closed_at)
+  const byMonth = {};
+  wonRows.forEach(d => { if (d.closed_at) { const m = d.closed_at.slice(0, 7); byMonth[m] = (byMonth[m] || 0) + num(d.budget_egp); } });
+  const revenueByMonth = Object.keys(byMonth).sort().map(m => ({ month: m, value: byMonth[m] }));
+  // Conversion by source
+  const srcMap = {};
+  rows.forEach(d => {
+    const s = d.customers?.source || '(unknown)';
+    if (!srcMap[s]) srcMap[s] = { source: s, deals: 0, won: 0, value: 0 };
+    srcMap[s].deals++;
+    if (d.stage === 'won') { srcMap[s].won++; srcMap[s].value += num(d.budget_egp); }
+  });
+  const bySource = Object.values(srcMap).sort((a, b) => b.deals - a.deals);
+  // Rep leaderboard (won count + value by assigned_to)
+  const { data: emps } = await supabase.from('employees').select('id,name');
+  const empName = (id) => (emps || []).find(e => String(e.id) === String(id))?.name || (id ? '#' + id : 'Unassigned');
+  const repMap = {};
+  rows.forEach(d => {
+    const key = d.assigned_to || '';
+    if (!repMap[key]) repMap[key] = { rep: empName(key), deals: 0, won: 0, value: 0 };
+    repMap[key].deals++;
+    if (d.stage === 'won') { repMap[key].won++; repMap[key].value += num(d.budget_egp); }
+  });
+  const byRep = Object.values(repMap).sort((a, b) => b.value - a.value);
+  // Quotations generated in range
+  const { count: quotesCount } = await supabase.from('quotations').select('id', { count: 'exact', head: true }).gte('created_at', fromISO).lte('created_at', toISO);
+  // Hours logged by employee in range
+  const { data: hours } = await supabase.from('hours_logs').select('employee_id,hours,log_date').gte('log_date', fromISO.slice(0, 10)).lte('log_date', toISO.slice(0, 10));
+  const hoursMap = {};
+  (hours || []).forEach(h => { const k = h.employee_id || ''; hoursMap[k] = (hoursMap[k] || 0) + num(h.hours); });
+  const hoursByEmployee = Object.keys(hoursMap).map(k => ({ employee: empName(k), hours: Math.round(hoursMap[k] * 10) / 10 })).sort((a, b) => b.hours - a.hours);
+  const wonCount = wonRows.length;
+  return {
+    range: { from: fromISO.slice(0, 10), to: toISO.slice(0, 10) }, source: sourceFilter,
+    pipelineByStage, totalPipeline, weightedPipeline: Math.round(weightedPipeline),
+    winRate, revenueWon, wonCount, avgDeal: wonCount ? Math.round(revenueWon / wonCount) : 0,
+    funnel, revenueByMonth, bySource, byRep, quotesCount: quotesCount || 0, hoursByEmployee, stageProb: prob,
+  };
+}
+
+receiver.router.get('/api/dashboard/reports/summary', requireAuth, async (req, res) => {
+  try { res.json(await buildSalesReport(req.query)); }
+  catch (e) { console.error('[reports]', e); res.status(500).json({ error: e.message }); }
+});
+
+// Serialize an array of flat objects to RFC-4180 CSV.
+function csvSerialize(rows, columns) {
+  const cols = columns || (rows.length ? Object.keys(rows[0]) : []);
+  const esc = (v) => {
+    const s = v == null ? '' : String(v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [cols.map(esc).join(',')];
+  for (const r of rows) lines.push(cols.map(c => esc(r[c])).join(','));
+  return lines.join('\r\n');
+}
+
+receiver.router.get('/api/dashboard/reports/export.csv', requireAuth, async (req, res) => {
+  try {
+    const rep = await buildSalesReport(req.query);
+    const which = String(req.query.report || 'pipeline');
+    let rows = [], cols = null, fname = which;
+    if (which === 'pipeline') { rows = rep.pipelineByStage; cols = ['stage', 'count', 'value']; }
+    else if (which === 'by_source') { rows = rep.bySource; cols = ['source', 'deals', 'won', 'value']; }
+    else if (which === 'by_rep') { rows = rep.byRep; cols = ['rep', 'deals', 'won', 'value']; }
+    else if (which === 'revenue_by_month') { rows = rep.revenueByMonth; cols = ['month', 'value']; }
+    else if (which === 'hours') { rows = rep.hoursByEmployee; cols = ['employee', 'hours']; }
+    else if (which === 'summary') {
+      rows = [
+        { metric: 'Date range', value: `${rep.range.from} → ${rep.range.to}` },
+        { metric: 'Open pipeline (EGP)', value: rep.totalPipeline },
+        { metric: 'Weighted pipeline (EGP)', value: rep.weightedPipeline },
+        { metric: 'Win rate (%)', value: rep.winRate },
+        { metric: 'Revenue won (EGP)', value: rep.revenueWon },
+        { metric: 'Deals won', value: rep.wonCount },
+        { metric: 'Avg deal (EGP)', value: rep.avgDeal },
+        { metric: 'Quotes generated', value: rep.quotesCount },
+      ];
+      cols = ['metric', 'value'];
+    } else { return res.status(400).json({ error: 'Unknown report' }); }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="motolinker-${fname}-${rep.range.from}_${rep.range.to}.csv"`);
+    res.send(csvSerialize(rows, cols));
+  } catch (e) { console.error('[reports-csv]', e); res.status(500).json({ error: e.message }); }
 });
 
 
@@ -1248,10 +1373,16 @@ receiver.router.get('/api/dashboard/customers', requireAuth, async (req, res) =>
 });
 
 receiver.router.post('/api/dashboard/customers', requireAuth, express.json(), async (req, res) => {
-  const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, next_action, been_contacted, sales_feedback, inquiry, custom_fields } = req.body;
+  const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, next_action, been_contacted, sales_feedback, inquiry, custom_fields, assigned_to, force } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
+  const phone_norm = normalizePhone(phone);
+  // Duplicate guard: a matching normalized phone -> 409 with the existing lead (unless the caller forces).
+  if (phone_norm && !force) {
+    const { data: dup } = await supabase.from('customers').select('id,name,phone,lead_status').eq('phone_norm', phone_norm).limit(1);
+    if (dup && dup.length) return res.status(409).json({ duplicate: true, existing: dup[0] });
+  }
   const { data, error } = await supabase.from('customers')
-    .insert({ name, phone: phone||'', email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', ...(custom_fields && Object.keys(custom_fields).length ? { custom_fields } : {}), created_by: 'dashboard' })
+    .insert({ name, phone: phone||'', phone_norm, email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', assigned_to: assigned_to||null, ...(custom_fields && Object.keys(custom_fields).length ? { custom_fields } : {}), created_by: 'dashboard' })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   logLeadActivity(data.id, { type: 'system', body: `Lead created${data.source ? ' · ' + data.source : ''}`, authorKey: 'admin', authorName: 'Admin' });
@@ -1259,6 +1390,7 @@ receiver.router.post('/api/dashboard/customers', requireAuth, express.json(), as
   if (data.lead_status === 'hot') {
     supabase.from('deals').insert({ customer_id: data.id, title: `${data.name}${data.car_in_question ? ' — ' + data.car_in_question : ''}`, stage: 'lead', car_model: data.car_in_question||'', budget_egp: data.budget_lead||null, notes: 'Auto-created from Hot lead', created_by: 'system' }).then(()=>{}).catch(()=>{});
   }
+  runAutomations('lead.created', leadCtx(data));
   res.json(data);
 });
 
@@ -1303,6 +1435,17 @@ function normalizeLeadDate(raw) {
   return null;
 }
 
+// Canonicalize a phone number for duplicate detection (Egypt-aware): digits only,
+// drop 0020 / leading 20 country code -> local 01XXXXXXXXX form.
+function normalizePhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('0020')) d = d.slice(4);
+  else if (d.startsWith('20') && d.length === 12) d = '0' + d.slice(2);
+  if (d.length === 10 && d.startsWith('1')) d = '0' + d;
+  return d;
+}
+
 receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.single('file'), express.json(), async (req, res) => {
   try {
     let csvText = '';
@@ -1320,23 +1463,42 @@ receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.s
     const lines = csvText.split('\n').map(l => l.trim()).filter(l => l);
     if (lines.length < 2) return res.status(400).json({ error: 'Need header row + at least one data row' });
     const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, '').replace(/ /g, '_'));
-    const toInsert = lines.slice(1).map(line => {
+    const rows = lines.slice(1).map(line => {
       const vals = parseCsvLine(line);
       const r = {};
       headers.forEach((h, i) => { r[h] = (vals[i] || '').trim().replace(/^"|"$/g, ''); });
       return r;
-    }).filter(r => r.name).map(r => ({
-      name: r.name, phone: r.phone||'', email: r.email||'', source: r.origin||r.source||'',
-      notes: r.notes||'', lead_date: normalizeLeadDate(r.date), lead_time: r.time||'',
-      lead_status: r.status||'cold', car_in_question: r.car||r.car_in_question||'',
-      budget_lead: r.budget ? (parseInt(String(r.budget).replace(/[^0-9]/g, ''), 10) || null) : null,
-      next_action: r.next_action||'', been_contacted: /^(true|1|yes|y)$/i.test((r.been_contacted||'').trim()),
-      sales_feedback: r.sales_feedback||'', inquiry: r.inquiry||'', created_by: 'csv_import',
-    }));
-    if (!toInsert.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
-    const { error } = await supabase.from('customers').insert(toInsert);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ count: toInsert.length });
+    }).filter(r => r.name).map(r => {
+      const phone = r.phone||'';
+      return {
+        name: r.name, phone, phone_norm: normalizePhone(phone), email: r.email||'', source: r.origin||r.source||'',
+        notes: r.notes||'', lead_date: normalizeLeadDate(r.date), lead_time: r.time||'',
+        lead_status: r.status||'cold', car_in_question: r.car||r.car_in_question||'',
+        budget_lead: r.budget ? (parseInt(String(r.budget).replace(/[^0-9]/g, ''), 10) || null) : null,
+        next_action: r.next_action||'', been_contacted: /^(true|1|yes|y)$/i.test((r.been_contacted||'').trim()),
+        sales_feedback: r.sales_feedback||'', inquiry: r.inquiry||'', created_by: 'csv_import',
+      };
+    });
+    if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
+    // Dedup: skip rows whose normalized phone already exists in the DB OR repeats within this file.
+    const norms = [...new Set(rows.map(r => r.phone_norm).filter(Boolean))];
+    const existing = new Set();
+    for (let i = 0; i < norms.length; i += 200) {
+      const { data: ex } = await supabase.from('customers').select('phone_norm').in('phone_norm', norms.slice(i, i + 200));
+      (ex || []).forEach(e => existing.add(e.phone_norm));
+    }
+    const seen = new Set();
+    const skippedNames = [];
+    const toInsert = rows.filter(r => {
+      if (r.phone_norm && (existing.has(r.phone_norm) || seen.has(r.phone_norm))) { skippedNames.push(r.name); return false; }
+      if (r.phone_norm) seen.add(r.phone_norm);
+      return true;
+    });
+    if (toInsert.length) {
+      const { error } = await supabase.from('customers').insert(toInsert);
+      if (error) return res.status(500).json({ error: error.message });
+    }
+    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50) });
   } catch (e) { console.error('[csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 
@@ -1350,8 +1512,11 @@ async function logLeadActivity(customerId, { type = 'note', body = '', meta = {}
 
 receiver.router.put('/api/dashboard/customers/:id', requireAuth, express.json(), async (req, res) => {
   const { data: prev } = await supabase.from('customers').select('lead_status,been_contacted').eq('id', req.params.id).single();
+  const patch = { ...req.body, updated_at: new Date().toISOString() };
+  delete patch.force;
+  if (Object.prototype.hasOwnProperty.call(patch, 'phone')) patch.phone_norm = normalizePhone(patch.phone);
   const { data, error } = await supabase.from('customers')
-    .update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
+    .update(patch).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
   // Timeline: status change + contacted flip
   if (prev && data.lead_status !== prev.lead_status) {
@@ -1371,6 +1536,8 @@ receiver.router.put('/api/dashboard/customers/:id', requireAuth, express.json(),
       }
     } catch (e) { console.warn('[leads] Auto-deal failed:', e.message); }
   }
+  if (prev && data.lead_status !== prev.lead_status) runAutomations('lead.status_changed', { ...leadCtx(data), from: prev.lead_status, to: data.lead_status });
+  if (prev && !prev.been_contacted && data.been_contacted) runAutomations('lead.contacted', leadCtx(data));
   res.json(data);
 });
 
@@ -1479,6 +1646,7 @@ receiver.router.post('/api/dashboard/deals', requireAuth, express.json(), async 
     .select('*, customers(name,phone,email)').single();
   if (error) return res.status(500).json({ error: error.message });
   logLeadActivity(customer_id, { type: 'deal', body: `Deal created — ${title}`, authorKey: 'admin', authorName: 'Admin' });
+  runAutomations('deal.created', dealCtx(data));
   res.json(data);
 });
 
@@ -1509,6 +1677,7 @@ receiver.router.put('/api/dashboard/deals/:id', requireAuth, express.json(), asy
     const stageLabels = { lead: 'Lead', contacted: 'Contacted', quoted: 'Quoted', negotiating: 'Negotiating', won: 'Won', lost: 'Lost' };
     logLeadActivity(data.customer_id, { type: 'deal', body: `Deal moved to ${stageLabels[updates.stage] || updates.stage} — ${data.title}`, meta: { from: prev?.stage, to: updates.stage }, authorKey: 'admin', authorName: 'Admin' });
   }
+  if (updates.stage && prev?.stage !== updates.stage) runAutomations('deal.stage_changed', { ...dealCtx(data), from: prev?.stage, to: updates.stage });
   res.json(data);
 });
 
@@ -1516,6 +1685,196 @@ receiver.router.delete('/api/dashboard/deals/:id', requireAuth, async (req, res)
   const { error } = await supabase.from('deals').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
+});
+
+// ─── No-code automation engine ──────────────────────────────────────────────────
+// Config-driven trigger -> conditions -> actions rules (automation_rules table),
+// fired best-effort from the lead/deal/quote mutation seams and an hourly sweep.
+// Never throws into a request path.
+function leadCtx(c) {
+  return {
+    entityType: 'lead', entityId: c.id, customerId: c.id, ownerId: c.assigned_to || null,
+    fields: { name: c.name, phone: c.phone, source: c.source, lead_status: c.lead_status,
+      car_in_question: c.car_in_question, budget_lead: c.budget_lead, been_contacted: c.been_contacted, assigned_to: c.assigned_to },
+  };
+}
+function dealCtx(d) {
+  return {
+    entityType: 'deal', entityId: d.id, customerId: d.customer_id || null, ownerId: d.assigned_to || null,
+    fields: { title: d.title, stage: d.stage, car_model: d.car_model, budget_egp: d.budget_egp,
+      assigned_to: d.assigned_to, name: d.customers?.name, phone: d.customers?.phone, car_in_question: d.customers?.car_in_question, budget_lead: d.customers?.budget_lead },
+  };
+}
+function autoTmpl(str, ctx) {
+  const f = ctx.fields || {};
+  return String(str || '').replace(/\{\{(\w+)\}\}/g, (_, k) => (f[k] != null ? String(f[k]) : ''));
+}
+function autoTarget(a, ctx) {
+  const to = a.to || 'admin';
+  if (to === 'owner') return ctx.ownerId ? `employee_${ctx.ownerId}` : 'admin';
+  if (to === 'employee') return a.employee_id ? `employee_${a.employee_id}` : 'admin';
+  return 'admin';
+}
+function automationMatches(rule, ctx) {
+  const conds = Array.isArray(rule.conditions) ? rule.conditions : [];
+  const vals = { ...(ctx.fields || {}), from: ctx.from, to: ctx.to };
+  return conds.every(c => {
+    const cur = vals[c.field], v = c.value;
+    switch (c.op) {
+      case 'equals': return String(cur ?? '') === String(v ?? '');
+      case 'not_equals': return String(cur ?? '') !== String(v ?? '');
+      case 'contains': return String(cur ?? '').toLowerCase().includes(String(v ?? '').toLowerCase());
+      case 'changed_to': return String(ctx.to ?? '') === String(v ?? '');
+      case 'gt': return Number(cur) > Number(v);
+      case 'lt': return Number(cur) < Number(v);
+      case 'is_empty': return !cur;
+      case 'not_empty': return !!cur;
+      default: return true;
+    }
+  });
+}
+async function autoRoundRobin() {
+  const { data: emps } = await supabase.from('employees').select('id').order('id', { ascending: true });
+  if (!emps || !emps.length) return null;
+  let cursor = 0;
+  try { const { data } = await supabase.from('quotation_settings').select('value').eq('key', 'automation_rr_cursor').single(); cursor = parseInt(data?.value || '0', 10) || 0; } catch (_) {}
+  const pick = emps[cursor % emps.length].id;
+  await supabase.from('quotation_settings').upsert({ key: 'automation_rr_cursor', value: String((cursor + 1) % 1000000) }, { onConflict: 'key' }).then(() => {}).catch(() => {});
+  return pick;
+}
+async function runAutomationAction(a, ctx) {
+  switch (a.type) {
+    case 'notify': {
+      await createNotification(autoTarget(a, ctx), {
+        type: 'automation', title: autoTmpl(a.title, ctx) || 'Automation',
+        body: autoTmpl(a.body, ctx), url: ctx.entityType === 'deal' ? '/dashboard#deals' : '/dashboard#customers',
+      }, 'always');
+      break;
+    }
+    case 'create_followup': {
+      if (!ctx.customerId) break;
+      const days = Number(a.days) || 1;
+      const assigned = a.assign_to === 'owner' ? (ctx.ownerId || null) : a.assign_to === 'employee' ? (a.employee_id || null) : null;
+      await supabase.from('lead_followups').insert({ customer_id: ctx.customerId, due_at: new Date(Date.now() + days * 86400000).toISOString(), note: autoTmpl(a.note, ctx) || 'Automated follow-up', assigned_to: assigned, created_by: 'automation' });
+      logLeadActivity(ctx.customerId, { type: 'follow_up', body: `Follow-up scheduled by automation (in ${days}d)`, authorKey: 'system', authorName: 'Automation' });
+      break;
+    }
+    case 'create_task': {
+      const days = Number(a.due_days) || 1;
+      const aid = a.assignee_id ? String(a.assignee_id) : (a.assign_to === 'owner' && ctx.ownerId ? String(ctx.ownerId) : null);
+      const ins = { title: autoTmpl(a.title, ctx) || 'Automated task', priority: a.priority || 'medium', due_date: new Date(Date.now() + days * 86400000).toISOString().slice(0, 10), status: 'todo', created_by: 'automation', channel_id: '', channel_name: '' };
+      if (aid) { ins.assignee_id = aid; ins.assignee_ids = [aid]; }
+      const { data: t } = await supabase.from('tasks').insert(ins).select().single();
+      if (aid && t) { const mk = await memberKeyForAssignee(aid); if (mk) createNotification(mk, { type: 'task', title: 'New task assigned', body: t.title, url: '/employee#tasks' }, 'always'); }
+      break;
+    }
+    case 'create_deal': {
+      if (!ctx.customerId) break;
+      const { data: existing } = await supabase.from('deals').select('id').eq('customer_id', ctx.customerId).limit(1);
+      if (!existing?.length) {
+        await supabase.from('deals').insert({ customer_id: ctx.customerId, title: autoTmpl(a.title, ctx) || ctx.fields?.name || 'Deal', stage: a.stage || 'lead', car_model: ctx.fields?.car_in_question || '', budget_egp: ctx.fields?.budget_lead || null, notes: 'Created by automation', created_by: 'automation' });
+        logLeadActivity(ctx.customerId, { type: 'deal', body: 'Deal created by automation', authorKey: 'system', authorName: 'Automation' });
+      }
+      break;
+    }
+    case 'set_lead_status': {
+      if (!ctx.customerId || !a.status) break;
+      // Direct update (bypasses the PUT handler) so this never re-triggers automations.
+      await supabase.from('customers').update({ lead_status: a.status, updated_at: new Date().toISOString() }).eq('id', ctx.customerId);
+      logLeadActivity(ctx.customerId, { type: 'status_change', body: 'Status set by automation', meta: { to: a.status }, authorKey: 'system', authorName: 'Automation' });
+      break;
+    }
+    case 'assign_lead': {
+      if (!ctx.customerId) break;
+      const empId = a.mode === 'specific' ? (a.employee_id || null) : await autoRoundRobin();
+      if (empId) {
+        await supabase.from('customers').update({ assigned_to: empId, updated_at: new Date().toISOString() }).eq('id', ctx.customerId);
+        logLeadActivity(ctx.customerId, { type: 'system', body: 'Lead assigned by automation', authorKey: 'system', authorName: 'Automation' });
+        createNotification(`employee_${empId}`, { type: 'lead', title: 'Lead assigned to you', body: autoTmpl('{{name}} — {{phone}}', ctx), url: '/employee#leads' }, 'always');
+      }
+      break;
+    }
+  }
+}
+async function runAutomationActions(rule, ctx, eventName) {
+  const actions = Array.isArray(rule.actions) ? rule.actions : [];
+  const done = [];
+  for (const a of actions) { await runAutomationAction(a, ctx); done.push(a.type); }
+  await supabase.from('automation_runs').insert({ rule_id: rule.id, event: eventName, entity_type: ctx.entityType, entity_id: ctx.entityId, status: 'ok', detail: done.join(',') }).then(() => {}).catch(() => {});
+}
+async function runAutomations(eventName, ctx) {
+  try {
+    const { data: rules } = await supabase.from('automation_rules').select('*').eq('enabled', true).eq('trigger_type', eventName);
+    for (const rule of rules || []) {
+      try {
+        if (!automationMatches(rule, ctx)) continue;
+        await runAutomationActions(rule, ctx, eventName);
+      } catch (e) {
+        console.warn('[automations] rule', rule.id, 'failed:', e.message);
+        await supabase.from('automation_runs').insert({ rule_id: rule.id, event: eventName, entity_type: ctx.entityType, entity_id: ctx.entityId, status: 'error', detail: e.message }).then(() => {}).catch(() => {});
+      }
+    }
+  } catch (e) { console.warn('[automations] run failed:', e.message); }
+}
+// Scheduled trigger: leads with no activity for N days (once per lead per window).
+async function runNoActivitySweep() {
+  try {
+    const { data: rules } = await supabase.from('automation_rules').select('*').eq('enabled', true).eq('trigger_type', 'no_activity_days');
+    if (!rules || !rules.length) return;
+    const { data: leadsAll } = await supabase.from('customers').select('id,name,phone,source,lead_status,assigned_to,car_in_question,budget_lead').limit(1000);
+    const leads = (leadsAll || []).filter(c => !['blacklist', 'not_interested'].includes(c.lead_status));
+    for (const rule of rules) {
+      const days = Number(rule.trigger_config?.days) || 3;
+      const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+      for (const c of leads) {
+        const { data: la } = await supabase.from('lead_activities').select('created_at').eq('customer_id', c.id).order('created_at', { ascending: false }).limit(1);
+        if (la?.[0]?.created_at && la[0].created_at > cutoff) continue;       // recent activity → skip
+        const { data: fired } = await supabase.from('automation_runs').select('id').eq('rule_id', rule.id).eq('entity_id', c.id).gte('created_at', cutoff).limit(1);
+        if (fired?.length) continue;                                          // already fired this window
+        const ctx = leadCtx(c);
+        if (!automationMatches(rule, ctx)) continue;
+        await runAutomationActions(rule, ctx, 'no_activity_days');
+      }
+    }
+  } catch (e) { console.warn('[automations] no-activity sweep failed:', e.message); }
+}
+function scheduleAutomationSweep() {
+  setTimeout(() => runNoActivitySweep().catch(console.error), 60 * 1000);
+  setInterval(() => runNoActivitySweep().catch(console.error), 60 * 60 * 1000);
+}
+
+// Automation rules CRUD
+receiver.router.get('/api/dashboard/automations', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('automation_rules').select('*').order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+receiver.router.post('/api/dashboard/automations', requireAuth, express.json(), async (req, res) => {
+  const { name, trigger_type, trigger_config, conditions, actions, enabled } = req.body || {};
+  if (!name || !trigger_type) return res.status(400).json({ error: 'name and trigger_type are required' });
+  const { data, error } = await supabase.from('automation_rules').insert({
+    name, trigger_type, trigger_config: trigger_config || {}, conditions: conditions || [], actions: actions || [],
+    enabled: !!enabled, created_by: 'admin',
+  }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+receiver.router.put('/api/dashboard/automations/:id', requireAuth, express.json(), async (req, res) => {
+  const patch = { ...req.body, updated_at: new Date().toISOString() };
+  delete patch.id; delete patch.created_at;
+  const { data, error } = await supabase.from('automation_rules').update(patch).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+receiver.router.delete('/api/dashboard/automations/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('automation_rules').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+receiver.router.get('/api/dashboard/automations/:id/runs', requireAuth, async (req, res) => {
+  const { data, error } = await supabase.from('automation_runs').select('*').eq('rule_id', req.params.id).order('created_at', { ascending: false }).limit(50);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
 });
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
@@ -2542,6 +2901,7 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
         customer_id: custId,
       }).select().single().then(({ data: qrow }) => {
         if (custId && qrow) logLeadActivity(custId, { type: 'quote', body: `Quotation generated — ${qrow.title}`, meta: { quotation_id: qrow.id, quote_id: qrow.quote_id }, authorKey: 'admin', authorName: 'Admin' });
+        if (qrow) runAutomations('quote.generated', { entityType: 'quote', entityId: qrow.id, customerId: custId, ownerId: null, fields: { name: name || '', vehicleModel: vehicleModel || '', title: qrow.title } });
       }).catch(() => {});
     } catch (e) {
       console.error('[quotation-gen]', e);
@@ -2587,6 +2947,7 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
         customer_id: custId,
       }).select().single().then(({ data: qrow }) => {
         if (custId && qrow) logLeadActivity(custId, { type: 'quote', body: `Quotation generated — ${qrow.title}`, meta: { quotation_id: qrow.id, quote_id: qrow.quote_id }, authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
+        if (qrow) runAutomations('quote.generated', { entityType: 'quote', entityId: qrow.id, customerId: custId, ownerId: null, fields: { name: name || '', vehicleModel: vehicleModel || '', title: qrow.title } });
       }).catch(() => {});
     } catch (e) {
       console.error('[emp-quotation-gen]', e);
@@ -2596,37 +2957,73 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
 );
 
 // ─── Form Submissions ─────────────────────────────────────────────────────────
-// Public endpoint — no auth required (customers submit from the website)
+// Public endpoint — no auth required (customers submit from the website).
+// Every submission is persisted AND turned into a lead (deduped on normalized phone),
+// so inbound inquiries land in the CRM instead of vanishing.
 receiver.router.post('/api/submissions', express.json(), async (req, res) => {
-  const { name, email, phone, message, car_interest } = req.body || {};
-  if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
-
-  const sub = {
-    id: submissionIdSeq++,
-    name: String(name).trim(),
-    email: String(email).trim(),
-    phone: phone ? String(phone).trim() : '',
-    message: message ? String(message).trim() : '',
-    car_interest: car_interest ? String(car_interest).trim() : '',
-    submitted_at: new Date().toISOString(),
-  };
-  submissions.unshift(sub);
-
-
-  res.json({ ok: true, id: sub.id });
+  const { name, email, phone, message, car_interest, source } = req.body || {};
+  if (!name || (!email && !phone)) return res.status(400).json({ error: 'Name and a phone or email are required' });
+  const cleanName = String(name).trim();
+  const cleanEmail = email ? String(email).trim() : '';
+  const cleanPhone = phone ? String(phone).trim() : '';
+  const cleanMsg = message ? String(message).trim() : '';
+  const cleanCar = car_interest ? String(car_interest).trim() : '';
+  const src = (source ? String(source).trim() : '') || 'website';
+  const phone_norm = normalizePhone(cleanPhone);
+  try {
+    let customerId = null, isNew = false;
+    if (phone_norm) {
+      const { data: existing } = await supabase.from('customers').select('id').eq('phone_norm', phone_norm).limit(1);
+      if (existing && existing.length) customerId = existing[0].id;
+    }
+    if (customerId) {
+      // Known lead re-inquired — fill any blanks, then log it to the timeline (no duplicate lead).
+      const patch = {};
+      if (cleanEmail) patch.email = cleanEmail;
+      if (cleanCar) patch.car_in_question = cleanCar;
+      if (Object.keys(patch).length) await supabase.from('customers').update(patch).eq('id', customerId);
+      logLeadActivity(customerId, { type: 'system', body: `Re-inquiry via ${src}${cleanMsg ? ' — ' + cleanMsg : ''}`, meta: { source: src }, authorKey: 'system', authorName: 'System' });
+    } else {
+      const { data: lead } = await supabase.from('customers').insert({
+        name: cleanName, phone: cleanPhone, phone_norm, email: cleanEmail,
+        source: src, lead_status: 'warm', car_in_question: cleanCar,
+        inquiry: cleanMsg, notes: cleanMsg, created_by: 'web_form',
+      }).select().single();
+      if (lead) {
+        customerId = lead.id; isNew = true;
+        logLeadActivity(customerId, { type: 'system', body: `Lead created · ${src}`, meta: { source: src }, authorKey: 'system', authorName: 'System' });
+      }
+    }
+    // Persist the raw submission (audit trail), linked to the lead it created/matched.
+    const { data: sub } = await supabase.from('form_submissions').insert({
+      name: cleanName, email: cleanEmail, phone: cleanPhone, message: cleanMsg,
+      car_interest: cleanCar, source: src, customer_id: customerId,
+    }).select().single();
+    createNotification('admin', {
+      type: 'lead',
+      title: isNew ? `New website lead: ${cleanName}` : `Re-inquiry: ${cleanName}`,
+      body: [cleanPhone && `Phone: ${cleanPhone}`, cleanCar && `Interest: ${cleanCar}`, cleanMsg].filter(Boolean).join(' · ') || 'New website submission',
+      url: customerId ? '/dashboard#customers' : '/dashboard#submissions',
+    }, 'always').catch(() => {});
+    res.json({ ok: true, id: sub?.id, customer_id: customerId, lead_created: isNew });
+  } catch (e) {
+    console.error('[submissions]', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// Admin — list all submissions
-receiver.router.get('/api/submissions', requireAuth, (_req, res) => {
-  res.json(submissions);
+// Admin — list all submissions (with the linked lead name)
+receiver.router.get('/api/submissions', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('form_submissions')
+    .select('*, customers(name)').order('created_at', { ascending: false }).limit(200);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json((data || []).map(s => ({ ...s, submitted_at: s.created_at, lead_name: s.customers?.name || '' })));
 });
 
 // Admin — delete a submission
-receiver.router.delete('/api/submissions/:id', requireAuth, (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const idx = submissions.findIndex(s => s.id === id);
-  if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  submissions.splice(idx, 1);
+receiver.router.delete('/api/submissions/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('form_submissions').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
 
@@ -2729,6 +3126,7 @@ function scheduleFollowupReminders() {
   scheduleDueDateReminders();
   scheduleHoursLogReminder();
   scheduleFollowupReminders();
+  scheduleAutomationSweep();
   if (process.env.WHATSAPP_ENABLED === 'true') initWhatsApp().catch(console.error);
   const port = process.env.PORT || 3000;
   receiver.app.listen(port, () => {

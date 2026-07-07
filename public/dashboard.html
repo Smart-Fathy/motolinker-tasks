@@ -1056,6 +1056,8 @@
         <div class="nav-group-items">
           <div class="nav-item"        onclick="navigate('customers')"  id="nav-customers">    <span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads</div>
           <div class="nav-item"        onclick="navigate('deals')"      id="nav-deals">        <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals</div>
+          <div class="nav-item"        onclick="navigate('reports')"    id="nav-reports">      <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span> Reports</div>
+          <div class="nav-item"        onclick="navigate('automations')" id="nav-automations"> <span class="nav-icon"><i data-lucide="workflow"></i></span> Automations</div>
         </div>
       </div>
       <div class="nav-group" data-group="integrations">
@@ -1665,6 +1667,121 @@
     </div>
   </div>
 
+  <!-- Reports / Sales Analytics -->
+  <div id="page-reports" class="page">
+    <div class="page-body" style="max-width:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="page-title">Sales &amp; Revenue</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Pipeline, win-rate, revenue and conversion — computed live from your deals.</div>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+          <div><label class="form-label" style="font-size:11px">From</label><input class="form-input" id="rep-from" type="date" style="padding:6px 8px;font-size:12px"></div>
+          <div><label class="form-label" style="font-size:11px">To</label><input class="form-input" id="rep-to" type="date" style="padding:6px 8px;font-size:12px"></div>
+          <div><label class="form-label" style="font-size:11px">Source</label>
+            <select class="form-input" id="rep-source" style="padding:6px 8px;font-size:12px">
+              <option value="">All sources</option>
+              <option value="fb_ad">FB Ad.</option><option value="whatsapp">Whatsapp</option>
+              <option value="messenger">Messenger</option><option value="direct_call">Direct Call</option>
+              <option value="ig_ads">IG ads</option><option value="website">Website</option>
+              <option value="walk_in">Walk-in</option><option value="marketplace">Marketplace</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="loadReports()" style="font-size:12px"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Apply</button>
+          <button class="btn btn-outline" onclick="exportReport('summary')" style="font-size:12px"><i data-lucide="download" style="width:14px;height:14px"></i> CSV</button>
+        </div>
+      </div>
+      <div id="reports-stats" class="stats-grid" style="margin-bottom:22px"></div>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Conversion funnel</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('pipeline')">CSV</button></div>
+          <div class="chart-wrap"><canvas id="repFunnel"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Revenue won by month</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('revenue_by_month')">CSV</button></div>
+          <div class="chart-wrap"><canvas id="repRevenue"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Deals by source</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('by_source')">CSV</button></div>
+          <div class="chart-wrap"><canvas id="repSource"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Rep leaderboard (revenue won)</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('by_rep')">CSV</button></div>
+          <div class="chart-wrap"><canvas id="repRep"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Automations -->
+  <div id="page-automations" class="page">
+    <div class="page-body" style="max-width:1000px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="page-title">Automations</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">When something happens, automatically do something — routing, follow-ups, reminders.</div>
+        </div>
+        <button class="btn btn-primary" onclick="openAutomationModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> New Automation</button>
+      </div>
+      <div id="automations-list"></div>
+    </div>
+  </div>
+
+  <!-- Automation Builder Modal -->
+  <div id="automation-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:640;align-items:center;justify-content:center">
+    <div class="modal" style="width:100%;max-width:640px;max-height:92vh;overflow-y:auto">
+      <div class="modal-header">
+        <div class="modal-title" id="automation-modal-title">New Automation</div>
+        <button class="modal-close" onclick="document.getElementById('automation-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body" style="padding:24px;display:grid;gap:16px">
+        <input type="hidden" id="am-id">
+        <div>
+          <label class="form-label">Name</label>
+          <input class="form-input" id="am-name" placeholder="e.g. Route FB-ad leads to a rep">
+        </div>
+        <div>
+          <label class="form-label">When… (trigger)</label>
+          <select class="form-input" id="am-trigger" onchange="amTriggerChanged()">
+            <option value="lead.created">A lead is created</option>
+            <option value="lead.status_changed">A lead's status changes</option>
+            <option value="lead.contacted">A lead is marked contacted</option>
+            <option value="deal.created">A deal is created</option>
+            <option value="deal.stage_changed">A deal's stage changes</option>
+            <option value="quote.generated">A quotation is generated</option>
+            <option value="no_activity_days">A lead has no activity for N days</option>
+          </select>
+        </div>
+        <div id="am-days-wrap" style="display:none">
+          <label class="form-label">Days with no activity</label>
+          <input class="form-input" id="am-days" type="number" min="1" value="3" style="max-width:120px">
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <label class="form-label" style="margin:0">Only if… (conditions)</label>
+            <button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="amAddCondition()">+ Condition</button>
+          </div>
+          <div id="am-conditions" style="display:grid;gap:8px"></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px">All conditions must match. Leave empty to always run.</div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <label class="form-label" style="margin:0">Then… (actions)</label>
+            <button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="amAddAction()">+ Action</button>
+          </div>
+          <div id="am-actions" style="display:grid;gap:10px"></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="am-enabled" style="width:16px;height:16px;accent-color:var(--gold)"> Enabled
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('automation-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" onclick="saveAutomation()">Save Automation</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Lead Modal -->
   <div id="customer-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
     <div class="modal" style="width:100%;max-width:640px;max-height:92vh;overflow-y:auto">
@@ -1715,6 +1832,9 @@
               <option value="messenger">Messenger</option>
               <option value="direct_call">Direct Call</option>
               <option value="ig_ads">IG ads</option>
+              <option value="website">Website</option>
+              <option value="walk_in">Walk-in</option>
+              <option value="marketplace">Marketplace</option>
             </select>
           </div>
         </div>
@@ -1745,6 +1865,14 @@
               <input type="checkbox" id="cm-been-contacted" style="width:16px;height:16px;accent-color:var(--gold)">
               <label for="cm-been-contacted" style="font-size:13px;cursor:pointer">Yes, contacted</label>
             </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label class="form-label">Owner (sales rep)</label>
+            <select class="form-input" id="cm-owner">
+              <option value="">— Unassigned —</option>
+            </select>
           </div>
         </div>
         <div>
@@ -2353,6 +2481,261 @@ function renderCharts(s) {
   });
 }
 
+// ── Reports / Sales Analytics ──────────────────────────────────────────────────
+let _reportData = null;
+function repDateDefaults() {
+  const to = document.getElementById('rep-to'), from = document.getElementById('rep-from');
+  if (to && !to.value) to.value = new Date().toISOString().slice(0, 10);
+  if (from && !from.value) from.value = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+}
+function repQuery() {
+  const p = new URLSearchParams();
+  const f = document.getElementById('rep-from')?.value, t = document.getElementById('rep-to')?.value, s = document.getElementById('rep-source')?.value;
+  if (f) p.set('from', f); if (t) p.set('to', t); if (s) p.set('source', s);
+  return p.toString();
+}
+async function loadReports() {
+  repDateDefaults();
+  const grid = document.getElementById('reports-stats');
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
+  try {
+    const r = await apiFetch('/api/dashboard/reports/summary?' + repQuery());
+    const s = await r.json();
+    if (!r.ok) throw new Error(s.error || 'Failed');
+    _reportData = s;
+    renderReportStats(s);
+    renderReportCharts(s);
+  } catch (e) {
+    grid.innerHTML = `<div class="error-msg" style="grid-column:1/-1">${esc(e.message)}</div>`;
+  }
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function egp(n) { return (Number(n) || 0).toLocaleString() + ' EGP'; }
+function renderReportStats(s) {
+  document.getElementById('reports-stats').innerHTML = `
+    <div class="stat-card total"><div class="stat-label">Open Pipeline</div><div class="stat-value" style="font-size:22px">${egp(s.totalPipeline)}</div><div class="stat-sub">${s.range.from} → ${s.range.to}</div></div>
+    <div class="stat-card in-progress"><div class="stat-label">Weighted Pipeline</div><div class="stat-value" style="font-size:22px">${egp(s.weightedPipeline)}</div><div class="stat-sub">Probability-adjusted</div></div>
+    <div class="stat-card done"><div class="stat-label">Revenue Won</div><div class="stat-value" style="font-size:22px">${egp(s.revenueWon)}</div><div class="stat-sub">${s.wonCount} deal${s.wonCount === 1 ? '' : 's'}</div></div>
+    <div class="stat-card high-pri"><div class="stat-label">Win Rate</div><div class="stat-value">${s.winRate}%</div><div class="stat-sub">Won vs lost</div></div>
+    <div class="stat-card todo"><div class="stat-label">Avg Deal</div><div class="stat-value" style="font-size:22px">${egp(s.avgDeal)}</div><div class="stat-sub">Per won deal</div></div>
+    <div class="stat-card overdue"><div class="stat-label">Quotes Generated</div><div class="stat-value">${s.quotesCount}</div><div class="stat-sub">In range</div></div>`;
+}
+function renderReportCharts(s) {
+  const gold = '#e6c98a', primary = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#c99a4e';
+  // Funnel (horizontal bar)
+  if (charts.repFunnel) charts.repFunnel.destroy();
+  charts.repFunnel = new Chart(document.getElementById('repFunnel'), {
+    type: 'bar',
+    data: { labels: s.funnel.map(f => f.stage), datasets: [{ label: 'Deals', data: s.funnel.map(f => f.count), backgroundColor: primary, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } },
+  });
+  // Revenue by month (bar)
+  if (charts.repRevenue) charts.repRevenue.destroy();
+  charts.repRevenue = new Chart(document.getElementById('repRevenue'), {
+    type: 'bar',
+    data: { labels: s.revenueByMonth.map(m => m.month), datasets: [{ label: 'Revenue (EGP)', data: s.revenueByMonth.map(m => m.value), backgroundColor: gold, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
+  });
+  // Deals by source (doughnut)
+  if (charts.repSource) charts.repSource.destroy();
+  charts.repSource = new Chart(document.getElementById('repSource'), {
+    type: 'doughnut',
+    data: { labels: s.bySource.map(x => x.source), datasets: [{ data: s.bySource.map(x => x.deals), backgroundColor: ['#c99a4e','#f59e0b','#10b981','#3b82f6','#a855f7','#ef4444','#14b8a6','#64748b','#e6c98a'], borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8 } } } },
+  });
+  // Rep leaderboard (horizontal bar, revenue won)
+  if (charts.repRep) charts.repRep.destroy();
+  charts.repRep = new Chart(document.getElementById('repRep'), {
+    type: 'bar',
+    data: { labels: s.byRep.map(x => x.rep), datasets: [{ label: 'Revenue won (EGP)', data: s.byRep.map(x => x.value), backgroundColor: gold, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } },
+  });
+}
+function exportReport(which) {
+  const p = repQuery();
+  const tok = encodeURIComponent(authToken || '');
+  window.location = `/api/dashboard/reports/export.csv?report=${encodeURIComponent(which)}${p ? '&' + p : ''}&_t=${tok}`;
+}
+
+// ── Automations ────────────────────────────────────────────────────────────────
+let _autoRules = [];
+let _autoDraft = { conditions: [], actions: [] };
+const AM_TRIGGER_LABELS = { 'lead.created':'Lead created', 'lead.status_changed':'Lead status changed', 'lead.contacted':'Lead marked contacted', 'deal.created':'Deal created', 'deal.stage_changed':'Deal stage changed', 'quote.generated':'Quote generated', 'no_activity_days':'No activity for N days' };
+const AM_FIELDS = ['source','lead_status','stage','been_contacted','budget_lead','budget_egp','name','car_in_question','to'];
+const AM_OPS = [['equals','is'],['not_equals','is not'],['contains','contains'],['changed_to','changed to'],['gt','>'],['lt','<'],['is_empty','is empty'],['not_empty','is not empty']];
+const AM_ACTIONS = [['notify','Send a notification'],['create_followup','Create a follow-up'],['create_task','Create a task'],['create_deal','Create a deal'],['set_lead_status','Set lead status'],['assign_lead','Assign the lead to a rep']];
+const AM_LEAD_STATUSES = [['cold','Cold'],['warm','Warm'],['hot','Hot'],['immediate_delivery','Immediate Delivery'],['not_interested','Not Interested'],['blacklist','Blacklist']];
+function amActionLabel(t){ const f = AM_ACTIONS.find(a => a[0] === t); return f ? f[1] : t; }
+function amEmpOptions(sel){ return '<option value="">— select rep —</option>' + (employeesForTasks || []).map(e => `<option value="${e.id}"${String(sel) === String(e.id) ? ' selected' : ''}>${esc(e.name)}</option>`).join(''); }
+
+async function loadAutomations() {
+  const c = document.getElementById('automations-list');
+  c.innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
+  try {
+    await preloadEmployeesForTasks();
+    const r = await apiFetch('/api/dashboard/automations');
+    const rules = await r.json();
+    if (!r.ok) throw new Error(rules.error || 'Failed');
+    _autoRules = Array.isArray(rules) ? rules : [];
+    renderAutomations(_autoRules);
+  } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function renderAutomations(rules) {
+  const c = document.getElementById('automations-list');
+  if (!rules.length) {
+    c.innerHTML = `<div style="text-align:center;padding:60px 0;color:var(--muted)">
+      <div style="font-size:40px;margin-bottom:10px">⚡</div>
+      <div style="font-size:15px;font-weight:600">No automations yet</div>
+      <div style="font-size:13px;margin-top:6px">Create one to route leads, schedule follow-ups, or send reminders automatically.</div></div>`;
+    return;
+  }
+  c.innerHTML = rules.map(r => `
+    <div class="card" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:10px">
+      <input type="checkbox" ${r.enabled ? 'checked' : ''} onchange="toggleAutomation(${r.id}, this.checked)" title="${r.enabled ? 'Enabled' : 'Disabled'}" style="width:20px;height:20px;accent-color:var(--gold);flex:none;cursor:pointer">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:14px">${esc(r.name)}${r.enabled ? '' : ' <span style="font-size:11px;color:var(--muted);font-weight:400">(off)</span>'}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">
+          <span style="color:var(--primary)">${esc(AM_TRIGGER_LABELS[r.trigger_type] || r.trigger_type)}</span>${(r.conditions && r.conditions.length) ? ` · ${r.conditions.length} condition${r.conditions.length > 1 ? 's' : ''}` : ''} · ${(r.actions || []).length} action${(r.actions || []).length === 1 ? '' : 's'}${(r.actions || []).length ? ` (${(r.actions || []).map(a => amActionLabel(a.type)).join(', ')})` : ''}
+        </div>
+      </div>
+      <button class="btn btn-outline" style="font-size:12px;padding:4px 10px" onclick="openAutomationModal(${r.id})">Edit</button>
+      <button class="btn btn-outline" style="font-size:12px;padding:4px 10px;color:var(--danger);border-color:var(--danger)" onclick="deleteAutomation(${r.id})">Delete</button>
+    </div>`).join('');
+}
+function openAutomationModal(id) {
+  const rule = id ? _autoRules.find(r => r.id === id) : null;
+  document.getElementById('automation-modal-title').textContent = rule ? 'Edit Automation' : 'New Automation';
+  document.getElementById('am-id').value = rule?.id || '';
+  document.getElementById('am-name').value = rule?.name || '';
+  document.getElementById('am-trigger').value = rule?.trigger_type || 'lead.created';
+  document.getElementById('am-days').value = rule?.trigger_config?.days || 3;
+  document.getElementById('am-enabled').checked = rule?.enabled || false;
+  _autoDraft = { conditions: JSON.parse(JSON.stringify(rule?.conditions || [])), actions: JSON.parse(JSON.stringify(rule?.actions || [])) };
+  amTriggerChanged();
+  amRenderConditions();
+  amRenderActions();
+  document.getElementById('automation-modal').style.display = 'flex';
+}
+function amTriggerChanged() {
+  document.getElementById('am-days-wrap').style.display = document.getElementById('am-trigger').value === 'no_activity_days' ? 'block' : 'none';
+}
+function amAddCondition() { _autoDraft.conditions.push({ field: 'source', op: 'equals', value: '' }); amRenderConditions(); }
+function amDelCondition(i) { _autoDraft.conditions.splice(i, 1); amRenderConditions(); }
+function amRenderConditions() {
+  document.getElementById('am-conditions').innerHTML = _autoDraft.conditions.map((cd, i) => `
+    <div style="display:flex;gap:6px;align-items:center">
+      <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="_autoDraft.conditions[${i}].field=this.value">
+        ${AM_FIELDS.map(f => `<option value="${f}"${cd.field === f ? ' selected' : ''}>${f}</option>`).join('')}
+      </select>
+      <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="_autoDraft.conditions[${i}].op=this.value">
+        ${AM_OPS.map(o => `<option value="${o[0]}"${cd.op === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}
+      </select>
+      <input class="form-input" style="flex:1;padding:6px 8px;font-size:12px" value="${esc(cd.value || '')}" placeholder="value" oninput="_autoDraft.conditions[${i}].value=this.value">
+      <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger)" onclick="amDelCondition(${i})">×</button>
+    </div>`).join('') || '<div style="font-size:12px;color:var(--muted)">No conditions — runs every time.</div>';
+}
+function amAddAction() { _autoDraft.actions.push({ type: 'notify', to: 'admin', title: '', body: '' }); amRenderActions(); }
+function amDelAction(i) { _autoDraft.actions.splice(i, 1); amRenderActions(); }
+function amChangeActionType(i, type) {
+  const base = { type };
+  if (type === 'notify') Object.assign(base, { to: 'admin', title: '', body: '' });
+  if (type === 'create_followup') Object.assign(base, { days: 1, note: '', assign_to: 'none' });
+  if (type === 'create_task') Object.assign(base, { title: '', priority: 'medium', due_days: 1 });
+  if (type === 'create_deal') Object.assign(base, { stage: 'lead' });
+  if (type === 'set_lead_status') Object.assign(base, { status: 'warm' });
+  if (type === 'assign_lead') Object.assign(base, { mode: 'round_robin' });
+  _autoDraft.actions[i] = base;
+  amRenderActions();
+}
+function amActionParams(a, i) {
+  const inp = (ph, key, val, type) => `<input class="form-input" ${type ? `type="${type}"` : ''} style="padding:6px 8px;font-size:12px" placeholder="${ph}" value="${esc(String(val != null ? val : ''))}" oninput="_autoDraft.actions[${i}].${key}=this.value">`;
+  if (a.type === 'notify') return `
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].to=this.value;amRenderActions()">
+      <option value="admin"${a.to === 'admin' ? ' selected' : ''}>Notify admin</option>
+      <option value="owner"${a.to === 'owner' ? ' selected' : ''}>Notify lead owner</option>
+      <option value="employee"${a.to === 'employee' ? ' selected' : ''}>Notify specific rep</option>
+    </select>
+    ${a.to === 'employee' ? `<select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].employee_id=this.value">${amEmpOptions(a.employee_id)}</select>` : ''}
+    ${inp('Title (use {{name}}, {{phone}})', 'title', a.title)}
+    ${inp('Message body', 'body', a.body)}`;
+  if (a.type === 'create_followup') return `
+    ${inp('in N days', 'days', a.days != null ? a.days : 1, 'number')}
+    ${inp('Note', 'note', a.note)}
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].assign_to=this.value;amRenderActions()">
+      <option value="none"${(a.assign_to || 'none') === 'none' ? ' selected' : ''}>Assign to: admin</option>
+      <option value="owner"${a.assign_to === 'owner' ? ' selected' : ''}>Assign to: lead owner</option>
+      <option value="employee"${a.assign_to === 'employee' ? ' selected' : ''}>Assign to: specific rep</option>
+    </select>
+    ${a.assign_to === 'employee' ? `<select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].employee_id=this.value">${amEmpOptions(a.employee_id)}</select>` : ''}`;
+  if (a.type === 'create_task') return `
+    ${inp('Task title', 'title', a.title)}
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].priority=this.value">
+      ${['high','medium','low'].map(p => `<option value="${p}"${(a.priority || 'medium') === p ? ' selected' : ''}>${p}</option>`).join('')}
+    </select>
+    ${inp('due in N days', 'due_days', a.due_days != null ? a.due_days : 1, 'number')}
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].assignee_id=this.value">${amEmpOptions(a.assignee_id)}</select>`;
+  if (a.type === 'create_deal') return `
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].stage=this.value">
+      ${['lead','contacted','quoted','negotiating'].map(s => `<option value="${s}"${(a.stage || 'lead') === s ? ' selected' : ''}>${s}</option>`).join('')}
+    </select>`;
+  if (a.type === 'set_lead_status') return `
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].status=this.value">
+      ${AM_LEAD_STATUSES.map(s => `<option value="${s[0]}"${a.status === s[0] ? ' selected' : ''}>${s[1]}</option>`).join('')}
+    </select>`;
+  if (a.type === 'assign_lead') return `
+    <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].mode=this.value;amRenderActions()">
+      <option value="round_robin"${(a.mode || 'round_robin') === 'round_robin' ? ' selected' : ''}>Round-robin</option>
+      <option value="specific"${a.mode === 'specific' ? ' selected' : ''}>Specific rep</option>
+    </select>
+    ${a.mode === 'specific' ? `<select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].employee_id=this.value">${amEmpOptions(a.employee_id)}</select>` : ''}`;
+  return '';
+}
+function amRenderActions() {
+  document.getElementById('am-actions').innerHTML = _autoDraft.actions.map((a, i) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;gap:6px">
+      <div style="display:flex;gap:6px;align-items:center">
+        <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="amChangeActionType(${i}, this.value)">
+          ${AM_ACTIONS.map(t => `<option value="${t[0]}"${a.type === t[0] ? ' selected' : ''}>${t[1]}</option>`).join('')}
+        </select>
+        <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger)" onclick="amDelAction(${i})">×</button>
+      </div>
+      <div style="display:grid;gap:6px">${amActionParams(a, i)}</div>
+    </div>`).join('') || '<div style="font-size:12px;color:var(--muted)">Add at least one action.</div>';
+}
+async function saveAutomation() {
+  const id = document.getElementById('am-id').value;
+  const name = document.getElementById('am-name').value.trim();
+  if (!name) { alert('Name is required.'); return; }
+  if (!_autoDraft.actions.length) { alert('Add at least one action.'); return; }
+  const trigger_type = document.getElementById('am-trigger').value;
+  const trigger_config = trigger_type === 'no_activity_days' ? { days: parseInt(document.getElementById('am-days').value) || 3 } : {};
+  const actions = _autoDraft.actions.map(a => {
+    const o = { ...a };
+    if (o.days != null) o.days = parseInt(o.days) || 0;
+    if (o.due_days != null) o.due_days = parseInt(o.due_days) || 0;
+    return o;
+  });
+  const payload = { name, trigger_type, trigger_config, conditions: _autoDraft.conditions, actions, enabled: document.getElementById('am-enabled').checked };
+  try {
+    const url = id ? `/api/dashboard/automations/${id}` : '/api/dashboard/automations';
+    const r = await apiFetch(url, { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); alert('Error: ' + (e.error || r.status)); return; }
+    document.getElementById('automation-modal').style.display = 'none';
+    await loadAutomations();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+async function toggleAutomation(id, enabled) {
+  try { await apiFetch(`/api/dashboard/automations/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) }); }
+  catch (e) { alert('Error: ' + e.message); }
+  const r = _autoRules.find(x => x.id === id); if (r) r.enabled = enabled;
+}
+async function deleteAutomation(id) {
+  if (!confirm('Delete this automation?')) return;
+  try { await apiFetch(`/api/dashboard/automations/${id}`, { method: 'DELETE' }); await loadAutomations(); }
+  catch (e) { alert('Error: ' + e.message); }
+}
+
 // ── Table ────────────────────────────────────────────────────────────────────
 function populateChannelFilter(tasks) {
   const sel = document.getElementById('f-channel');
@@ -2722,7 +3105,7 @@ async function uploadCSV() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp, notif: loadNotifPage };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
@@ -4180,6 +4563,7 @@ async function loadSubmissions() {
         <table style="width:100%;border-collapse:collapse">
           <thead><tr style="background:#f7fafc">
             <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Name</th>
+            <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Lead</th>
             <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Email</th>
             <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Phone</th>
             <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Car Interest</th>
@@ -4190,6 +4574,7 @@ async function loadSubmissions() {
           <tbody>${data.map(s => `
             <tr style="border-bottom:1px solid var(--border)">
               <td style="padding:12px 16px;font-size:13px;font-weight:600">${esc(s.name)}</td>
+              <td style="padding:12px 16px;font-size:12px">${s.customer_id ? `<span onclick="openLeadProfile(${s.customer_id})" title="Open lead profile" style="cursor:pointer;color:var(--primary);background:rgba(230,150,80,.12);padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap">→ ${esc(s.lead_name || 'lead')}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
               <td style="padding:12px 16px;font-size:13px"><a href="mailto:${esc(s.email)}" style="color:var(--primary)">${esc(s.email)}</a></td>
               <td style="padding:12px 16px;font-size:13px;color:var(--muted)">${esc(s.phone || '—')}</td>
               <td style="padding:12px 16px;font-size:13px">${esc(s.car_interest || '—')}</td>
@@ -4862,7 +5247,8 @@ const LEAD_DEFAULT_COLS = [
     { key:'immediate_delivery', label:'Immediate Delivery' }, { key:'not_interested', label:'Not Interested' }, { key:'blacklist', label:'Blacklist' }] },
   { key:'source',          label:'Origin',      type:'select',   builtin:true, visible:true, options:[
     { key:'fb_ad', label:'FB Ad.' }, { key:'whatsapp', label:'Whatsapp' }, { key:'messenger', label:'Messenger' },
-    { key:'direct_call', label:'Direct Call' }, { key:'ig_ads', label:'IG ads' }] },
+    { key:'direct_call', label:'Direct Call' }, { key:'ig_ads', label:'IG ads' },
+    { key:'website', label:'Website' }, { key:'walk_in', label:'Walk-in' }, { key:'marketplace', label:'Marketplace' }] },
   { key:'car_in_question', label:'Car',         type:'text',     builtin:true, visible:true },
   { key:'budget_lead',     label:'Budget',      type:'number',   builtin:true, visible:true },
   { key:'next_action',     label:'Next Action', type:'select',   builtin:true, visible:true, options:[
@@ -4873,6 +5259,7 @@ const LEAD_DEFAULT_COLS = [
   { key:'sales_feedback',  label:'Sales Feedback', type:'text',  builtin:true, visible:true },
   { key:'inquiry',         label:'Inquiry',     type:'text',     builtin:true, visible:true },
   { key:'next_followup',   label:'Follow-up',   type:'virtual',  builtin:true, visible:true },
+  { key:'owner',           label:'Owner',       type:'virtual',  builtin:true, visible:true },
 ];
 let _leadCols = null;
 let _leadColsLoaded = false;
@@ -5150,6 +5537,14 @@ function leadCellClick(e, id, key) {
   if (!col || !c) return;
   // Name + follow-up cells open the Lead 360° profile instead of inline editing
   if (col.key === 'name' || col.key === 'next_followup') return openLeadProfile(id);
+  // Owner cell → floating rep picker (reassign the lead)
+  if (col.key === 'owner') {
+    const cur = c.assigned_to ? String(c.assigned_to) : '';
+    brandMenu(e.currentTarget, [{ key: '', label: '— Unassigned —', selected: !cur },
+      ...(employeesForTasks || []).map(emp => ({ key: String(emp.id), label: emp.name, selected: cur === String(emp.id) }))],
+      val => saveLeadOwner(id, val));
+    return;
+  }
   const raw = col.builtin ? c[key] : (c.custom_fields || {})[key];
   if (col.type === 'checkbox') return saveLeadCell(id, col, !raw);
   const td = e.currentTarget;
@@ -5184,6 +5579,16 @@ function leadCellClick(e, id, key) {
     else if (ev.key === 'Escape') finish(false);
   });
   el.addEventListener('blur', () => finish(true));
+}
+
+async function saveLeadOwner(id, val) {
+  try {
+    const updated = await apiFetch(`/api/dashboard/customers/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ assigned_to: val ? parseInt(val) : null }) }).then(r => r.json());
+    if (updated?.error) throw new Error(updated.error);
+    const i = _allCustomers.findIndex(x => x.id === id);
+    if (i >= 0) _allCustomers[i] = updated;
+  } catch (e) { alert('Save failed: ' + e.message); }
+  filterCustomers();
 }
 
 async function saveLeadCell(id, col, val) {
@@ -5224,6 +5629,10 @@ function leadCellHtml(c, col) {
     const label = new Date(due).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     return `<td ${attrs} style="font-size:11.5px;white-space:nowrap;color:${overdue ? 'var(--danger)' : 'var(--primary)'};font-weight:600">⏰ ${label}${overdue ? ' · overdue' : ''}</td>`;
   }
+  if (col.key === 'owner') {
+    const nm = c.assigned_to ? ((employeesForTasks || []).find(x => String(x.id) === String(c.assigned_to))?.name || ('#' + c.assigned_to)) : '';
+    return `<td ${attrs} style="font-size:12px;white-space:nowrap" title="Click to assign">${nm ? esc(nm) : '<span style="color:var(--muted)">—</span>'}</td>`;
+  }
   if (col.key === 'lead_status') {
     const m = colOptMap(col);
     const k = normKey(raw || 'cold', m);
@@ -5250,6 +5659,7 @@ async function loadCustomers() {
     const [customers, followups] = await Promise.all([
       apiFetch('/api/dashboard/customers').then(r => r.json()),
       apiFetch('/api/dashboard/followups/pending').then(r => r.json()).catch(() => []),
+      preloadEmployeesForTasks(),
     ]);
     _allCustomers = customers;
     _pendingFollowups = {};
@@ -5647,6 +6057,13 @@ function openCustomerModal(id) {
   document.getElementById('cm-car').value = c?.car_in_question || '';
   document.getElementById('cm-budget').value = c?.budget_lead || '';
   document.getElementById('cm-been-contacted').checked = c?.been_contacted || false;
+  // Owner (sales rep) picker
+  const ownerSel = document.getElementById('cm-owner');
+  if (ownerSel) {
+    ownerSel.innerHTML = '<option value="">— Unassigned —</option>' +
+      (employeesForTasks || []).map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+    ownerSel.value = c?.assigned_to ? String(c.assigned_to) : '';
+  }
   document.getElementById('cm-notes').value = c?.notes || '';
   document.getElementById('cm-sales-feedback').value = c?.sales_feedback || '';
   document.getElementById('cm-inquiry').value = c?.inquiry || '';
@@ -5696,6 +6113,7 @@ async function saveCustomer() {
     notes:          document.getElementById('cm-notes').value.trim(),
     sales_feedback: document.getElementById('cm-sales-feedback').value.trim(),
     inquiry:        document.getElementById('cm-inquiry').value.trim(),
+    assigned_to:    document.getElementById('cm-owner')?.value ? parseInt(document.getElementById('cm-owner').value) : null,
   };
   const customCols = (_leadCols || []).filter(x => !x.builtin);
   if (customCols.length) {
@@ -5714,7 +6132,15 @@ async function saveCustomer() {
   try {
     const url = id ? `/api/dashboard/customers/${id}` : '/api/dashboard/customers';
     const method = id ? 'PUT' : 'POST';
-    await apiFetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    let r = await apiFetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    // Duplicate phone on create → let the admin open the existing lead or create anyway.
+    if (r.status === 409) {
+      const { existing } = await r.json();
+      const openIt = confirm(`A lead with this phone already exists: "${existing?.name || 'Unknown'}".\n\nOK = open the existing lead · Cancel = create a new one anyway.`);
+      if (openIt) { closeCustomerModal(); if (existing?.id && typeof openLeadProfile === 'function') openLeadProfile(existing.id); return; }
+      r = await apiFetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...payload, force: true }) });
+    }
+    if (!r.ok) { const err = await r.json().catch(() => ({})); alert('Error: ' + (err.error || r.status)); return; }
     closeCustomerModal();
     await loadCustomers();
   } catch (e) { alert('Error: ' + e.message); }

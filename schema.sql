@@ -492,6 +492,77 @@ INSERT INTO quotation_settings (key, value) VALUES ('contact_notify_employee_id'
   ON CONFLICT (key) DO NOTHING;
 
 -- ============================================================
+--  Capture & dedup + lead ownership (run as migration)
+-- ============================================================
+
+-- Canonical (digits-only, Egypt-normalized) phone for duplicate detection.
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_norm  TEXT DEFAULT '';
+-- Lead owner (sales rep). employee id; NULL -> unassigned.
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS assigned_to BIGINT;
+-- Backfill phone_norm from existing phones (strip non-digits, drop 0020/20 country code -> local 01…).
+UPDATE customers SET phone_norm = (
+  CASE
+    WHEN regexp_replace(phone, '\D', '', 'g') LIKE '0020%' THEN substring(regexp_replace(phone, '\D', '', 'g') from 5)
+    WHEN regexp_replace(phone, '\D', '', 'g') LIKE '20%' AND length(regexp_replace(phone, '\D', '', 'g')) = 12 THEN '0' || substring(regexp_replace(phone, '\D', '', 'g') from 3)
+    WHEN length(regexp_replace(phone, '\D', '', 'g')) = 10 AND regexp_replace(phone, '\D', '', 'g') LIKE '1%' THEN '0' || regexp_replace(phone, '\D', '', 'g')
+    ELSE regexp_replace(phone, '\D', '', 'g')
+  END)
+WHERE (phone_norm IS NULL OR phone_norm = '') AND phone IS NOT NULL AND phone <> '';
+CREATE INDEX IF NOT EXISTS idx_customers_phone_norm ON customers (phone_norm) WHERE phone_norm <> '';
+
+-- Website / external form submissions (persisted; each may link to the lead it created/updated)
+CREATE TABLE IF NOT EXISTS form_submissions (
+  id           BIGSERIAL PRIMARY KEY,
+  name         TEXT DEFAULT '',
+  email        TEXT DEFAULT '',
+  phone        TEXT DEFAULT '',
+  message      TEXT DEFAULT '',
+  car_interest TEXT DEFAULT '',
+  source       TEXT DEFAULT 'website',
+  customer_id  BIGINT REFERENCES customers(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_form_submissions_created ON form_submissions (created_at DESC);
+ALTER TABLE IF EXISTS public.form_submissions ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================
+--  No-code automation engine (run as migration)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS automation_rules (
+  id             BIGSERIAL PRIMARY KEY,
+  name           TEXT NOT NULL,
+  enabled        BOOLEAN DEFAULT FALSE,
+  trigger_type   TEXT NOT NULL,                    -- lead.created | lead.status_changed | lead.contacted | deal.created | deal.stage_changed | quote.generated | no_activity_days
+  trigger_config JSONB DEFAULT '{}'::jsonb,        -- e.g. { "days": 3 } for no_activity_days
+  conditions     JSONB DEFAULT '[]'::jsonb,        -- [ { field, op, value } ]
+  actions        JSONB DEFAULT '[]'::jsonb,        -- [ { type, ...params } ]
+  created_by     TEXT DEFAULT 'admin',
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE IF EXISTS public.automation_rules ENABLE ROW LEVEL SECURITY;
+
+-- Audit log of automation firings (also used to de-dup scheduled no_activity_days rules)
+CREATE TABLE IF NOT EXISTS automation_runs (
+  id          BIGSERIAL PRIMARY KEY,
+  rule_id     BIGINT REFERENCES automation_rules(id) ON DELETE CASCADE,
+  event       TEXT DEFAULT '',
+  entity_type TEXT DEFAULT '',
+  entity_id   BIGINT,
+  status      TEXT DEFAULT 'ok',                   -- ok | error
+  detail      TEXT DEFAULT '',
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_rule ON automation_runs (rule_id, entity_id, created_at DESC);
+ALTER TABLE IF EXISTS public.automation_runs ENABLE ROW LEVEL SECURITY;
+
+-- Per-stage win probability for weighted-pipeline analytics (JSON string in the KV settings table)
+INSERT INTO quotation_settings (key, value) VALUES
+  ('stage_probabilities', '{"lead":10,"contacted":25,"quoted":50,"negotiating":75,"won":100,"lost":0}')
+  ON CONFLICT (key) DO NOTHING;
+
+-- ============================================================
 --  Row Level Security (RLS)
 -- ============================================================
 --  All database access happens server-side through the Express API using the
@@ -524,3 +595,6 @@ ALTER TABLE IF EXISTS public.deals                 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.whatsapp_contacts     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.whatsapp_messages     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.notifications         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.form_submissions      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.automation_rules      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.automation_runs       ENABLE ROW LEVEL SECURITY;
