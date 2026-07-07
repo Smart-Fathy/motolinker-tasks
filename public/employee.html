@@ -1158,6 +1158,16 @@
           </button>
         </div>
 
+        <!-- Tabs -->
+        <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:24px">
+          <button id="emp-qt-tab-draft"    class="tab active" onclick="empSwitchQtTab('draft')"    style="font-size:13px;padding:8px 18px">Draft</button>
+          <button id="emp-qt-tab-history"  class="tab"        onclick="empSwitchQtTab('history')"  style="font-size:13px;padding:8px 18px">History</button>
+          <button id="emp-qt-tab-settings" class="tab"        onclick="empSwitchQtTab('settings')" style="font-size:13px;padding:8px 18px">Settings</button>
+        </div>
+
+        <!-- ══ TAB: Draft ══ -->
+        <div id="emp-qt-panel-draft">
+
         <!-- Section 1: Document Info -->
         <div class="card" style="margin-bottom:20px">
           <div class="table-header"><span class="table-title">① Document Info</span></div>
@@ -1283,6 +1293,57 @@
         </div>
 
         <div id="emp-qt-error" style="display:none;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#f87171;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px"></div>
+
+        </div><!-- /emp-qt-panel-draft -->
+
+        <!-- ══ TAB: History ══ -->
+        <div id="emp-qt-panel-history" style="display:none">
+          <div class="card">
+            <div class="table-header" style="display:flex;align-items:center;justify-content:space-between">
+              <span class="table-title">Saved Quotations</span>
+              <button class="btn btn-sm btn-outline" onclick="loadEmpQtHistory()"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i> Refresh</button>
+            </div>
+            <div id="emp-qt-history-body" style="padding:16px 20px">
+              <div style="color:var(--muted);font-size:13px;text-align:center;padding:24px">Loading…</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══ TAB: Settings ══ -->
+        <div id="emp-qt-panel-settings" style="display:none">
+          <div class="card">
+            <div class="table-header"><span class="table-title">Company Info</span></div>
+            <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+              <div><label class="form-label">Company Name</label><input class="form-input" id="emp-qts-company-name" placeholder="MotoLinkers"></div>
+              <div><label class="form-label">Phone</label><input class="form-input" id="emp-qts-company-phone" placeholder="+20 xxx xxx xxxx"></div>
+              <div><label class="form-label">Email</label><input class="form-input" id="emp-qts-company-email" placeholder="info@motolinkers.com"></div>
+              <div><label class="form-label">Website</label><input class="form-input" id="emp-qts-company-website" placeholder="www.motolinkers.com"></div>
+              <div style="grid-column:span 2"><label class="form-label">Address</label><input class="form-input" id="emp-qts-company-address" placeholder="Cairo, Egypt"></div>
+              <div><label class="form-label">Tax ID (optional)</label><input class="form-input" id="emp-qts-company-tax-id" placeholder="TAX-XXXXXXX"></div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <div class="table-header"><span class="table-title">Document Defaults</span></div>
+            <div style="padding:20px;display:grid;gap:16px">
+              <div><label class="form-label">Payment Terms</label><input class="form-input" id="emp-qts-payment-terms" placeholder="50% deposit / 30% on arrival / 20% on delivery"></div>
+              <div><label class="form-label">Footer Note</label><input class="form-input" id="emp-qts-footer-note" placeholder="Confidential"></div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <div class="table-header"><span class="table-title">Notification Settings</span></div>
+            <div style="padding:20px;display:grid;gap:16px">
+              <div>
+                <label class="form-label">Notify on Deal → Contacted</label>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:8px">When a deal stage changes to "Contacted", notify this employee to create a quotation.</div>
+                <select class="form-input" id="emp-qts-contact-notify-id"><option value="">— Nobody —</option></select>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:16px;display:flex;justify-content:flex-end">
+            <button class="btn btn-primary" onclick="saveEmpQtSettings()"><i data-lucide="save" style="width:14px;height:14px"></i> Save Settings</button>
+          </div>
+          <div id="emp-qts-msg" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:13px"></div>
+        </div>
 
       </div>
     </div>
@@ -2566,6 +2627,7 @@ let empQtImages    = [];
 let empQtPdfBase64 = null;
 
 async function loadEmpQuotation() {
+  empSwitchQtTab('draft');
   if (!document.getElementById('emp-qt-id').value) await empRefreshQuoteId();
   const today = new Date();
   const valid = new Date(today); valid.setDate(valid.getDate() + 7);
@@ -2602,6 +2664,114 @@ async function loadEmpQuotation() {
     }
   } catch (_) {}
   requestAnimationFrame(() => lucide.createIcons());
+}
+
+function empSwitchQtTab(tab) {
+  ['draft', 'history', 'settings'].forEach(t => {
+    const tb = document.getElementById('emp-qt-tab-' + t);
+    const pn = document.getElementById('emp-qt-panel-' + t);
+    if (tb) tb.classList.toggle('active', t === tab);
+    if (pn) pn.style.display = t === tab ? '' : 'none';
+  });
+  const gen = document.getElementById('emp-qt-generate-btn');
+  if (gen) gen.style.display = tab === 'draft' ? '' : 'none';
+  if (tab === 'history') loadEmpQtHistory();
+  if (tab === 'settings') loadEmpQtSettings();
+}
+
+async function loadEmpQtHistory() {
+  const body = document.getElementById('emp-qt-history-body');
+  if (!body) return;
+  body.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px">Loading…</div>';
+  try {
+    const rows = await ef('/api/employee/quotations').then(r => r.json());
+    if (!Array.isArray(rows) || !rows.length) { body.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px">No saved quotations yet.</div>'; return; }
+    body.innerHTML = `<table class="table"><thead><tr><th>ID</th><th>Title</th><th>Created By</th><th>Date</th><th></th></tr></thead>
+      <tbody>${rows.map(q => `<tr>
+        <td><code style="font-size:11px">${esc(q.quote_id)}</code></td>
+        <td>${esc(q.title || '—')}</td>
+        <td>${esc(q.created_by || '—')}</td>
+        <td>${new Date(q.created_at).toLocaleDateString()}</td>
+        <td style="white-space:nowrap;text-align:right">
+          <button class="btn btn-sm btn-outline" onclick="empDuplicateQuotation(${q.id})"><i data-lucide="copy" style="width:12px;height:12px"></i> Duplicate</button>
+          <button class="btn btn-sm btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="deleteEmpQuotation(${q.id})"><i data-lucide="trash-2" style="width:12px;height:12px"></i> Delete</button>
+        </td>
+      </tr>`).join('')}</tbody></table>`;
+    requestAnimationFrame(() => lucide.createIcons());
+  } catch (e) { body.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:16px">${esc(e.message)}</div>`; }
+}
+
+async function empDuplicateQuotation(id) {
+  try {
+    const q = await ef(`/api/employee/quotations/${id}`).then(r => r.json());
+    if (!q || !q.data) return;
+    const d = q.data;
+    empSwitchQtTab('draft');
+    await empRefreshQuoteId();
+    if (d.name)         document.getElementById('emp-qt-name').value    = d.name;
+    if (d.vehicleModel) document.getElementById('emp-qt-vehicle').value = d.vehicleModel;
+    if (d.currency)     document.getElementById('emp-qt-currency').value = d.currency;
+    if (d.exchange)     document.getElementById('emp-qt-exchange').value = d.exchange;
+    if (d.items?.length) {
+      document.getElementById('emp-qt-items').innerHTML = '';
+      d.items.forEach(it => empAddPricingRow(it.name, it.unit, it.priceUsd === 'Free' ? 'Free' : it.priceUsd, it.priceUsd === 'Free'));
+    }
+    empRecalcAll();
+  } catch (e) { showToast('Could not load quotation: ' + e.message); }
+}
+
+async function deleteEmpQuotation(id) {
+  if (!confirm('Delete this quotation from history? This cannot be undone.')) return;
+  try {
+    const r = await ef(`/api/employee/quotations/${id}`, { method: 'DELETE' });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); return showToast('Error: ' + (e.error || r.status)); }
+    loadEmpQtHistory();
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
+async function loadEmpQtSettings() {
+  try {
+    const [settings, emps] = await Promise.all([
+      ef('/api/employee/quotation/settings').then(r => r.json()),
+      ef('/api/employee/coworkers').then(r => r.json()).catch(() => []),
+    ]);
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+    set('emp-qts-company-name', settings.company_name);
+    set('emp-qts-company-phone', settings.company_phone);
+    set('emp-qts-company-email', settings.company_email);
+    set('emp-qts-company-website', settings.company_website);
+    set('emp-qts-company-address', settings.company_address);
+    set('emp-qts-company-tax-id', settings.company_tax_id);
+    set('emp-qts-payment-terms', settings.payment_terms);
+    set('emp-qts-footer-note', settings.footer_note);
+    const sel = document.getElementById('emp-qts-contact-notify-id');
+    if (sel) sel.innerHTML = '<option value="">— Nobody —</option>' + (Array.isArray(emps) ? emps : []).map(e => `<option value="${esc(String(e.id))}"${String(settings.contact_notify_employee_id) === String(e.id) ? ' selected' : ''}>${esc(e.name)}</option>`).join('');
+  } catch (e) { console.error('loadEmpQtSettings', e); }
+}
+
+async function saveEmpQtSettings() {
+  const msg = document.getElementById('emp-qts-msg');
+  const payload = {
+    company_name:    document.getElementById('emp-qts-company-name').value.trim(),
+    company_phone:   document.getElementById('emp-qts-company-phone').value.trim(),
+    company_email:   document.getElementById('emp-qts-company-email').value.trim(),
+    company_website: document.getElementById('emp-qts-company-website').value.trim(),
+    company_address: document.getElementById('emp-qts-company-address').value.trim(),
+    company_tax_id:  document.getElementById('emp-qts-company-tax-id').value.trim(),
+    payment_terms:   document.getElementById('emp-qts-payment-terms').value.trim(),
+    footer_note:     document.getElementById('emp-qts-footer-note').value.trim(),
+    contact_notify_employee_id: document.getElementById('emp-qts-contact-notify-id').value,
+  };
+  try {
+    const r = await ef('/api/employee/quotation/settings', { method: 'PUT', body: JSON.stringify(payload) });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || r.status); }
+    msg.style.display = 'block'; msg.style.background = 'rgba(138,154,134,.1)'; msg.style.color = '#9fb59a';
+    msg.textContent = 'Settings saved successfully.';
+    setTimeout(() => { msg.style.display = 'none'; }, 3000);
+  } catch (e) {
+    msg.style.display = 'block'; msg.style.background = 'rgba(239,68,68,.08)'; msg.style.color = '#f87171';
+    msg.textContent = 'Error: ' + e.message;
+  }
 }
 
 async function empRefreshQuoteId() {
