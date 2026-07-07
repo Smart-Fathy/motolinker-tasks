@@ -2968,7 +2968,17 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
 // Public endpoint — no auth required (customers submit from the website).
 // Every submission is persisted AND turned into a lead (deduped on normalized phone),
 // so inbound inquiries land in the CRM instead of vanishing.
+// CORS is open on THIS route only so the marketing website can POST the form
+// straight from the browser (any other origin). All other /api routes stay same-origin.
+function submissionCors(res) {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.set('Access-Control-Max-Age', '86400');
+}
+receiver.router.options('/api/submissions', (_req, res) => { submissionCors(res); res.sendStatus(204); });
 receiver.router.post('/api/submissions', express.json(), async (req, res) => {
+  submissionCors(res);
   const { name, email, phone, message, car_interest, source } = req.body || {};
   if (!name || (!email && !phone)) return res.status(400).json({ error: 'Name and a phone or email are required' });
   const cleanName = String(name).trim();
