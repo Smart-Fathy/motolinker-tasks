@@ -487,6 +487,18 @@
     outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(201,163,94,.15);
   }
   select.form-input option, select.form-control option, select.filter-input option { background:#141416; color:var(--text); }
+  /* ── Text inputs / textareas: same dark treatment as selects (was unstyled → white) ── */
+  input.form-input, textarea.form-input {
+    background-color:#101013; color:var(--text);
+    border:1px solid var(--border); border-radius:8px;
+    padding:11px 14px; font-size:14px; width:100%; outline:none;
+    font-family:var(--font); color-scheme:dark;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  input.form-input:focus, textarea.form-input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(201,163,94,.15); }
+  input.form-input::placeholder, textarea.form-input::placeholder { color:var(--muted); }
+  input.form-input[readonly] { color:var(--muted); cursor:default; }
+  textarea.form-input { resize:vertical; }
   /* ── Brand dropdown component (replaces native select menus) ── */
   .bselect-hidden{ display:none !important; }
   .bselect-trigger{
@@ -517,6 +529,10 @@
   .bselect-opt:hover{ background:rgba(201,163,94,.12); color:var(--primary); }
   .bselect-opt.selected{ color:var(--primary); font-weight:600; }
   .bselect-check{ width:14px; flex-shrink:0; color:var(--primary); font-size:12px; text-align:center; }
+  .bselect-search-wrap{ position:sticky; top:0; background:var(--surface); padding:0 0 6px; margin:-2px 0 2px; z-index:1; }
+  .bselect-search{ width:100%; box-sizing:border-box; background:#101013; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:13px; outline:none; }
+  .bselect-search:focus{ border-color:var(--primary); box-shadow:0 0 0 3px rgba(201,163,94,.15); }
+  .bselect-empty{ padding:10px 12px; font-size:12px; color:var(--muted); text-align:center; }
 </style>
 </head>
 <body>
@@ -3973,16 +3989,37 @@ function dismissIOSHint() {
   window.brandMenu = function (anchorEl, items, onPick, trigger) {
     ensureMenu();
     if (openFor && openFor.anchor === anchorEl) return closeBrandMenu();
-    menuEl.innerHTML = items.map((it, i) => `
+    const showSearch = items.length > 8;   // type-to-filter for long lists (e.g. leads)
+    const optsHtml = items.map((it, i) => `
       <button type="button" class="bselect-opt${it.selected ? ' selected' : ''}" data-i="${i}">
         <span class="bselect-check">${it.selected ? '✓' : ''}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.label || '—')}</span>
       </button>`).join('');
-    menuEl.querySelectorAll('.bselect-opt').forEach(btn => btn.addEventListener('click', e => {
-      e.stopPropagation();
-      const it = items[parseInt(btn.dataset.i)];
-      closeBrandMenu();
-      onPick(it.key, it);
-    }));
+    menuEl.innerHTML =
+      (showSearch ? `<div class="bselect-search-wrap"><input type="text" class="bselect-search" placeholder="Search…"></div>` : '') +
+      `<div class="bselect-list">${optsHtml}</div>` +
+      `<div class="bselect-empty" style="display:none">No matches</div>`;
+    const listEl = menuEl.querySelector('.bselect-list');
+    const emptyEl = menuEl.querySelector('.bselect-empty');
+    const pick = i => { const it = items[i]; closeBrandMenu(); onPick(it.key, it); };
+    listEl.querySelectorAll('.bselect-opt').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); pick(parseInt(btn.dataset.i)); }));
+    if (showSearch) {
+      const search = menuEl.querySelector('.bselect-search');
+      search.addEventListener('click', e => e.stopPropagation());
+      search.addEventListener('input', () => {
+        const q = search.value.trim().toLowerCase();
+        let shown = 0;
+        listEl.querySelectorAll('.bselect-opt').forEach(btn => {
+          const ok = !q || (items[parseInt(btn.dataset.i)].label || '').toLowerCase().includes(q);
+          btn.style.display = ok ? '' : 'none';
+          if (ok) shown++;
+        });
+        emptyEl.style.display = shown ? 'none' : 'block';
+      });
+      search.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); const first = [...listEl.querySelectorAll('.bselect-opt')].find(b => b.style.display !== 'none'); if (first) pick(parseInt(first.dataset.i)); }
+        else if (e.key === 'Escape') { e.preventDefault(); closeBrandMenu(); }
+      });
+    }
     const r = anchorEl.getBoundingClientRect();
     menuEl.style.minWidth = Math.max(r.width, 150) + 'px';
     menuEl.classList.add('open');
@@ -3993,6 +4030,7 @@ function dismissIOSHint() {
     openFor = { anchor: anchorEl, trigger: trigger || null };
     if (trigger) trigger.classList.add('open');
     menuEl.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
+    if (showSearch) setTimeout(() => menuEl.querySelector('.bselect-search')?.focus(), 20);
   };
 
   function labelFor(sel) {
