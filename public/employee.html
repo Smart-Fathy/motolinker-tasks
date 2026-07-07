@@ -1167,7 +1167,7 @@
               <label class="form-label">Customer Name</label>
               <input class="form-input" id="emp-qt-name" placeholder="e.g. Hesham Dorghamy">
             </div>
-            <div id="emp-qt-lead-wrap" style="display:none">
+            <div>
               <label class="form-label">Lead <span style="color:var(--muted);font-weight:400">(attach to profile)</span></label>
               <select class="form-input" id="emp-qt-customer-id">
                 <option value="">— No lead —</option>
@@ -1252,7 +1252,9 @@
             </div>
             <div>
               <label class="form-label">Issued By</label>
-              <input class="form-input" id="emp-qt-issuer" placeholder="Your name">
+              <select class="form-input" id="emp-qt-issuer">
+                <option value="">— Select issuer —</option>
+              </select>
             </div>
           </div>
           <div style="padding:0 20px 20px">
@@ -2556,19 +2558,30 @@ async function loadEmpQuotation() {
   if (!document.getElementById('emp-qt-valid-to').value) document.getElementById('emp-qt-valid-to').value = fmt(valid);
   if (!document.getElementById('emp-qt-logistics').children.length) empBuildLogisticsRows();
   if (!document.getElementById('emp-qt-items').children.length) empAddPricingRow();
-  // Lead picker — only when the admin has granted the Leads permission
+  // Issued By — dropdown of staff (matches admin), defaulting to the current user
   try {
-    if (empInfo?.permissions?.leads === true) {
-      const wrap = document.getElementById('emp-qt-lead-wrap');
-      const pick = document.getElementById('emp-qt-customer-id');
-      const r = await ef('/api/employee/leads');
-      if (r.ok && wrap && pick) {
-        const leads = await r.json();
+    await loadCoworkers();
+    const sel = document.getElementById('emp-qt-issuer');
+    if (sel) {
+      const names = [...new Set([...(_coworkers || []).map(c => c.name), empInfo?.name].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      const cur = sel.value || empInfo?.name || '';
+      sel.innerHTML = '<option value="">— Select issuer —</option>' +
+        names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+      if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+    }
+  } catch (_) {}
+  // Lead picker — attach the quotation to a lead's 360° profile (populated when the
+  // employee can see leads; otherwise it stays "— No lead —"). Always visible, like admin.
+  try {
+    const pick = document.getElementById('emp-qt-customer-id');
+    const r = await ef('/api/employee/leads');
+    if (r.ok && pick) {
+      const leads = await r.json();
+      if (Array.isArray(leads)) {
         const cur = pick.value;
         pick.innerHTML = '<option value="">— No lead —</option>' +
           [...leads].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(l => `<option value="${l.id}">${esc(l.name)}${l.phone ? ' · ' + esc(l.phone) : ''}</option>`).join('');
         if (cur && [...pick.options].some(o => o.value === cur)) pick.value = cur;
-        wrap.style.display = '';
       }
     }
   } catch (_) {}
