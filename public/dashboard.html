@@ -2631,6 +2631,35 @@ const AM_ACTIONS = [['notify','Send a notification'],['create_followup','Create 
 const AM_LEAD_STATUSES = [['cold','Cold'],['warm','Warm'],['hot','Hot'],['immediate_delivery','Immediate Delivery'],['not_interested','Not Interested'],['blacklist','Blacklist']];
 function amActionLabel(t){ const f = AM_ACTIONS.find(a => a[0] === t); return f ? f[1] : t; }
 function amEmpOptions(sel){ return '<option value="">— select rep —</option>' + (employeesForTasks || []).map(e => `<option value="${e.id}"${String(sel) === String(e.id) ? ' selected' : ''}>${esc(e.name)}</option>`).join(''); }
+// Enum option sets so the condition VALUE is picked (saving the canonical key) instead of free-typed.
+const AM_DEAL_STAGES  = [['lead','Lead'],['contacted','Contacted'],['quoted','Quoted'],['negotiating','Negotiating'],['won','Won'],['lost','Lost']];
+const AM_ORIGINS      = [['fb_ad','FB Ad.'],['whatsapp','Whatsapp'],['messenger','Messenger'],['direct_call','Direct Call'],['ig_ads','IG ads'],['website','Website'],['walk_in','Walk-in'],['marketplace','Marketplace']];
+const AM_NEXT_ACTIONS = [['followed_by_sales','Followed By Sales'],['need_follow_up','Need Follow Up'],['closed','Closed'],['no_answer','No Answer']];
+const AM_BOOLS        = [['true','Yes'],['false','No']];
+const AM_LEAD_SCOPED_ACTIONS = ['assign_lead','create_followup','set_lead_status','create_deal'];
+function amNorm(s){ return String(s == null ? '' : s).trim().toLowerCase().replace(/[\s-]+/g, '_'); }
+function amFieldOptions(field){
+  if (field === 'lead_status') return AM_LEAD_STATUSES;
+  if (field === 'stage' || field === 'to') return AM_DEAL_STAGES;
+  if (field === 'source') return AM_ORIGINS;
+  if (field === 'next_action') return AM_NEXT_ACTIONS;
+  if (field === 'been_contacted') return AM_BOOLS;
+  return null; // free-text (budget, name, car_in_question, …)
+}
+// The value control for a condition row: a dropdown for enum fields, free text otherwise,
+// and nothing for is_empty / not_empty.
+function amValueControl(cd, i){
+  if (cd.op === 'is_empty' || cd.op === 'not_empty') return '';
+  const opts = amFieldOptions(cd.field);
+  if (opts) {
+    const cur = amNorm(cd.value);
+    return `<select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="_autoDraft.conditions[${i}].value=this.value">
+      <option value="">— value —</option>
+      ${opts.map(([k, l]) => `<option value="${esc(k)}"${amNorm(k) === cur ? ' selected' : ''}>${esc(l)}</option>`).join('')}
+    </select>`;
+  }
+  return `<input class="form-input" style="flex:1;padding:6px 8px;font-size:12px" value="${esc(cd.value || '')}" placeholder="value" oninput="_autoDraft.conditions[${i}].value=this.value">`;
+}
 
 async function loadAutomations() {
   const c = document.getElementById('automations-list');
@@ -2683,19 +2712,20 @@ function openAutomationModal(id) {
 }
 function amTriggerChanged() {
   document.getElementById('am-days-wrap').style.display = document.getElementById('am-trigger').value === 'no_activity_days' ? 'block' : 'none';
+  amRenderActions(); // refresh the lead-scoped-action hint for the new trigger
 }
 function amAddCondition() { _autoDraft.conditions.push({ field: 'source', op: 'equals', value: '' }); amRenderConditions(); }
 function amDelCondition(i) { _autoDraft.conditions.splice(i, 1); amRenderConditions(); }
 function amRenderConditions() {
   document.getElementById('am-conditions').innerHTML = _autoDraft.conditions.map((cd, i) => `
     <div style="display:flex;gap:6px;align-items:center">
-      <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="_autoDraft.conditions[${i}].field=this.value">
+      <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="_autoDraft.conditions[${i}].field=this.value;_autoDraft.conditions[${i}].value='';amRenderConditions()">
         ${AM_FIELDS.map(f => `<option value="${f}"${cd.field === f ? ' selected' : ''}>${f}</option>`).join('')}
       </select>
-      <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="_autoDraft.conditions[${i}].op=this.value">
+      <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="_autoDraft.conditions[${i}].op=this.value;amRenderConditions()">
         ${AM_OPS.map(o => `<option value="${o[0]}"${cd.op === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}
       </select>
-      <input class="form-input" style="flex:1;padding:6px 8px;font-size:12px" value="${esc(cd.value || '')}" placeholder="value" oninput="_autoDraft.conditions[${i}].value=this.value">
+      ${amValueControl(cd, i)}
       <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger)" onclick="amDelCondition(${i})">×</button>
     </div>`).join('') || '<div style="font-size:12px;color:var(--muted)">No conditions — runs every time.</div>';
 }
@@ -2756,7 +2786,11 @@ function amActionParams(a, i) {
   return '';
 }
 function amRenderActions() {
-  document.getElementById('am-actions').innerHTML = _autoDraft.actions.map((a, i) => `
+  const trig = document.getElementById('am-trigger')?.value;
+  document.getElementById('am-actions').innerHTML = _autoDraft.actions.map((a, i) => {
+    const needsLead = trig === 'quote.generated' && AM_LEAD_SCOPED_ACTIONS.includes(a.type);
+    const hint = needsLead ? `<div style="font-size:11px;color:var(--muted)"><i data-lucide="info" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></i> Runs only when the quotation is linked to a lead.</div>` : '';
+    return `
     <div style="border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;gap:6px">
       <div style="display:flex;gap:6px;align-items:center">
         <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="amChangeActionType(${i}, this.value)">
@@ -2765,7 +2799,10 @@ function amRenderActions() {
         <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger)" onclick="amDelAction(${i})">×</button>
       </div>
       <div style="display:grid;gap:6px">${amActionParams(a, i)}</div>
-    </div>`).join('') || '<div style="font-size:12px;color:var(--muted)">Add at least one action.</div>';
+      ${hint}
+    </div>`;
+  }).join('') || '<div style="font-size:12px;color:var(--muted)">Add at least one action.</div>';
+  requestAnimationFrame(() => lucide.createIcons());
 }
 async function saveAutomation() {
   const id = document.getElementById('am-id').value;

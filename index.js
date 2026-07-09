@@ -1779,16 +1779,19 @@ function autoTarget(a, ctx) {
   if (to === 'employee') return a.employee_id ? `employee_${a.employee_id}` : 'admin';
   return 'admin';
 }
+// Normalize a value for equality checks so a human-typed condition value matches the
+// stored canonical key: "Quoted"→quoted, "Immediate Delivery"→immediate_delivery, "true"→true.
+function autoNorm(s) { return String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_'); }
 function automationMatches(rule, ctx) {
   const conds = Array.isArray(rule.conditions) ? rule.conditions : [];
   const vals = { ...(ctx.fields || {}), from: ctx.from, to: ctx.to };
   return conds.every(c => {
     const cur = vals[c.field], v = c.value;
     switch (c.op) {
-      case 'equals': return String(cur ?? '') === String(v ?? '');
-      case 'not_equals': return String(cur ?? '') !== String(v ?? '');
+      case 'equals': return autoNorm(cur) === autoNorm(v);
+      case 'not_equals': return autoNorm(cur) !== autoNorm(v);
       case 'contains': return String(cur ?? '').toLowerCase().includes(String(v ?? '').toLowerCase());
-      case 'changed_to': return String(ctx.to ?? '') === String(v ?? '');
+      case 'changed_to': return autoNorm(ctx.to) === autoNorm(v);
       case 'gt': return Number(cur) > Number(v);
       case 'lt': return Number(cur) < Number(v);
       case 'is_empty': return !cur;
@@ -1816,7 +1819,7 @@ async function runAutomationAction(a, ctx) {
       break;
     }
     case 'create_followup': {
-      if (!ctx.customerId) break;
+      if (!ctx.customerId) return 'create_followup skipped — not linked to a lead';
       const days = Number(a.days) || 1;
       const assigned = a.assign_to === 'owner' ? (ctx.ownerId || null) : a.assign_to === 'employee' ? (a.employee_id || null) : null;
       await supabase.from('lead_followups').insert({ customer_id: ctx.customerId, due_at: new Date(Date.now() + days * 86400000).toISOString(), note: autoTmpl(a.note, ctx) || 'Automated follow-up', assigned_to: assigned, created_by: 'automation' });
@@ -1833,7 +1836,7 @@ async function runAutomationAction(a, ctx) {
       break;
     }
     case 'create_deal': {
-      if (!ctx.customerId) break;
+      if (!ctx.customerId) return 'create_deal skipped — not linked to a lead';
       const { data: existing } = await supabase.from('deals').select('id').eq('customer_id', ctx.customerId).limit(1);
       if (!existing?.length) {
         await supabase.from('deals').insert({ customer_id: ctx.customerId, title: autoTmpl(a.title, ctx) || ctx.fields?.name || 'Deal', stage: a.stage || 'lead', car_model: ctx.fields?.car_in_question || '', budget_egp: ctx.fields?.budget_lead || null, notes: 'Created by automation', created_by: 'automation' });
@@ -1842,14 +1845,14 @@ async function runAutomationAction(a, ctx) {
       break;
     }
     case 'set_lead_status': {
-      if (!ctx.customerId || !a.status) break;
+      if (!ctx.customerId || !a.status) return 'set_lead_status skipped — not linked to a lead';
       // Direct update (bypasses the PUT handler) so this never re-triggers automations.
       await supabase.from('customers').update({ lead_status: a.status, updated_at: new Date().toISOString() }).eq('id', ctx.customerId);
       logLeadActivity(ctx.customerId, { type: 'status_change', body: 'Status set by automation', meta: { to: a.status }, authorKey: 'system', authorName: 'Automation' });
       break;
     }
     case 'assign_lead': {
-      if (!ctx.customerId) break;
+      if (!ctx.customerId) return 'assign_lead skipped — not linked to a lead';
       const empId = a.mode === 'specific' ? (a.employee_id || null) : await autoRoundRobin();
       if (empId) {
         await supabase.from('customers').update({ assigned_to: empId, updated_at: new Date().toISOString() }).eq('id', ctx.customerId);
@@ -1863,7 +1866,7 @@ async function runAutomationAction(a, ctx) {
 async function runAutomationActions(rule, ctx, eventName) {
   const actions = Array.isArray(rule.actions) ? rule.actions : [];
   const done = [];
-  for (const a of actions) { await runAutomationAction(a, ctx); done.push(a.type); }
+  for (const a of actions) { const note = await runAutomationAction(a, ctx); done.push(note || a.type); }
   await supabase.from('automation_runs').insert({ rule_id: rule.id, event: eventName, entity_type: ctx.entityType, entity_id: ctx.entityId, status: 'ok', detail: done.join(',') }).then(() => {}).catch(() => {});
 }
 async function runAutomations(eventName, ctx) {
