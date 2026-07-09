@@ -2627,7 +2627,7 @@ receiver.router.get('/api/employee/leads/columns', requireEmployeeAuth, async (r
 
 receiver.router.post('/api/employee/leads', requireEmployeeAuth, express.json(), async (req, res) => {
   if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
-  const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, budget_max, next_action, been_contacted, sales_feedback, inquiry, assigned_to, force } = req.body;
+  const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, budget_max, next_action, been_contacted, sales_feedback, inquiry, assigned_to, custom_fields, force } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
   const phone_norm = normalizePhone(phone);
   if (phone_norm && !force) {
@@ -2635,7 +2635,7 @@ receiver.router.post('/api/employee/leads', requireEmployeeAuth, express.json(),
     if (dup && dup.length) return res.status(409).json({ duplicate: true, existing: dup[0] });
   }
   const { data, error } = await supabase.from('customers')
-    .insert({ name, phone: phone||'', phone_norm, email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, budget_max: budget_max||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', assigned_to: assigned_to||null, created_by: req.employee.username })
+    .insert({ name, phone: phone||'', phone_norm, email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, budget_max: budget_max||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', assigned_to: assigned_to||null, custom_fields: custom_fields||{}, created_by: req.employee.username })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   logLeadActivity(data.id, { type: 'system', body: `Lead created${data.source ? ' · ' + data.source : ''}`, authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
@@ -2650,7 +2650,7 @@ receiver.router.put('/api/employee/leads/:id', requireEmployeeAuth, express.json
   if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
   const { data: prev } = await supabase.from('customers').select('lead_status,been_contacted').eq('id', req.params.id).single();
   const patch = { ...req.body, updated_at: new Date().toISOString() };
-  delete patch.force; delete patch.created_by; delete patch.id; delete patch.custom_fields;
+  delete patch.force; delete patch.created_by; delete patch.id;
   if (Object.prototype.hasOwnProperty.call(patch, 'phone')) patch.phone_norm = normalizePhone(patch.phone);
   const { data, error } = await supabase.from('customers').update(patch).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
@@ -2750,6 +2750,142 @@ receiver.router.get('/api/employee/deletion-requests', requireEmployeeAuth, asyn
   const { data, error } = await supabase.from('deletion_requests').select('*').eq('requested_by', req.employee.username).order('created_at', { ascending: false }).limit(100);
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
+});
+
+// ── Employee Lead 360° profile: timeline, follow-ups, linked quotations & deals ──
+receiver.router.get('/api/employee/customers/:id/profile', requireEmployeeAuth, async (req, res) => {
+  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  const id = parseInt(req.params.id);
+  const { data: customer, error } = await supabase.from('customers').select('*').eq('id', id).single();
+  if (error || !customer) return res.status(404).json({ error: 'Lead not found' });
+  const [activities, followups, quotations, deals] = await Promise.all([
+    supabase.from('lead_activities').select('*').eq('customer_id', id).order('created_at', { ascending: false }).limit(200),
+    supabase.from('lead_followups').select('*').eq('customer_id', id).order('due_at', { ascending: true }),
+    supabase.from('quotations').select('id,quote_id,title,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
+    supabase.from('deals').select('id,title,stage,budget_egp,created_at').eq('customer_id', id).order('created_at', { ascending: false }),
+  ]);
+  res.json({
+    customer,
+    activities: activities.data || [],
+    followups: followups.data || [],
+    quotations: quotations.data || [],
+    deals: deals.data || [],
+  });
+});
+
+receiver.router.post('/api/employee/customers/:id/activities', requireEmployeeAuth, express.json(), async (req, res) => {
+  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  const type = ['note', 'call', 'whatsapp', 'meeting'].includes(req.body?.type) ? req.body.type : 'note';
+  const body = String(req.body?.body || '').trim().slice(0, 2000);
+  if (!body) return res.status(400).json({ error: 'Activity text is required' });
+  const { data, error } = await supabase.from('lead_activities')
+    .insert({ customer_id: parseInt(req.params.id), type, body, author_key: `employee_${req.employee.id}`, author_name: req.employee.name })
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.post('/api/employee/customers/:id/followups', requireEmployeeAuth, express.json(), async (req, res) => {
+  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  const due_at = req.body?.due_at;
+  if (!due_at || isNaN(new Date(due_at).getTime())) return res.status(400).json({ error: 'A valid due date/time is required' });
+  const note = String(req.body?.note || '').trim().slice(0, 500);
+  const assigned_to = req.body?.assigned_to ? parseInt(req.body.assigned_to) : null;
+  const { data, error } = await supabase.from('lead_followups')
+    .insert({ customer_id: parseInt(req.params.id), due_at: new Date(due_at).toISOString(), note, assigned_to, created_by: req.employee.username })
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  logLeadActivity(data.customer_id, { type: 'follow_up', body: `Follow-up scheduled for ${new Date(data.due_at).toLocaleString()}${note ? ' — ' + note : ''}`, authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
+  res.json(data);
+});
+
+receiver.router.put('/api/employee/followups/:id', requireEmployeeAuth, express.json(), async (req, res) => {
+  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  const status = ['done', 'cancelled', 'pending'].includes(req.body?.status) ? req.body.status : 'done';
+  const patch = { status, completed_at: status === 'done' ? new Date().toISOString() : null };
+  const { data, error } = await supabase.from('lead_followups').update(patch).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  if (status !== 'pending') {
+    logLeadActivity(data.customer_id, { type: 'follow_up', body: status === 'done' ? 'Follow-up completed' : 'Follow-up cancelled', authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
+  }
+  res.json(data);
+});
+
+receiver.router.get('/api/employee/followups/pending', requireEmployeeAuth, async (req, res) => {
+  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  const { data, error } = await supabase.from('lead_followups')
+    .select('id,customer_id,due_at,note,assigned_to').eq('status', 'pending').order('due_at', { ascending: true }).limit(500);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// Write the shared leads column config (gated by the leads permission; config is global)
+receiver.router.put('/api/employee/leads/columns', requireEmployeeAuth, express.json(), async (req, res) => {
+  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  const columns = req.body?.columns;
+  if (!Array.isArray(columns)) return res.status(400).json({ error: 'columns array required' });
+  const { error } = await supabase.from('quotation_settings')
+    .upsert({ key: 'leads_columns_config', value: JSON.stringify(columns) }, { onConflict: 'key' });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// CSV / Google-Sheets import (mirrors the admin importer; deduped on normalized phone)
+receiver.router.post('/api/employee/customers/import', requireEmployeeAuth, multerCsv.single('file'), express.json(), async (req, res) => {
+  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  try {
+    let csvText = '';
+    if (req.file) {
+      csvText = req.file.buffer.toString('utf8');
+    } else if (req.body?.sheetUrl) {
+      const match = req.body.sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (!match) return res.status(400).json({ error: 'Invalid Google Sheets URL' });
+      const nodeFetch = require('node-fetch');
+      const r = await nodeFetch(`https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`);
+      if (!r.ok) return res.status(400).json({ error: 'Could not fetch spreadsheet — make sure it is publicly accessible.' });
+      csvText = await r.text();
+    }
+    if (!csvText) return res.status(400).json({ error: 'No data to import' });
+    const lines = csvText.split('\n').map(l => l.trim()).filter(l => l);
+    if (lines.length < 2) return res.status(400).json({ error: 'Need header row + at least one data row' });
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, '').replace(/ /g, '_'));
+    const rows = lines.slice(1).map(line => {
+      const vals = parseCsvLine(line);
+      const r = {};
+      headers.forEach((h, i) => { r[h] = (vals[i] || '').trim().replace(/^"|"$/g, ''); });
+      return r;
+    }).filter(r => r.name).map(r => {
+      const phone = r.phone||'';
+      const bud = parseBudget(r.budget);
+      return {
+        name: r.name, phone, phone_norm: normalizePhone(phone), email: r.email||'', source: r.origin||r.source||'',
+        notes: r.notes||'', lead_date: normalizeLeadDate(r.date), lead_time: r.time||'',
+        lead_status: r.status||'cold', car_in_question: r.car||r.car_in_question||'',
+        budget_lead: bud.min, budget_max: bud.max,
+        next_action: r.next_action||'', been_contacted: /^(true|1|yes|y)$/i.test((r.been_contacted||'').trim()),
+        sales_feedback: r.sales_feedback||'', inquiry: r.inquiry||'', created_by: 'csv_import',
+      };
+    });
+    if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
+    const norms = [...new Set(rows.map(r => r.phone_norm).filter(Boolean))];
+    const existing = new Set();
+    for (let i = 0; i < norms.length; i += 200) {
+      const { data: ex } = await supabase.from('customers').select('phone_norm').in('phone_norm', norms.slice(i, i + 200));
+      (ex || []).forEach(e => existing.add(e.phone_norm));
+    }
+    const seen = new Set();
+    const skippedNames = [];
+    const toInsert = rows.filter(r => {
+      if (r.phone_norm && (existing.has(r.phone_norm) || seen.has(r.phone_norm))) { skippedNames.push(r.name); return false; }
+      if (r.phone_norm) seen.add(r.phone_norm);
+      return true;
+    });
+    if (toInsert.length) {
+      const { error } = await supabase.from('customers').insert(toInsert);
+      if (error) return res.status(500).json({ error: error.message });
+    }
+    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50) });
+  } catch (e) { console.error('[emp-csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 
 // ── Quotation Settings ────────────────────────────────────────────────────────
