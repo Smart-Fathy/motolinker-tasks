@@ -3488,12 +3488,15 @@ function helpSystemPrompt(identity) {
     'If a question is truly outside this system, say so briefly and point to the closest relevant section.',
   ].filter(Boolean).join('\n');
 }
-// Candidate models: env override first, then known-good fallbacks (self-heals if one 404s).
+// Candidate models: env override first, then current free-tier fallbacks. gemini-2.0-flash was shut
+// down 2026-06-01, so defaults target the live Flash / Flash-Lite models. Self-heals on 404 or 429.
 const GEMINI_MODELS = (() => {
-  const primary = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
-  const list = [primary, 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
+  const primary = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const list = [primary, 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
   return [...new Set(list)];
 })();
+// Cached result of the most recent real Gemini call, so the admin status line never spends quota.
+let _helpAiState = { ok: null, model: null, error: null, status: null, at: 0 };
 async function geminiGenerate(model, key, systemText, contents) {
   const body = { system_instruction: { parts: [{ text: systemText }] }, contents, generationConfig: { temperature: 0.3, maxOutputTokens: 800 } };
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
@@ -3524,13 +3527,17 @@ async function helpCallGemini(systemText, history, message) {
   for (const model of GEMINI_MODELS) {
     try {
       const res = await geminiGenerate(model, key, systemText, contents);
-      if (res.ok) return { ok: true, text: res.text, model };
+      if (res.ok) { _helpAiState = { ok: true, model, error: null, status: null, at: Date.now() }; return { ok: true, text: res.text, model }; }
       lastErr = res.err;
       console.warn(`[help] gemini ${model} failed: ${res.err.status || ''} ${res.err.message}`);
-      if (!res.err.notFound) break; // only try the next model when this one is missing/unsupported
+      // Roll to the next model when this one is missing/unsupported (404) OR rate-limited (429 —
+      // each model has an independent free-tier bucket). Stop on other errors (400/403/5xx).
+      if (!res.err.notFound && res.err.status !== 429) break;
     } catch (e) { lastErr = e; console.warn(`[help] gemini ${model} threw: ${e.message}`); break; }
   }
-  return { ok: false, error: lastErr ? lastErr.message : 'unknown error', status: lastErr?.status };
+  const result = { ok: false, error: lastErr ? lastErr.message : 'unknown error', status: lastErr?.status };
+  _helpAiState = { ok: false, model: null, error: result.error, status: result.status, at: Date.now() };
+  return result;
 }
 // Live health check for the admin status line: actually pings the model.
 async function helpGeminiPing() {
@@ -3549,6 +3556,14 @@ async function handleHelpChat(req, res, identity) {
       const ai = await helpCallGemini(helpSystemPrompt(identity), req.body?.history, message);
       if (ai.ok && ai.text) return res.json({ answer: ai.text, source: 'ai' });
       if (!ai.noKey) { aiError = ai.error; console.warn('[help] AI unavailable, falling back to FAQ:', ai.error); }
+      // Rate-limited on every model → tell the user plainly (+ a guide answer if one matches).
+      if (ai.status === 429) {
+        const faqRl = helpFaqMatch(message, lang);
+        const busy = lang === 'ar'
+          ? 'المساعد الذكي مشغول حالياً (تجاوز حد الاستخدام المجاني) — من فضلك حاول مرة أخرى بعد بضع ثوانٍ.'
+          : 'The AI assistant is busy right now (free-tier rate limit) — please try again in a few seconds.';
+        return res.json({ answer: busy + (faqRl ? '\n\n' + faqRl : ''), source: 'ratelimit' });
+      }
     }
     // Fallback: curated FAQ, then a generic pointer.
     const faq = helpFaqMatch(message, lang);
@@ -3566,10 +3581,15 @@ async function handleHelpChat(req, res, identity) {
 }
 receiver.router.post('/api/dashboard/help/chat', requireAuth, express.json(), (req, res) => handleHelpChat(req, res, { role: 'admin', username: ADMIN_USERNAME, name: 'Admin' }));
 receiver.router.post('/api/employee/help/chat', requireEmployeeAuth, express.json(), (req, res) => handleHelpChat(req, res, { role: 'employee', ...req.employee }));
-// Admin-only: is the AI (Gemini) fallback configured AND actually working? (live ping)
+// Admin-only: is the AI (Gemini) configured AND working? Uses the cached result of the last real
+// call (updated on every chat) so opening the panel never spends quota; only pings live if nothing
+// has been observed in the last 10 minutes.
 receiver.router.get('/api/dashboard/help/status', requireAuth, async (_req, res) => {
-  try { res.json(await helpGeminiPing()); }
-  catch (e) { res.json({ ai: !!process.env.GEMINI_API_KEY, ok: false, error: e.message }); }
+  if (!process.env.GEMINI_API_KEY) return res.json({ ai: false, ok: false });
+  const fresh = _helpAiState.at && (Date.now() - _helpAiState.at < 10 * 60 * 1000);
+  if (fresh) return res.json({ ai: true, ok: _helpAiState.ok, model: _helpAiState.model, error: _helpAiState.error, status: _helpAiState.status, tested: true });
+  try { res.json({ ...(await helpGeminiPing()), tested: true }); }
+  catch (e) { res.json({ ai: true, ok: false, error: e.message, tested: true }); }
 });
 
 // ─── Form Submissions ─────────────────────────────────────────────────────────
