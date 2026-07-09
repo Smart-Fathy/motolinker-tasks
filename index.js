@@ -3506,6 +3506,8 @@ async function handleHelpChat(req, res, role) {
 }
 receiver.router.post('/api/dashboard/help/chat', requireAuth, express.json(), (req, res) => handleHelpChat(req, res, 'admin'));
 receiver.router.post('/api/employee/help/chat', requireEmployeeAuth, express.json(), (req, res) => handleHelpChat(req, res, 'employee'));
+// Admin-only: is the AI (Gemini) fallback configured?
+receiver.router.get('/api/dashboard/help/status', requireAuth, (_req, res) => res.json({ ai: !!process.env.GEMINI_API_KEY }));
 
 // ─── Form Submissions ─────────────────────────────────────────────────────────
 // Public endpoint — no auth required (customers submit from the website).
