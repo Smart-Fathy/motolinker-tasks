@@ -1809,7 +1809,26 @@ async function autoRoundRobin() {
   await supabase.from('quotation_settings').upsert({ key: 'automation_rr_cursor', value: String((cursor + 1) % 1000000) }, { onConflict: 'key' }).then(() => {}).catch(() => {});
   return pick;
 }
-async function runAutomationAction(a, ctx) {
+// Destructive automations don't delete directly — they file a pending deletion_request
+// for an admin to approve (same flow as an employee-requested deletion). Returns true if a
+// new request was created (false if one is already pending or the entity is gone).
+async function autoRequestDeletion(entity_type, entity_id, ruleName) {
+  let label = '';
+  if (entity_type === 'lead') {
+    const { data } = await supabase.from('customers').select('name,phone').eq('id', entity_id).single();
+    if (!data) return false;
+    label = data.name + (data.phone ? ' · ' + data.phone : '');
+  } else {
+    const { data } = await supabase.from('deals').select('title, customers(name)').eq('id', entity_id).single();
+    if (!data) return false;
+    label = data.title + (data.customers?.name ? ' · ' + data.customers.name : '');
+  }
+  const { data: existing } = await supabase.from('deletion_requests').select('id').eq('entity_type', entity_type).eq('entity_id', entity_id).eq('status', 'pending').limit(1);
+  if (existing && existing.length) return false; // already awaiting approval
+  await supabase.from('deletion_requests').insert({ entity_type, entity_id, entity_label: label, requested_by: 'automation', reason: `Automation: ${ruleName || 'rule'}`, status: 'pending' });
+  return true;
+}
+async function runAutomationAction(a, ctx, ruleName) {
   switch (a.type) {
     case 'notify': {
       await createNotification(autoTarget(a, ctx), {
@@ -1880,24 +1899,33 @@ async function runAutomationAction(a, ctx) {
       break;
     }
     case 'delete_deals': {
-      // Remove the lead from the deals pipeline (delete every deal linked to the lead).
+      // Files a deletion request per linked deal for admin approval (does not delete directly).
       if (!ctx.customerId) return 'delete_deals skipped — not linked to a lead';
-      await supabase.from('deals').delete().eq('customer_id', ctx.customerId);
-      logLeadActivity(ctx.customerId, { type: 'deal', body: 'Deals removed by automation', authorKey: 'system', authorName: 'Automation' });
-      break;
+      const { data: deals } = await supabase.from('deals').select('id').eq('customer_id', ctx.customerId);
+      let n = 0;
+      for (const d of (deals || [])) { if (await autoRequestDeletion('deal', d.id, ruleName)) n++; }
+      if (n) {
+        createNotification('admin', { type: 'request', title: 'Deletion request — deals', body: `Automation "${ruleName || 'rule'}" asked to remove ${n} deal(s) for ${ctx.fields?.name || 'a lead'} — approval needed`, url: '/dashboard#deletions' }, 'always');
+        logLeadActivity(ctx.customerId, { type: 'deal', body: `Deal removal requested by automation — awaiting admin approval`, authorKey: 'system', authorName: 'Automation' });
+      }
+      return n ? `delete_deals → ${n} deletion request(s) pending approval` : 'delete_deals skipped — no deals or already pending';
     }
     case 'delete_lead': {
-      // Permanently delete the lead — deals/activities/follow-ups cascade via FK. No post-delete activity log.
+      // Files a deletion request for admin approval (does not delete directly).
       if (!ctx.customerId) return 'delete_lead skipped — not linked to a lead';
-      await supabase.from('customers').delete().eq('id', ctx.customerId);
-      break;
+      const ok = await autoRequestDeletion('lead', ctx.customerId, ruleName);
+      if (ok) {
+        createNotification('admin', { type: 'request', title: 'Deletion request — lead', body: `Automation "${ruleName || 'rule'}" asked to delete ${ctx.fields?.name || 'a lead'} — approval needed`, url: '/dashboard#deletions' }, 'always');
+        logLeadActivity(ctx.customerId, { type: 'system', body: 'Lead deletion requested by automation — awaiting admin approval', authorKey: 'system', authorName: 'Automation' });
+      }
+      return ok ? 'delete_lead → deletion request pending approval' : 'delete_lead skipped — already pending';
     }
   }
 }
 async function runAutomationActions(rule, ctx, eventName) {
   const actions = Array.isArray(rule.actions) ? rule.actions : [];
   const done = [];
-  for (const a of actions) { const note = await runAutomationAction(a, ctx); done.push(note || a.type); }
+  for (const a of actions) { const note = await runAutomationAction(a, ctx, rule.name); done.push(note || a.type); }
   await supabase.from('automation_runs').insert({ rule_id: rule.id, event: eventName, entity_type: ctx.entityType, entity_id: ctx.entityId, status: 'ok', detail: done.join(',') }).then(() => {}).catch(() => {});
 }
 async function runAutomations(eventName, ctx) {
