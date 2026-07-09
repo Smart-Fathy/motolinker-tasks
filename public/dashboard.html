@@ -1067,6 +1067,7 @@
           <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon"><i data-lucide="users"></i></span> Employees</div>
           <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon"><i data-lucide="inbox"></i></span> Requests</div>
           <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><i data-lucide="clock"></i></span> Hours Logs</div>
+          <div class="nav-item"        onclick="navigate('deletions')"   id="nav-deletions">   <span class="nav-icon"><i data-lucide="trash-2"></i></span> Deletion Requests <span id="nav-deletions-badge" style="display:none;margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;padding:0 5px;align-items:center;justify-content:center;line-height:1"></span></div>
         </div>
       </div>
       <div class="nav-group" data-group="crm">
@@ -1265,6 +1266,20 @@
     <div style="padding:0 28px 28px">
       <div id="submissions-table-container" style="margin-top:18px">
         <div class="loading"><div class="spinner"></div> Loading submissions…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DELETION REQUESTS PAGE ────────────────────────── -->
+  <div id="page-deletions" class="page">
+    <div class="page-header">
+      <span class="page-title">Deletion Requests</span>
+      <button class="btn btn-outline" onclick="loadDeletionRequests()" style="font-size:13px"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Refresh</button>
+    </div>
+    <div style="padding:0 28px 28px">
+      <div style="font-size:13px;color:var(--muted);margin:14px 0">Employees can't delete leads or deals directly — their requests land here for your approval. Approving permanently deletes the record.</div>
+      <div id="deletions-container">
+        <div class="loading"><div class="spinner"></div> Loading…</div>
       </div>
     </div>
   </div>
@@ -3207,7 +3222,7 @@ async function uploadCSV() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
@@ -4709,6 +4724,50 @@ async function deleteSubmission(id) {
   const res = await apiFetch(`/api/submissions/${id}`, { method: 'DELETE' });
   if (res.ok) loadSubmissions();
   else alert('Delete failed');
+}
+
+// ── Deletion Requests (employee-requested lead/deal deletions) ──────────────────
+async function loadDeletionRequests() {
+  const c = document.getElementById('deletions-container');
+  c.innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
+  try {
+    const rows = await apiFetch('/api/dashboard/deletion-requests').then(r => r.json());
+    const pending = (Array.isArray(rows) ? rows : []).filter(r => r.status === 'pending');
+    const done = (Array.isArray(rows) ? rows : []).filter(r => r.status !== 'pending').slice(0, 50);
+    updateDeletionBadge(pending.length);
+    const card = (r, actionable) => `
+      <div class="card" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:10px">
+        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:3px 8px;border-radius:20px;background:${r.entity_type === 'lead' ? 'rgba(124,106,255,.15)' : 'rgba(90,180,120,.15)'};color:${r.entity_type === 'lead' ? 'var(--primary)' : '#5ab478'}">${r.entity_type}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:14px">${esc(r.entity_label || ('#' + r.entity_id))}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">by ${esc(r.requested_by)} · ${new Date(r.created_at).toLocaleString()}${r.reason ? ' · “' + esc(r.reason) + '”' : ''}</div>
+        </div>
+        ${actionable ? `
+          <button class="btn btn-sm btn-outline" style="color:#5ab478;border-color:#5ab478" onclick="reviewDeletion(${r.id}, 'approved')"><i data-lucide="check" style="width:13px;height:13px"></i> Approve &amp; delete</button>
+          <button class="btn btn-sm btn-outline" onclick="reviewDeletion(${r.id}, 'rejected')"><i data-lucide="x" style="width:13px;height:13px"></i> Reject</button>`
+          : `<span style="font-size:12px;font-weight:700;color:${r.status === 'approved' ? '#5ab478' : 'var(--muted)'}">${r.status === 'approved' ? '✓ Approved' : 'Rejected'}</span>`}
+      </div>`;
+    c.innerHTML = (pending.length ? pending.map(r => card(r, true)).join('')
+      : '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px">No pending deletion requests.</div>')
+      + (done.length ? `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 10px">Recently reviewed</div>` + done.map(r => card(r, false)).join('') : '');
+    requestAnimationFrame(() => lucide.createIcons());
+  } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
+}
+async function reviewDeletion(id, status) {
+  if (status === 'approved' && !confirm('Approve this deletion? The record will be permanently deleted.')) return;
+  try {
+    const r = await apiFetch(`/api/dashboard/deletion-requests/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); return alert('Error: ' + (e.error || r.status)); }
+    loadDeletionRequests();
+    // Refresh leads/deals if the user is viewing them
+    if (currentPage === 'customers' && typeof loadCustomers === 'function') loadCustomers();
+    if (currentPage === 'deals' && typeof loadDeals === 'function') loadDeals();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+function updateDeletionBadge(n) {
+  const b = document.getElementById('nav-deletions-badge');
+  if (!b) return;
+  if (n > 0) { b.textContent = n; b.style.display = 'inline-flex'; } else { b.style.display = 'none'; }
 }
 
 // ── Quotation Draft ────────────────────────────────────────────────────────────

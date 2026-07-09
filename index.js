@@ -1720,6 +1720,37 @@ receiver.router.delete('/api/dashboard/deals/:id', requireAuth, async (req, res)
   res.json({ ok: true });
 });
 
+// ── Deletion requests (employees request; admin approves → actual delete) ───────
+receiver.router.get('/api/dashboard/deletion-requests', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('deletion_requests').select('*').order('created_at', { ascending: false }).limit(200);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+receiver.router.put('/api/dashboard/deletion-requests/:id', requireAuth, express.json(), async (req, res) => {
+  const status = req.body?.status;
+  if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'status must be approved or rejected' });
+  const { data: dr } = await supabase.from('deletion_requests').select('*').eq('id', req.params.id).single();
+  if (!dr) return res.status(404).json({ error: 'Not found' });
+  if (dr.status !== 'pending') return res.status(409).json({ error: 'Already ' + dr.status });
+  if (status === 'approved') {
+    const table = dr.entity_type === 'lead' ? 'customers' : 'deals';
+    const { error: delErr } = await supabase.from(table).delete().eq('id', dr.entity_id);
+    if (delErr) return res.status(500).json({ error: delErr.message });
+  }
+  const { data: updated, error } = await supabase.from('deletion_requests').update({ status, reviewed_by: 'admin' }).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  try {
+    const { data: emp } = await supabase.from('employees').select('id').eq('username', dr.requested_by).single();
+    if (emp) createNotification(`employee_${emp.id}`, {
+      type: 'request',
+      title: status === 'approved' ? '✓ Deletion approved' : 'Deletion rejected',
+      body: `${dr.entity_type === 'lead' ? 'Lead' : 'Deal'} "${dr.entity_label}" — ${status === 'approved' ? 'deleted' : 'kept'}`,
+      url: dr.entity_type === 'lead' ? '/employee#leads' : '/employee#deals',
+    }, 'always');
+  } catch (_) {}
+  res.json(updated);
+});
+
 // ─── No-code automation engine ──────────────────────────────────────────────────
 // Config-driven trigger -> conditions -> actions rules (automation_rules table),
 // fired best-effort from the lead/deal/quote mutation seams and an hourly sweep.
@@ -2578,7 +2609,7 @@ function generateQuoteId() {
   return `MT${week}W${rand}Y${year}`;
 }
 
-// ── Employee read-only CRM (gated by admin permission) ──────────────────────────
+// ── Employee CRM (gated by the leads/deals permission; delete goes via approval) ──
 receiver.router.get('/api/employee/leads', requireEmployeeAuth, async (req, res) => {
   if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
   const { data, error } = await supabase.from('customers').select('*').order('created_at', { ascending: false });
@@ -2586,9 +2617,137 @@ receiver.router.get('/api/employee/leads', requireEmployeeAuth, async (req, res)
   res.json(data || []);
 });
 
+// Read the shared leads column config (read-only; config editing stays admin-only)
+receiver.router.get('/api/employee/leads/columns', requireEmployeeAuth, async (req, res) => {
+  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  const { data } = await supabase.from('quotation_settings').select('value').eq('key', 'leads_columns_config').single();
+  let columns = null; try { if (data?.value) columns = JSON.parse(data.value); } catch (_) {}
+  res.json({ columns });
+});
+
+receiver.router.post('/api/employee/leads', requireEmployeeAuth, express.json(), async (req, res) => {
+  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, budget_max, next_action, been_contacted, sales_feedback, inquiry, assigned_to, force } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name is required' });
+  const phone_norm = normalizePhone(phone);
+  if (phone_norm && !force) {
+    const { data: dup } = await supabase.from('customers').select('id,name,phone,lead_status').eq('phone_norm', phone_norm).limit(1);
+    if (dup && dup.length) return res.status(409).json({ duplicate: true, existing: dup[0] });
+  }
+  const { data, error } = await supabase.from('customers')
+    .insert({ name, phone: phone||'', phone_norm, email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, budget_max: budget_max||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', assigned_to: assigned_to||null, created_by: req.employee.username })
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  logLeadActivity(data.id, { type: 'system', body: `Lead created${data.source ? ' · ' + data.source : ''}`, authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
+  if (data.lead_status === 'hot') {
+    supabase.from('deals').insert({ customer_id: data.id, title: `${data.name}${data.car_in_question ? ' — ' + data.car_in_question : ''}`, stage: 'lead', car_model: data.car_in_question||'', budget_egp: data.budget_lead||null, notes: 'Auto-created from Hot lead', created_by: 'system' }).then(()=>{}).catch(()=>{});
+  }
+  runAutomations('lead.created', leadCtx(data));
+  res.json(data);
+});
+
+receiver.router.put('/api/employee/leads/:id', requireEmployeeAuth, express.json(), async (req, res) => {
+  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  const { data: prev } = await supabase.from('customers').select('lead_status,been_contacted').eq('id', req.params.id).single();
+  const patch = { ...req.body, updated_at: new Date().toISOString() };
+  delete patch.force; delete patch.created_by; delete patch.id; delete patch.custom_fields;
+  if (Object.prototype.hasOwnProperty.call(patch, 'phone')) patch.phone_norm = normalizePhone(patch.phone);
+  const { data, error } = await supabase.from('customers').update(patch).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  const author = { authorKey: `employee_${req.employee.id}`, authorName: req.employee.name };
+  if (prev && data.lead_status !== prev.lead_status) logLeadActivity(data.id, { type: 'status_change', body: 'Status changed', meta: { from: prev.lead_status || 'cold', to: data.lead_status || 'cold' }, ...author });
+  if (prev && !prev.been_contacted && data.been_contacted) logLeadActivity(data.id, { type: 'system', body: 'Marked as contacted', ...author });
+  if (data.lead_status === 'hot' && prev?.lead_status !== 'hot') {
+    try {
+      const { data: existing } = await supabase.from('deals').select('id').eq('customer_id', data.id).limit(1);
+      if (!existing?.length) {
+        await supabase.from('deals').insert({ customer_id: data.id, title: `${data.name}${data.car_in_question ? ' — ' + data.car_in_question : ''}`, stage: 'lead', car_model: data.car_in_question||'', budget_egp: data.budget_lead||null, notes: 'Auto-created from Hot lead', created_by: 'system' });
+        logLeadActivity(data.id, { type: 'deal', body: 'Deal auto-created from Hot status', authorKey: 'system', authorName: 'System' });
+      }
+    } catch (e) { console.warn('[emp-leads] auto-deal failed:', e.message); }
+  }
+  if (prev && data.lead_status !== prev.lead_status) runAutomations('lead.status_changed', { ...leadCtx(data), from: prev.lead_status, to: data.lead_status });
+  if (prev && !prev.been_contacted && data.been_contacted) runAutomations('lead.contacted', leadCtx(data));
+  res.json(data);
+});
+
 receiver.router.get('/api/employee/deals', requireEmployeeAuth, async (req, res) => {
   if (req.employee.permissions?.deals !== true) return res.status(403).json({ error: 'Not permitted' });
   const { data, error } = await supabase.from('deals').select('*, customers(name,phone,email)').order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.post('/api/employee/deals', requireEmployeeAuth, express.json(), async (req, res) => {
+  if (req.employee.permissions?.deals !== true) return res.status(403).json({ error: 'Not permitted' });
+  const { customer_id, title, stage, car_model, budget_egp, notes, assigned_to } = req.body;
+  if (!customer_id || !title) return res.status(400).json({ error: 'customer_id and title are required' });
+  const { data, error } = await supabase.from('deals')
+    .insert({ customer_id, title, stage: stage||'lead', car_model: car_model||'', budget_egp: budget_egp||null, notes: notes||'', assigned_to: assigned_to||'', created_by: req.employee.username })
+    .select('*, customers(name,phone,email)').single();
+  if (error) return res.status(500).json({ error: error.message });
+  logLeadActivity(customer_id, { type: 'deal', body: `Deal created — ${title}`, authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
+  runAutomations('deal.created', dealCtx(data));
+  res.json(data);
+});
+
+receiver.router.put('/api/employee/deals/:id', requireEmployeeAuth, express.json(), async (req, res) => {
+  if (req.employee.permissions?.deals !== true) return res.status(403).json({ error: 'Not permitted' });
+  const { data: prev } = await supabase.from('deals').select('stage').eq('id', req.params.id).single();
+  const updates = { ...req.body, updated_at: new Date().toISOString() };
+  delete updates.created_by; delete updates.id;
+  if ((updates.stage === 'won' || updates.stage === 'lost') && !updates.closed_at) updates.closed_at = new Date().toISOString();
+  if (updates.stage && updates.stage !== 'won' && updates.stage !== 'lost') updates.closed_at = null;
+  const { data, error } = await supabase.from('deals')
+    .update(updates).eq('id', req.params.id).select('*, customers(name,phone,email,car_in_question,budget_lead)').single();
+  if (error) return res.status(500).json({ error: error.message });
+  if (updates.stage === 'contacted' && prev?.stage !== 'contacted') {
+    try {
+      const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
+      const settings = {}; for (const row of settingsRows || []) settings[row.key] = row.value;
+      const notifyId = settings.contact_notify_employee_id;
+      if (notifyId) {
+        const c = data.customers;
+        const body = [`Lead: ${c?.name || data.title}`, c?.phone ? `Phone: ${c.phone}` : '', c?.car_in_question ? `Car: ${c.car_in_question}` : '', c?.budget_lead ? `Budget: ${Number(c.budget_lead).toLocaleString()} EGP` : ''].filter(Boolean).join(' · ');
+        await createNotification(`employee_${notifyId}`, { type: 'lead', title: 'New lead to quote — ' + (c?.name || data.title), body, url: '/employee#quotation' }, 'always');
+      }
+    } catch (e) { console.warn('[emp-deals] notify-contacted failed:', e.message); }
+  }
+  if (updates.stage && prev?.stage !== updates.stage && data.customer_id) {
+    const stageLabels = { lead: 'Lead', contacted: 'Contacted', quoted: 'Quoted', negotiating: 'Negotiating', won: 'Won', lost: 'Lost' };
+    logLeadActivity(data.customer_id, { type: 'deal', body: `Deal moved to ${stageLabels[updates.stage] || updates.stage} — ${data.title}`, meta: { from: prev?.stage, to: updates.stage }, authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
+  }
+  if (updates.stage && prev?.stage !== updates.stage) runAutomations('deal.stage_changed', { ...dealCtx(data), from: prev?.stage, to: updates.stage });
+  res.json(data);
+});
+
+// Employee-initiated deletion requests (admin approves → the record is actually deleted)
+receiver.router.post('/api/employee/deletion-requests', requireEmployeeAuth, express.json(), async (req, res) => {
+  const { entity_type, entity_id, reason } = req.body || {};
+  if (!['lead', 'deal'].includes(entity_type) || !entity_id) return res.status(400).json({ error: 'entity_type (lead|deal) and entity_id are required' });
+  const permOk = entity_type === 'lead' ? req.employee.permissions?.leads === true : req.employee.permissions?.deals === true;
+  if (!permOk) return res.status(403).json({ error: 'Not permitted' });
+  let label = '';
+  if (entity_type === 'lead') {
+    const { data } = await supabase.from('customers').select('name,phone').eq('id', entity_id).single();
+    if (!data) return res.status(404).json({ error: 'Lead not found' });
+    label = data.name + (data.phone ? ' · ' + data.phone : '');
+  } else {
+    const { data } = await supabase.from('deals').select('title, customers(name)').eq('id', entity_id).single();
+    if (!data) return res.status(404).json({ error: 'Deal not found' });
+    label = data.title + (data.customers?.name ? ' · ' + data.customers.name : '');
+  }
+  const { data: existing } = await supabase.from('deletion_requests').select('id').eq('entity_type', entity_type).eq('entity_id', entity_id).eq('status', 'pending').limit(1);
+  if (existing && existing.length) return res.json({ ok: true, duplicate: true });
+  const { data: row, error } = await supabase.from('deletion_requests')
+    .insert({ entity_type, entity_id, entity_label: label, requested_by: req.employee.username, reason: String(reason || '').slice(0, 500), status: 'pending' })
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  createNotification('admin', { type: 'request', title: `Deletion request — ${entity_type}`, body: `${req.employee.name} asked to delete "${label}"${reason ? ' — ' + reason : ''}`, url: '/dashboard#deletions' }, 'always').catch(() => {});
+  res.json({ ok: true, id: row.id });
+});
+receiver.router.get('/api/employee/deletion-requests', requireEmployeeAuth, async (req, res) => {
+  const { data, error } = await supabase.from('deletion_requests').select('*').eq('requested_by', req.employee.username).order('created_at', { ascending: false }).limit(100);
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });

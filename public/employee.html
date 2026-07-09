@@ -1011,15 +1011,18 @@
       </div>
     </div>
 
-    <!-- ── Leads Page (read-only) ── -->
+    <!-- ── Leads Page ── -->
     <div class="page" id="page-leads">
       <div style="padding:28px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
           <div>
             <div class="card-title" style="margin:0">Leads</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:4px">View the leads database</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">Manage the leads database</div>
           </div>
-          <input class="form-control" id="emp-lead-search" placeholder="Search name, phone, car…" oninput="empFilterLeads()" style="max-width:260px">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <input class="form-control" id="emp-lead-search" placeholder="Search name, phone, car…" oninput="empFilterLeads()" style="max-width:240px">
+            <button class="btn btn-primary" onclick="openEmpLeadModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> Add Lead</button>
+          </div>
         </div>
         <div class="card" style="padding:0;overflow:hidden">
           <div style="overflow-x:auto">
@@ -1034,15 +1037,102 @@
       </div>
     </div>
 
-    <!-- ── Deals Page (read-only) ── -->
+    <!-- ── Deals Page ── -->
     <div class="page" id="page-deals">
       <div style="padding:28px">
-        <div style="margin-bottom:16px">
-          <div class="card-title" style="margin:0">Deals Pipeline</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:4px">View deals across the sales pipeline</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+          <div>
+            <div class="card-title" style="margin:0">Deals Pipeline</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">Drag cards to change stage · add and edit deals</div>
+          </div>
+          <button class="btn btn-primary" onclick="openEmpDealModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> Add Deal</button>
         </div>
         <div id="emp-deals-kanban" style="display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:12px;align-items:start;overflow-x:auto">
           <div class="loading"><span class="spinner"></span> Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Employee Lead Modal ── -->
+    <div id="emp-lead-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:640px;max-height:92vh;overflow-y:auto;margin:auto">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-size:16px;font-weight:800" id="eml-title">Add Lead</div>
+          <button onclick="document.getElementById('emp-lead-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
+        </div>
+        <input type="hidden" id="eml-id">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><label class="form-label">Name</label><input class="form-control" id="eml-name" placeholder="Full name"></div>
+          <div><label class="form-label">Phone</label><input class="form-control" id="eml-phone" placeholder="+20 …"></div>
+          <div><label class="form-label">Date</label><input class="form-control" id="eml-date" type="date"></div>
+          <div><label class="form-label">Time</label><input class="form-control" id="eml-time" type="time"></div>
+          <div><label class="form-label">Status</label>
+            <select class="form-control" id="eml-status">
+              <option value="cold">Cold</option><option value="warm">Warm</option><option value="hot">Hot</option>
+              <option value="immediate_delivery">Immediate Delivery</option><option value="not_interested">Not Interested</option><option value="blacklist">Blacklist</option>
+            </select>
+          </div>
+          <div><label class="form-label">Origin</label>
+            <select class="form-control" id="eml-source">
+              <option value="">— Unknown —</option><option value="fb_ad">FB Ad.</option><option value="whatsapp">Whatsapp</option>
+              <option value="messenger">Messenger</option><option value="direct_call">Direct Call</option><option value="ig_ads">IG ads</option>
+              <option value="website">Website</option><option value="walk_in">Walk-in</option><option value="marketplace">Marketplace</option>
+            </select>
+          </div>
+          <div><label class="form-label">Car in Question</label><input class="form-control" id="eml-car" placeholder="e.g. Deepal S05"></div>
+          <div><label class="form-label">Budget (EGP)</label><input class="form-control" id="eml-budget" placeholder="e.g. 1700000 or 1.7M - 2M"></div>
+          <div><label class="form-label">Next Action</label>
+            <select class="form-control" id="eml-next-action">
+              <option value="">— None —</option><option value="followed_by_sales">Followed By Sales</option><option value="need_follow_up">Need Follow Up</option>
+              <option value="closed">Closed</option><option value="no_answer">No Answer</option>
+            </select>
+          </div>
+          <div><label class="form-label">Owner (sales rep)</label><select class="form-control" id="eml-owner"><option value="">— Unassigned —</option></select></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer;margin:12px 0">
+          <input type="checkbox" id="eml-contacted" style="width:16px;height:16px;accent-color:var(--primary)"> Been contacted
+        </label>
+        <div style="display:grid;gap:12px">
+          <div><label class="form-label">Notes</label><textarea class="form-control" id="eml-notes" rows="2" style="resize:vertical"></textarea></div>
+          <div><label class="form-label">Sales Feedback</label><textarea class="form-control" id="eml-sales-feedback" rows="2" style="resize:vertical"></textarea></div>
+          <div><label class="form-label">Inquiry</label><textarea class="form-control" id="eml-inquiry" rows="2" style="resize:vertical"></textarea></div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+          <button class="btn btn-outline" onclick="document.getElementById('emp-lead-modal').style.display='none'">Cancel</button>
+          <button class="btn btn-primary" onclick="saveEmpLead()">Save Lead</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Employee Deal Modal ── -->
+    <div id="emp-deal-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;margin:auto">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-size:16px;font-weight:800" id="emd-title">Add Deal</div>
+          <button onclick="document.getElementById('emp-deal-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
+        </div>
+        <input type="hidden" id="emd-id">
+        <div style="display:grid;gap:12px">
+          <div><label class="form-label">Lead</label><select class="form-control" id="emd-customer"><option value="">— Select lead —</option></select></div>
+          <div><label class="form-label">Title</label><input class="form-control" id="emd-title-input" placeholder="Deal title"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div><label class="form-label">Car Model</label><input class="form-control" id="emd-car" placeholder="e.g. Deepal S05"></div>
+            <div><label class="form-label">Budget (EGP)</label><input class="form-control" id="emd-budget" type="number" min="0" placeholder="e.g. 1500000"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div><label class="form-label">Stage</label>
+              <select class="form-control" id="emd-stage">
+                <option value="lead">Lead</option><option value="contacted">Contacted</option><option value="quoted">Quoted</option>
+                <option value="negotiating">Negotiating</option><option value="won">Won</option><option value="lost">Lost</option>
+              </select>
+            </div>
+            <div><label class="form-label">Assignee</label><select class="form-control" id="emd-assignee"><option value="">— Unassigned —</option></select></div>
+          </div>
+          <div><label class="form-label">Notes</label><textarea class="form-control" id="emd-notes" rows="2" style="resize:vertical"></textarea></div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+          <button class="btn btn-outline" onclick="document.getElementById('emp-deal-modal').style.display='none'">Cancel</button>
+          <button class="btn btn-primary" onclick="saveEmpDeal()">Save Deal</button>
         </div>
       </div>
     </div>
@@ -2365,25 +2455,35 @@ function closeDriveViewer() {
   document.getElementById('drive-viewer-frame').src = 'about:blank';
 }
 
-/* ── CRM: Leads (read-only) ── */
+/* ── CRM: Leads (actionable) ── */
 const EMP_LEAD_STATUS_LABELS = { cold:'Cold', warm:'Warm', hot:'Hot', immediate_delivery:'Immediate Delivery', not_interested:'Not Interested', blacklist:'Blacklist' };
 const EMP_LEAD_STATUS_BG     = { cold:'rgba(255,255,255,.06)', warm:'rgba(230,150,80,.18)', hot:'rgba(239,68,68,.14)', immediate_delivery:'rgba(100,180,120,.14)', not_interested:'rgba(150,150,150,.1)', blacklist:'rgba(120,0,0,.35)' };
 const EMP_LEAD_STATUS_FG     = { cold:'#b9b3a4', warm:'#e6a850', hot:'#f87171', immediate_delivery:'#6dd8a4', not_interested:'#888', blacklist:'#f87171' };
-const EMP_ORIGIN_LABELS      = { fb_ad:'FB Ad.', whatsapp:'Whatsapp', messenger:'Messenger', direct_call:'Direct Call', ig_ads:'IG ads' };
+const EMP_ORIGIN_LABELS      = { fb_ad:'FB Ad.', whatsapp:'Whatsapp', messenger:'Messenger', direct_call:'Direct Call', ig_ads:'IG ads', website:'Website', walk_in:'Walk-in', marketplace:'Marketplace' };
 const EMP_NEXT_ACTION_LABELS = { followed_by_sales:'Followed By Sales', need_follow_up:'Need Follow Up', closed:'Closed', no_answer:'No Answer' };
+const EMP_LEAD_STATUS_OPTS   = [['cold','Cold'],['warm','Warm'],['hot','Hot'],['immediate_delivery','Immediate Delivery'],['not_interested','Not Interested'],['blacklist','Blacklist']];
 let _empLeads = [];
+let _empCoworkers = null;
+
+async function loadEmpCoworkers() { if (_empCoworkers) return _empCoworkers; try { _empCoworkers = await ef('/api/employee/coworkers').then(r => r.json()); } catch (_) { _empCoworkers = []; } return _empCoworkers; }
+function empEmpName(id) { return (_empCoworkers || []).find(e => String(e.id) === String(id))?.name || ''; }
+// Budget: accept a number or a range → {min,max}; render as a range.
+function empBudgetPart(s) { s = String(s == null ? '' : s).trim().toLowerCase().replace(/,/g, '').replace(/\s+/g, '').replace(/egp|le|£|\$/g, ''); if (!s) return null; let mult = 1; if (/[km]$/.test(s)) { mult = s.endsWith('m') ? 1e6 : 1e3; s = s.slice(0, -1); } const n = parseFloat(s); return isFinite(n) ? Math.round(n * mult) : null; }
+function empParseBudget(raw) { const str = String(raw == null ? '' : raw).trim(); if (!str) return { min: null, max: null }; const parts = str.split(/\s*(?:-|–|—|to|:|\/)\s*/i).map(p => p.trim()).filter(Boolean); if (parts.length >= 2) { let a = empBudgetPart(parts[0]), b = empBudgetPart(parts[parts.length - 1]); if (a != null && b != null && a > b) { const t = a; a = b; b = t; } return { min: a != null ? a : b, max: (a != null && b != null) ? b : null }; } return { min: empBudgetPart(str), max: null }; }
+function empFmtBudget(min, max) { const f = n => Number(n).toLocaleString(); if (min != null && min !== '' && max != null && max !== '') return f(min) + ' – ' + f(max) + ' EGP'; if (min != null && min !== '') return f(min) + ' EGP'; return '—'; }
 
 async function loadEmpLeads() {
   const tbody = document.getElementById('emp-leads-tbody');
   const head  = document.getElementById('emp-leads-head');
-  if (head) head.innerHTML = ['Date','Time','Name','Phone','Status','Origin','Car','Budget','Next Action','Contacted','Notes']
+  if (head) head.innerHTML = ['Date','Time','Name','Phone','Status','Origin','Car','Budget','Next Action','Contacted','Notes','']
     .map(h => `<th style="padding:9px 14px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap">${h}</th>`).join('');
+  loadEmpCoworkers();
   try {
     _empLeads = await ef('/api/employee/leads').then(r => r.json());
     if (_empLeads.error) throw new Error(_empLeads.error);
     empRenderLeads(_empLeads);
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--danger);padding:24px">${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--danger);padding:24px">${esc(e.message)}</td></tr>`;
   }
 }
 
@@ -2394,7 +2494,7 @@ function empFilterLeads() {
 
 function empRenderLeads(list) {
   const tbody = document.getElementById('emp-leads-tbody');
-  if (!list.length) { tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:28px">No leads found.</td></tr>'; return; }
+  if (!list.length) { tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:28px">No leads found.</td></tr>'; return; }
   tbody.innerHTML = list.map(c => {
     const st = c.lead_status || 'cold';
     const slabel = EMP_LEAD_STATUS_LABELS[st] || st;
@@ -2403,51 +2503,215 @@ function empRenderLeads(list) {
     return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
       <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${c.lead_date || '—'}</td>
       <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${c.lead_time || '—'}</td>
-      <td style="padding:10px 14px;font-size:13px"><strong>${esc(c.name)}</strong></td>
+      <td style="padding:10px 14px;font-size:13px"><strong onclick="openEmpLeadModal(${c.id})" style="cursor:pointer;color:var(--primary)" title="Edit lead">${esc(c.name)}</strong></td>
       <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${esc(c.phone||'—')}</td>
-      <td style="padding:10px 14px"><span style="background:${sbg};color:${sfg};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap">${esc(slabel)}</span></td>
+      <td style="padding:10px 14px" onclick="empQuickStatus(event, ${c.id})" title="Change status" style="cursor:pointer"><span style="background:${sbg};color:${sfg};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap">${esc(slabel)}</span></td>
       <td style="padding:10px 14px;font-size:12px">${esc(EMP_ORIGIN_LABELS[c.source]||c.source||'—')}</td>
       <td style="padding:10px 14px;font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.car_in_question||'')}">${esc(c.car_in_question||'—')}</td>
-      <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${c.budget_lead ? Number(c.budget_lead).toLocaleString()+' EGP' : '—'}</td>
+      <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${empFmtBudget(c.budget_lead, c.budget_max)}</td>
       <td style="padding:10px 14px;font-size:11px;white-space:nowrap">${esc(EMP_NEXT_ACTION_LABELS[c.next_action]||c.next_action||'—')}</td>
-      <td style="padding:10px 14px;text-align:center;font-size:15px">${c.been_contacted ? '✅' : '⬜'}</td>
+      <td onclick="empToggleContacted(event, ${c.id})" title="Toggle contacted" style="padding:10px 14px;text-align:center;font-size:15px;cursor:pointer">${c.been_contacted ? '✅' : '⬜'}</td>
       <td style="padding:10px 14px;font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.notes||'')}">${esc(c.notes||'—')}</td>
+      <td style="padding:10px 14px;white-space:nowrap;text-align:right">
+        <button class="btn btn-outline btn-sm" onclick="openEmpLeadModal(${c.id})" title="Edit" style="padding:4px 8px"><i data-lucide="pencil" style="width:13px;height:13px"></i></button>
+        <button class="btn btn-outline btn-sm" onclick="empRequestDeleteLead(${c.id})" title="Request deletion" style="padding:4px 8px;color:var(--danger);border-color:var(--danger)"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+      </td>
     </tr>`;
   }).join('');
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
-/* ── CRM: Deals (read-only kanban) ── */
+function empQuickStatus(e, id) {
+  e.stopPropagation();
+  const c = _empLeads.find(x => x.id === id); if (!c) return;
+  brandMenu(e.currentTarget, EMP_LEAD_STATUS_OPTS.map(([k, l]) => ({ key: k, label: l, selected: (c.lead_status || 'cold') === k })), val => empSaveLeadField(id, { lead_status: val }));
+}
+function empToggleContacted(e, id) {
+  e.stopPropagation();
+  const c = _empLeads.find(x => x.id === id); if (!c) return;
+  empSaveLeadField(id, { been_contacted: !c.been_contacted });
+}
+async function empSaveLeadField(id, patch) {
+  try {
+    const updated = await ef(`/api/employee/leads/${id}`, { method: 'PUT', body: JSON.stringify(patch) }).then(r => r.json());
+    if (updated?.error) throw new Error(updated.error);
+    const i = _empLeads.findIndex(x => x.id === id); if (i >= 0) _empLeads[i] = updated;
+  } catch (e) { showToast('Save failed: ' + e.message); }
+  empFilterLeads();
+}
+
+function openEmpLeadModal(id) {
+  const c = id ? _empLeads.find(x => x.id === id) : null;
+  document.getElementById('eml-title').textContent = c ? 'Edit Lead' : 'Add Lead';
+  document.getElementById('eml-id').value = c?.id || '';
+  const set = (k, v) => { const el = document.getElementById(k); if (el) el.value = v; };
+  set('eml-name', c?.name || ''); set('eml-phone', c?.phone || ''); set('eml-date', c?.lead_date || ''); set('eml-time', c?.lead_time || '');
+  set('eml-status', c?.lead_status || 'cold'); set('eml-source', c?.source || ''); set('eml-car', c?.car_in_question || '');
+  set('eml-budget', (c?.budget_max != null && c?.budget_max !== '') ? `${c.budget_lead}-${c.budget_max}` : (c?.budget_lead || ''));
+  set('eml-next-action', c?.next_action || ''); set('eml-notes', c?.notes || ''); set('eml-sales-feedback', c?.sales_feedback || ''); set('eml-inquiry', c?.inquiry || '');
+  document.getElementById('eml-contacted').checked = !!c?.been_contacted;
+  const owner = document.getElementById('eml-owner');
+  owner.innerHTML = '<option value="">— Unassigned —</option>' + (_empCoworkers || []).map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+  owner.value = c?.assigned_to ? String(c.assigned_to) : '';
+  document.getElementById('emp-lead-modal').style.display = 'flex';
+}
+async function saveEmpLead() {
+  const id = document.getElementById('eml-id').value;
+  const g = k => document.getElementById(k).value;
+  const bud = empParseBudget(g('eml-budget'));
+  const payload = {
+    name: g('eml-name').trim(), phone: g('eml-phone').trim(), lead_date: g('eml-date') || null, lead_time: g('eml-time') || null,
+    lead_status: g('eml-status'), source: g('eml-source'), car_in_question: g('eml-car').trim(),
+    budget_lead: bud.min, budget_max: bud.max, next_action: g('eml-next-action'),
+    been_contacted: document.getElementById('eml-contacted').checked, notes: g('eml-notes').trim(),
+    sales_feedback: g('eml-sales-feedback').trim(), inquiry: g('eml-inquiry').trim(),
+    assigned_to: g('eml-owner') ? parseInt(g('eml-owner')) : null,
+  };
+  if (!payload.name) return showToast('Name is required.');
+  try {
+    const url = id ? `/api/employee/leads/${id}` : '/api/employee/leads';
+    const method = id ? 'PUT' : 'POST';
+    let r = await ef(url, { method, body: JSON.stringify(payload) });
+    if (r.status === 409) {
+      const { existing } = await r.json();
+      if (!confirm(`A lead with this phone already exists: "${existing?.name || 'Unknown'}".\n\nOK = create anyway · Cancel = abort.`)) return;
+      r = await ef(url, { method, body: JSON.stringify({ ...payload, force: true }) });
+    }
+    if (!r.ok) { const e = await r.json().catch(() => ({})); return showToast('Error: ' + (e.error || r.status)); }
+    document.getElementById('emp-lead-modal').style.display = 'none';
+    loadEmpLeads();
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+async function empRequestDeleteLead(id) {
+  const c = _empLeads.find(x => x.id === id);
+  const reason = prompt(`Request deletion of lead "${c?.name || ('#' + id)}"?\nAn admin must approve before it is deleted.\n\nOptional reason:`);
+  if (reason === null) return;
+  try {
+    const r = await ef('/api/employee/deletion-requests', { method: 'POST', body: JSON.stringify({ entity_type: 'lead', entity_id: id, reason }) });
+    const d = await r.json();
+    if (!r.ok) return showToast('Error: ' + (d.error || r.status));
+    showToast(d.duplicate ? 'A deletion request is already pending.' : 'Deletion request sent to admin.');
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+
+/* ── CRM: Deals (actionable kanban) ── */
 const EMP_DEAL_STAGES = ['lead','contacted','quoted','negotiating','won','lost'];
 const EMP_DEAL_STAGE_LABELS = { lead:'Lead', contacted:'Contacted', quoted:'Quoted', negotiating:'Negotiating', won:'Won', lost:'Lost' };
+let _empDeals = [];
+let _empDragDealId = null;
 
 async function loadEmpDeals() {
+  await loadEmpCoworkers();
+  // Best-effort: load leads too so the deal modal's lead picker is populated (needs leads permission).
+  try { const L = await ef('/api/employee/leads').then(r => r.json()); if (Array.isArray(L)) _empLeads = L; } catch (_) {}
   const kanban = document.getElementById('emp-deals-kanban');
   try {
-    const deals = await ef('/api/employee/deals').then(r => r.json());
-    if (deals.error) throw new Error(deals.error);
-    kanban.innerHTML = EMP_DEAL_STAGES.map(stage => {
-      const stageDeals = deals.filter(d => d.stage === stage);
-      return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:160px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${EMP_DEAL_STAGE_LABELS[stage]}</div>
-          <div style="background:rgba(255,255,255,.07);border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">${stageDeals.length}</div>
-        </div>
-        ${stageDeals.map(d => empDealCard(d)).join('')}
-      </div>`;
-    }).join('');
+    _empDeals = await ef('/api/employee/deals').then(r => r.json());
+    if (_empDeals.error) throw new Error(_empDeals.error);
+    empRenderDeals();
   } catch (e) {
     kanban.innerHTML = `<div style="color:var(--danger);padding:20px;font-size:13px">${esc(e.message)}</div>`;
   }
 }
 
+function empRenderDeals() {
+  const kanban = document.getElementById('emp-deals-kanban');
+  kanban.innerHTML = EMP_DEAL_STAGES.map(stage => {
+    const stageDeals = _empDeals.filter(d => d.stage === stage);
+    return `<div class="emp-deal-col" data-stage="${stage}" ondragover="empDealDragOver(event)" ondragleave="empDealDragLeave(event)" ondrop="empDealDrop(event,'${stage}')" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:160px;transition:outline .1s">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${EMP_DEAL_STAGE_LABELS[stage]}</div>
+        <div style="background:rgba(255,255,255,.07);border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">${stageDeals.length}</div>
+      </div>
+      ${stageDeals.map(d => empDealCard(d)).join('')}
+    </div>`;
+  }).join('');
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
 function empDealCard(d) {
   const cust = d.customers;
-  return `<div style="background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
-    <div style="font-size:13px;font-weight:600;margin-bottom:6px;line-height:1.3">${esc(d.title)}</div>
-    ${cust ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px">${esc(cust.name)}</div>` : ''}
-    ${d.car_model ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px">${esc(d.car_model)}</div>` : ''}
-    ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary)">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
+  return `<div class="emp-deal-card" draggable="true" ondragstart="empDealDragStart(event,${d.id})" ondragend="empDealDragEnd(event)" style="background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;cursor:grab">
+    <div style="display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
+      <div style="font-size:13px;font-weight:600;line-height:1.3">${esc(d.title)}</div>
+      <div style="display:flex;gap:2px;flex-shrink:0">
+        <button onclick="event.stopPropagation();openEmpDealModal(${d.id})" title="Edit" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 4px"><i data-lucide="pencil" style="width:13px;height:13px"></i></button>
+        <button onclick="event.stopPropagation();empRequestDeleteDeal(${d.id})" title="Request deletion" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:2px 4px"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+      </div>
+    </div>
+    ${cust ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${esc(cust.name)}</div>` : ''}
+    ${d.car_model ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(d.car_model)}</div>` : ''}
+    ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary);margin-top:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
   </div>`;
+}
+
+function empDealDragStart(e, id) { _empDragDealId = id; e.dataTransfer.effectAllowed = 'move'; }
+function empDealDragEnd() { _empDragDealId = null; document.querySelectorAll('.emp-deal-col').forEach(c => c.style.outline = ''); }
+function empDealDragOver(e) { e.preventDefault(); e.currentTarget.style.outline = '2px dashed var(--primary)'; e.currentTarget.style.outlineOffset = '-2px'; }
+function empDealDragLeave(e) { e.currentTarget.style.outline = ''; }
+async function empDealDrop(e, stage) {
+  e.preventDefault(); e.currentTarget.style.outline = '';
+  const id = _empDragDealId; _empDragDealId = null;
+  if (!id) return;
+  const d = _empDeals.find(x => x.id === id);
+  if (!d || d.stage === stage) return;
+  try {
+    const updated = await ef(`/api/employee/deals/${id}`, { method: 'PUT', body: JSON.stringify({ stage }) }).then(r => r.json());
+    if (updated?.error) throw new Error(updated.error);
+    const i = _empDeals.findIndex(x => x.id === id); if (i >= 0) _empDeals[i] = updated;
+    empRenderDeals();
+  } catch (err) { showToast('Move failed: ' + err.message); }
+}
+
+function openEmpDealModal(id) {
+  const d = id ? _empDeals.find(x => x.id === id) : null;
+  document.getElementById('emd-title').textContent = d ? 'Edit Deal' : 'Add Deal';
+  document.getElementById('emd-id').value = d?.id || '';
+  const pick = document.getElementById('emd-customer');
+  pick.innerHTML = '<option value="">— Select lead —</option>' + [...(_empLeads || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(l => `<option value="${l.id}">${esc(l.name)}${l.phone ? ' · ' + esc(l.phone) : ''}</option>`).join('');
+  if (d?.customer_id && !pick.querySelector(`option[value="${d.customer_id}"]`)) pick.insertAdjacentHTML('beforeend', `<option value="${d.customer_id}">${esc(d.customers?.name || ('#' + d.customer_id))}</option>`);
+  pick.value = d?.customer_id ? String(d.customer_id) : '';
+  document.getElementById('emd-title-input').value = d?.title || '';
+  document.getElementById('emd-car').value = d?.car_model || '';
+  document.getElementById('emd-budget').value = d?.budget_egp || '';
+  document.getElementById('emd-stage').value = d?.stage || 'lead';
+  document.getElementById('emd-notes').value = d?.notes || '';
+  const asg = document.getElementById('emd-assignee');
+  asg.innerHTML = '<option value="">— Unassigned —</option>' + (_empCoworkers || []).map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+  asg.value = d?.assigned_to ? String(d.assigned_to) : '';
+  document.getElementById('emp-deal-modal').style.display = 'flex';
+}
+async function saveEmpDeal() {
+  const id = document.getElementById('emd-id').value;
+  const payload = {
+    customer_id: document.getElementById('emd-customer').value ? parseInt(document.getElementById('emd-customer').value) : null,
+    title: document.getElementById('emd-title-input').value.trim(),
+    car_model: document.getElementById('emd-car').value.trim(),
+    budget_egp: document.getElementById('emd-budget').value ? parseInt(document.getElementById('emd-budget').value) : null,
+    stage: document.getElementById('emd-stage').value,
+    notes: document.getElementById('emd-notes').value.trim(),
+    assigned_to: document.getElementById('emd-assignee').value || '',
+  };
+  if (!payload.customer_id) return showToast('Please select a lead.');
+  if (!payload.title) return showToast('Title is required.');
+  try {
+    const url = id ? `/api/employee/deals/${id}` : '/api/employee/deals';
+    const r = await ef(url, { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); return showToast('Error: ' + (e.error || r.status)); }
+    document.getElementById('emp-deal-modal').style.display = 'none';
+    loadEmpDeals();
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+async function empRequestDeleteDeal(id) {
+  const d = _empDeals.find(x => x.id === id);
+  const reason = prompt(`Request deletion of deal "${d?.title || ('#' + id)}"?\nAn admin must approve before it is deleted.\n\nOptional reason:`);
+  if (reason === null) return;
+  try {
+    const r = await ef('/api/employee/deletion-requests', { method: 'POST', body: JSON.stringify({ entity_type: 'deal', entity_id: id, reason }) });
+    const dd = await r.json();
+    if (!r.ok) return showToast('Error: ' + (dd.error || r.status));
+    showToast(dd.duplicate ? 'A deletion request is already pending.' : 'Deletion request sent to admin.');
+  } catch (e) { showToast('Error: ' + e.message); }
 }
 
 /* ── Email ── */
