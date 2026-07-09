@@ -5234,7 +5234,10 @@ function helpInit() {
     <div class="hb-overlay" id="hb-overlay" onclick="helpClose()"></div>
     <div class="hb-panel" id="hb-panel">
       <div class="hb-head">
-        <div style="font-weight:800;font-size:15px">Help · مساعدة</div>
+        <div>
+          <div style="font-weight:800;font-size:15px">Help · مساعدة</div>
+          <div id="hb-status" style="font-size:11px;margin-top:2px;display:none"></div>
+        </div>
         <div style="display:flex;gap:6px;align-items:center">
           <select id="hb-lang" onchange="_helpLang=this.value" style="background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:8px;font-size:12px;padding:4px 6px">
             <option value="auto">Auto</option><option value="en">EN</option><option value="ar">AR</option>
@@ -5256,7 +5259,18 @@ function helpOpen() {
   document.getElementById('hb-overlay').classList.add('open');
   document.getElementById('hb-panel').classList.add('open');
   if (!_helpHistory.length) helpWelcome();
+  helpRefreshStatus();
   setTimeout(() => document.getElementById('hb-input')?.focus(), 120);
+}
+async function helpRefreshStatus() {
+  const el = document.getElementById('hb-status');
+  if (!el) return;
+  try {
+    const d = await apiFetch('/api/dashboard/help/status').then(r => r.json());
+    el.style.display = 'block';
+    if (d.ai) { el.textContent = '● AI connected (Gemini)'; el.style.color = '#6dd8a4'; }
+    else { el.textContent = '● AI off — answering from FAQ only'; el.style.color = 'var(--muted,#9a958a)'; }
+  } catch (_) { el.style.display = 'none'; }
 }
 function helpClose() {
   document.getElementById('hb-overlay')?.classList.remove('open');
