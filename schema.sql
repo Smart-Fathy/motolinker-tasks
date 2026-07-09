@@ -568,6 +568,25 @@ CREATE TABLE IF NOT EXISTS automation_runs (
 CREATE INDEX IF NOT EXISTS idx_automation_runs_rule ON automation_runs (rule_id, entity_id, created_at DESC);
 ALTER TABLE IF EXISTS public.automation_runs ENABLE ROW LEVEL SECURITY;
 
+-- Employee-requested deletions of a lead/deal, approved (and performed) by an admin
+CREATE TABLE IF NOT EXISTS deletion_requests (
+  id           BIGSERIAL PRIMARY KEY,
+  entity_type  TEXT NOT NULL CHECK (entity_type IN ('lead', 'deal')),
+  entity_id    BIGINT NOT NULL,
+  entity_label TEXT DEFAULT '',
+  requested_by TEXT NOT NULL,                 -- employee username
+  reason       TEXT DEFAULT '',
+  status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  reviewed_by  TEXT DEFAULT '',
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_deletion_requests_status ON deletion_requests (status, created_at DESC);
+DROP TRIGGER IF EXISTS deletion_requests_updated_at ON deletion_requests;
+CREATE TRIGGER deletion_requests_updated_at BEFORE UPDATE ON deletion_requests
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+ALTER TABLE IF EXISTS public.deletion_requests ENABLE ROW LEVEL SECURITY;
+
 -- Per-stage win probability for weighted-pipeline analytics (JSON string in the KV settings table)
 INSERT INTO quotation_settings (key, value) VALUES
   ('stage_probabilities', '{"lead":10,"contacted":25,"quoted":50,"negotiating":75,"won":100,"lost":0}')
