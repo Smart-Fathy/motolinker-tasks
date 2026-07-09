@@ -1066,7 +1066,6 @@
           <div class="nav-item active" onclick="navigate('tasks')"    id="nav-tasks">    <span class="nav-icon"><i data-lucide="clipboard-list"></i></span> Tasks</div>
           <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon"><i data-lucide="users"></i></span> Employees</div>
           <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon"><i data-lucide="inbox"></i></span> Requests</div>
-          <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><i data-lucide="mail"></i></span> Submissions</div>
           <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><i data-lucide="clock"></i></span> Hours Logs</div>
         </div>
       </div>
@@ -1075,12 +1074,13 @@
         <div class="nav-group-items">
           <div class="nav-item"        onclick="navigate('customers')"  id="nav-customers">    <span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads</div>
           <div class="nav-item"        onclick="navigate('deals')"      id="nav-deals">        <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals</div>
+          <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><i data-lucide="mail"></i></span> Submissions</div>
           <div class="nav-item"        onclick="navigate('reports')"    id="nav-reports">      <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span> Reports</div>
           <div class="nav-item"        onclick="navigate('automations')" id="nav-automations"> <span class="nav-icon"><i data-lucide="workflow"></i></span> Automations</div>
         </div>
       </div>
       <div class="nav-group" data-group="integrations">
-        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Integrations</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Tools</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
         <div class="nav-group-items">
           <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft</div>
         </div>
@@ -1864,7 +1864,7 @@
           </div>
           <div>
             <label class="form-label">Budget (EGP)</label>
-            <input class="form-input" id="cm-budget" type="number" min="0" placeholder="e.g. 1500000">
+            <input class="form-input" id="cm-budget" type="text" placeholder="e.g. 1700000 or 1.7M - 2M">
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -1934,17 +1934,47 @@
             <option value="number">Number</option>
             <option value="date">Date</option>
             <option value="select">Dropdown</option>
+            <option value="radio">Radio (single choice)</option>
             <option value="checkbox">Checkbox</option>
           </select>
         </div>
         <div id="lc-options-wrap" style="display:none">
-          <label class="form-label">Dropdown options (one per line)</label>
+          <label class="form-label">Options (one per line)</label>
           <textarea class="form-input" id="lc-options" rows="4" placeholder="Option A&#10;Option B" style="resize:vertical"></textarea>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="document.getElementById('lead-col-modal').style.display='none'">Cancel</button>
         <button class="btn btn-primary" onclick="saveNewLeadCol()">Add Column</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Column Type Modal -->
+  <div id="lead-type-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:650;align-items:center;justify-content:center">
+    <div class="modal" style="width:100%;max-width:420px">
+      <div class="modal-header">
+        <div class="modal-title">Change type — <span id="lt-col-name"></span></div>
+        <button class="modal-close" onclick="document.getElementById('lead-type-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body" style="padding:24px;display:grid;gap:14px">
+        <div>
+          <label class="form-label">Column type</label>
+          <select class="form-input" id="lt-type" onchange="ltTypeChanged()">
+            <option value="text">Text</option>
+            <option value="select">Dropdown</option>
+            <option value="radio">Radio (single choice)</option>
+            <option value="checkbox">Checkbox</option>
+          </select>
+        </div>
+        <div id="lt-options-wrap" style="display:none">
+          <label class="form-label">Options (one per line)</label>
+          <textarea class="form-input" id="lt-options" rows="4" placeholder="Option A&#10;Option B" style="resize:vertical"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('lead-type-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" onclick="saveLeadType()">Save</button>
       </div>
     </div>
   </div>
@@ -5362,6 +5392,33 @@ let _leadColsLoaded = false;
 function leadCol(key) { return (_leadCols || LEAD_DEFAULT_COLS).find(c => c.key === key); }
 function colOptMap(col) { const m = {}; (col?.options || []).forEach(o => { m[o.key] = o.label; }); return m; }
 function slugKey(label) { return String(label).toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'col'; }
+function isChecked(raw) { return raw === true || raw === 'true' || raw === 1 || raw === '1'; }
+// Budget: parse a single number OR a range ("1700000-2000000", "1.7M to 2M") into {min,max}.
+function parseBudgetPart(s) {
+  s = String(s == null ? '' : s).trim().toLowerCase().replace(/,/g, '').replace(/\s+/g, '').replace(/egp|le|£|\$/g, '');
+  if (!s) return null;
+  let mult = 1;
+  if (/[km]$/.test(s)) { mult = s.endsWith('m') ? 1e6 : 1e3; s = s.slice(0, -1); }
+  const n = parseFloat(s);
+  return isFinite(n) ? Math.round(n * mult) : null;
+}
+function parseBudget(raw) {
+  const str = String(raw == null ? '' : raw).trim();
+  if (!str) return { min: null, max: null };
+  const parts = str.split(/\s*(?:-|–|—|to|:|\/)\s*/i).map(p => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    let a = parseBudgetPart(parts[0]), b = parseBudgetPart(parts[parts.length - 1]);
+    if (a != null && b != null && a > b) { const t = a; a = b; b = t; }
+    return { min: a != null ? a : b, max: (a != null && b != null) ? b : null };
+  }
+  return { min: parseBudgetPart(str), max: null };
+}
+function fmtBudget(min, max) {
+  const f = n => Number(n).toLocaleString();
+  if (min != null && min !== '' && max != null && max !== '') return f(min) + ' – ' + f(max) + ' EGP';
+  if (min != null && min !== '') return f(min) + ' EGP';
+  return '—';
+}
 
 async function loadLeadCols() {
   if (_leadColsLoaded) return;
@@ -5455,9 +5512,11 @@ function openLeadColMenu(e, key) {
   m.dataset.mode = 'colmenu';
   const vis = _leadCols.filter(c => c.visible);
   const vi = vis.findIndex(c => c.key === key);
+  const canType = col.type !== 'virtual' && !['name', 'budget_lead', 'lead_date'].includes(col.key);
   m.innerHTML = `
     <button onclick="leadColRename('${esc(key)}')"><i data-lucide="pencil" style="width:13px;height:13px"></i> Rename</button>
-    ${col.type === 'select' ? `<button onclick="openLeadOptsModal('${esc(key)}')"><i data-lucide="list" style="width:13px;height:13px"></i> Edit dropdown options</button>` : ''}
+    ${canType ? `<button onclick="openLeadTypeModal('${esc(key)}')"><i data-lucide="shuffle" style="width:13px;height:13px"></i> Change type</button>` : ''}
+    ${(col.type === 'select' || col.type === 'radio') ? `<button onclick="openLeadOptsModal('${esc(key)}')"><i data-lucide="list" style="width:13px;height:13px"></i> Edit options</button>` : ''}
     <div class="lead-menu-sep"></div>
     <button onclick="leadColMove('${esc(key)}',-1)" ${vi <= 0 ? 'disabled' : ''}><i data-lucide="arrow-left" style="width:13px;height:13px"></i> Move left</button>
     <button onclick="leadColMove('${esc(key)}',1)" ${vi >= vis.length - 1 ? 'disabled' : ''}><i data-lucide="arrow-right" style="width:13px;height:13px"></i> Move right</button>
@@ -5540,8 +5599,23 @@ function openAddLeadColModal() {
   lcTypeChanged();
   document.getElementById('lead-col-modal').style.display = 'flex';
 }
+function typeHasOptions(t) { return t === 'select' || t === 'radio'; }
+// Parse an options textarea into [{key,label}], reusing existing keys when a label matches.
+function parseOptLines(text, existing) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const prev = existing || [];
+  const opts = [];
+  lines.forEach(l => {
+    const match = prev.find(o => o.label === l);
+    let k = match ? match.key : slugKey(l);
+    const b = k; let m = 2;
+    while (opts.some(o => o.key === k)) k = b + '_' + (m++);
+    opts.push({ key: k, label: l });
+  });
+  return opts;
+}
 function lcTypeChanged() {
-  document.getElementById('lc-options-wrap').style.display = document.getElementById('lc-type').value === 'select' ? '' : 'none';
+  document.getElementById('lc-options-wrap').style.display = typeHasOptions(document.getElementById('lc-type').value) ? '' : 'none';
 }
 function saveNewLeadCol() {
   const label = document.getElementById('lc-name').value.trim();
@@ -5551,20 +5625,48 @@ function saveNewLeadCol() {
   const base = key; let n = 2;
   while (_leadCols.some(c => c.key === key)) key = base + '_' + (n++);
   const col = { key, label, type, builtin: false, visible: true };
-  if (type === 'select') {
-    const lines = document.getElementById('lc-options').value.split('\n').map(l => l.trim()).filter(Boolean);
-    if (!lines.length) return alert('Add at least one dropdown option (one per line).');
-    const opts = [];
-    lines.forEach(l => {
-      let k = slugKey(l); const b = k; let m = 2;
-      while (opts.some(o => o.key === k)) k = b + '_' + (m++);
-      opts.push({ key: k, label: l });
-    });
+  if (typeHasOptions(type)) {
+    const opts = parseOptLines(document.getElementById('lc-options').value);
+    if (!opts.length) return alert('Add at least one option (one per line).');
     col.options = opts;
   }
   _leadCols.push(col);
   saveLeadCols();
   document.getElementById('lead-col-modal').style.display = 'none';
+  renderLeadHead(); filterCustomers();
+}
+
+// ── Change column type ──
+let _typeColKey = null;
+function openLeadTypeModal(key) {
+  closeLeadMenu();
+  const col = leadCol(key);
+  if (!col) return;
+  _typeColKey = key;
+  document.getElementById('lt-col-name').textContent = col.label;
+  // Map current type to the modal's offered set (Text / Dropdown / Radio / Checkbox)
+  document.getElementById('lt-type').value = typeHasOptions(col.type) ? col.type : (col.type === 'checkbox' ? 'checkbox' : 'text');
+  document.getElementById('lt-options').value = (col.options || []).map(o => o.label).join('\n');
+  ltTypeChanged();
+  document.getElementById('lead-type-modal').style.display = 'flex';
+}
+function ltTypeChanged() {
+  document.getElementById('lt-options-wrap').style.display = typeHasOptions(document.getElementById('lt-type').value) ? '' : 'none';
+}
+function saveLeadType() {
+  const col = leadCol(_typeColKey);
+  if (!col) return;
+  const type = document.getElementById('lt-type').value;
+  if (typeHasOptions(type)) {
+    const opts = parseOptLines(document.getElementById('lt-options').value, col.options);
+    if (!opts.length) return alert('Add at least one option (one per line).');
+    col.options = opts;
+  } else {
+    delete col.options;
+  }
+  col.type = type;
+  saveLeadCols();
+  document.getElementById('lead-type-modal').style.display = 'none';
   renderLeadHead(); filterCustomers();
 }
 
@@ -5641,11 +5743,11 @@ function leadCellClick(e, id, key) {
     return;
   }
   const raw = col.builtin ? c[key] : (c.custom_fields || {})[key];
-  if (col.type === 'checkbox') return saveLeadCell(id, col, !raw);
+  if (col.type === 'checkbox') return saveLeadCell(id, col, !isChecked(raw));
   const td = e.currentTarget;
   if (td.querySelector('input,select')) return;
   const cur = raw == null ? '' : String(raw);
-  if (col.type === 'select') {
+  if (col.type === 'select' || col.type === 'radio') {
     // Branded floating option panel anchored to the cell (no native select menu)
     const m = colOptMap(col);
     const curKey = normKey(cur, m);
@@ -5655,8 +5757,12 @@ function leadCellClick(e, id, key) {
   }
   _editingLeadCell = true;
   {
-    const t = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : key === 'lead_time' ? 'time' : 'text';
-    td.innerHTML = `<input class="form-input" type="${t}" value="${esc(cur)}" style="font-size:12px;padding:4px 6px;min-width:90px;max-width:170px">`;
+    // Budget accepts a number OR a range → plain text; number/date/time as-is; else text.
+    const t = col.key === 'budget_lead' ? 'text' : col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : key === 'lead_time' ? 'time' : 'text';
+    const inputVal = col.key === 'budget_lead'
+      ? (c.budget_max != null && c.budget_max !== '' ? `${c.budget_lead}-${c.budget_max}` : (c.budget_lead != null ? String(c.budget_lead) : ''))
+      : cur;
+    td.innerHTML = `<input class="form-input" type="${t}" value="${esc(inputVal)}" placeholder="${col.key === 'budget_lead' ? 'e.g. 1700000 or 1.7M - 2M' : ''}" style="font-size:12px;padding:4px 6px;min-width:90px;max-width:170px">`;
   }
   const el = td.firstElementChild;
   el.focus();
@@ -5691,12 +5797,14 @@ async function saveLeadCell(id, col, val) {
   if (!c) return;
   let payload;
   if (col.builtin) {
-    let v = val;
-    if (col.key === 'budget_lead') v = val === '' ? null : (parseInt(val) || null);
-    else if (col.type === 'checkbox') v = !!val;
-    else if (col.key === 'lead_date') v = val || null;
-    if (col.key === 'name' && !String(v || '').trim()) { filterCustomers(); return alert('Name is required.'); }
-    payload = { [col.key]: v };
+    if (col.key === 'budget_lead') { const b = parseBudget(val); payload = { budget_lead: b.min, budget_max: b.max }; }
+    else {
+      let v = val;
+      if (col.type === 'checkbox') v = !!val;
+      else if (col.key === 'lead_date') v = val || null;
+      if (col.key === 'name' && !String(v || '').trim()) { filterCustomers(); return alert('Name is required.'); }
+      payload = { [col.key]: v };
+    }
   } else {
     let v = val;
     if (col.type === 'checkbox') v = !!val;
@@ -5735,10 +5843,10 @@ function leadCellHtml(c, col) {
     const tc = LEAD_STATUS_TEXT[k] || '#b9b3a4';
     return `<td ${attrs}><span style="background:${bg};color:${tc};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap">${esc(m[k] || raw || k)}</span></td>`;
   }
-  if (col.key === 'budget_lead') return `<td ${attrs} style="font-size:12px;white-space:nowrap">${raw ? Number(raw).toLocaleString() + ' EGP' : '—'}</td>`;
+  if (col.key === 'budget_lead') return `<td ${attrs} style="font-size:12px;white-space:nowrap">${fmtBudget(c.budget_lead, c.budget_max)}</td>`;
+  if (col.type === 'checkbox') return `<td ${attrs} style="text-align:center;font-size:16px">${isChecked(raw) ? '✅' : '⬜'}</td>`;
+  if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); const k = normKey(raw, m); return `<td ${attrs} style="font-size:12px;white-space:nowrap">${esc(m[k] || raw || '—')}</td>`; }
   if (col.key === 'notes' || col.key === 'car_in_question' || col.key === 'sales_feedback' || col.key === 'inquiry') return `<td ${attrs} style="font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(raw || '')}">${esc(raw || '—')}</td>`;
-  if (col.type === 'checkbox') return `<td ${attrs} style="text-align:center;font-size:16px">${raw ? '✅' : '⬜'}</td>`;
-  if (col.type === 'select') { const m = colOptMap(col); const k = normKey(raw, m); return `<td ${attrs} style="font-size:12px;white-space:nowrap">${esc(m[k] || raw || '—')}</td>`; }
   if (col.type === 'number') return `<td ${attrs} style="font-size:12px;white-space:nowrap">${raw != null && raw !== '' ? Number(raw).toLocaleString() : '—'}</td>`;
   return `<td ${attrs} style="font-size:12px;white-space:nowrap">${esc(raw || '—')}</td>`;
 }
@@ -5911,9 +6019,10 @@ function renderLeadDrawer() {
   const infoItems = (_leadCols || []).filter(col => !skip.has(col.key) && col.type !== 'virtual').map(col => {
     const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
     let val;
-    if (col.type === 'select') { const m = colOptMap(col); val = m[normKey(raw, m)] || raw || '—'; }
-    else if (col.type === 'checkbox') val = raw ? '✅ Yes' : '—';
-    else if (col.key === 'budget_lead' || col.type === 'number') val = raw ? Number(raw).toLocaleString() + (col.key === 'budget_lead' ? ' EGP' : '') : '—';
+    if (col.key === 'budget_lead') val = fmtBudget(c.budget_lead, c.budget_max);
+    else if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); val = m[normKey(raw, m)] || raw || '—'; }
+    else if (col.type === 'checkbox') val = isChecked(raw) ? '✅ Yes' : '—';
+    else if (col.type === 'number') val = raw ? Number(raw).toLocaleString() : '—';
     else val = raw || '—';
     return `<div class="ld-info-item"><div class="ld-info-label">${esc(col.label)}</div><div class="ld-info-value" title="${esc(String(raw ?? ''))}">${esc(String(val))}</div></div>`;
   }).join('');
@@ -6150,7 +6259,7 @@ function openCustomerModal(id) {
   fillLeadSelect('cm-source', 'source', '— Unknown —', c?.source);
   fillLeadSelect('cm-next-action', 'next_action', '— None —', c?.next_action);
   document.getElementById('cm-car').value = c?.car_in_question || '';
-  document.getElementById('cm-budget').value = c?.budget_lead || '';
+  document.getElementById('cm-budget').value = (c?.budget_max != null && c?.budget_max !== '') ? `${c.budget_lead}-${c.budget_max}` : (c?.budget_lead || '');
   document.getElementById('cm-been-contacted').checked = c?.been_contacted || false;
   // Owner (sales rep) picker
   const ownerSel = document.getElementById('cm-owner');
@@ -6202,7 +6311,7 @@ async function saveCustomer() {
     lead_status:    document.getElementById('cm-lead-status').value,
     source:         document.getElementById('cm-source').value,
     car_in_question:document.getElementById('cm-car').value.trim(),
-    budget_lead:    document.getElementById('cm-budget').value ? parseInt(document.getElementById('cm-budget').value) : null,
+    ...(() => { const b = parseBudget(document.getElementById('cm-budget').value); return { budget_lead: b.min, budget_max: b.max }; })(),
     next_action:    document.getElementById('cm-next-action').value,
     been_contacted: document.getElementById('cm-been-contacted').checked,
     notes:          document.getElementById('cm-notes').value.trim(),

@@ -1381,7 +1381,7 @@ receiver.router.get('/api/dashboard/customers', requireAuth, async (req, res) =>
 });
 
 receiver.router.post('/api/dashboard/customers', requireAuth, express.json(), async (req, res) => {
-  const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, next_action, been_contacted, sales_feedback, inquiry, custom_fields, assigned_to, force } = req.body;
+  const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, budget_max, next_action, been_contacted, sales_feedback, inquiry, custom_fields, assigned_to, force } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
   const phone_norm = normalizePhone(phone);
   // Duplicate guard: a matching normalized phone -> 409 with the existing lead (unless the caller forces).
@@ -1390,7 +1390,7 @@ receiver.router.post('/api/dashboard/customers', requireAuth, express.json(), as
     if (dup && dup.length) return res.status(409).json({ duplicate: true, existing: dup[0] });
   }
   const { data, error } = await supabase.from('customers')
-    .insert({ name, phone: phone||'', phone_norm, email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', assigned_to: assigned_to||null, ...(custom_fields && Object.keys(custom_fields).length ? { custom_fields } : {}), created_by: 'dashboard' })
+    .insert({ name, phone: phone||'', phone_norm, email: email||'', source: source||'', notes: notes||'', lead_date: lead_date||null, lead_time: lead_time||'', lead_status: lead_status||'cold', car_in_question: car_in_question||'', budget_lead: budget_lead||null, budget_max: budget_max||null, next_action: next_action||'', been_contacted: been_contacted||false, sales_feedback: sales_feedback||'', inquiry: inquiry||'', assigned_to: assigned_to||null, ...(custom_fields && Object.keys(custom_fields).length ? { custom_fields } : {}), created_by: 'dashboard' })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   logLeadActivity(data.id, { type: 'system', body: `Lead created${data.source ? ' · ' + data.source : ''}`, authorKey: 'admin', authorName: 'Admin' });
@@ -1454,6 +1454,30 @@ function normalizePhone(raw) {
   return d;
 }
 
+// Parse one budget token ("1700000", "1.7m", "500k", "1,700,000") -> integer or null.
+function parseBudgetPart(s) {
+  s = String(s == null ? '' : s).trim().toLowerCase().replace(/,/g, '').replace(/\s+/g, '').replace(/egp|le|£|\$/g, '');
+  if (!s) return null;
+  let mult = 1;
+  if (/[km]$/.test(s)) { mult = s.endsWith('m') ? 1e6 : 1e3; s = s.slice(0, -1); }
+  const n = parseFloat(s);
+  if (!isFinite(n)) return null;
+  return Math.round(n * mult);
+}
+// Parse a budget input into { min, max } (max null for a single value). Accepts plain
+// numbers, k/m suffixes, comma separators, and ranges ("1700000-2000000", "1.7M to 2M").
+function parseBudget(raw) {
+  const str = String(raw == null ? '' : raw).trim();
+  if (!str) return { min: null, max: null };
+  const parts = str.split(/\s*(?:-|–|—|to|:|\/)\s*/i).map(p => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    let a = parseBudgetPart(parts[0]), b = parseBudgetPart(parts[parts.length - 1]);
+    if (a != null && b != null && a > b) { const t = a; a = b; b = t; }
+    return { min: a != null ? a : b, max: (a != null && b != null) ? b : null };
+  }
+  return { min: parseBudgetPart(str), max: null };
+}
+
 receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.single('file'), express.json(), async (req, res) => {
   try {
     let csvText = '';
@@ -1478,11 +1502,12 @@ receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.s
       return r;
     }).filter(r => r.name).map(r => {
       const phone = r.phone||'';
+      const bud = parseBudget(r.budget);
       return {
         name: r.name, phone, phone_norm: normalizePhone(phone), email: r.email||'', source: r.origin||r.source||'',
         notes: r.notes||'', lead_date: normalizeLeadDate(r.date), lead_time: r.time||'',
         lead_status: r.status||'cold', car_in_question: r.car||r.car_in_question||'',
-        budget_lead: r.budget ? (parseInt(String(r.budget).replace(/[^0-9]/g, ''), 10) || null) : null,
+        budget_lead: bud.min, budget_max: bud.max,
         next_action: r.next_action||'', been_contacted: /^(true|1|yes|y)$/i.test((r.been_contacted||'').trim()),
         sales_feedback: r.sales_feedback||'', inquiry: r.inquiry||'', created_by: 'csv_import',
       };

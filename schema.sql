@@ -400,6 +400,7 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS lead_time       TEXT DEFAULT '';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS lead_status     TEXT DEFAULT 'cold';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS car_in_question TEXT DEFAULT '';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS budget_lead     BIGINT DEFAULT NULL;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS budget_max      BIGINT DEFAULT NULL;  -- upper bound when budget is a range (budget_lead holds the lower bound / single value)
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS next_action     TEXT DEFAULT '';
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS been_contacted  BOOLEAN DEFAULT FALSE;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS sales_feedback  TEXT DEFAULT '';
