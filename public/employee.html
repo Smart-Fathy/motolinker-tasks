@@ -487,6 +487,46 @@
     outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(201,163,94,.15);
   }
   select.form-input option, select.form-control option, select.filter-input option { background:#141416; color:var(--text); }
+  /* ── Leads: configurable columns (menu + drag) ── */
+  #emp-leads-table td.lead-cell{ cursor:pointer; }
+  #emp-leads-table td.lead-cell:hover{ box-shadow:inset 0 0 0 1px rgba(201,163,94,.4); border-radius:4px; }
+  #emp-leads-head th.lead-col{ cursor:pointer; }
+  #emp-leads-head th.lead-col.drag-over{ box-shadow:inset 2px 0 0 var(--primary); }
+  .lead-menu{ position:fixed; z-index:10060; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,.55); min-width:190px; max-height:70vh; overflow-y:auto; padding:6px; display:none; }
+  .lead-menu.open{ display:block; }
+  .lead-menu button{ display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:none; border:none; color:var(--text); font-size:12.5px; padding:8px 10px; border-radius:6px; cursor:pointer; }
+  .lead-menu button:hover{ background:rgba(255,255,255,.06); }
+  .lead-menu button:disabled{ opacity:.35; cursor:default; }
+  .lead-menu button.danger{ color:var(--danger); }
+  .lead-menu .lead-menu-sep{ height:1px; background:var(--border); margin:4px 6px; }
+  .lead-menu button.lead-col-eye{ color:var(--text); }
+  .lead-menu button.lead-col-eye svg{ color:var(--primary); }
+  .lead-menu button.lead-col-eye.col-hidden{ color:var(--muted); }
+  .lead-menu button.lead-col-eye.col-hidden svg{ color:var(--muted); }
+  /* ── Lead 360° drawer ── */
+  .lead-drawer-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9998; opacity:0; pointer-events:none; transition:opacity .25s; }
+  .lead-drawer-overlay.open{ opacity:1; pointer-events:auto; }
+  .lead-drawer{ position:fixed; top:0; right:0; bottom:0; width:580px; max-width:96vw; background:var(--surface); border-left:1px solid rgba(201,163,94,.25); z-index:9999; display:flex; flex-direction:column; transform:translateX(100%); transition:transform .3s cubic-bezier(.16,1,.3,1); box-shadow:-16px 0 48px rgba(0,0,0,.5); }
+  .lead-drawer.open{ transform:translateX(0); }
+  .lead-drawer-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:20px 22px 12px; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .ld-avatar{ width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,var(--primary),#8a6a30); color:#0c0c0e; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:800; flex-shrink:0; }
+  .ld-status-badge{ padding:2px 10px; border-radius:20px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; }
+  .lead-drawer-actions{ display:flex; gap:8px; flex-wrap:wrap; padding:12px 22px; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .lead-drawer-body{ flex:1; overflow-y:auto; padding:18px 22px 32px; }
+  .ld-section{ margin-bottom:22px; }
+  .ld-section-title{ font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; }
+  .ld-info-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; background:rgba(255,255,255,.02); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+  .ld-info-item{ min-width:0; }
+  .ld-info-label{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .ld-info-value{ font-size:13px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; }
+  .ld-fu-card{ display:flex; align-items:center; gap:12px; background:rgba(201,163,94,.07); border:1px solid rgba(201,163,94,.3); border-radius:10px; padding:12px 14px; margin-bottom:8px; }
+  .ld-fu-card.overdue{ background:rgba(239,68,68,.07); border-color:rgba(239,68,68,.35); }
+  .ld-tl-item{ display:flex; gap:12px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+  .ld-tl-icon{ width:30px; height:30px; border-radius:8px; background:rgba(201,163,94,.12); color:var(--primary); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .ld-tl-icon svg{ width:15px; height:15px; }
+  .ld-tl-meta{ font-size:10.5px; color:var(--muted); margin-top:3px; }
+  .ld-quote-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; background:rgba(255,255,255,.02); border:1px solid var(--border); border-radius:8px; margin-bottom:6px; }
+  .ld-stage-pill{ padding:2px 9px; border-radius:20px; font-size:10.5px; font-weight:700; background:rgba(201,163,94,.15); color:var(--primary); white-space:nowrap; }
   /* ── Text inputs / textareas: same dark treatment as selects (was unstyled → white) ── */
   input.form-input, textarea.form-input {
     background-color:#101013; color:var(--text);
@@ -1021,6 +1061,8 @@
           </div>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <input class="form-control" id="emp-lead-search" placeholder="Search name, phone, car…" oninput="empFilterLeads()" style="max-width:240px">
+            <button class="btn btn-outline" id="lead-cols-btn" onclick="openLeadColsPicker(event)"><i data-lucide="columns-3" style="width:15px;height:15px"></i> Columns</button>
+            <button class="btn btn-outline" onclick="openEmpCsvModal()"><i data-lucide="upload" style="width:15px;height:15px"></i> Import CSV</button>
             <button class="btn btn-primary" onclick="openEmpLeadModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> Add Lead</button>
           </div>
         </div>
@@ -1097,6 +1139,7 @@
           <div><label class="form-label">Sales Feedback</label><textarea class="form-control" id="eml-sales-feedback" rows="2" style="resize:vertical"></textarea></div>
           <div><label class="form-label">Inquiry</label><textarea class="form-control" id="eml-inquiry" rows="2" style="resize:vertical"></textarea></div>
         </div>
+        <div id="eml-custom-fields" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
           <button class="btn btn-outline" onclick="document.getElementById('emp-lead-modal').style.display='none'">Cancel</button>
           <button class="btn btn-primary" onclick="saveEmpLead()">Save Lead</button>
@@ -1134,6 +1177,126 @@
           <button class="btn btn-outline" onclick="document.getElementById('emp-deal-modal').style.display='none'">Cancel</button>
           <button class="btn btn-primary" onclick="saveEmpDeal()">Save Deal</button>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Add Lead Column Modal ── -->
+    <div id="lead-col-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:420px;margin:auto">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-size:16px;font-weight:800">Add Column</div>
+          <button onclick="document.getElementById('lead-col-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
+        </div>
+        <div style="display:grid;gap:14px">
+          <div><label class="form-label">Column name</label><input class="form-control" id="lc-name" placeholder="e.g. Deposit, Branch, Test Drive"></div>
+          <div><label class="form-label">Type</label>
+            <select class="form-control" id="lc-type" onchange="lcTypeChanged()">
+              <option value="text">Text</option><option value="number">Number</option><option value="date">Date</option>
+              <option value="select">Dropdown</option><option value="radio">Radio (single choice)</option><option value="checkbox">Checkbox</option>
+            </select>
+          </div>
+          <div id="lc-options-wrap" style="display:none"><label class="form-label">Options (one per line)</label>
+            <textarea class="form-control" id="lc-options" rows="4" placeholder="Option A&#10;Option B" style="resize:vertical"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+          <button class="btn btn-outline" onclick="document.getElementById('lead-col-modal').style.display='none'">Cancel</button>
+          <button class="btn btn-primary" onclick="saveNewLeadCol()">Add Column</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Change Column Type Modal ── -->
+    <div id="lead-type-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:420px;margin:auto">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-size:16px;font-weight:800">Change type — <span id="lt-col-name"></span></div>
+          <button onclick="document.getElementById('lead-type-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
+        </div>
+        <div style="display:grid;gap:14px">
+          <div><label class="form-label">Column type</label>
+            <select class="form-control" id="lt-type" onchange="ltTypeChanged()">
+              <option value="text">Text</option><option value="select">Dropdown</option>
+              <option value="radio">Radio (single choice)</option><option value="checkbox">Checkbox</option>
+            </select>
+          </div>
+          <div id="lt-options-wrap" style="display:none"><label class="form-label">Options (one per line)</label>
+            <textarea class="form-control" id="lt-options" rows="4" placeholder="Option A&#10;Option B" style="resize:vertical"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+          <button class="btn btn-outline" onclick="document.getElementById('lead-type-modal').style.display='none'">Cancel</button>
+          <button class="btn btn-primary" onclick="saveLeadType()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Edit Dropdown Options Modal ── -->
+    <div id="lead-opts-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:420px;margin:auto">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-size:16px;font-weight:800" id="lo-title">Edit Options</div>
+          <button onclick="document.getElementById('lead-opts-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
+        </div>
+        <input type="hidden" id="lo-key">
+        <div id="lo-list"></div>
+        <button class="btn btn-outline btn-sm" onclick="loAddOption()" style="margin-top:4px"><i data-lucide="plus" style="width:13px;height:13px"></i> Add option</button>
+        <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">Renaming an option keeps existing leads linked to it. Deleting an option doesn't change saved leads — their old value still shows as text.</div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+          <button class="btn btn-outline" onclick="document.getElementById('lead-opts-modal').style.display='none'">Cancel</button>
+          <button class="btn btn-primary" onclick="saveLeadOpts()">Save Options</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CSV Import Modal ── -->
+    <div id="emp-csv-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:500px;margin:auto">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-size:16px;font-weight:800">Import Leads</div>
+          <button onclick="document.getElementById('emp-csv-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
+        </div>
+        <div style="display:grid;gap:14px">
+          <div style="font-size:12px;color:var(--muted);line-height:1.7;background:rgba(255,255,255,.03);padding:10px 14px;border-radius:8px;border:1px solid var(--border)">
+            CSV columns (any order): <strong>name, phone, notes, status, origin, car, budget, next_action, been_contacted, sales_feedback, inquiry, date, time</strong><br>
+            <em>name</em> column is required. Status values: cold, warm, hot, immediate_delivery, not_interested, blacklist.
+          </div>
+          <div><label class="form-label">CSV File</label><input type="file" id="emp-csv-file" accept=".csv,.txt" class="form-control" style="padding:6px"></div>
+          <div style="text-align:center;color:var(--muted);font-size:12px;padding:4px 0">— or paste a Google Sheets URL —</div>
+          <div><label class="form-label">Google Sheets URL <span style="color:var(--muted);font-weight:400">(must be publicly shared)</span></label>
+            <input class="form-control" id="emp-csv-url" placeholder="https://docs.google.com/spreadsheets/d/…"></div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+          <button class="btn btn-outline" onclick="document.getElementById('emp-csv-modal').style.display='none'">Cancel</button>
+          <button class="btn btn-primary" onclick="empImportCsv()">Import</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Lead 360° Profile Drawer ── -->
+    <div id="lead-drawer-overlay" class="lead-drawer-overlay" onclick="closeLeadProfile()"></div>
+    <div id="lead-drawer" class="lead-drawer">
+      <div class="lead-drawer-head">
+        <div style="display:flex;align-items:center;gap:12px;min-width:0">
+          <div id="ld-avatar" class="ld-avatar">?</div>
+          <div style="min-width:0">
+            <div id="ld-name" style="font-size:17px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+              <span id="ld-status" class="ld-status-badge" onclick="ldStatusMenu(event)" title="Change status">—</span>
+              <span id="ld-phone" style="font-size:12px;color:var(--muted)"></span>
+            </div>
+          </div>
+        </div>
+        <button onclick="closeLeadProfile()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:22px;line-height:1;padding:4px 8px;flex-shrink:0">×</button>
+      </div>
+      <div class="lead-drawer-actions">
+        <a id="ld-call" class="btn btn-sm btn-outline" href="#" style="text-decoration:none"><i data-lucide="phone" style="width:13px;height:13px"></i> Call</a>
+        <a id="ld-wa" class="btn btn-sm btn-outline" href="#" target="_blank" rel="noopener" style="text-decoration:none"><i data-lucide="message-circle" style="width:13px;height:13px"></i> WhatsApp</a>
+        <button class="btn btn-sm btn-outline" onclick="ldEdit()"><i data-lucide="edit-2" style="width:13px;height:13px"></i> Edit</button>
+        <button class="btn btn-sm btn-primary" onclick="ldGenerateQuote()"><i data-lucide="file-badge" style="width:13px;height:13px"></i> Generate Quotation</button>
+      </div>
+      <div class="lead-drawer-body" id="lead-drawer-body">
+        <div class="loading"><span class="spinner"></span> Loading…</div>
       </div>
     </div>
 
@@ -2474,16 +2637,21 @@ function empFmtBudget(min, max) { const f = n => Number(n).toLocaleString(); if 
 
 async function loadEmpLeads() {
   const tbody = document.getElementById('emp-leads-tbody');
-  const head  = document.getElementById('emp-leads-head');
-  if (head) head.innerHTML = ['Date','Time','Name','Phone','Status','Origin','Car','Budget','Next Action','Contacted','Notes','']
-    .map(h => `<th style="padding:9px 14px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap">${h}</th>`).join('');
-  loadEmpCoworkers();
   try {
-    _empLeads = await ef('/api/employee/leads').then(r => r.json());
-    if (_empLeads.error) throw new Error(_empLeads.error);
-    empRenderLeads(_empLeads);
+    await loadLeadCols();
+    renderLeadHead();
+    await loadEmpCoworkers();
+    const [leads, followups] = await Promise.all([
+      ef('/api/employee/leads').then(r => r.json()),
+      ef('/api/employee/followups/pending').then(r => r.json()).catch(() => []),
+    ]);
+    if (leads.error) throw new Error(leads.error);
+    _empLeads = leads;
+    _pendingFollowups = {};
+    (Array.isArray(followups) ? followups : []).forEach(f => { if (!_pendingFollowups[f.customer_id]) _pendingFollowups[f.customer_id] = f.due_at; });
+    empFilterLeads();
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--danger);padding:24px">${esc(e.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="20" style="text-align:center;color:var(--danger);padding:24px">${esc(e.message)}</td></tr>`;
   }
 }
 
@@ -2494,50 +2662,640 @@ function empFilterLeads() {
 
 function empRenderLeads(list) {
   const tbody = document.getElementById('emp-leads-tbody');
-  if (!list.length) { tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:28px">No leads found.</td></tr>'; return; }
-  tbody.innerHTML = list.map(c => {
-    const st = c.lead_status || 'cold';
-    const slabel = EMP_LEAD_STATUS_LABELS[st] || st;
-    const sbg = EMP_LEAD_STATUS_BG[st] || EMP_LEAD_STATUS_BG.cold;
-    const sfg = EMP_LEAD_STATUS_FG[st] || EMP_LEAD_STATUS_FG.cold;
-    return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
-      <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${c.lead_date || '—'}</td>
-      <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${c.lead_time || '—'}</td>
-      <td style="padding:10px 14px;font-size:13px"><strong onclick="openEmpLeadModal(${c.id})" style="cursor:pointer;color:var(--primary)" title="Edit lead">${esc(c.name)}</strong></td>
-      <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${esc(c.phone||'—')}</td>
-      <td style="padding:10px 14px" onclick="empQuickStatus(event, ${c.id})" title="Change status" style="cursor:pointer"><span style="background:${sbg};color:${sfg};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap">${esc(slabel)}</span></td>
-      <td style="padding:10px 14px;font-size:12px">${esc(EMP_ORIGIN_LABELS[c.source]||c.source||'—')}</td>
-      <td style="padding:10px 14px;font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.car_in_question||'')}">${esc(c.car_in_question||'—')}</td>
-      <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${empFmtBudget(c.budget_lead, c.budget_max)}</td>
-      <td style="padding:10px 14px;font-size:11px;white-space:nowrap">${esc(EMP_NEXT_ACTION_LABELS[c.next_action]||c.next_action||'—')}</td>
-      <td onclick="empToggleContacted(event, ${c.id})" title="Toggle contacted" style="padding:10px 14px;text-align:center;font-size:15px;cursor:pointer">${c.been_contacted ? '✅' : '⬜'}</td>
-      <td style="padding:10px 14px;font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.notes||'')}">${esc(c.notes||'—')}</td>
+  const vis = (_leadCols || []).filter(c => c.visible);
+  const span = vis.length + 2; // add-column + actions
+  if (!list.length) { tbody.innerHTML = `<tr><td colspan="${span}" style="text-align:center;color:var(--muted);padding:28px">No leads found.</td></tr>`; return; }
+  tbody.innerHTML = list.map(c => `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+      ${vis.map(col => leadCellHtml(c, col)).join('')}
+      <td></td>
       <td style="padding:10px 14px;white-space:nowrap;text-align:right">
-        <button class="btn btn-outline btn-sm" onclick="openEmpLeadModal(${c.id})" title="Edit" style="padding:4px 8px"><i data-lucide="pencil" style="width:13px;height:13px"></i></button>
-        <button class="btn btn-outline btn-sm" onclick="empRequestDeleteLead(${c.id})" title="Request deletion" style="padding:4px 8px;color:var(--danger);border-color:var(--danger)"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEmpLeadModal(${c.id})" title="Edit" style="padding:4px 8px"><i data-lucide="pencil" style="width:13px;height:13px"></i></button>
+        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();empRequestDeleteLead(${c.id})" title="Request deletion" style="padding:4px 8px;color:var(--danger);border-color:var(--danger)"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
       </td>
-    </tr>`;
-  }).join('');
+    </tr>`).join('');
   requestAnimationFrame(() => lucide.createIcons());
 }
 
-function empQuickStatus(e, id) {
-  e.stopPropagation();
-  const c = _empLeads.find(x => x.id === id); if (!c) return;
-  brandMenu(e.currentTarget, EMP_LEAD_STATUS_OPTS.map(([k, l]) => ({ key: k, label: l, selected: (c.lead_status || 'cold') === k })), val => empSaveLeadField(id, { lead_status: val }));
+// ── Leads: ClickUp-style configurable columns (order, visibility, labels, options,
+//    custom columns). Config is shared with the admin dashboard via the same store. ──
+const LEAD_STATUS_COLORS = { cold:'rgba(255,255,255,.06)', warm:'rgba(230,150,80,.18)', hot:'rgba(239,68,68,.14)', immediate_delivery:'rgba(100,180,120,.14)', not_interested:'rgba(150,150,150,.1)', blacklist:'rgba(60,0,0,.35)' };
+const LEAD_STATUS_TEXT   = { cold:'#b9b3a4', warm:'#e6a850', hot:'#f87171', immediate_delivery:'#6dd8a4', not_interested:'#888', blacklist:'#f87171' };
+const LEAD_DEFAULT_COLS = [
+  { key:'lead_date',       label:'Date',        type:'date',     builtin:true, visible:true },
+  { key:'lead_time',       label:'Time',        type:'text',     builtin:true, visible:true },
+  { key:'name',            label:'Name',        type:'text',     builtin:true, visible:true },
+  { key:'phone',           label:'Phone',       type:'text',     builtin:true, visible:true },
+  { key:'lead_status',     label:'Status',      type:'select',   builtin:true, visible:true, options:[
+    { key:'cold', label:'Cold' }, { key:'warm', label:'Warm' }, { key:'hot', label:'Hot' },
+    { key:'immediate_delivery', label:'Immediate Delivery' }, { key:'not_interested', label:'Not Interested' }, { key:'blacklist', label:'Blacklist' }] },
+  { key:'source',          label:'Origin',      type:'select',   builtin:true, visible:true, options:[
+    { key:'fb_ad', label:'FB Ad.' }, { key:'whatsapp', label:'Whatsapp' }, { key:'messenger', label:'Messenger' },
+    { key:'direct_call', label:'Direct Call' }, { key:'ig_ads', label:'IG ads' },
+    { key:'website', label:'Website' }, { key:'walk_in', label:'Walk-in' }, { key:'marketplace', label:'Marketplace' }] },
+  { key:'car_in_question', label:'Car',         type:'text',     builtin:true, visible:true },
+  { key:'budget_lead',     label:'Budget',      type:'number',   builtin:true, visible:true },
+  { key:'next_action',     label:'Next Action', type:'select',   builtin:true, visible:true, options:[
+    { key:'followed_by_sales', label:'Followed By Sales' }, { key:'need_follow_up', label:'Need Follow Up' },
+    { key:'closed', label:'Closed' }, { key:'no_answer', label:'No Answer' }] },
+  { key:'been_contacted',  label:'Contacted',   type:'checkbox', builtin:true, visible:true },
+  { key:'notes',           label:'Notes',       type:'text',     builtin:true, visible:true },
+  { key:'sales_feedback',  label:'Sales Feedback', type:'text',  builtin:true, visible:true },
+  { key:'inquiry',         label:'Inquiry',     type:'text',     builtin:true, visible:true },
+  { key:'next_followup',   label:'Follow-up',   type:'virtual',  builtin:true, visible:true },
+  { key:'owner',           label:'Owner',       type:'virtual',  builtin:true, visible:true },
+];
+let _leadCols = null;
+let _leadColsLoaded = false;
+let _pendingFollowups = {}; // customer_id -> earliest pending due_at (ISO)
+let _editingLeadCell = false;
+let _dragColKey = null;
+let _leadMenuEl = null;
+let _typeColKey = null;
+
+function leadCol(key) { return (_leadCols || LEAD_DEFAULT_COLS).find(c => c.key === key); }
+function colOptMap(col) { const m = {}; (col?.options || []).forEach(o => { m[o.key] = o.label; }); return m; }
+function slugKey(label) { return String(label).toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'col'; }
+function isChecked(raw) { return raw === true || raw === 'true' || raw === 1 || raw === '1'; }
+function fmtBudget(min, max) { return empFmtBudget(min, max); }
+// Canonicalize a stored value (key OR human label, any casing) to its option key.
+function normKey(v, labels) {
+  if (v == null || v === '') return '';
+  const low = String(v).trim().toLowerCase();
+  if (labels[low]) return low;
+  const snake = low.replace(/\s+/g, '_');
+  if (labels[snake]) return snake;
+  for (const k in labels) if (labels[k].toLowerCase() === low) return k;
+  return snake;
 }
-function empToggleContacted(e, id) {
-  e.stopPropagation();
-  const c = _empLeads.find(x => x.id === id); if (!c) return;
-  empSaveLeadField(id, { been_contacted: !c.been_contacted });
+
+async function loadLeadCols() {
+  if (_leadColsLoaded) return;
+  let saved = null;
+  try { const d = await ef('/api/employee/leads/columns').then(r => r.json()); saved = d.columns; } catch (_) {}
+  _leadCols = mergeLeadCols(saved);
+  _leadColsLoaded = true;
 }
-async function empSaveLeadField(id, patch) {
+function mergeLeadCols(saved) {
+  if (!Array.isArray(saved) || !saved.length) return JSON.parse(JSON.stringify(LEAD_DEFAULT_COLS));
+  const cols = saved
+    .filter(c => c && c.key && (!c.builtin || LEAD_DEFAULT_COLS.some(d => d.key === c.key)))
+    .map(c => ({ ...c, visible: c.visible !== false }));
+  LEAD_DEFAULT_COLS.forEach(d => { if (!cols.some(c => c.key === d.key)) cols.push(JSON.parse(JSON.stringify(d))); });
+  cols.forEach(c => { const d = LEAD_DEFAULT_COLS.find(x => x.key === c.key); if (d?.options && !Array.isArray(c.options)) c.options = JSON.parse(JSON.stringify(d.options)); });
+  return cols;
+}
+function saveLeadCols() {
+  ef('/api/employee/leads/columns', { method:'PUT', body: JSON.stringify({ columns: _leadCols }) }).catch(() => {});
+}
+
+function renderLeadHead() {
+  const tr = document.getElementById('emp-leads-head');
+  if (!tr || !_leadCols) return;
+  const thStyle = 'padding:9px 14px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap';
+  const ths = _leadCols.filter(c => c.visible).map(c => `
+    <th class="lead-col" draggable="true" data-colkey="${esc(c.key)}" style="${thStyle}"
+        ondragstart="leadColDragStart(event)" ondragover="leadColDragOver(event)" ondragleave="this.classList.remove('drag-over')"
+        ondrop="leadColDrop(event)" ondragend="leadColDragEnd()"
+        onclick="openLeadColMenu(event,'${esc(c.key)}')">${esc(c.label)} <i data-lucide="chevron-down" style="width:11px;height:11px;display:inline-block;vertical-align:middle"></i></th>`).join('');
+  tr.innerHTML = ths +
+    `<th style="${thStyle};width:34px;text-align:center"><button onclick="openAddLeadColModal()" title="Add column" style="background:none;border:1px dashed var(--border);border-radius:6px;color:var(--muted);cursor:pointer;width:24px;height:24px;font-size:15px;line-height:1">+</button></th>` +
+    `<th style="${thStyle};text-align:right">Actions</th>`;
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+function leadColDragStart(e) { _dragColKey = e.currentTarget.dataset.colkey; e.dataTransfer.effectAllowed = 'move'; }
+function leadColDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+function leadColDragEnd() { document.querySelectorAll('#emp-leads-head th.drag-over').forEach(t => t.classList.remove('drag-over')); _dragColKey = null; }
+function leadColDrop(e) {
+  e.preventDefault();
+  const target = e.currentTarget.dataset.colkey; const src = _dragColKey; leadColDragEnd();
+  if (!src || src === target) return;
+  const from = _leadCols.findIndex(c => c.key === src); const to = _leadCols.findIndex(c => c.key === target);
+  if (from < 0 || to < 0) return;
+  const [moved] = _leadCols.splice(from, 1); _leadCols.splice(to, 0, moved);
+  saveLeadCols(); renderLeadHead(); empFilterLeads();
+}
+
+function ensureLeadMenu() {
+  if (!_leadMenuEl) {
+    _leadMenuEl = document.createElement('div');
+    _leadMenuEl.className = 'lead-menu';
+    document.body.appendChild(_leadMenuEl);
+    document.addEventListener('click', e => {
+      if (_leadMenuEl.classList.contains('open') && !_leadMenuEl.contains(e.target)
+          && !e.target.closest?.('th.lead-col') && !e.target.closest?.('#lead-cols-btn')) closeLeadMenu();
+    });
+  }
+  return _leadMenuEl;
+}
+function closeLeadMenu() { if (_leadMenuEl) _leadMenuEl.classList.remove('open'); }
+function positionLeadMenu(e) {
+  const m = _leadMenuEl;
+  m.style.left = Math.min(e.clientX, window.innerWidth - 230) + 'px';
+  m.style.top  = Math.min(e.clientY + 6, window.innerHeight - 60) + 'px';
+  m.classList.add('open');
+}
+function openLeadColMenu(e, key) {
+  e.stopPropagation();
+  const col = leadCol(key); if (!col) return;
+  const m = ensureLeadMenu(); m.dataset.mode = 'colmenu';
+  const vis = _leadCols.filter(c => c.visible); const vi = vis.findIndex(c => c.key === key);
+  const canType = col.type !== 'virtual' && !['name', 'budget_lead', 'lead_date'].includes(col.key);
+  m.innerHTML = `
+    <button onclick="leadColRename('${esc(key)}')"><i data-lucide="pencil" style="width:13px;height:13px"></i> Rename</button>
+    ${canType ? `<button onclick="openLeadTypeModal('${esc(key)}')"><i data-lucide="shuffle" style="width:13px;height:13px"></i> Change type</button>` : ''}
+    ${(col.type === 'select' || col.type === 'radio') ? `<button onclick="openLeadOptsModal('${esc(key)}')"><i data-lucide="list" style="width:13px;height:13px"></i> Edit options</button>` : ''}
+    <div class="lead-menu-sep"></div>
+    <button onclick="leadColMove('${esc(key)}',-1)" ${vi <= 0 ? 'disabled' : ''}><i data-lucide="arrow-left" style="width:13px;height:13px"></i> Move left</button>
+    <button onclick="leadColMove('${esc(key)}',1)" ${vi >= vis.length - 1 ? 'disabled' : ''}><i data-lucide="arrow-right" style="width:13px;height:13px"></i> Move right</button>
+    <div class="lead-menu-sep"></div>
+    <button onclick="leadColHide('${esc(key)}')"><i data-lucide="eye-off" style="width:13px;height:13px"></i> Hide column</button>
+    ${!col.builtin ? `<button class="danger" onclick="leadColDelete('${esc(key)}')"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete column</button>` : ''}`;
+  positionLeadMenu(e);
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function leadColsPickerHtml() {
+  return `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:6px 10px 4px">Show columns</div>` +
+    _leadCols.map(c => `
+      <button type="button" class="lead-col-eye ${c.visible ? '' : 'col-hidden'}" onclick="event.stopPropagation();toggleLeadColVis('${esc(c.key)}', ${c.visible ? 'false' : 'true'});openLeadColsPickerRefresh()">
+        <i data-lucide="${c.visible ? 'eye' : 'eye-off'}" style="width:14px;height:14px"></i> ${esc(c.label)}
+      </button>`).join('');
+}
+function openLeadColsPicker(e) {
+  e.stopPropagation();
+  if (!_leadCols) return;
+  const m = ensureLeadMenu();
+  if (m.classList.contains('open') && m.dataset.mode === 'picker') return closeLeadMenu();
+  m.dataset.mode = 'picker';
+  m.innerHTML = leadColsPickerHtml();
+  positionLeadMenu(e);
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function openLeadColsPickerRefresh() {
+  const m = _leadMenuEl;
+  if (!m || !m.classList.contains('open')) return;
+  m.innerHTML = leadColsPickerHtml();
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function toggleLeadColVis(key, on) {
+  const col = leadCol(key); if (!col) return;
+  col.visible = !!on; saveLeadCols(); renderLeadHead(); empFilterLeads();
+}
+function leadColRename(key) {
+  closeLeadMenu();
+  const col = leadCol(key);
+  const v = prompt('Column name', col.label);
+  if (v && v.trim()) { col.label = v.trim(); saveLeadCols(); renderLeadHead(); }
+}
+function leadColMove(key, dir) {
+  closeLeadMenu();
+  const vis = _leadCols.filter(c => c.visible);
+  const vi = vis.findIndex(c => c.key === key);
+  const nb = vis[vi + dir]; if (!nb) return;
+  const from = _leadCols.findIndex(c => c.key === key); const to = _leadCols.findIndex(c => c.key === nb.key);
+  const [moved] = _leadCols.splice(from, 1); _leadCols.splice(to, 0, moved);
+  saveLeadCols(); renderLeadHead(); empFilterLeads();
+}
+function leadColHide(key) {
+  closeLeadMenu();
+  const col = leadCol(key);
+  if (col) { col.visible = false; saveLeadCols(); renderLeadHead(); empFilterLeads(); }
+}
+function leadColDelete(key) {
+  closeLeadMenu();
+  const col = leadCol(key);
+  if (!col || col.builtin) return;
+  if (!confirm(`Delete column "${col.label}"? Saved values stay on the leads but won't be shown.`)) return;
+  _leadCols = _leadCols.filter(c => c.key !== key);
+  saveLeadCols(); renderLeadHead(); empFilterLeads();
+}
+
+function typeHasOptions(t) { return t === 'select' || t === 'radio'; }
+function parseOptLines(text, existing) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const prev = existing || []; const opts = [];
+  lines.forEach(l => {
+    const match = prev.find(o => o.label === l);
+    let k = match ? match.key : slugKey(l);
+    const b = k; let m = 2; while (opts.some(o => o.key === k)) k = b + '_' + (m++);
+    opts.push({ key: k, label: l });
+  });
+  return opts;
+}
+function openAddLeadColModal() {
+  if (!_leadCols) return showToast('Leads are still loading…');
+  document.getElementById('lc-name').value = '';
+  document.getElementById('lc-type').value = 'text';
+  document.getElementById('lc-options').value = '';
+  lcTypeChanged();
+  document.getElementById('lead-col-modal').style.display = 'flex';
+}
+function lcTypeChanged() {
+  document.getElementById('lc-options-wrap').style.display = typeHasOptions(document.getElementById('lc-type').value) ? '' : 'none';
+}
+function saveNewLeadCol() {
+  const label = document.getElementById('lc-name').value.trim();
+  if (!label) return showToast('Column name is required.');
+  const type = document.getElementById('lc-type').value;
+  let key = 'cf_' + slugKey(label);
+  const base = key; let n = 2; while (_leadCols.some(c => c.key === key)) key = base + '_' + (n++);
+  const col = { key, label, type, builtin: false, visible: true };
+  if (typeHasOptions(type)) {
+    const opts = parseOptLines(document.getElementById('lc-options').value);
+    if (!opts.length) return showToast('Add at least one option (one per line).');
+    col.options = opts;
+  }
+  _leadCols.push(col); saveLeadCols();
+  document.getElementById('lead-col-modal').style.display = 'none';
+  renderLeadHead(); empFilterLeads();
+}
+function openLeadTypeModal(key) {
+  closeLeadMenu();
+  const col = leadCol(key); if (!col) return;
+  _typeColKey = key;
+  document.getElementById('lt-col-name').textContent = col.label;
+  document.getElementById('lt-type').value = typeHasOptions(col.type) ? col.type : (col.type === 'checkbox' ? 'checkbox' : 'text');
+  document.getElementById('lt-options').value = (col.options || []).map(o => o.label).join('\n');
+  ltTypeChanged();
+  document.getElementById('lead-type-modal').style.display = 'flex';
+}
+function ltTypeChanged() {
+  document.getElementById('lt-options-wrap').style.display = typeHasOptions(document.getElementById('lt-type').value) ? '' : 'none';
+}
+function saveLeadType() {
+  const col = leadCol(_typeColKey); if (!col) return;
+  const type = document.getElementById('lt-type').value;
+  if (typeHasOptions(type)) {
+    const opts = parseOptLines(document.getElementById('lt-options').value, col.options);
+    if (!opts.length) return showToast('Add at least one option (one per line).');
+    col.options = opts;
+  } else { delete col.options; }
+  col.type = type; saveLeadCols();
+  document.getElementById('lead-type-modal').style.display = 'none';
+  renderLeadHead(); empFilterLeads();
+}
+function openLeadOptsModal(key) {
+  closeLeadMenu();
+  const col = leadCol(key); if (!col) return;
+  document.getElementById('lo-key').value = key;
+  document.getElementById('lo-title').textContent = 'Edit Options — ' + col.label;
+  document.getElementById('lo-list').innerHTML = (col.options || []).map(o => loRowHtml(o.key, o.label)).join('');
+  document.getElementById('lead-opts-modal').style.display = 'flex';
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function loRowHtml(key, label) {
+  return `<div class="lo-row" data-optkey="${esc(key)}" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+    <input class="form-control" value="${esc(label)}" placeholder="Option label" style="flex:1">
+    <button onclick="this.closest('.lo-row').remove()" title="Remove" style="background:rgba(239,68,68,.1);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:30px;height:30px;flex-shrink:0">✕</button>
+  </div>`;
+}
+function loAddOption() {
+  document.getElementById('lo-list').insertAdjacentHTML('beforeend', loRowHtml('', ''));
+  const rows = document.querySelectorAll('#lo-list .lo-row');
+  rows[rows.length - 1]?.querySelector('input')?.focus();
+}
+function saveLeadOpts() {
+  const key = document.getElementById('lo-key').value;
+  const col = leadCol(key); if (!col) return;
+  const opts = [];
+  document.querySelectorAll('#lo-list .lo-row').forEach(r => {
+    const label = r.querySelector('input').value.trim(); if (!label) return;
+    let k = r.dataset.optkey;
+    if (!k) { k = slugKey(label); const b = k; let m = 2; while (opts.some(o => o.key === k)) k = b + '_' + (m++); }
+    if (!opts.some(o => o.key === k)) opts.push({ key: k, label });
+  });
+  if (!opts.length) return showToast('Keep at least one option.');
+  col.options = opts; saveLeadCols();
+  document.getElementById('lead-opts-modal').style.display = 'none';
+  empFilterLeads();
+}
+
+// ── Inline cell editing (click a cell to edit, ClickUp-style) ──
+function leadCellClick(e, id, key) {
+  e.stopPropagation();
+  if (_editingLeadCell) return;
+  const col = leadCol(key);
+  const c = _empLeads.find(x => x.id === id);
+  if (!col || !c) return;
+  if (col.key === 'name' || col.key === 'next_followup') return openLeadProfile(id);
+  if (col.key === 'owner') {
+    const cur = c.assigned_to ? String(c.assigned_to) : '';
+    brandMenu(e.currentTarget, [{ key: '', label: '— Unassigned —', selected: !cur },
+      ...(_empCoworkers || []).map(emp => ({ key: String(emp.id), label: emp.name, selected: cur === String(emp.id) }))],
+      val => saveLeadOwner(id, val));
+    return;
+  }
+  const raw = col.builtin ? c[key] : (c.custom_fields || {})[key];
+  if (col.type === 'checkbox') return saveLeadCell(id, col, !isChecked(raw));
+  const td = e.currentTarget;
+  if (td.querySelector('input,select')) return;
+  const cur = raw == null ? '' : String(raw);
+  if (col.type === 'select' || col.type === 'radio') {
+    const m = colOptMap(col); const curKey = normKey(cur, m);
+    brandMenu(td, [{ key: '', label: '—', selected: !curKey }, ...(col.options || []).map(o => ({ key: o.key, label: o.label, selected: curKey === o.key }))],
+      val => saveLeadCell(id, col, val));
+    return;
+  }
+  _editingLeadCell = true;
+  const t = col.key === 'budget_lead' ? 'text' : col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : key === 'lead_time' ? 'time' : 'text';
+  const inputVal = col.key === 'budget_lead'
+    ? (c.budget_max != null && c.budget_max !== '' ? `${c.budget_lead}-${c.budget_max}` : (c.budget_lead != null ? String(c.budget_lead) : ''))
+    : cur;
+  td.innerHTML = `<input class="form-control" type="${t}" value="${esc(inputVal)}" placeholder="${col.key === 'budget_lead' ? 'e.g. 1700000 or 1.7M - 2M' : ''}" style="font-size:12px;padding:4px 6px;min-width:90px;max-width:180px">`;
+  const el = td.firstElementChild; el.focus();
+  if (el.select) try { el.select(); } catch (_) {}
+  let done = false;
+  const finish = commit => { if (done) return; done = true; _editingLeadCell = false; if (commit) saveLeadCell(id, col, el.value); else empFilterLeads(); };
+  el.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); finish(true); } else if (ev.key === 'Escape') finish(false); });
+  el.addEventListener('blur', () => finish(true));
+}
+async function saveLeadOwner(id, val) {
   try {
-    const updated = await ef(`/api/employee/leads/${id}`, { method: 'PUT', body: JSON.stringify(patch) }).then(r => r.json());
+    const updated = await ef(`/api/employee/leads/${id}`, { method:'PUT', body: JSON.stringify({ assigned_to: val ? parseInt(val) : null }) }).then(r => r.json());
     if (updated?.error) throw new Error(updated.error);
     const i = _empLeads.findIndex(x => x.id === id); if (i >= 0) _empLeads[i] = updated;
   } catch (e) { showToast('Save failed: ' + e.message); }
   empFilterLeads();
+}
+async function saveLeadCell(id, col, val) {
+  const c = _empLeads.find(x => x.id === id); if (!c) return;
+  let payload;
+  if (col.builtin) {
+    if (col.key === 'budget_lead') { const b = empParseBudget(val); payload = { budget_lead: b.min, budget_max: b.max }; }
+    else {
+      let v = val;
+      if (col.type === 'checkbox') v = !!val;
+      else if (col.key === 'lead_date') v = val || null;
+      if (col.key === 'name' && !String(v || '').trim()) { empFilterLeads(); return showToast('Name is required.'); }
+      payload = { [col.key]: v };
+    }
+  } else {
+    let v = val;
+    if (col.type === 'checkbox') v = !!val;
+    else if (col.type === 'number') v = val === '' ? null : Number(val);
+    payload = { custom_fields: { ...(c.custom_fields || {}), [col.key]: v } };
+  }
+  try {
+    const updated = await ef(`/api/employee/leads/${id}`, { method:'PUT', body: JSON.stringify(payload) }).then(r => r.json());
+    if (updated?.error) throw new Error(updated.error);
+    const i = _empLeads.findIndex(x => x.id === id); if (i >= 0) _empLeads[i] = updated;
+  } catch (e) { showToast('Save failed: ' + e.message); }
+  empFilterLeads();
+}
+// Render one data cell for a lead row according to its column definition
+function leadCellHtml(c, col) {
+  const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
+  const base = 'padding:10px 14px;font-size:12px';
+  const attrs = `class="lead-cell" style="${base}" onclick="leadCellClick(event, ${c.id}, '${esc(col.key)}')"`;
+  if (col.key === 'name') return `<td class="lead-cell" style="${base};font-size:13px" onclick="leadCellClick(event, ${c.id}, 'name')" title="Open profile"><strong style="color:var(--primary);cursor:pointer">${esc(raw || '—')}</strong></td>`;
+  if (col.key === 'next_followup') {
+    const due = _pendingFollowups[c.id];
+    if (!due) return `<td class="lead-cell" style="${base};color:var(--muted)" onclick="leadCellClick(event, ${c.id}, 'next_followup')">—</td>`;
+    const overdue = new Date(due) < new Date();
+    const label = new Date(due).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return `<td class="lead-cell" style="${base};white-space:nowrap;color:${overdue ? 'var(--danger)' : 'var(--primary)'};font-weight:600" onclick="leadCellClick(event, ${c.id}, 'next_followup')">⏰ ${label}${overdue ? ' · overdue' : ''}</td>`;
+  }
+  if (col.key === 'owner') {
+    const nm = c.assigned_to ? (empEmpName(c.assigned_to) || ('#' + c.assigned_to)) : '';
+    return `<td ${attrs} style="${base};white-space:nowrap" title="Click to assign">${nm ? esc(nm) : '<span style="color:var(--muted)">—</span>'}</td>`;
+  }
+  if (col.key === 'lead_status') {
+    const m = colOptMap(col); const k = normKey(raw || 'cold', m);
+    const bg = LEAD_STATUS_COLORS[k] || 'rgba(255,255,255,.06)'; const tc = LEAD_STATUS_TEXT[k] || '#b9b3a4';
+    return `<td ${attrs}><span style="background:${bg};color:${tc};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap">${esc(m[k] || raw || k)}</span></td>`;
+  }
+  if (col.key === 'budget_lead') return `<td ${attrs} style="${base};white-space:nowrap">${empFmtBudget(c.budget_lead, c.budget_max)}</td>`;
+  if (col.type === 'checkbox') return `<td class="lead-cell" style="${base};text-align:center;font-size:15px" onclick="leadCellClick(event, ${c.id}, '${esc(col.key)}')">${isChecked(raw) ? '✅' : '⬜'}</td>`;
+  if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); const k = normKey(raw, m); return `<td ${attrs} style="${base};white-space:nowrap">${esc(m[k] || raw || '—')}</td>`; }
+  if (['notes', 'car_in_question', 'sales_feedback', 'inquiry'].includes(col.key)) return `<td ${attrs} style="${base};max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(raw || '')}">${esc(raw || '—')}</td>`;
+  if (col.type === 'number') return `<td ${attrs} style="${base};white-space:nowrap">${raw != null && raw !== '' ? Number(raw).toLocaleString() : '—'}</td>`;
+  return `<td ${attrs} style="${base};white-space:nowrap">${esc(raw || '—')}</td>`;
+}
+
+// ── CSV / Google-Sheets import ──
+function openEmpCsvModal() {
+  document.getElementById('emp-csv-file').value = '';
+  document.getElementById('emp-csv-url').value = '';
+  document.getElementById('emp-csv-modal').style.display = 'flex';
+}
+async function empImportCsv() {
+  const fileInput = document.getElementById('emp-csv-file');
+  const sheetUrl = document.getElementById('emp-csv-url').value.trim();
+  if (!fileInput.files[0] && !sheetUrl) return showToast('Choose a CSV file or paste a Sheets URL.');
+  try {
+    let result;
+    if (fileInput.files[0]) {
+      const fd = new FormData(); fd.append('file', fileInput.files[0]);
+      // Raw fetch (not ef) so the multipart boundary is preserved — ef forces JSON content-type.
+      result = await fetch('/api/employee/customers/import', { method:'POST', headers: empToken ? { Authorization: 'Bearer ' + empToken } : {}, body: fd }).then(r => r.json());
+    } else {
+      result = await ef('/api/employee/customers/import', { method:'POST', body: JSON.stringify({ sheetUrl }) }).then(r => r.json());
+    }
+    if (result.error) return showToast('Import error: ' + result.error);
+    document.getElementById('emp-csv-modal').style.display = 'none';
+    showToast(`Imported ${result.count} lead(s)${result.skipped ? ` · ${result.skipped} duplicate(s) skipped` : ''}.`);
+    loadEmpLeads();
+  } catch (e) { showToast('Import error: ' + e.message); }
+}
+
+// ── Lead 360° profile drawer ──
+let _ldProfile = null; // { customer, activities, followups, quotations, deals }
+const LD_ACT_ICONS = { note: 'sticky-note', call: 'phone', whatsapp: 'message-circle', meeting: 'users', status_change: 'refresh-ccw', quote: 'file-badge', deal: 'kanban-square', follow_up: 'alarm-clock', system: 'info' };
+async function openLeadProfile(id) {
+  document.getElementById('lead-drawer-overlay').classList.add('open');
+  document.getElementById('lead-drawer').classList.add('open');
+  document.getElementById('lead-drawer-body').innerHTML = '<div class="loading"><span class="spinner"></span> Loading…</div>';
+  try {
+    const p = await ef(`/api/employee/customers/${id}/profile`).then(r => r.json());
+    if (p.error) throw new Error(p.error);
+    _ldProfile = p; renderLeadDrawer();
+  } catch (e) {
+    document.getElementById('lead-drawer-body').innerHTML = `<div style="color:var(--danger);padding:16px">${esc(e.message)}</div>`;
+  }
+}
+function closeLeadProfile() {
+  document.getElementById('lead-drawer-overlay').classList.remove('open');
+  document.getElementById('lead-drawer').classList.remove('open');
+}
+async function refreshLeadProfile() {
+  if (!_ldProfile) return;
+  try {
+    const p = await ef(`/api/employee/customers/${_ldProfile.customer.id}/profile`).then(r => r.json());
+    if (!p.error) { _ldProfile = p; renderLeadDrawer(); }
+  } catch (_) {}
+}
+function ldWaDigits(phone) {
+  let d = String(phone || '').replace(/\D/g, '');
+  if (d.startsWith('0')) d = '2' + d;
+  else if (d.startsWith('1') && d.length === 10) d = '20' + d;
+  return d;
+}
+function renderLeadDrawer() {
+  const c = _ldProfile.customer;
+  const stCol = leadCol('lead_status'); const stMap = colOptMap(stCol);
+  const stKey = normKey(c.lead_status || 'cold', stMap);
+  document.getElementById('ld-avatar').textContent = (c.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  document.getElementById('ld-name').textContent = c.name || '—';
+  const badge = document.getElementById('ld-status');
+  badge.textContent = (stMap[stKey] || c.lead_status || 'Cold') + ' ▾';
+  badge.style.background = LEAD_STATUS_COLORS[stKey] || 'rgba(255,255,255,.06)';
+  badge.style.color = LEAD_STATUS_TEXT[stKey] || '#b9b3a4';
+  document.getElementById('ld-phone').textContent = c.phone || '';
+  document.getElementById('ld-call').href = c.phone ? 'tel:' + c.phone : '#';
+  document.getElementById('ld-wa').href = c.phone ? 'https://wa.me/' + ldWaDigits(c.phone) : '#';
+
+  const skip = new Set(['name', 'phone', 'lead_status', 'next_followup']);
+  const infoItems = (_leadCols || []).filter(col => !skip.has(col.key) && col.type !== 'virtual').map(col => {
+    const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
+    let val;
+    if (col.key === 'budget_lead') val = fmtBudget(c.budget_lead, c.budget_max);
+    else if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); val = m[normKey(raw, m)] || raw || '—'; }
+    else if (col.type === 'checkbox') val = isChecked(raw) ? '✅ Yes' : '—';
+    else if (col.type === 'number') val = raw ? Number(raw).toLocaleString() : '—';
+    else val = raw || '—';
+    return `<div class="ld-info-item"><div class="ld-info-label">${esc(col.label)}</div><div class="ld-info-value" title="${esc(String(raw ?? ''))}">${esc(String(val))}</div></div>`;
+  }).join('');
+
+  const pending = (_ldProfile.followups || []).filter(f => f.status === 'pending');
+  const fuCards = pending.map(f => {
+    const overdue = new Date(f.due_at) < new Date();
+    const assignee = (_empCoworkers || []).find(e => String(e.id) === String(f.assigned_to));
+    return `<div class="ld-fu-card${overdue ? ' overdue' : ''}">
+      <i data-lucide="alarm-clock" style="width:18px;height:18px;color:${overdue ? 'var(--danger)' : 'var(--primary)'};flex-shrink:0"></i>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:${overdue ? 'var(--danger)' : 'var(--text)'}">${new Date(f.due_at).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}${overdue ? ' — overdue' : ''}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(f.note || 'Follow up with the lead')}${assignee ? ` · ${esc(assignee.name)}` : ''}</div>
+      </div>
+      <button class="btn btn-sm btn-primary" onclick="ldFollowupStatus(${f.id},'done')">Done</button>
+      <button class="btn btn-sm btn-outline" onclick="ldFollowupStatus(${f.id},'cancelled')" title="Cancel">✕</button>
+    </div>`;
+  }).join('');
+  const empOpts = (_empCoworkers || []).map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+
+  const acts = _ldProfile.activities || [];
+  const tl = acts.length ? acts.map(a => {
+    let bodyHtml = esc(a.body || '');
+    if (a.type === 'status_change' && a.meta?.to) {
+      const fk = normKey(a.meta.from, stMap), tk = normKey(a.meta.to, stMap);
+      bodyHtml = `Status: <span class="ld-stage-pill" style="background:${LEAD_STATUS_COLORS[fk] || 'rgba(255,255,255,.06)'};color:${LEAD_STATUS_TEXT[fk] || '#b9b3a4'}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="background:${LEAD_STATUS_COLORS[tk] || 'rgba(255,255,255,.06)'};color:${LEAD_STATUS_TEXT[tk] || '#b9b3a4'}">${esc(stMap[tk] || a.meta.to)}</span>`;
+    }
+    return `<div class="ld-tl-item">
+      <div class="ld-tl-icon"><i data-lucide="${LD_ACT_ICONS[a.type] || 'circle'}"></i></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;line-height:1.5;word-break:break-word">${bodyHtml}</div>
+        <div class="ld-tl-meta">${esc(a.author_name || '—')} · ${esc(notifRelTime(a.created_at))}</div>
+      </div>
+    </div>`;
+  }).join('') : '<div style="color:var(--muted);font-size:12px;padding:10px 0">No activity yet — log the first touch below.</div>';
+
+  const quotes = _ldProfile.quotations || [];
+  const quotesHtml = quotes.length ? quotes.map(q => `
+    <div class="ld-quote-row">
+      <div style="min-width:0">
+        <div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(q.title)}</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px"><code>${esc(q.quote_id)}</code> · ${new Date(q.created_at).toLocaleDateString()} · ${esc(q.created_by)}</div>
+      </div>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:12px">No quotations yet — use "Generate Quotation" above.</div>';
+
+  const deals = _ldProfile.deals || [];
+  const dealsHtml = deals.length ? deals.map(d => `
+    <div class="ld-quote-row">
+      <div style="min-width:0">
+        <div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title)}</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px">${d.budget_egp ? Number(d.budget_egp).toLocaleString() + ' EGP · ' : ''}${new Date(d.created_at).toLocaleDateString()}</div>
+      </div>
+      <span class="ld-stage-pill">${esc(EMP_DEAL_STAGE_LABELS[d.stage] || d.stage)}</span>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:12px">No deals yet.</div>';
+
+  document.getElementById('lead-drawer-body').innerHTML = `
+    <div class="ld-section"><div class="ld-info-grid">${infoItems}</div></div>
+    <div class="ld-section">
+      <div class="ld-section-title">Follow-ups</div>
+      ${fuCards}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:${pending.length ? '10px' : '0'}">
+        <input class="form-control" id="ld-fu-when" type="datetime-local" style="max-width:190px;font-size:12px;padding:8px 10px">
+        <input class="form-control" id="ld-fu-note" placeholder="What to do…" style="flex:1;min-width:130px;font-size:12px;padding:8px 10px">
+        <select class="form-control" id="ld-fu-who" style="max-width:150px;font-size:12px"><option value="">Remind me</option>${empOpts}</select>
+        <button class="btn btn-sm btn-primary" onclick="ldScheduleFollowup()">Schedule</button>
+      </div>
+    </div>
+    <div class="ld-section">
+      <div class="ld-section-title">Quotations <span style="font-weight:400;text-transform:none;letter-spacing:0">${quotes.length || ''}</span></div>
+      ${quotesHtml}
+    </div>
+    <div class="ld-section">
+      <div class="ld-section-title">Deals</div>
+      ${dealsHtml}
+    </div>
+    <div class="ld-section">
+      <div class="ld-section-title">Activity</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <select class="form-control" id="ld-act-type" style="max-width:120px;font-size:12px">
+          <option value="note">📝 Note</option><option value="call">📞 Call</option>
+          <option value="whatsapp">💬 WhatsApp</option><option value="meeting">🤝 Meeting</option>
+        </select>
+        <input class="form-control" id="ld-act-body" placeholder="Log a call, note, meeting…" style="flex:1;font-size:12px" onkeydown="if(event.key==='Enter')ldLogActivity()">
+        <button class="btn btn-sm btn-primary" onclick="ldLogActivity()">Log</button>
+      </div>
+      <div id="ld-timeline">${tl}</div>
+    </div>`;
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function ldStatusMenu(e) {
+  e.stopPropagation();
+  if (!_ldProfile) return;
+  const col = leadCol('lead_status'); const m = colOptMap(col);
+  const cur = normKey(_ldProfile.customer.lead_status || 'cold', m);
+  brandMenu(e.currentTarget, (col.options || []).map(o => ({ key: o.key, label: o.label, selected: o.key === cur })), async key => {
+    try {
+      const updated = await ef(`/api/employee/leads/${_ldProfile.customer.id}`, { method: 'PUT', body: JSON.stringify({ lead_status: key }) }).then(r => r.json());
+      if (updated.error) throw new Error(updated.error);
+      const i = _empLeads.findIndex(x => x.id === updated.id); if (i >= 0) _empLeads[i] = updated;
+      empFilterLeads(); refreshLeadProfile();
+    } catch (err) { showToast('Status change failed: ' + err.message); }
+  });
+}
+async function ldScheduleFollowup() {
+  const when = document.getElementById('ld-fu-when').value;
+  if (!when) return showToast('Pick a date & time for the follow-up');
+  const body = { due_at: new Date(when).toISOString(), note: document.getElementById('ld-fu-note').value.trim(), assigned_to: document.getElementById('ld-fu-who').value || null };
+  const r = await ef(`/api/employee/customers/${_ldProfile.customer.id}/followups`, { method: 'POST', body: JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok || d.error) return showToast('Error: ' + (d.error || r.status));
+  showToast('Follow-up scheduled — a reminder will fire when it\'s due');
+  _pendingFollowups[_ldProfile.customer.id] = _pendingFollowups[_ldProfile.customer.id] && new Date(_pendingFollowups[_ldProfile.customer.id]) < new Date(d.due_at) ? _pendingFollowups[_ldProfile.customer.id] : d.due_at;
+  empFilterLeads(); refreshLeadProfile();
+}
+async function ldFollowupStatus(id, status) {
+  const r = await ef(`/api/employee/followups/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+  const d = await r.json();
+  if (!r.ok || d.error) return showToast('Error: ' + (d.error || r.status));
+  delete _pendingFollowups[d.customer_id];
+  const rest = (_ldProfile.followups || []).filter(f => f.status === 'pending' && f.id !== id).sort((a, b) => a.due_at.localeCompare(b.due_at));
+  if (rest[0]) _pendingFollowups[d.customer_id] = rest[0].due_at;
+  empFilterLeads(); refreshLeadProfile();
+}
+async function ldLogActivity() {
+  const input = document.getElementById('ld-act-body');
+  const body = input.value.trim(); if (!body) return;
+  const type = document.getElementById('ld-act-type').value;
+  const r = await ef(`/api/employee/customers/${_ldProfile.customer.id}/activities`, { method: 'POST', body: JSON.stringify({ type, body }) });
+  const d = await r.json();
+  if (!r.ok || d.error) return showToast('Error: ' + (d.error || r.status));
+  input.value = ''; refreshLeadProfile();
+}
+function ldEdit() { if (_ldProfile) openEmpLeadModal(_ldProfile.customer.id); }
+function ldGenerateQuote() {
+  if (!_ldProfile) return;
+  const c = _ldProfile.customer;
+  closeLeadProfile();
+  navigate('quotation');
+  setTimeout(() => {
+    const nameEl = document.getElementById('emp-qt-name');
+    const vehEl = document.getElementById('emp-qt-vehicle');
+    if (nameEl) nameEl.value = c.name || '';
+    if (vehEl && c.car_in_question) vehEl.value = c.car_in_question;
+  }, 150);
 }
 
 function openEmpLeadModal(id) {
@@ -2553,6 +3311,29 @@ function openEmpLeadModal(id) {
   const owner = document.getElementById('eml-owner');
   owner.innerHTML = '<option value="">— Unassigned —</option>' + (_empCoworkers || []).map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
   owner.value = c?.assigned_to ? String(c.assigned_to) : '';
+  // Custom columns → dynamic inputs (ids eml-cf-<key>)
+  const cwrap = document.getElementById('eml-custom-fields');
+  const custom = (_leadCols || []).filter(x => !x.builtin);
+  cwrap.innerHTML = custom.map(col => {
+    const v = (c?.custom_fields || {})[col.key];
+    if (col.type === 'checkbox') {
+      return `<div><label class="form-label">${esc(col.label)}</label>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#0e0e10;border:1px solid var(--border);border-radius:8px">
+          <input type="checkbox" id="eml-cf-${esc(col.key)}" ${v ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--primary)">
+          <label for="eml-cf-${esc(col.key)}" style="font-size:13px;cursor:pointer">Yes</label>
+        </div></div>`;
+    }
+    if (col.type === 'select' || col.type === 'radio') {
+      const m = colOptMap(col); const k = normKey(v, m);
+      return `<div><label class="form-label">${esc(col.label)}</label>
+        <select class="form-control" id="eml-cf-${esc(col.key)}"><option value="">— None —</option>
+          ${(col.options || []).map(o => `<option value="${esc(o.key)}"${k === o.key ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}
+        </select></div>`;
+    }
+    const t = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text';
+    return `<div><label class="form-label">${esc(col.label)}</label>
+      <input class="form-control" id="eml-cf-${esc(col.key)}" type="${t}" value="${esc(v ?? '')}"></div>`;
+  }).join('');
   document.getElementById('emp-lead-modal').style.display = 'flex';
 }
 async function saveEmpLead() {
@@ -2567,6 +3348,18 @@ async function saveEmpLead() {
     sales_feedback: g('eml-sales-feedback').trim(), inquiry: g('eml-inquiry').trim(),
     assigned_to: g('eml-owner') ? parseInt(g('eml-owner')) : null,
   };
+  const customCols = (_leadCols || []).filter(x => !x.builtin);
+  if (customCols.length) {
+    const existing = id ? (_empLeads.find(x => String(x.id) === String(id))?.custom_fields || {}) : {};
+    const cf = { ...existing };
+    customCols.forEach(col => {
+      const el = document.getElementById('eml-cf-' + col.key); if (!el) return;
+      cf[col.key] = col.type === 'checkbox' ? el.checked
+        : col.type === 'number' ? (el.value === '' ? null : Number(el.value))
+        : el.value;
+    });
+    payload.custom_fields = cf;
+  }
   if (!payload.name) return showToast('Name is required.');
   try {
     const url = id ? `/api/employee/leads/${id}` : '/api/employee/leads';
