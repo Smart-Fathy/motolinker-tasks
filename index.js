@@ -3438,6 +3438,13 @@ const HELP_FAQ = [
   { keys: ['notification','notifications','اشعار','إشعار','إشعارات','تنبيه'],
     en: 'Notifications lists your alerts (mentions, assignments, approvals, follow-up reminders). Enable browser/push notifications to receive them on your device.',
     ar: 'قسم Notifications يعرض تنبيهاتك (الإشارات والإسنادات والموافقات وتذكيرات المتابعة). فعّل إشعارات المتصفح/الهاتف لتصلك على جهازك.' },
+  // ── Section overviews (bare-word queries) — kept LAST so specific entries above match first ──
+  { keys: ['lead','leads','عملاء','العملاء','ليدز'],
+    en: 'Leads is your database of potential customers. Add or import leads, edit any cell inline, configure columns, and click a lead\'s name to open its 360° profile (activity, follow-ups, quotations, deals). Ask me "how to add a lead", "import leads", or "lead columns" for steps.',
+    ar: 'قسم Leads هو قاعدة بيانات عملائك المحتملين. أضف أو استورد العملاء، عدّل أي خلية مباشرةً، خصّص الأعمدة، واضغط على اسم العميل لفتح ملفه 360° (النشاط، المتابعات، عروض الأسعار، الصفقات). اسألني "كيف أضيف عميل" أو "استيراد العملاء" أو "أعمدة العملاء" للخطوات.' },
+  { keys: ['deal','deals','صفقة','صفقات','الصفقات'],
+    en: 'Deals is your sales pipeline as a kanban board (Lead → Contacted → Quoted → Negotiating → Won/Lost). Drag cards between stages or open one to edit. Ask "how to add a deal" for steps.',
+    ar: 'قسم Deals هو مسار المبيعات على شكل لوحة كانبان (Lead ← Contacted ← Quoted ← Negotiating ← Won/Lost). اسحب البطاقات بين المراحل أو افتح بطاقة لتعديلها. اسأل "كيف أضيف صفقة" للخطوات.' },
 ];
 function helpDetectLang(text) { return /[؀-ۿ]/.test(String(text || '')) ? 'ar' : 'en'; }
 function helpFaqMatch(message, lang) {
@@ -3448,26 +3455,64 @@ function helpFaqMatch(message, lang) {
   }
   return null;
 }
-function helpSystemPrompt(role) {
-  const who = role === 'admin' ? 'an ADMIN using the admin dashboard' : 'a TEAM member using the employee (Team) portal';
+function helpSystemPrompt(identity) {
+  const id = identity || {};
+  const who = id.role === 'admin'
+    ? `an ADMIN with full access to the admin dashboard. Their admin username is "${id.username || 'admin'}".`
+    : `a TEAM member using the employee (Team) portal. Their name is "${id.name || ''}", username "${id.username || ''}"${id.job_title ? `, job title "${id.job_title}"` : ''}.`;
+  const perms = (id.role !== 'admin' && id.permissions)
+    ? `The sections they are allowed to use: ${Object.keys(id.permissions).filter(k => id.permissions[k] === true).join(', ') || '(basic only)'}.`
+    : '';
   return [
-    'You are the MotoLinker Help Bot, a friendly in-app support assistant for a car-sales CRM.',
-    `The person asking is ${who}.`,
-    'Answer ONLY questions about how to use this system. Be concise and practical; give step-by-step instructions that name the on-screen sections and buttons.',
+    'You are the MotoLinker Help Bot, a friendly in-app support assistant for a car-sales CRM (leads, deals, quotations, tasks).',
+    `The person asking is ${who}`,
+    perms,
+    'Answer ONLY questions about how to use this system, plus simple questions about the user themselves (e.g. their username/name/role — use the identity above).',
+    'Be concise and practical: prefer short numbered steps that name the exact on-screen section and button. If something is not possible, say so plainly and give the closest alternative.',
     'Reply in the SAME language as the user (Arabic or English). For Arabic use clear Modern Standard Arabic.',
-    'System areas:',
-    '- Leads: a table with configurable columns (rename / change type / dropdown options / hide / reorder / delete, and add custom columns), inline editing, CSV & Google-Sheets import, and a Lead 360° drawer (activity timeline, follow-ups, linked quotations & deals).',
-    '- Deals: a kanban pipeline (Lead, Contacted, Quoted, Negotiating, Won, Lost) with drag-to-move and add/edit.',
-    '- Quotation: build a PDF quote (ID, customer, vehicle, items, logistics, exchange rate, up to 5 images) with a History offering Edit (updates the same quote), Duplicate and Delete.',
-    '- Tasks, Hours (time logging), Requests (internal requests with assignment and comments).',
-    '- Automations (admin): when-a-trigger / optional-conditions / then-actions rules (notify, assign lead, edit lead, set status, create follow-up/task/deal, or request a deletion that needs admin approval).',
-    '- Submissions (website form leads), Reports/analytics, Chat (team messaging), Notifications, and Deletion Requests (admins approve employee-requested deletions). Permissions are set per employee under Employees.',
-    'If unsure or the question is outside this system, say so briefly and point to the closest relevant section.',
-  ].join('\n');
+    '',
+    'SECTIONS:',
+    '- Leads: a table with configurable columns — click a column header to Rename / Change type / Edit dropdown options / Hide / Move / Delete (any column, built-in too); "Columns" button toggles visibility; "+" adds a custom column. Inline-edit a cell by clicking it. "Add Lead" adds one; "Import CSV" bulk-imports a .csv file or a public Google Sheets link (dedupes by phone). Click a lead name to open the Lead 360° drawer: activity timeline (Log a call/note/whatsapp/meeting), follow-ups (schedule + mark done), linked quotations and deals.',
+    '- Deals: a kanban pipeline with stages Lead, Contacted, Quoted, Negotiating, Won, Lost. Drag a card between stages, or open it to edit. "Add Deal" creates one.',
+    '- Quotation: build a PDF (ID, customer/lead, vehicle, items, logistics, exchange rate, up to 5 images). "Generate PDF" saves it to History. In History: Edit (loads it back and updates the SAME quote incl. its images), Duplicate (a copy with a new ID), Delete.',
+    '- Tasks (assign work with due date/priority/multiple assignees + comments), Hours (log time), Requests (internal requests with assignment + comments).',
+    '- Chat (team messaging), Notifications, Submissions (website-form leads), Reports (analytics).',
+    '- Deletion Requests (admin): employees can\'t delete leads/deals directly — their Delete files a request an admin approves here. Permissions are set per employee under Employees.',
+    '',
+    'AUTOMATIONS (admin only — the Automations section): each rule is WHEN a trigger fires / ONLY IF optional conditions match / THEN actions run. Turn the rule ON to activate it.',
+    'Triggers: a lead is created; a lead\'s status changes; a lead is marked contacted; a deal is created; a deal\'s stage changes; a quotation is generated; a lead has no activity for N days.',
+    'Condition fields: source, lead_status, stage, been_contacted, budget_lead, budget_egp, name, car_in_question, and "to" (the new value on a change). Operators: is, is not, contains, changed to, >, <, is empty, is not empty. For status/stage/origin the value is a dropdown of the real options.',
+    'IMPORTANT LIMITATION: conditions can only match the NEW/current value (e.g. lead_status is "warm", or "to" is "warm") — there is NO "from/previous value" field. So a rule like "status changes to Warm FROM Hot" can only be built as: trigger = "a lead\'s status changes", condition = lead_status is Warm. It cannot restrict what the previous status was. Tell the user this explicitly when they ask for a from→to rule.',
+    'Actions: Send a notification (admin / lead owner / specific rep); Create a follow-up; Create a task; Create a deal; Set lead status; Assign the lead to a rep (round-robin or specific); Edit the lead profile (set fields); Remove the lead from deals (needs admin approval); Delete the lead (needs admin approval). Notification title/body support {{name}} and {{phone}} placeholders. Lead-scoped actions on a quotation trigger only run if the quote is linked to a lead.',
+    '',
+    'If a question is truly outside this system, say so briefly and point to the closest relevant section.',
+  ].filter(Boolean).join('\n');
 }
+// Candidate models: env override first, then known-good fallbacks (self-heals if one 404s).
+const GEMINI_MODELS = (() => {
+  const primary = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+  const list = [primary, 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
+  return [...new Set(list)];
+})();
+async function geminiGenerate(model, key, systemText, contents) {
+  const body = { system_instruction: { parts: [{ text: systemText }] }, contents, generationConfig: { temperature: 0.3, maxOutputTokens: 800 } };
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const raw = await r.text();
+  let json = null; try { json = JSON.parse(raw); } catch (_) {}
+  if (!r.ok) {
+    const err = new Error(json?.error?.message || raw.slice(0, 300) || ('HTTP ' + r.status));
+    err.status = r.status; err.notFound = r.status === 404 || /not found|not supported/i.test(err.message);
+    return { ok: false, err };
+  }
+  const text = json?.candidates?.[0]?.content?.parts?.map(p => p.text).join('').trim();
+  return { ok: true, text: text || '' };
+}
+// Returns { ok, text, model } on success, or { ok:false, noKey?, error, status } on failure. Never throws.
 async function helpCallGemini(systemText, history, message) {
   const key = process.env.GEMINI_API_KEY;
-  if (!key) return null;
+  if (!key) return { ok: false, noKey: true };
   const contents = [];
   for (const h of (Array.isArray(history) ? history.slice(-8) : [])) {
     if (!h || !h.content) continue;
@@ -3475,39 +3520,57 @@ async function helpCallGemini(systemText, history, message) {
     contents.push({ role, parts: [{ text: String(h.content).slice(0, 2000) }] });
   }
   contents.push({ role: 'user', parts: [{ text: String(message).slice(0, 2000) }] });
-  const body = { system_instruction: { parts: [{ text: systemText }] }, contents, generationConfig: { temperature: 0.3, maxOutputTokens: 600 } };
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error('gemini ' + r.status);
-  const d = await r.json();
-  const text = d?.candidates?.[0]?.content?.parts?.map(p => p.text).join('').trim();
-  return text || null;
+  let lastErr = null;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const res = await geminiGenerate(model, key, systemText, contents);
+      if (res.ok) return { ok: true, text: res.text, model };
+      lastErr = res.err;
+      console.warn(`[help] gemini ${model} failed: ${res.err.status || ''} ${res.err.message}`);
+      if (!res.err.notFound) break; // only try the next model when this one is missing/unsupported
+    } catch (e) { lastErr = e; console.warn(`[help] gemini ${model} threw: ${e.message}`); break; }
+  }
+  return { ok: false, error: lastErr ? lastErr.message : 'unknown error', status: lastErr?.status };
 }
-async function handleHelpChat(req, res, role) {
+// Live health check for the admin status line: actually pings the model.
+async function helpGeminiPing() {
+  if (!process.env.GEMINI_API_KEY) return { ai: false, ok: false };
+  const res = await helpCallGemini('You are a health check. Reply with the single word OK.', [], 'ping');
+  return res.ok ? { ai: true, ok: true, model: res.model } : { ai: true, ok: false, error: res.error, status: res.status };
+}
+async function handleHelpChat(req, res, identity) {
   try {
     const message = String(req.body?.message || '').slice(0, 4000);
     if (!message.trim()) return res.status(400).json({ error: 'message required' });
     const lang = (req.body?.lang === 'ar' || req.body?.lang === 'en') ? req.body.lang : helpDetectLang(message);
+    let aiError = null;
+    // AI-FIRST: when a key is configured, let the model answer (it has the full system prompt + identity).
+    if (process.env.GEMINI_API_KEY) {
+      const ai = await helpCallGemini(helpSystemPrompt(identity), req.body?.history, message);
+      if (ai.ok && ai.text) return res.json({ answer: ai.text, source: 'ai' });
+      if (!ai.noKey) { aiError = ai.error; console.warn('[help] AI unavailable, falling back to FAQ:', ai.error); }
+    }
+    // Fallback: curated FAQ, then a generic pointer.
     const faq = helpFaqMatch(message, lang);
     if (faq) return res.json({ answer: faq, source: 'faq' });
-    try {
-      const ai = await helpCallGemini(helpSystemPrompt(role), req.body?.history, message);
-      if (ai) return res.json({ answer: ai, source: 'ai' });
-    } catch (e) { console.warn('[help] gemini failed:', e.message); }
     const fallback = lang === 'ar'
       ? 'لم أجد إجابة جاهزة لسؤالك. يمكنك السؤال عن: العملاء (Leads)، الصفقات (Deals)، عروض الأسعار (Quotation)، المهام (Tasks)، الطلبات (Requests)، الأتمتة (Automations)، الاستيراد، أو الصلاحيات — أو اذكر اسم القسم الذي تحتاج مساعدة فيه.'
       : "I couldn't find a ready answer. Try asking about: Leads, Deals, Quotation, Tasks, Requests, Automations, Import, or Permissions — or name the section you need help with.";
-    return res.json({ answer: fallback, source: 'fallback' });
+    const out = { answer: fallback, source: 'fallback' };
+    if (identity.role === 'admin' && aiError) out.debug = 'AI error: ' + aiError; // admin-only diagnostics
+    return res.json(out);
   } catch (e) {
     console.error('[help-chat]', e);
     res.status(500).json({ error: e.message });
   }
 }
-receiver.router.post('/api/dashboard/help/chat', requireAuth, express.json(), (req, res) => handleHelpChat(req, res, 'admin'));
-receiver.router.post('/api/employee/help/chat', requireEmployeeAuth, express.json(), (req, res) => handleHelpChat(req, res, 'employee'));
-// Admin-only: is the AI (Gemini) fallback configured?
-receiver.router.get('/api/dashboard/help/status', requireAuth, (_req, res) => res.json({ ai: !!process.env.GEMINI_API_KEY }));
+receiver.router.post('/api/dashboard/help/chat', requireAuth, express.json(), (req, res) => handleHelpChat(req, res, { role: 'admin', username: ADMIN_USERNAME, name: 'Admin' }));
+receiver.router.post('/api/employee/help/chat', requireEmployeeAuth, express.json(), (req, res) => handleHelpChat(req, res, { role: 'employee', ...req.employee }));
+// Admin-only: is the AI (Gemini) fallback configured AND actually working? (live ping)
+receiver.router.get('/api/dashboard/help/status', requireAuth, async (_req, res) => {
+  try { res.json(await helpGeminiPing()); }
+  catch (e) { res.json({ ai: !!process.env.GEMINI_API_KEY, ok: false, error: e.message }); }
+});
 
 // ─── Form Submissions ─────────────────────────────────────────────────────────
 // Public endpoint — no auth required (customers submit from the website).

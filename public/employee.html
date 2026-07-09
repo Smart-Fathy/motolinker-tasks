@@ -5112,12 +5112,18 @@ function helpWelcome() {
      <div>${chips.map(c => `<span class="hb-chip" onclick="helpChip(this)">${esc(c)}</span>`).join('')}</div>`;
 }
 function helpChip(el) { const i = document.getElementById('hb-input'); i.value = el.textContent; helpSend(); }
-function helpAppend(text, who) {
+function helpAppend(text, who, source) {
   const body = document.getElementById('hb-body');
   const isAr = /[؀-ۿ]/.test(text);
   const div = document.createElement('div');
   div.className = 'hb-msg ' + (who === 'user' ? 'user' : 'bot') + (isAr ? ' ar' : '');
   div.textContent = text;
+  if (who === 'bot' && source) {
+    const tag = document.createElement('div');
+    tag.textContent = source === 'ai' ? 'AI' : 'Guide';
+    tag.style.cssText = 'font-size:9px;text-transform:uppercase;letter-spacing:.05em;opacity:.5;margin-top:4px';
+    div.appendChild(tag);
+  }
   body.appendChild(div); body.scrollTop = body.scrollHeight;
   return div;
 }
@@ -5138,7 +5144,7 @@ async function helpSend() {
     const d = await r.json();
     const ans = d.answer || d.error || 'Sorry, something went wrong.';
     typing.remove();
-    helpAppend(ans, 'bot');
+    helpAppend(ans, 'bot', d.source);
     _helpHistory.push({ role: 'bot', content: ans });
   } catch (e) {
     typing.remove(); helpAppend('Network error: ' + e.message, 'bot');
