@@ -2627,7 +2627,7 @@ let _autoDraft = { conditions: [], actions: [] };
 const AM_TRIGGER_LABELS = { 'lead.created':'Lead created', 'lead.status_changed':'Lead status changed', 'lead.contacted':'Lead marked contacted', 'deal.created':'Deal created', 'deal.stage_changed':'Deal stage changed', 'quote.generated':'Quote generated', 'no_activity_days':'No activity for N days' };
 const AM_FIELDS = ['source','lead_status','stage','been_contacted','budget_lead','budget_egp','name','car_in_question','to'];
 const AM_OPS = [['equals','is'],['not_equals','is not'],['contains','contains'],['changed_to','changed to'],['gt','>'],['lt','<'],['is_empty','is empty'],['not_empty','is not empty']];
-const AM_ACTIONS = [['notify','Send a notification'],['create_followup','Create a follow-up'],['create_task','Create a task'],['create_deal','Create a deal'],['set_lead_status','Set lead status'],['assign_lead','Assign the lead to a rep']];
+const AM_ACTIONS = [['notify','Send a notification'],['create_followup','Create a follow-up'],['create_task','Create a task'],['create_deal','Create a deal'],['set_lead_status','Set lead status'],['assign_lead','Assign the lead to a rep'],['edit_lead','Edit the lead profile'],['delete_deals','Remove the lead from deals'],['delete_lead','Delete the lead']];
 const AM_LEAD_STATUSES = [['cold','Cold'],['warm','Warm'],['hot','Hot'],['immediate_delivery','Immediate Delivery'],['not_interested','Not Interested'],['blacklist','Blacklist']];
 function amActionLabel(t){ const f = AM_ACTIONS.find(a => a[0] === t); return f ? f[1] : t; }
 function amEmpOptions(sel){ return '<option value="">— select rep —</option>' + (employeesForTasks || []).map(e => `<option value="${e.id}"${String(sel) === String(e.id) ? ' selected' : ''}>${esc(e.name)}</option>`).join(''); }
@@ -2636,7 +2636,9 @@ const AM_DEAL_STAGES  = [['lead','Lead'],['contacted','Contacted'],['quoted','Qu
 const AM_ORIGINS      = [['fb_ad','FB Ad.'],['whatsapp','Whatsapp'],['messenger','Messenger'],['direct_call','Direct Call'],['ig_ads','IG ads'],['website','Website'],['walk_in','Walk-in'],['marketplace','Marketplace']];
 const AM_NEXT_ACTIONS = [['followed_by_sales','Followed By Sales'],['need_follow_up','Need Follow Up'],['closed','Closed'],['no_answer','No Answer']];
 const AM_BOOLS        = [['true','Yes'],['false','No']];
-const AM_LEAD_SCOPED_ACTIONS = ['assign_lead','create_followup','set_lead_status','create_deal'];
+const AM_LEAD_SCOPED_ACTIONS = ['assign_lead','create_followup','set_lead_status','create_deal','edit_lead','delete_deals','delete_lead'];
+// Fields the "Edit the lead profile" action can set, with the value control chosen per field.
+const AM_EDIT_FIELDS = [['lead_status','Status'],['source','Origin'],['next_action','Next Action'],['been_contacted','Contacted'],['assigned_to','Owner (rep)'],['car_in_question','Car'],['budget_lead','Budget'],['name','Name'],['phone','Phone'],['notes','Notes']];
 function amNorm(s){ return String(s == null ? '' : s).trim().toLowerCase().replace(/[\s-]+/g, '_'); }
 function amFieldOptions(field){
   if (field === 'lead_status') return AM_LEAD_STATUSES;
@@ -2739,8 +2741,26 @@ function amChangeActionType(i, type) {
   if (type === 'create_deal') Object.assign(base, { stage: 'lead' });
   if (type === 'set_lead_status') Object.assign(base, { status: 'warm' });
   if (type === 'assign_lead') Object.assign(base, { mode: 'round_robin' });
+  if (type === 'edit_lead') Object.assign(base, { updates: [] });
+  // delete_deals / delete_lead take no params
   _autoDraft.actions[i] = base;
   amRenderActions();
+}
+// "Edit the lead profile" — repeatable field/value rows (value control chosen per field)
+function amAddEditField(i) { (_autoDraft.actions[i].updates = _autoDraft.actions[i].updates || []).push({ field: 'lead_status', value: '' }); amRenderActions(); }
+function amDelEditField(i, j) { _autoDraft.actions[i].updates.splice(j, 1); amRenderActions(); }
+function amEditValueControl(u, i, j) {
+  const setter = `_autoDraft.actions[${i}].updates[${j}].value`;
+  if (u.field === 'assigned_to') return `<select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="${setter}=this.value">${amEmpOptions(u.value)}</select>`;
+  const opts = amFieldOptions(u.field);
+  if (opts) {
+    const cur = amNorm(u.value);
+    return `<select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="${setter}=this.value">
+      <option value="">— value —</option>
+      ${opts.map(([k, l]) => `<option value="${esc(k)}"${amNorm(k) === cur ? ' selected' : ''}>${esc(l)}</option>`).join('')}
+    </select>`;
+  }
+  return `<input class="form-input" style="flex:1;padding:6px 8px;font-size:12px" value="${esc(u.value || '')}" placeholder="value" oninput="${setter}=this.value">`;
 }
 function amActionParams(a, i) {
   const inp = (ph, key, val, type) => `<input class="form-input" ${type ? `type="${type}"` : ''} style="padding:6px 8px;font-size:12px" placeholder="${ph}" value="${esc(String(val != null ? val : ''))}" oninput="_autoDraft.actions[${i}].${key}=this.value">`;
@@ -2783,6 +2803,21 @@ function amActionParams(a, i) {
       <option value="specific"${a.mode === 'specific' ? ' selected' : ''}>Specific rep</option>
     </select>
     ${a.mode === 'specific' ? `<select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].employee_id=this.value">${amEmpOptions(a.employee_id)}</select>` : ''}`;
+  if (a.type === 'edit_lead') {
+    const ups = Array.isArray(a.updates) ? a.updates : [];
+    const rows = ups.map((u, j) => `
+      <div style="display:flex;gap:6px;align-items:center">
+        <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].updates[${j}].field=this.value;_autoDraft.actions[${i}].updates[${j}].value='';amRenderActions()">
+          ${AM_EDIT_FIELDS.map(f => `<option value="${f[0]}"${u.field === f[0] ? ' selected' : ''}>${f[1]}</option>`).join('')}
+        </select>
+        ${amEditValueControl(u, i, j)}
+        <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger)" onclick="amDelEditField(${i},${j})">×</button>
+      </div>`).join('');
+    return `${rows || '<div style="font-size:12px;color:var(--muted)">No changes yet — add a field to set.</div>'}
+      <button class="btn btn-outline" style="padding:4px 10px;font-size:12px;justify-self:start" onclick="amAddEditField(${i})">+ Set a field</button>`;
+  }
+  if (a.type === 'delete_deals') return `<div style="font-size:11px;color:var(--danger)"><i data-lucide="alert-triangle" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></i> Deletes every deal linked to this lead.</div>`;
+  if (a.type === 'delete_lead') return `<div style="font-size:11px;color:var(--danger)"><i data-lucide="alert-triangle" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></i> Permanently deletes this lead and all its deals, activities &amp; follow-ups.</div>`;
   return '';
 }
 function amRenderActions() {

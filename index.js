@@ -1861,6 +1861,37 @@ async function runAutomationAction(a, ctx) {
       }
       break;
     }
+    case 'edit_lead': {
+      // Set one or more fields on the lead. Direct update (bypasses the PUT handler) so it never re-triggers automations.
+      if (!ctx.customerId) return 'edit_lead skipped — not linked to a lead';
+      const updates = Array.isArray(a.updates) ? a.updates : [];
+      const patch = { updated_at: new Date().toISOString() };
+      for (const u of updates) {
+        if (!u || !u.field) continue;
+        if (u.field === 'budget_lead') { const b = parseBudget(u.value); patch.budget_lead = b.min; patch.budget_max = b.max; continue; }
+        if (u.field === 'been_contacted') { patch.been_contacted = (u.value === true || u.value === 'true' || u.value === '1'); continue; }
+        if (u.field === 'assigned_to') { patch.assigned_to = u.value ? parseInt(u.value) : null; continue; }
+        if (u.field === 'phone') { patch.phone = u.value || ''; patch.phone_norm = normalizePhone(u.value); continue; }
+        patch[u.field] = u.value;
+      }
+      if (Object.keys(patch).length <= 1) return 'edit_lead skipped — no fields to set';
+      await supabase.from('customers').update(patch).eq('id', ctx.customerId);
+      logLeadActivity(ctx.customerId, { type: 'system', body: 'Lead profile updated by automation', authorKey: 'system', authorName: 'Automation' });
+      break;
+    }
+    case 'delete_deals': {
+      // Remove the lead from the deals pipeline (delete every deal linked to the lead).
+      if (!ctx.customerId) return 'delete_deals skipped — not linked to a lead';
+      await supabase.from('deals').delete().eq('customer_id', ctx.customerId);
+      logLeadActivity(ctx.customerId, { type: 'deal', body: 'Deals removed by automation', authorKey: 'system', authorName: 'Automation' });
+      break;
+    }
+    case 'delete_lead': {
+      // Permanently delete the lead — deals/activities/follow-ups cascade via FK. No post-delete activity log.
+      if (!ctx.customerId) return 'delete_lead skipped — not linked to a lead';
+      await supabase.from('customers').delete().eq('id', ctx.customerId);
+      break;
+    }
   }
 }
 async function runAutomationActions(rule, ctx, eventName) {
