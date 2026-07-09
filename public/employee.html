@@ -826,7 +826,7 @@
         <div class="nav-group-head" id="nav-label-tools" onclick="toggleNavGroup(this)" style="display:none"><span class="nav-group-label">Tools</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
         <div class="nav-group-items">
           <button class="nav-item"        id="nav-quotation" onclick="navigate('quotation')" style="display:none">
-            <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation Draft
+            <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation
           </button>
         </div>
       </div>
@@ -859,6 +859,9 @@
           </button>
           <button class="nav-item" id="nav-issues" onclick="navigate('issues')" style="display:none">
             <span class="nav-icon"><i data-lucide="bug"></i></span> Issues
+          </button>
+          <button class="nav-item" id="nav-help" onclick="helpOpen()">
+            <span class="nav-icon"><i data-lucide="help-circle"></i></span> Help
           </button>
         </div>
       </div>
@@ -1403,7 +1406,7 @@
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
           <div>
-            <div style="font-size:20px;font-weight:700">Quotation Draft</div>
+            <div style="font-size:20px;font-weight:700">Quotation</div>
             <div style="font-size:13px;color:var(--muted);margin-top:4px">Fill in the details to generate a professional PDF quotation</div>
           </div>
           <button class="btn btn-primary" onclick="empGenerateQuotation()" id="emp-qt-generate-btn">
@@ -2125,7 +2128,7 @@ async function logout() {
 }
 
 /* ── Navigation ── */
-const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation Draft', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', notif: 'Notifications', issues: 'Issues' };
+const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', notif: 'Notifications', issues: 'Issues' };
 const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation, leads: loadEmpLeads, deals: loadEmpDeals, notif: loadNotifPage, issues: loadIssues };
 let _currentEmpPage = 'log';
 function navigate(page) {
@@ -2662,7 +2665,7 @@ function empFilterLeads() {
 
 function empRenderLeads(list) {
   const tbody = document.getElementById('emp-leads-tbody');
-  const vis = (_leadCols || []).filter(c => c.visible);
+  const vis = (_leadCols || []).filter(c => c.visible && !c.deleted);
   const span = vis.length + 2; // add-column + actions
   if (!list.length) { tbody.innerHTML = `<tr><td colspan="${span}" style="text-align:center;color:var(--muted);padding:28px">No leads found.</td></tr>`; return; }
   tbody.innerHTML = list.map(c => `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
@@ -2752,7 +2755,7 @@ function renderLeadHead() {
   const tr = document.getElementById('emp-leads-head');
   if (!tr || !_leadCols) return;
   const thStyle = 'padding:9px 14px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap';
-  const ths = _leadCols.filter(c => c.visible).map(c => `
+  const ths = _leadCols.filter(c => c.visible && !c.deleted).map(c => `
     <th class="lead-col" draggable="true" data-colkey="${esc(c.key)}" style="${thStyle}"
         ondragstart="leadColDragStart(event)" ondragover="leadColDragOver(event)" ondragleave="this.classList.remove('drag-over')"
         ondrop="leadColDrop(event)" ondragend="leadColDragEnd()"
@@ -2799,7 +2802,7 @@ function openLeadColMenu(e, key) {
   e.stopPropagation();
   const col = leadCol(key); if (!col) return;
   const m = ensureLeadMenu(); m.dataset.mode = 'colmenu';
-  const vis = _leadCols.filter(c => c.visible); const vi = vis.findIndex(c => c.key === key);
+  const vis = _leadCols.filter(c => c.visible && !c.deleted); const vi = vis.findIndex(c => c.key === key);
   const canType = col.type !== 'virtual' && !['name', 'budget_lead', 'lead_date'].includes(col.key);
   m.innerHTML = `
     <button onclick="leadColRename('${esc(key)}')"><i data-lucide="pencil" style="width:13px;height:13px"></i> Rename</button>
@@ -2810,13 +2813,13 @@ function openLeadColMenu(e, key) {
     <button onclick="leadColMove('${esc(key)}',1)" ${vi >= vis.length - 1 ? 'disabled' : ''}><i data-lucide="arrow-right" style="width:13px;height:13px"></i> Move right</button>
     <div class="lead-menu-sep"></div>
     <button onclick="leadColHide('${esc(key)}')"><i data-lucide="eye-off" style="width:13px;height:13px"></i> Hide column</button>
-    ${!col.builtin ? `<button class="danger" onclick="leadColDelete('${esc(key)}')"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete column</button>` : ''}`;
+    <button class="danger" onclick="leadColDelete('${esc(key)}')"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete column</button>`;
   positionLeadMenu(e);
   requestAnimationFrame(() => lucide.createIcons());
 }
 function leadColsPickerHtml() {
   return `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:6px 10px 4px">Show columns</div>` +
-    _leadCols.map(c => `
+    _leadCols.filter(c => !c.deleted).map(c => `
       <button type="button" class="lead-col-eye ${c.visible ? '' : 'col-hidden'}" onclick="event.stopPropagation();toggleLeadColVis('${esc(c.key)}', ${c.visible ? 'false' : 'true'});openLeadColsPickerRefresh()">
         <i data-lucide="${c.visible ? 'eye' : 'eye-off'}" style="width:14px;height:14px"></i> ${esc(c.label)}
       </button>`).join('');
@@ -2849,7 +2852,7 @@ function leadColRename(key) {
 }
 function leadColMove(key, dir) {
   closeLeadMenu();
-  const vis = _leadCols.filter(c => c.visible);
+  const vis = _leadCols.filter(c => c.visible && !c.deleted);
   const vi = vis.findIndex(c => c.key === key);
   const nb = vis[vi + dir]; if (!nb) return;
   const from = _leadCols.findIndex(c => c.key === key); const to = _leadCols.findIndex(c => c.key === nb.key);
@@ -2864,9 +2867,11 @@ function leadColHide(key) {
 function leadColDelete(key) {
   closeLeadMenu();
   const col = leadCol(key);
-  if (!col || col.builtin) return;
+  if (!col) return;
   if (!confirm(`Delete column "${col.label}"? Saved values stay on the leads but won't be shown.`)) return;
-  _leadCols = _leadCols.filter(c => c.key !== key);
+  // Builtins are soft-deleted (kept with deleted:true) so mergeLeadCols won't re-add them on reload.
+  if (col.builtin) { col.deleted = true; col.visible = false; }
+  else _leadCols = _leadCols.filter(c => c.key !== key);
   saveLeadCols(); renderLeadHead(); empFilterLeads();
 }
 
@@ -3145,7 +3150,7 @@ function renderLeadDrawer() {
   document.getElementById('ld-wa').href = c.phone ? 'https://wa.me/' + ldWaDigits(c.phone) : '#';
 
   const skip = new Set(['name', 'phone', 'lead_status', 'next_followup']);
-  const infoItems = (_leadCols || []).filter(col => !skip.has(col.key) && col.type !== 'virtual').map(col => {
+  const infoItems = (_leadCols || []).filter(col => !skip.has(col.key) && col.type !== 'virtual' && !col.deleted).map(col => {
     const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
     let val;
     if (col.key === 'budget_lead') val = fmtBudget(c.budget_lead, c.budget_max);
@@ -3681,6 +3686,8 @@ const EMP_LOGISTICS_LABELS = [
   'Service Fees',
 ];
 let empQtImages    = [];
+let empQtExistingImages = []; // data-URL strings restored from a saved quote
+let empQtEditingPk = null;    // DB id of the quotation being edited in place
 let empQtPdfBase64 = null;
 
 async function loadEmpQuotation() {
@@ -3750,6 +3757,7 @@ async function loadEmpQtHistory() {
         <td>${esc(q.created_by || '—')}</td>
         <td>${new Date(q.created_at).toLocaleDateString()}</td>
         <td style="white-space:nowrap;text-align:right">
+          <button class="btn btn-sm btn-outline" onclick="empEditQuotation(${q.id})"><i data-lucide="pencil" style="width:12px;height:12px"></i> Edit</button>
           <button class="btn btn-sm btn-outline" onclick="empDuplicateQuotation(${q.id})"><i data-lucide="copy" style="width:12px;height:12px"></i> Duplicate</button>
           <button class="btn btn-sm btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="deleteEmpQuotation(${q.id})"><i data-lucide="trash-2" style="width:12px;height:12px"></i> Delete</button>
         </td>
@@ -3758,22 +3766,60 @@ async function loadEmpQtHistory() {
   } catch (e) { body.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:16px">${esc(e.message)}</div>`; }
 }
 
+async function empPopulateQuoteDraft(q, editing) {
+  const d = q.data || {};
+  empSwitchQtTab('draft');
+  empQtEditingPk = editing ? q.id : null;
+  if (editing && d.id) document.getElementById('emp-qt-id').value = d.id;
+  else await empRefreshQuoteId();
+  empRenderQtEditBanner();
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v != null ? v : ''); };
+  set('emp-qt-date', d.date); set('emp-qt-valid-to', d.validTo);
+  set('emp-qt-name', d.name); set('emp-qt-vehicle', d.vehicleModel);
+  set('emp-qt-currency', d.currency); set('emp-qt-exchange', d.exchange);
+  const iss = document.getElementById('emp-qt-issuer'); if (iss && d.issuer) iss.value = d.issuer;
+  const pick = document.getElementById('emp-qt-customer-id'); if (pick) pick.value = q.customer_id ? String(q.customer_id) : '';
+  document.getElementById('emp-qt-items').innerHTML = '';
+  (d.items || []).forEach(it => empAddPricingRow(it.name, it.unit, it.priceUsd === 'Free' ? 'Free' : it.priceUsd, it.priceUsd === 'Free'));
+  if (!document.getElementById('emp-qt-items').children.length) empAddPricingRow();
+  if (!document.getElementById('emp-qt-logistics').children.length) empBuildLogisticsRows();
+  (d.logistics || []).forEach((lg, i) => { const el = document.getElementById(`emp-qt-log-usd-${i}`); if (el) el.value = (lg && lg.priceUsd && lg.priceUsd !== '0') ? lg.priceUsd : ''; });
+  const cs = document.getElementById('emp-qt-custom-specs');
+  if (cs) { cs.innerHTML = ''; (d.customSpecs || []).forEach(s => { addCustomSpecRow('emp-qt-custom-specs'); const rows = cs.querySelectorAll('.qt-custom-spec-row'); const inp = rows[rows.length - 1]?.querySelector('input'); if (inp) inp.value = s.val || s.key || ''; }); }
+  empQtImages = [];
+  empQtExistingImages = Array.isArray(d.imageDataUrls) ? [...d.imageDataUrls] : [];
+  empRenderImgPreviews();
+  empRecalcAll();
+}
+function empRenderQtEditBanner() {
+  let b = document.getElementById('emp-qt-edit-banner');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'emp-qt-edit-banner';
+    b.style.cssText = 'align-items:center;justify-content:space-between;gap:10px;background:rgba(201,163,94,.12);border:1px solid var(--primary);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--primary)';
+    const idField = document.getElementById('emp-qt-id');
+    const host = idField ? (idField.closest('.card') || idField.parentElement) : null;
+    if (host && host.parentElement) host.parentElement.insertBefore(b, host);
+  }
+  if (empQtEditingPk) {
+    b.style.display = 'flex';
+    b.innerHTML = `<span><i data-lucide="pencil" style="width:13px;height:13px;vertical-align:-2px"></i> Editing this quotation — <strong>Generate</strong> will update it (same ID).</span><button class="btn btn-sm btn-outline" onclick="empCancelQtEdit()">Cancel edit</button>`;
+    requestAnimationFrame(() => lucide.createIcons());
+  } else { b.style.display = 'none'; b.innerHTML = ''; }
+}
+async function empCancelQtEdit() { empQtEditingPk = null; empRenderQtEditBanner(); await empRefreshQuoteId(); }
 async function empDuplicateQuotation(id) {
   try {
     const q = await ef(`/api/employee/quotations/${id}`).then(r => r.json());
     if (!q || !q.data) return;
-    const d = q.data;
-    empSwitchQtTab('draft');
-    await empRefreshQuoteId();
-    if (d.name)         document.getElementById('emp-qt-name').value    = d.name;
-    if (d.vehicleModel) document.getElementById('emp-qt-vehicle').value = d.vehicleModel;
-    if (d.currency)     document.getElementById('emp-qt-currency').value = d.currency;
-    if (d.exchange)     document.getElementById('emp-qt-exchange').value = d.exchange;
-    if (d.items?.length) {
-      document.getElementById('emp-qt-items').innerHTML = '';
-      d.items.forEach(it => empAddPricingRow(it.name, it.unit, it.priceUsd === 'Free' ? 'Free' : it.priceUsd, it.priceUsd === 'Free'));
-    }
-    empRecalcAll();
+    await empPopulateQuoteDraft(q, false);
+  } catch (e) { showToast('Could not load quotation: ' + e.message); }
+}
+async function empEditQuotation(id) {
+  try {
+    const q = await ef(`/api/employee/quotations/${id}`).then(r => r.json());
+    if (!q || !q.data) return;
+    await empPopulateQuoteDraft(q, true);
   } catch (e) { showToast('Could not load quotation: ' + e.message); }
 }
 
@@ -3955,22 +4001,25 @@ function empHandleImgDrop(e) {
   empAddImages(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
 }
 function empAddImages(newFiles) {
-  const remaining = 5 - empQtImages.length;
-  empQtImages = empQtImages.concat(newFiles.slice(0, remaining));
+  const remaining = 5 - (empQtImages.length + empQtExistingImages.length);
+  empQtImages = empQtImages.concat(newFiles.slice(0, Math.max(0, remaining)));
   empRenderImgPreviews();
+}
+function empImgWrap(src, onRemove) {
+  return `<div style="position:relative;display:inline-flex">
+    <img src="${src}" style="height:72px;width:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+    <button onclick="${onRemove}" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--danger);border:none;color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center">✕</button>
+  </div>`;
 }
 function empRenderImgPreviews() {
   const preview = document.getElementById('emp-qt-img-preview');
   if (!preview) return;
-  preview.innerHTML = empQtImages.map((f, i) => {
-    const url = URL.createObjectURL(f);
-    return `<div style="position:relative;display:inline-flex">
-      <img src="${url}" style="height:72px;width:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
-      <button onclick="empRemoveImg(${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--danger);border:none;color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center">✕</button>
-    </div>`;
-  }).join('');
+  preview.innerHTML =
+    empQtExistingImages.map((src, i) => empImgWrap(src, `empRemoveExistingImg(${i})`)).join('') +
+    empQtImages.map((f, i) => empImgWrap(URL.createObjectURL(f), `empRemoveImg(${i})`)).join('');
 }
 function empRemoveImg(i) { empQtImages.splice(i, 1); empRenderImgPreviews(); }
+function empRemoveExistingImg(i) { empQtExistingImages.splice(i, 1); empRenderImgPreviews(); }
 
 async function empGenerateQuotation() {
   const btn = document.getElementById('emp-qt-generate-btn');
@@ -4032,6 +4081,8 @@ async function empGenerateQuotation() {
     formData.append('customSpecs',  JSON.stringify(customSpecs));
     const empQtLeadId = document.getElementById('emp-qt-customer-id')?.value || '';
     if (empQtLeadId) formData.append('customer_id', empQtLeadId);
+    formData.append('existingImages', JSON.stringify(empQtExistingImages));
+    if (empQtEditingPk) formData.append('quotation_pk', String(empQtEditingPk));
     empQtImages.forEach(f => formData.append('images', f));
 
     const res = await fetch('/api/employee/quotation/generate', {
@@ -4991,6 +5042,109 @@ function chatInsertEmoji(e) {
 
 pageTitles['chat'] = 'Chat';
 pageLoaders['chat'] = loadChat;
+
+// ── Help Bot (bilingual EN/AR support assistant) ────────────────────────────
+const HELP_API = '/api/employee/help/chat';
+let _helpHistory = [];
+let _helpLang = 'auto';
+let _helpBusy = false;
+function helpInit() {
+  if (document.getElementById('hb-root')) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    .hb-fab{position:fixed;right:20px;bottom:78px;z-index:9990;width:54px;height:54px;border-radius:50%;background:var(--primary,#c9a35e);color:#0c0c0e;border:none;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
+    .hb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9994;opacity:0;pointer-events:none;transition:opacity .2s}
+    .hb-overlay.open{opacity:1;pointer-events:auto}
+    .hb-panel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(201,163,94,.3);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,.5)}
+    .hb-panel.open{transform:translateX(0)}
+    .hb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 18px;border-bottom:1px solid var(--border,#2a2a2e)}
+    .hb-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+    .hb-msg{max-width:86%;padding:10px 13px;border-radius:14px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+    .hb-msg.user{align-self:flex-end;background:var(--primary,#c9a35e);color:#0c0c0e;border-bottom-right-radius:4px}
+    .hb-msg.bot{align-self:flex-start;background:rgba(255,255,255,.06);color:var(--text,#e8e4da);border-bottom-left-radius:4px}
+    .hb-msg.ar{direction:rtl;text-align:right}
+    .hb-chip{display:inline-block;margin:4px 4px 0 0;padding:6px 10px;font-size:12px;border:1px solid var(--border,#2a2a2e);border-radius:16px;cursor:pointer;color:var(--muted,#9a958a);background:none}
+    .hb-chip:hover{border-color:var(--primary,#c9a35e);color:var(--primary,#c9a35e)}
+    .hb-composer{display:flex;gap:8px;padding:12px;border-top:1px solid var(--border,#2a2a2e)}
+    .hb-composer textarea{flex:1;resize:none;background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:10px;padding:9px 12px;font-size:13.5px;font-family:inherit;max-height:120px}
+    .hb-send{background:var(--primary,#c9a35e);color:#0c0c0e;border:none;border-radius:10px;padding:0 14px;cursor:pointer;font-weight:700}
+  `;
+  document.head.appendChild(style);
+  const root = document.createElement('div');
+  root.id = 'hb-root';
+  root.innerHTML = `
+    <button class="hb-fab" title="Help · مساعدة" onclick="helpOpen()"><i data-lucide="help-circle" style="width:26px;height:26px"></i></button>
+    <div class="hb-overlay" id="hb-overlay" onclick="helpClose()"></div>
+    <div class="hb-panel" id="hb-panel">
+      <div class="hb-head">
+        <div style="font-weight:800;font-size:15px">Help · مساعدة</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="hb-lang" onchange="_helpLang=this.value" style="background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:8px;font-size:12px;padding:4px 6px">
+            <option value="auto">Auto</option><option value="en">EN</option><option value="ar">AR</option>
+          </select>
+          <button onclick="helpClose()" style="background:none;border:none;color:var(--muted,#9a958a);font-size:22px;cursor:pointer;line-height:1">×</button>
+        </div>
+      </div>
+      <div class="hb-body" id="hb-body"></div>
+      <div class="hb-composer">
+        <textarea id="hb-input" rows="1" placeholder="Ask about the system… · اسأل عن النظام…" onkeydown="helpKey(event)"></textarea>
+        <button class="hb-send" onclick="helpSend()"><i data-lucide="send" style="width:16px;height:16px"></i></button>
+      </div>
+    </div>`;
+  document.body.appendChild(root);
+  requestAnimationFrame(() => { try { lucide.createIcons(); } catch (_) {} });
+}
+function helpOpen() {
+  helpInit();
+  document.getElementById('hb-overlay').classList.add('open');
+  document.getElementById('hb-panel').classList.add('open');
+  if (!_helpHistory.length) helpWelcome();
+  setTimeout(() => document.getElementById('hb-input')?.focus(), 120);
+}
+function helpClose() {
+  document.getElementById('hb-overlay')?.classList.remove('open');
+  document.getElementById('hb-panel')?.classList.remove('open');
+}
+function helpWelcome() {
+  const chips = ['Add lead', 'Edit quotation', 'عرض سعر', 'متابعة'];
+  document.getElementById('hb-body').innerHTML =
+    `<div class="hb-msg bot">👋 Hi! I'm the Help Bot — ask me anything about using the system, in English or العربية.<br><br>مرحباً! أنا مساعد النظام، اسألني عن أي شيء داخل النظام بالعربية أو الإنجليزية.</div>
+     <div>${chips.map(c => `<span class="hb-chip" onclick="helpChip(this)">${esc(c)}</span>`).join('')}</div>`;
+}
+function helpChip(el) { const i = document.getElementById('hb-input'); i.value = el.textContent; helpSend(); }
+function helpAppend(text, who) {
+  const body = document.getElementById('hb-body');
+  const isAr = /[؀-ۿ]/.test(text);
+  const div = document.createElement('div');
+  div.className = 'hb-msg ' + (who === 'user' ? 'user' : 'bot') + (isAr ? ' ar' : '');
+  div.textContent = text;
+  body.appendChild(div); body.scrollTop = body.scrollHeight;
+  return div;
+}
+function helpKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); helpSend(); } }
+async function helpSend() {
+  if (_helpBusy) return;
+  const input = document.getElementById('hb-input');
+  const msg = (input.value || '').trim();
+  if (!msg) return;
+  const chip = document.querySelector('#hb-body .hb-chip'); if (chip) chip.parentElement.remove();
+  input.value = '';
+  helpAppend(msg, 'user');
+  _helpHistory.push({ role: 'user', content: msg });
+  _helpBusy = true;
+  const typing = helpAppend('…', 'bot');
+  try {
+    const r = await ef(HELP_API, { method: 'POST', body: JSON.stringify({ message: msg, history: _helpHistory.slice(-8), lang: _helpLang === 'auto' ? undefined : _helpLang }) });
+    const d = await r.json();
+    const ans = d.answer || d.error || 'Sorry, something went wrong.';
+    typing.remove();
+    helpAppend(ans, 'bot');
+    _helpHistory.push({ role: 'bot', content: ans });
+  } catch (e) {
+    typing.remove(); helpAppend('Network error: ' + e.message, 'bot');
+  } finally { _helpBusy = false; }
+}
+document.addEventListener('DOMContentLoaded', helpInit);
 
 // ── PWA: Standalone detection ──────────────────────────────────────────────
 (function detectStandalone() {

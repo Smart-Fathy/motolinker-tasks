@@ -3292,8 +3292,12 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       const items       = JSON.parse(itemsJson       || '[]');
       const logistics   = JSON.parse(logisticsJson   || '[]');
       const customSpecs = JSON.parse(customSpecsJson || '[]');
+      let existingImages = [];
+      try { existingImages = JSON.parse(req.body.existingImages || '[]'); } catch (_) {}
       const files       = req.files || [];
-      const imageDataUrls = files.map(f => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`);
+      const uploaded    = files.map(f => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`);
+      // Keep previously-saved images (restored on edit/duplicate) + any newly uploaded, capped at 5.
+      const imageDataUrls = [...(Array.isArray(existingImages) ? existingImages : []), ...uploaded].slice(0, 5);
 
       // Load company settings from DB
       const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
@@ -3305,18 +3309,24 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       const pdfBuffer = await renderQuotationPdf(html);
 
       res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
-      // Save quotation record (best-effort) + attach to the lead's timeline
+      // Save/update the quotation record (best-effort). Images are persisted in `data` so edit/duplicate can restore them.
       const custId = req.body.customer_id ? parseInt(req.body.customer_id) : null;
-      supabase.from('quotations').insert({
-        quote_id: id || generateQuoteId(),
+      const pk = req.body.quotation_pk ? parseInt(req.body.quotation_pk) : null;
+      const record = {
         title: `${vehicleModel || 'Quotation'} — ${name || ''}`.trim(),
-        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs },
-        created_by: 'dashboard',
+        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs, imageDataUrls },
         customer_id: custId,
-      }).select().single().then(({ data: qrow }) => {
-        if (custId && qrow) logLeadActivity(custId, { type: 'quote', body: `Quotation generated — ${qrow.title}`, meta: { quotation_id: qrow.id, quote_id: qrow.quote_id }, authorKey: 'admin', authorName: 'Admin' });
-        if (qrow) runAutomations('quote.generated', { entityType: 'quote', entityId: qrow.id, customerId: custId, ownerId: null, fields: { name: name || '', vehicleModel: vehicleModel || '', title: qrow.title } });
-      }).catch(() => {});
+      };
+      if (pk) {
+        supabase.from('quotations').update(record).eq('id', pk).select().single().then(({ data: qrow }) => {
+          if (custId && qrow) logLeadActivity(custId, { type: 'quote', body: `Quotation updated — ${qrow.title}`, meta: { quotation_id: qrow.id, quote_id: qrow.quote_id }, authorKey: 'admin', authorName: 'Admin' });
+        }).catch(() => {});
+      } else {
+        supabase.from('quotations').insert({ ...record, quote_id: id || generateQuoteId(), created_by: 'dashboard' }).select().single().then(({ data: qrow }) => {
+          if (custId && qrow) logLeadActivity(custId, { type: 'quote', body: `Quotation generated — ${qrow.title}`, meta: { quotation_id: qrow.id, quote_id: qrow.quote_id }, authorKey: 'admin', authorName: 'Admin' });
+          if (qrow) runAutomations('quote.generated', { entityType: 'quote', entityId: qrow.id, customerId: custId, ownerId: null, fields: { name: name || '', vehicleModel: vehicleModel || '', title: qrow.title } });
+        }).catch(() => {});
+      }
     } catch (e) {
       console.error('[quotation-gen]', e);
       res.status(500).json({ error: e.message });
@@ -3338,8 +3348,11 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
       const items       = JSON.parse(itemsJson       || '[]');
       const logistics   = JSON.parse(logisticsJson   || '[]');
       const customSpecs = JSON.parse(customSpecsJson || '[]');
+      let existingImages = [];
+      try { existingImages = JSON.parse(req.body.existingImages || '[]'); } catch (_) {}
       const files       = req.files || [];
-      const imageDataUrls = files.map(f => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`);
+      const uploaded    = files.map(f => `data:${f.mimetype};base64,${f.buffer.toString('base64')}`);
+      const imageDataUrls = [...(Array.isArray(existingImages) ? existingImages : []), ...uploaded].slice(0, 5);
 
       // Load company settings from DB
       const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
@@ -3351,24 +3364,148 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
       const pdfBuffer = await renderQuotationPdf(html);
 
       res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
-      // Save quotation record (best-effort) + attach to the lead's timeline
+      // Save/update the quotation record (best-effort). Images persisted in `data` for edit/duplicate.
       const custId = req.body.customer_id ? parseInt(req.body.customer_id) : null;
-      supabase.from('quotations').insert({
-        quote_id: id || generateQuoteId(),
+      const pk = req.body.quotation_pk ? parseInt(req.body.quotation_pk) : null;
+      const record = {
         title: `${vehicleModel || 'Quotation'} — ${name || ''}`.trim(),
-        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs },
-        created_by: req.employee.username,
+        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs, imageDataUrls },
         customer_id: custId,
-      }).select().single().then(({ data: qrow }) => {
-        if (custId && qrow) logLeadActivity(custId, { type: 'quote', body: `Quotation generated — ${qrow.title}`, meta: { quotation_id: qrow.id, quote_id: qrow.quote_id }, authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
-        if (qrow) runAutomations('quote.generated', { entityType: 'quote', entityId: qrow.id, customerId: custId, ownerId: null, fields: { name: name || '', vehicleModel: vehicleModel || '', title: qrow.title } });
-      }).catch(() => {});
+      };
+      if (pk) {
+        supabase.from('quotations').update(record).eq('id', pk).select().single().then(({ data: qrow }) => {
+          if (custId && qrow) logLeadActivity(custId, { type: 'quote', body: `Quotation updated — ${qrow.title}`, meta: { quotation_id: qrow.id, quote_id: qrow.quote_id }, authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
+        }).catch(() => {});
+      } else {
+        supabase.from('quotations').insert({ ...record, quote_id: id || generateQuoteId(), created_by: req.employee.username }).select().single().then(({ data: qrow }) => {
+          if (custId && qrow) logLeadActivity(custId, { type: 'quote', body: `Quotation generated — ${qrow.title}`, meta: { quotation_id: qrow.id, quote_id: qrow.quote_id }, authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
+          if (qrow) runAutomations('quote.generated', { entityType: 'quote', entityId: qrow.id, customerId: custId, ownerId: null, fields: { name: name || '', vehicleModel: vehicleModel || '', title: qrow.title } });
+        }).catch(() => {});
+      }
     } catch (e) {
       console.error('[emp-quotation-gen]', e);
       res.status(500).json({ error: e.message });
     }
   }
 );
+
+// ─── Help Bot (bilingual EN/AR support assistant) ───────────────────────────────
+// Hybrid: instant curated FAQ, with an optional Google Gemini (free tier) fallback
+// when GEMINI_API_KEY is set. Never throws — always returns some answer.
+const HELP_FAQ = [
+  { keys: ['add lead','new lead','create lead','اضافة عميل','إضافة عميل','عميل جديد','ليد جديد'],
+    en: 'To add a lead: open Leads → click "Add Lead", fill in the name (required), phone, status, budget, etc., then Save. To add many at once use "Import CSV" (upload a .csv file or paste a public Google Sheets link).',
+    ar: 'لإضافة عميل: افتح قسم Leads ثم اضغط "Add Lead"، واملأ الاسم (مطلوب) والهاتف والحالة والميزانية ثم احفظ. ولإضافة عدة عملاء دفعة واحدة استخدم "Import CSV" (ارفع ملف .csv أو الصق رابط Google Sheets عام).' },
+  { keys: ['lead 360','360','profile','timeline','follow up','follow-up','activity','بروفايل','ملف العميل','متابعة','نشاط','الجدول الزمني'],
+    en: 'Click a lead\'s name to open the Lead 360° drawer: the activity timeline, follow-ups (schedule and mark done), and linked quotations and deals. Use "Log" to record a call, note, WhatsApp or meeting.',
+    ar: 'اضغط على اسم العميل لفتح بطاقة Lead 360°: الجدول الزمني للنشاط، والمتابعات (جدولة وإتمام)، وعروض الأسعار والصفقات المرتبطة. استخدم "Log" لتسجيل مكالمة أو ملاحظة أو واتساب أو اجتماع.' },
+  { keys: ['column','columns','add column','delete column','custom field','عمود','أعمدة','حذف عمود','حقل مخصص'],
+    en: 'In Leads, click any column header to Rename, Change type, Edit dropdown options, Hide, Move, or Delete it — including built-in columns. Use the "Columns" button to show/hide columns and "+" to add a custom one.',
+    ar: 'في قسم Leads، اضغط على رأس أي عمود لإعادة التسمية أو تغيير النوع أو تعديل خيارات القائمة أو الإخفاء أو النقل أو الحذف — بما في ذلك الأعمدة الأساسية. استخدم زر "Columns" لإظهار/إخفاء الأعمدة و"+" لإضافة عمود مخصص.' },
+  { keys: ['deal','deals','pipeline','stage','kanban','صفقة','صفقات','مرحلة','خط الأنابيب'],
+    en: 'Deals is a kanban pipeline. Drag a card between stages (Lead → Contacted → Quoted → Negotiating → Won/Lost), or open a card to edit it. Create one with "Add Deal".',
+    ar: 'قسم Deals عبارة عن لوحة كانبان. اسحب البطاقة بين المراحل (Lead ← Contacted ← Quoted ← Negotiating ← Won/Lost)، أو افتح البطاقة لتعديلها. أنشئ صفقة عبر "Add Deal".' },
+  { keys: ['edit quotation','update quotation','تعديل عرض','تعديل عرض سعر'],
+    en: 'To edit a saved quotation: open Quotation → History → "Edit". It loads into the draft (including its images); clicking Generate then updates that same quotation instead of creating a new one. "Duplicate" makes a copy with a new ID.',
+    ar: 'لتعديل عرض سعر محفوظ: افتح Quotation ثم History ثم "Edit". سيُحمَّل في المسودة (مع صوره)؛ والضغط على Generate يحدّث نفس العرض بدلاً من إنشاء عرض جديد. أما "Duplicate" فينشئ نسخة برقم جديد.' },
+  { keys: ['quotation','quote','pdf','عرض سعر','عرض السعر','كوتيشن','عرض الأسعار'],
+    en: 'Open Quotation to build a PDF: fill the ID, customer, vehicle, items, logistics and exchange rate, add up to 5 images, then click "Generate PDF". Saved quotes live under History where you can Edit, Duplicate or Delete them.',
+    ar: 'افتح قسم Quotation لإنشاء ملف PDF: املأ الرقم والعميل والسيارة والبنود والشحن وسعر الصرف، أضف حتى 5 صور، ثم اضغط "Generate PDF". تظهر العروض المحفوظة في History حيث يمكنك تعديلها أو نسخها أو حذفها.' },
+  { keys: ['automation','automations','rule','trigger','أتمتة','قاعدة','تشغيل تلقائي','مشغل'],
+    en: 'Automations (admin) run "when X happens, do Y". Pick a trigger (e.g. a deal\'s stage changes), optional conditions, then actions (notify, assign lead, edit lead, set status, create follow-up/task/deal, or request a deletion). Turn the rule on to activate it.',
+    ar: 'الأتمتة (للمدير) تعمل بمبدأ "عند حدوث X نفّذ Y". اختر مُشغّلاً (مثل تغيّر مرحلة الصفقة)، وشروطاً اختيارية، ثم إجراءات (إشعار، إسناد عميل، تعديل عميل، ضبط الحالة، إنشاء متابعة/مهمة/صفقة، أو طلب حذف). فعِّل القاعدة لتشغيلها.' },
+  { keys: ['task','tasks','مهمة','مهام'],
+    en: 'Tasks lets you create and assign work with due dates, priorities and multiple assignees, and comment on each task. Employees see their items under "My Tasks".',
+    ar: 'قسم Tasks يتيح إنشاء المهام وإسنادها مع تواريخ استحقاق وأولويات ومسؤولين متعددين، والتعليق على كل مهمة. يرى الموظفون مهامهم في "My Tasks".' },
+  { keys: ['hours','log hours','timesheet','ساعات','تسجيل ساعات','دوام'],
+    en: 'Use Hours / Log Hours to record time spent; admins review totals under Hours Logs.',
+    ar: 'استخدم Hours / Log Hours لتسجيل الوقت المستغرق؛ ويراجع المديرون الإجماليات في Hours Logs.' },
+  { keys: ['request','requests','vacation','leave','طلب','طلبات','اجازة','إجازة'],
+    en: 'Requests handles internal requests (e.g. leave). Submit one from Requests; admins can assign and comment, and you get notified on updates.',
+    ar: 'قسم Requests يدير الطلبات الداخلية (مثل الإجازات). قدّم طلباً من Requests؛ ويمكن للمديرين إسناده والتعليق عليه، وتصلك إشعارات بالتحديثات.' },
+  { keys: ['delete lead','delete deal','remove lead','deletion','approve deletion','حذف','طلب حذف','حذف عميل','حذف صفقة'],
+    en: 'Employees can\'t delete leads/deals directly — clicking Delete sends a request to an admin, who approves it on the "Deletion Requests" page before the record is actually removed.',
+    ar: 'لا يستطيع الموظفون حذف العملاء/الصفقات مباشرة — الضغط على Delete يرسل طلباً للمدير، الذي يوافق عليه من صفحة "Deletion Requests" قبل حذف السجل فعلياً.' },
+  { keys: ['permission','permissions','access','grant','صلاحية','صلاحيات','وصول','منح صلاحية'],
+    en: 'Admins set each employee\'s access under Employees → edit an employee → toggle sections (leads, deals, quotation, etc.). Hidden sections won\'t appear in that employee\'s portal.',
+    ar: 'يحدد المديرون صلاحيات كل موظف من Employees ثم تعديل الموظف ثم تفعيل الأقسام (leads، deals، quotation، إلخ). الأقسام المخفية لن تظهر في بوابة ذلك الموظف.' },
+  { keys: ['import','csv','sheet','spreadsheet','استيراد','اكسل','شيت','جدول'],
+    en: 'In Leads → "Import CSV" you can upload a .csv file or paste a public Google Sheets URL. Columns like name/phone/status/origin/car/budget are matched automatically and duplicate phone numbers are skipped.',
+    ar: 'من Leads ثم "Import CSV" يمكنك رفع ملف .csv أو لصق رابط Google Sheets عام. تتم مطابقة الأعمدة مثل name/phone/status/origin/car/budget تلقائياً ويتم تجاهل أرقام الهاتف المكررة.' },
+  { keys: ['chat','message','دردشة','شات','رسالة','مراسلة'],
+    en: 'Chat is the internal team messaging — direct and group rooms, file sharing and push notifications.',
+    ar: 'قسم Chat هو المراسلة الداخلية للفريق — محادثات فردية وجماعية ومشاركة ملفات وإشعارات فورية.' },
+  { keys: ['notification','notifications','اشعار','إشعار','إشعارات','تنبيه'],
+    en: 'Notifications lists your alerts (mentions, assignments, approvals, follow-up reminders). Enable browser/push notifications to receive them on your device.',
+    ar: 'قسم Notifications يعرض تنبيهاتك (الإشارات والإسنادات والموافقات وتذكيرات المتابعة). فعّل إشعارات المتصفح/الهاتف لتصلك على جهازك.' },
+];
+function helpDetectLang(text) { return /[؀-ۿ]/.test(String(text || '')) ? 'ar' : 'en'; }
+function helpFaqMatch(message, lang) {
+  const m = String(message || '').toLowerCase();
+  if (!m.trim()) return null;
+  for (const item of HELP_FAQ) {
+    if (item.keys.some(k => m.includes(k.toLowerCase()))) return lang === 'ar' ? item.ar : item.en;
+  }
+  return null;
+}
+function helpSystemPrompt(role) {
+  const who = role === 'admin' ? 'an ADMIN using the admin dashboard' : 'a TEAM member using the employee (Team) portal';
+  return [
+    'You are the MotoLinker Help Bot, a friendly in-app support assistant for a car-sales CRM.',
+    `The person asking is ${who}.`,
+    'Answer ONLY questions about how to use this system. Be concise and practical; give step-by-step instructions that name the on-screen sections and buttons.',
+    'Reply in the SAME language as the user (Arabic or English). For Arabic use clear Modern Standard Arabic.',
+    'System areas:',
+    '- Leads: a table with configurable columns (rename / change type / dropdown options / hide / reorder / delete, and add custom columns), inline editing, CSV & Google-Sheets import, and a Lead 360° drawer (activity timeline, follow-ups, linked quotations & deals).',
+    '- Deals: a kanban pipeline (Lead, Contacted, Quoted, Negotiating, Won, Lost) with drag-to-move and add/edit.',
+    '- Quotation: build a PDF quote (ID, customer, vehicle, items, logistics, exchange rate, up to 5 images) with a History offering Edit (updates the same quote), Duplicate and Delete.',
+    '- Tasks, Hours (time logging), Requests (internal requests with assignment and comments).',
+    '- Automations (admin): when-a-trigger / optional-conditions / then-actions rules (notify, assign lead, edit lead, set status, create follow-up/task/deal, or request a deletion that needs admin approval).',
+    '- Submissions (website form leads), Reports/analytics, Chat (team messaging), Notifications, and Deletion Requests (admins approve employee-requested deletions). Permissions are set per employee under Employees.',
+    'If unsure or the question is outside this system, say so briefly and point to the closest relevant section.',
+  ].join('\n');
+}
+async function helpCallGemini(systemText, history, message) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  const contents = [];
+  for (const h of (Array.isArray(history) ? history.slice(-8) : [])) {
+    if (!h || !h.content) continue;
+    const role = (h.role === 'bot' || h.role === 'model' || h.role === 'assistant') ? 'model' : 'user';
+    contents.push({ role, parts: [{ text: String(h.content).slice(0, 2000) }] });
+  }
+  contents.push({ role: 'user', parts: [{ text: String(message).slice(0, 2000) }] });
+  const body = { system_instruction: { parts: [{ text: systemText }] }, contents, generationConfig: { temperature: 0.3, maxOutputTokens: 600 } };
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error('gemini ' + r.status);
+  const d = await r.json();
+  const text = d?.candidates?.[0]?.content?.parts?.map(p => p.text).join('').trim();
+  return text || null;
+}
+async function handleHelpChat(req, res, role) {
+  try {
+    const message = String(req.body?.message || '').slice(0, 4000);
+    if (!message.trim()) return res.status(400).json({ error: 'message required' });
+    const lang = (req.body?.lang === 'ar' || req.body?.lang === 'en') ? req.body.lang : helpDetectLang(message);
+    const faq = helpFaqMatch(message, lang);
+    if (faq) return res.json({ answer: faq, source: 'faq' });
+    try {
+      const ai = await helpCallGemini(helpSystemPrompt(role), req.body?.history, message);
+      if (ai) return res.json({ answer: ai, source: 'ai' });
+    } catch (e) { console.warn('[help] gemini failed:', e.message); }
+    const fallback = lang === 'ar'
+      ? 'لم أجد إجابة جاهزة لسؤالك. يمكنك السؤال عن: العملاء (Leads)، الصفقات (Deals)، عروض الأسعار (Quotation)، المهام (Tasks)، الطلبات (Requests)، الأتمتة (Automations)، الاستيراد، أو الصلاحيات — أو اذكر اسم القسم الذي تحتاج مساعدة فيه.'
+      : "I couldn't find a ready answer. Try asking about: Leads, Deals, Quotation, Tasks, Requests, Automations, Import, or Permissions — or name the section you need help with.";
+    return res.json({ answer: fallback, source: 'fallback' });
+  } catch (e) {
+    console.error('[help-chat]', e);
+    res.status(500).json({ error: e.message });
+  }
+}
+receiver.router.post('/api/dashboard/help/chat', requireAuth, express.json(), (req, res) => handleHelpChat(req, res, 'admin'));
+receiver.router.post('/api/employee/help/chat', requireEmployeeAuth, express.json(), (req, res) => handleHelpChat(req, res, 'employee'));
 
 // ─── Form Submissions ─────────────────────────────────────────────────────────
 // Public endpoint — no auth required (customers submit from the website).
