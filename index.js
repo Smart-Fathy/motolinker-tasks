@@ -1678,20 +1678,65 @@ function fillEmptyPatch(incoming, current) {
   if (Object.prototype.hasOwnProperty.call(patch, 'phone')) patch.phone_norm = normalizePhone(patch.phone);
   return patch;
 }
+// Auto-create a "lead"-stage deal for each Hot lead that doesn't already have
+// one — mirrors the single-lead Hot→deal behavior (create/status-change) so
+// imported Hot leads show up in Deals without needing a manual status toggle.
+// Batched + duplicate-guarded. `leads` need id, name, car_in_question,
+// budget_lead, lead_status. Returns the number of deals created.
+async function autoCreateDealsForHotLeads(leads) {
+  const hot = (leads || []).filter(l => l && l.id && l.lead_status === 'hot');
+  if (!hot.length) return 0;
+  const ids = hot.map(l => l.id);
+  const withDeal = new Set();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await supabase.from('deals').select('customer_id').in('customer_id', ids.slice(i, i + 200));
+    (data || []).forEach(d => withDeal.add(d.customer_id));
+  }
+  const toCreate = hot.filter(l => !withDeal.has(l.id)).map(l => ({
+    customer_id: l.id,
+    title: `${l.name}${l.car_in_question ? ' — ' + l.car_in_question : ''}`,
+    stage: 'lead', car_model: l.car_in_question || '', budget_egp: l.budget_lead || null,
+    notes: 'Auto-created from Hot lead', created_by: 'system',
+  }));
+  if (!toCreate.length) return 0;
+  const { error } = await supabase.from('deals').insert(toCreate);
+  if (error) { console.warn('[import] auto-deal failed:', error.message); return 0; }
+  toCreate.forEach(d => logLeadActivity(d.customer_id, { type: 'deal', body: 'Deal auto-created from Hot status', authorKey: 'system', authorName: 'System' }));
+  console.log('[import] auto-created', toCreate.length, 'deal(s) for hot leads');
+  return toCreate.length;
+}
+
+// One-time backfill: Hot leads created before the import→deal fix have no deal.
+// Runs once (guarded by a KV flag) shortly after boot so they appear in Deals.
+async function backfillHotLeadDeals() {
+  try {
+    const { data: flag } = await supabase.from('quotation_settings').select('value').eq('key', 'hot_deal_backfill_v1').single();
+    if (flag?.value === 'done') return;
+    const { data: hotLeads, error } = await supabase.from('customers').select('id,name,car_in_question,budget_lead,lead_status').eq('lead_status', 'hot').limit(5000);
+    if (error) { console.warn('[backfill] hot-lead scan failed:', error.message); return; }
+    const n = await autoCreateDealsForHotLeads(hotLeads || []);
+    await supabase.from('quotation_settings').upsert({ key: 'hot_deal_backfill_v1', value: 'done' }, { onConflict: 'key' });
+    console.log('[backfill] hot-lead deals:', n, 'created; marked done');
+  } catch (e) { console.warn('[backfill] hot-lead deals error:', e.message); }
+}
+
 // Shared import: insert new leads and (when updateExisting) fill blanks on
-// matched ones. Returns { inserted, updated, skipped }.
+// matched ones, then auto-create deals for any Hot leads.
+// Returns { inserted, updated, skipped, deals }.
 async function importLeadRows(rows, updateExisting) {
   if (!updateExisting) {
     const { toInsert, skippedNames } = await dedupLeadRows(rows);
+    let deals = 0;
     if (toInsert.length) {
-      const { error } = await supabase.from('customers').insert(toInsert);
+      const { data: created, error } = await supabase.from('customers').insert(toInsert).select('id,name,car_in_question,budget_lead,lead_status');
       if (error) throw new Error(error.message);
+      deals = await autoCreateDealsForHotLeads(created);
     }
-    return { inserted: toInsert.length, updated: 0, skipped: skippedNames.length, skippedNames };
+    return { inserted: toInsert.length, updated: 0, skipped: skippedNames.length, skippedNames, deals };
   }
   const idx = await loadExistingLeadsByKey(rows);
   let updated = 0, skipped = 0;
-  const toInsert = [], seen = new Set();
+  const toInsert = [], seen = new Set(), becameHot = [];
   for (const row of rows) {
     const key = leadDedupKey(row);
     if (seen.has(key)) { skipped++; continue; }
@@ -1704,16 +1749,23 @@ async function importLeadRows(rows, updateExisting) {
         const { error } = await supabase.from('customers').update(patch).eq('id', cur.id);
         if (error) throw new Error(error.message);
         updated++;
+        // A lead whose (previously empty) status is now filled to Hot gets a deal too.
+        if (patch.lead_status === 'hot' && cur.lead_status !== 'hot') {
+          becameHot.push({ id: cur.id, name: patch.name || cur.name, car_in_question: patch.car_in_question || cur.car_in_question, budget_lead: patch.budget_lead != null ? patch.budget_lead : cur.budget_lead, lead_status: 'hot' });
+        }
       } else skipped++;
     } else {
       toInsert.push({ ...row, custom_fields: row.custom_fields || {} });
     }
   }
+  let created = [];
   if (toInsert.length) {
-    const { error } = await supabase.from('customers').insert(toInsert);
+    const { data, error } = await supabase.from('customers').insert(toInsert).select('id,name,car_in_question,budget_lead,lead_status');
     if (error) throw new Error(error.message);
+    created = data || [];
   }
-  return { inserted: toInsert.length, updated, skipped, skippedNames: [] };
+  const deals = await autoCreateDealsForHotLeads([...created, ...becameHot]);
+  return { inserted: toInsert.length, updated, skipped, skippedNames: [], deals };
 }
 
 receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.single('file'), express.json(), async (req, res) => {
@@ -1736,8 +1788,8 @@ receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.s
     if (parseErr) return res.status(400).json({ error: parseErr });
     if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
     const updateExisting = String(req.body?.updateExisting) === 'true';
-    const { inserted, updated, skipped, skippedNames } = await importLeadRows(rows, updateExisting);
-    res.json({ count: inserted, inserted, updated, skipped, skippedNames: (skippedNames || []).slice(0, 50), unmatchedHeaders });
+    const { inserted, updated, skipped, skippedNames, deals } = await importLeadRows(rows, updateExisting);
+    res.json({ count: inserted, inserted, updated, skipped, deals, skippedNames: (skippedNames || []).slice(0, 50), unmatchedHeaders });
   } catch (e) { console.error('[csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 
@@ -3153,8 +3205,8 @@ receiver.router.post('/api/employee/customers/import', requireEmployeeAuth, mult
     if (parseErr) return res.status(400).json({ error: parseErr });
     if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
     const updateExisting = String(req.body?.updateExisting) === 'true';
-    const { inserted, updated, skipped, skippedNames } = await importLeadRows(rows, updateExisting);
-    res.json({ count: inserted, inserted, updated, skipped, skippedNames: (skippedNames || []).slice(0, 50), unmatchedHeaders });
+    const { inserted, updated, skipped, skippedNames, deals } = await importLeadRows(rows, updateExisting);
+    res.json({ count: inserted, inserted, updated, skipped, deals, skippedNames: (skippedNames || []).slice(0, 50), unmatchedHeaders });
   } catch (e) { console.error('[emp-csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 
@@ -3981,6 +4033,7 @@ function scheduleFollowupReminders() {
   scheduleHoursLogReminder();
   scheduleFollowupReminders();
   scheduleAutomationSweep();
+  setTimeout(() => backfillHotLeadDeals().catch(console.error), 15 * 1000); // one-time: deals for pre-existing Hot leads
   if (process.env.WHATSAPP_ENABLED === 'true') initWhatsApp().catch(console.error);
   const port = process.env.PORT || 3000;
   receiver.app.listen(port, () => {
