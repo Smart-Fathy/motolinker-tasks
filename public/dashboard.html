@@ -6842,7 +6842,11 @@ let _dealJustDragged = false; // suppress the click-to-edit that follows a drag
 
 function dealCardClick(id) {
   if (_dealJustDragged) { _dealJustDragged = false; return; }
-  openDealModal(id);
+  // Open the linked lead's 360° profile (the full card) instead of the small
+  // "Edit Deal" modal. Deals are managed via drag-and-drop + the lead card.
+  const d = _allDeals.find(x => x.id === id);
+  if (d && d.customer_id) openLeadProfile(d.customer_id);
+  else openDealModal(id); // fallback: a deal with no linked lead
 }
 
 // Open the deal's linked lead in the 360° drawer (from the card's customer name)
