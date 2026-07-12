@@ -1261,7 +1261,8 @@
         </div>
         <div style="display:grid;gap:14px">
           <div style="font-size:12px;color:var(--muted);line-height:1.7;background:rgba(255,255,255,.03);padding:10px 14px;border-radius:8px;border:1px solid var(--border)">
-            CSV columns (any order): <strong>name, phone, notes, status, origin, car, budget, next_action, been_contacted, sales_feedback, inquiry, date, time</strong><br>
+            CSV columns (any order): <strong>name, phone, notes, status, origin, car, budget, next_action, been_contacted, sales_feedback, inquiry, date, time, owner</strong><br>
+            Common header variants are recognised automatically (e.g. Full Name, Mobile / Phone Number, Lead Status, Vehicle / Model, Lead Source, Contacted, Lead Date). Columns matching your custom lead columns are imported too; unrecognised columns are ignored (you'll be told which).<br>
             <em>name</em> column is required. Status values: cold, warm, hot, immediate_delivery, not_interested, blacklist.
           </div>
           <div><label class="form-label">CSV File</label><input type="file" id="emp-csv-file" accept=".csv,.txt" class="form-control" style="padding:6px"></div>
@@ -3098,7 +3099,9 @@ async function empImportCsv() {
     }
     if (result.error) return showToast('Import error: ' + result.error);
     document.getElementById('emp-csv-modal').style.display = 'none';
-    showToast(`Imported ${result.count} lead(s)${result.skipped ? ` · ${result.skipped} duplicate(s) skipped` : ''}.`);
+    let msg = `Imported ${result.count} lead(s)${result.skipped ? ` · ${result.skipped} duplicate(s) skipped` : ''}.`;
+    if (result.unmatchedHeaders && result.unmatchedHeaders.length) msg += ` Ignored columns: ${result.unmatchedHeaders.join(', ')}.`;
+    showToast(msg);
     loadEmpLeads();
   } catch (e) { showToast('Import error: ' + e.message); }
 }
