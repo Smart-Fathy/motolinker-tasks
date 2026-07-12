@@ -1718,6 +1718,211 @@ receiver.router.delete('/api/dashboard/customers/:id', requireAuth, async (req, 
   res.json({ ok: true });
 });
 
+// ── De-dupe tool ──────────────────────────────────────────────────────────────
+// Groups leads by the same key the importer uses (phone, else name+car+budget+date).
+// The oldest row in each group is the keeper; the rest are offered for removal.
+// Preview-only: nothing is deleted until the client POSTs the ids back to /dedupe.
+receiver.router.get('/api/dashboard/customers/duplicates', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('customers')
+    .select('id,name,phone,phone_norm,car_in_question,budget_lead,lead_date,created_at')
+    .order('created_at', { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+  const groups = new Map();
+  for (const c of data || []) {
+    const k = leadDedupKey({ phone_norm: c.phone_norm, name: c.name, car_in_question: c.car_in_question, budget_lead: c.budget_lead, lead_date: c.lead_date });
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(c);
+  }
+  const dupes = [];
+  for (const [k, members] of groups) {
+    if (members.length < 2) continue;
+    members.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || '') || a.id - b.id);
+    dupes.push({ key: k, keeper: members[0], remove: members.slice(1) });
+  }
+  const totalRemove = dupes.reduce((n, g) => n + g.remove.length, 0);
+  res.json({ groups: dupes, groupCount: dupes.length, totalRemove });
+});
+
+receiver.router.post('/api/dashboard/customers/dedupe', requireAuth, express.json(), async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(n => Number.isInteger(n) && n > 0) : [];
+  if (!ids.length) return res.status(400).json({ error: 'No lead ids provided' });
+  const { error } = await supabase.from('customers').delete().in('id', ids);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ deleted: ids.length });
+});
+
+// ── Google Sheet → CRM auto-sync ──────────────────────────────────────────────
+// Pulls a publicly-shared Google Sheet (CSV export) on an interval and upserts
+// leads: new rows are inserted, matched rows (by phone, else name composite) are
+// updated per the conflict rule. Leads are NEVER deleted by sync.
+async function loadSheetSyncConfig() {
+  try {
+    const { data } = await supabase.from('quotation_settings').select('value').eq('key', 'leads_sheet_sync').single();
+    if (data?.value) return JSON.parse(data.value);
+  } catch (_) {}
+  return null;
+}
+async function saveSheetSyncConfig(cfg) {
+  await supabase.from('quotation_settings').upsert({ key: 'leads_sheet_sync', value: JSON.stringify(cfg) }, { onConflict: 'key' });
+}
+
+// Load existing leads that could match any parsed row, indexed by leadDedupKey,
+// carrying the full comparable field set so the conflict rule can be applied.
+const SHEET_SYNC_COLS = 'id,name,phone,phone_norm,email,source,notes,lead_date,lead_time,lead_status,car_in_question,budget_lead,budget_max,next_action,been_contacted,sales_feedback,inquiry,assigned_to,custom_fields,created_at';
+async function loadExistingLeadIndex(rows) {
+  const byKey = new Map();
+  const norms = [...new Set(rows.map(r => r.phone_norm).filter(Boolean))];
+  for (let i = 0; i < norms.length; i += 200) {
+    const { data: ex } = await supabase.from('customers').select(SHEET_SYNC_COLS).in('phone_norm', norms.slice(i, i + 200));
+    (ex || []).forEach(e => { const k = 'p:' + e.phone_norm; if (e.phone_norm && !byKey.has(k)) byKey.set(k, e); });
+  }
+  const names = [...new Set(rows.filter(r => !r.phone_norm).map(r => r.name).filter(Boolean))];
+  for (let i = 0; i < names.length; i += 200) {
+    const { data: ex } = await supabase.from('customers').select(SHEET_SYNC_COLS).in('name', names.slice(i, i + 200));
+    (ex || []).forEach(e => { const k = leadDedupKey({ phone_norm: '', name: e.name, car_in_question: e.car_in_question, budget_lead: e.budget_lead, lead_date: e.lead_date }); if (!byKey.has(k)) byKey.set(k, e); });
+  }
+  return byKey;
+}
+
+// Build the update patch for an existing lead. Blank sheet cells never overwrite
+// CRM data. conflict='protect' only fills fields that are empty in the CRM;
+// conflict='sheet' overwrites with any non-empty sheet value.
+const SHEET_SYNC_FIELDS = ['name', 'phone', 'email', 'source', 'notes', 'lead_date', 'lead_time', 'lead_status', 'car_in_question', 'budget_lead', 'budget_max', 'next_action', 'sales_feedback', 'inquiry'];
+function buildSyncPatch(incoming, current, conflict) {
+  const patch = {};
+  const isEmpty = v => v == null || v === '';
+  for (const k of SHEET_SYNC_FIELDS) {
+    const inc = incoming[k];
+    if (isEmpty(inc)) continue;
+    const cur = current[k];
+    if (conflict === 'protect') { if (isEmpty(cur)) patch[k] = inc; }
+    else if (inc !== cur) patch[k] = inc;
+  }
+  // been_contacted: only ever flip false→true (never un-contact from the sheet)
+  if (conflict !== 'protect' && incoming.been_contacted && !current.been_contacted) patch.been_contacted = true;
+  // assigned_to: fill when unassigned; sheet-wins may reassign
+  if (incoming.assigned_to != null) {
+    if (conflict === 'protect') { if (current.assigned_to == null) patch.assigned_to = incoming.assigned_to; }
+    else if (incoming.assigned_to !== current.assigned_to) patch.assigned_to = incoming.assigned_to;
+  }
+  // custom_fields: merge key-by-key with the same rule
+  const incCf = incoming.custom_fields || {}, curCf = current.custom_fields || {};
+  const mergedCf = { ...curCf }; let cfChanged = false;
+  for (const [k, v] of Object.entries(incCf)) {
+    if (v == null || v === '') continue;
+    if (conflict === 'protect') { if (curCf[k] == null || curCf[k] === '') { mergedCf[k] = v; cfChanged = true; } }
+    else if (curCf[k] !== v) { mergedCf[k] = v; cfChanged = true; }
+  }
+  if (cfChanged) patch.custom_fields = mergedCf;
+  if (Object.prototype.hasOwnProperty.call(patch, 'phone')) patch.phone_norm = normalizePhone(patch.phone);
+  return patch;
+}
+
+let sheetSyncRunning = false;
+async function runLeadsSheetSync(trigger = 'auto') {
+  const cfg = await loadSheetSyncConfig();
+  if (!cfg || !cfg.url) return { skipped: true, reason: 'not-configured' };
+  if (trigger === 'auto' && !cfg.enabled) return { skipped: true, reason: 'disabled' };
+  if (sheetSyncRunning) return { skipped: true, reason: 'busy' };
+  sheetSyncRunning = true;
+  const stamp = () => new Date().toISOString();
+  const save = patch => saveSheetSyncConfig({ ...cfg, ...patch });
+  try {
+    const match = String(cfg.url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (!match) { await save({ lastSyncAt: stamp(), lastError: 'Invalid Google Sheets URL' }); return { error: 'Invalid Google Sheets URL' }; }
+    const gid = (String(cfg.url).match(/[?#&]gid=(\d+)/) || [])[1];
+    const url = `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv` + (gid ? `&gid=${gid}` : '');
+    const nodeFetch = require('node-fetch');
+    const r = await nodeFetch(url);
+    const csvText = await r.text();
+    if (!r.ok || /^\s*<(?:!doctype|html)/i.test(csvText)) {
+      const msg = 'Could not read the sheet — share it as "Anyone with the link → Viewer".';
+      await save({ lastSyncAt: stamp(), lastError: msg });
+      return { error: msg };
+    }
+    const { data: emps } = await supabase.from('employees').select('id,name,username,email');
+    const cols = await loadLeadsColsConfig();
+    const { rows, error: parseErr } = parseLeadsCsv(csvText, cols, emps || []);
+    if (parseErr) { await save({ lastSyncAt: stamp(), lastError: parseErr }); return { error: parseErr }; }
+    if (!rows.length) { await save({ lastSyncAt: stamp(), lastResult: { inserted: 0, updated: 0, skipped: 0 }, lastError: '' }); return { inserted: 0, updated: 0, skipped: 0 }; }
+    const conflict = cfg.conflict === 'protect' ? 'protect' : 'sheet';
+    const existingIdx = await loadExistingLeadIndex(rows);
+    let inserted = 0, updated = 0, skipped = 0;
+    const toInsert = [], seenNew = new Set();
+    for (const row of rows) {
+      const key = leadDedupKey(row);
+      const cur = existingIdx.get(key);
+      if (cur) {
+        const patch = buildSyncPatch(row, cur, conflict);
+        if (Object.keys(patch).length) {
+          patch.updated_at = stamp();
+          const { error } = await supabase.from('customers').update(patch).eq('id', cur.id);
+          if (error) throw new Error(error.message);
+          updated++;
+        } else skipped++;
+      } else if (seenNew.has(key)) {
+        skipped++;
+      } else {
+        seenNew.add(key);
+        toInsert.push({ ...row, created_by: 'sheet_sync', custom_fields: row.custom_fields || {} });
+      }
+    }
+    if (toInsert.length) {
+      const { error } = await supabase.from('customers').insert(toInsert);
+      if (error) throw new Error(error.message);
+      inserted = toInsert.length;
+    }
+    await save({ lastSyncAt: stamp(), lastResult: { inserted, updated, skipped }, lastError: '' });
+    console.log(`[sheet-sync] ${trigger}: +${inserted} ~${updated} =${skipped}`);
+    return { inserted, updated, skipped };
+  } catch (e) {
+    console.warn('[sheet-sync] failed:', e.message);
+    await save({ lastSyncAt: stamp(), lastError: e.message });
+    return { error: e.message };
+  } finally {
+    sheetSyncRunning = false;
+  }
+}
+
+receiver.router.get('/api/dashboard/leads/sheet-sync', requireAuth, async (req, res) => {
+  const cfg = (await loadSheetSyncConfig()) || {};
+  const base = `${req.protocol}://${req.get('host')}`;
+  res.json({
+    url: cfg.url || '', enabled: !!cfg.enabled,
+    intervalMin: cfg.intervalMin || 15, conflict: cfg.conflict || 'sheet',
+    lastSyncAt: cfg.lastSyncAt || null, lastResult: cfg.lastResult || null, lastError: cfg.lastError || '',
+    hookUrl: cfg.hookToken ? `${base}/api/leads/sheet-sync/hook?key=${cfg.hookToken}` : '',
+  });
+});
+
+receiver.router.put('/api/dashboard/leads/sheet-sync', requireAuth, express.json(), async (req, res) => {
+  const b = req.body || {};
+  const cfg = (await loadSheetSyncConfig()) || {};
+  const url = String(b.url || '').trim();
+  if (url && !/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/.test(url)) return res.status(400).json({ error: 'Invalid Google Sheets URL' });
+  const intervalMin = [5, 10, 15, 30, 60].includes(Number(b.intervalMin)) ? Number(b.intervalMin) : (cfg.intervalMin || 15);
+  const conflict = b.conflict === 'protect' ? 'protect' : 'sheet';
+  const next = { ...cfg, url, enabled: !!b.enabled, intervalMin, conflict };
+  if (!next.hookToken) next.hookToken = generateToken();
+  await saveSheetSyncConfig(next);
+  res.json({ ok: true });
+});
+
+receiver.router.post('/api/dashboard/leads/sheet-sync/run', requireAuth, async (_req, res) => {
+  const result = await runLeadsSheetSync('manual');
+  if (result?.error) return res.status(400).json({ error: result.error });
+  res.json(result);
+});
+
+// Token-gated (no session): lets a Google Apps Script trigger push edits instantly.
+receiver.router.post('/api/leads/sheet-sync/hook', async (req, res) => {
+  const cfg = await loadSheetSyncConfig();
+  const key = req.query.key || req.headers['x-sync-key'];
+  if (!cfg || !cfg.hookToken || key !== cfg.hookToken) return res.status(403).json({ error: 'forbidden' });
+  const result = await runLeadsSheetSync('hook');
+  res.json(result || { ok: true });
+});
+
 // ── Lead 360° profile: timeline, follow-ups, linked quotations & deals ────────
 receiver.router.get('/api/dashboard/customers/:id/profile', requireAuth, async (req, res) => {
   const id = parseInt(req.params.id);
@@ -3875,6 +4080,23 @@ function scheduleFollowupReminders() {
   setInterval(() => sendFollowupReminders().catch(console.error), 5 * 60 * 1000);
 }
 
+// ─── Google Sheet → CRM auto-sync ─────────────────────────────────────────────
+// A fixed 1-min tick reads the stored config and runs a sync only when it's
+// enabled and at least intervalMin has elapsed since the last run (the interval
+// is dynamic, so we gate here rather than re-arming the timer on settings change).
+async function sheetSyncTick() {
+  const cfg = await loadSheetSyncConfig();
+  if (!cfg || !cfg.url || !cfg.enabled) return;
+  const intervalMs = (cfg.intervalMin || 15) * 60 * 1000;
+  const last = cfg.lastSyncAt ? new Date(cfg.lastSyncAt).getTime() : 0;
+  if (Date.now() - last < intervalMs) return;
+  await runLeadsSheetSync('auto');
+}
+function scheduleLeadsSheetSync() {
+  setTimeout(() => sheetSyncTick().catch(console.error), 30 * 1000);
+  setInterval(() => sheetSyncTick().catch(console.error), 60 * 1000);
+}
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 (async () => {
   await loadGoogleTokens();
@@ -3883,6 +4105,7 @@ function scheduleFollowupReminders() {
   scheduleHoursLogReminder();
   scheduleFollowupReminders();
   scheduleAutomationSweep();
+  scheduleLeadsSheetSync();
   if (process.env.WHATSAPP_ENABLED === 'true') initWhatsApp().catch(console.error);
   const port = process.env.PORT || 3000;
   receiver.app.listen(port, () => {

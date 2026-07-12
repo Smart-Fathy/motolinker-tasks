@@ -1626,6 +1626,12 @@
           <div style="font-size:13px;color:var(--muted);margin-top:4px">Manage your lead database</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-outline" onclick="openDedupeModal()">
+            <i data-lucide="copy-check" style="width:15px;height:15px"></i> Find Duplicates
+          </button>
+          <button class="btn btn-outline" onclick="openSheetSyncModal()">
+            <i data-lucide="refresh-cw" style="width:15px;height:15px"></i> Connect Sheet
+          </button>
           <button class="btn btn-outline" onclick="openCsvImportModal()">
             <i data-lucide="upload" style="width:15px;height:15px"></i> Import CSV
           </button>
@@ -2068,6 +2074,89 @@
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="document.getElementById('csv-import-modal').style.display='none'">Cancel</button>
         <button class="btn btn-primary" onclick="importLeadsCsv()">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Find Duplicates Modal -->
+  <div id="dedupe-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
+    <div class="modal" style="width:100%;max-width:640px;max-height:88vh;display:flex;flex-direction:column">
+      <div class="modal-header">
+        <div class="modal-title">Find &amp; Remove Duplicate Leads</div>
+        <button class="modal-close" onclick="document.getElementById('dedupe-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body" style="padding:20px 24px;overflow-y:auto">
+        <div style="font-size:12px;color:var(--muted);line-height:1.7;background:rgba(255,255,255,.03);padding:10px 14px;border-radius:8px;border:1px solid var(--hair);margin-bottom:14px">
+          Leads are grouped the same way imports de-duplicate: by phone number, or (when there's no phone) by name + vehicle + budget + date. The <strong>oldest</strong> lead in each group is kept; the newer copies are pre-selected for removal. Nothing is deleted until you press <em>Remove Selected</em>.
+        </div>
+        <div id="dedupe-body" style="display:grid;gap:12px"><div style="color:var(--muted);padding:20px;text-align:center">Scanning…</div></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('dedupe-modal').style.display='none'">Close</button>
+        <button class="btn btn-primary" id="dedupe-confirm-btn" onclick="confirmDedupe()" style="display:none;background:var(--danger);border-color:var(--danger)">Remove Selected</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connect Sheet (auto-sync) Modal -->
+  <div id="sheet-sync-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
+    <div class="modal" style="width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column">
+      <div class="modal-header">
+        <div class="modal-title">Connect a Google Sheet</div>
+        <button class="modal-close" onclick="document.getElementById('sheet-sync-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body" style="padding:20px 24px;display:grid;gap:14px;overflow-y:auto">
+        <div style="font-size:12px;color:var(--muted);line-height:1.7;background:rgba(255,255,255,.03);padding:10px 14px;border-radius:8px;border:1px solid var(--hair)">
+          Keep a spreadsheet in sync with your CRM. Changes in the sheet are pulled in automatically on the interval you choose. Share the sheet as <strong>Anyone with the link → Viewer</strong>, and match header names to your leads columns (same rules as Import CSV). Leads are <strong>never deleted</strong> from the CRM by sync.
+        </div>
+        <div>
+          <label class="form-label">Google Sheets URL</label>
+          <input class="form-input" id="ss-url" placeholder="https://docs.google.com/spreadsheets/d/…">
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <label class="form-label" style="margin:0">Auto-sync</label>
+          <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+            <input type="checkbox" id="ss-enabled"> <span>Enabled</span>
+          </label>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label class="form-label">Check every</label>
+            <select class="form-input" id="ss-interval">
+              <option value="5">5 minutes</option>
+              <option value="10">10 minutes</option>
+              <option value="15" selected>15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="60">1 hour</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">When a lead differs</label>
+            <select class="form-input" id="ss-conflict">
+              <option value="sheet">Spreadsheet wins — reflect all sheet changes</option>
+              <option value="protect">Protect my CRM edits — only fill blanks</option>
+            </select>
+          </div>
+        </div>
+        <div id="ss-status" style="font-size:12px;color:var(--muted);line-height:1.6"></div>
+        <details style="border:1px solid var(--hair);border-radius:8px;padding:8px 12px">
+          <summary style="cursor:pointer;font-size:12px;color:var(--muted)">Instant sync (optional) — trigger on every edit</summary>
+          <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-top:8px">
+            In your sheet: <em>Extensions → Apps Script</em>, paste the snippet below, then add an <em>On change</em> trigger. Edits will push to the CRM within seconds (in addition to the interval poll). Save settings first to generate your URL.
+            <div style="margin-top:8px">
+              <label class="form-label" style="font-size:11px">Webhook URL</label>
+              <input class="form-input" id="ss-hook-url" readonly onclick="this.select()" style="font-size:11px" placeholder="Save to generate…">
+            </div>
+            <pre id="ss-hook-snippet" style="white-space:pre-wrap;word-break:break-all;background:rgba(0,0,0,.25);padding:8px;border-radius:6px;margin-top:8px;font-size:11px;color:var(--muted)"></pre>
+          </div>
+        </details>
+      </div>
+      <div class="modal-footer" style="justify-content:space-between">
+        <button class="btn btn-outline" id="ss-run-btn" onclick="runSheetSyncNow()">Sync now</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline" onclick="document.getElementById('sheet-sync-modal').style.display='none'">Cancel</button>
+          <button class="btn btn-primary" onclick="saveSheetSync()">Save</button>
+        </div>
       </div>
     </div>
   </div>
@@ -6696,6 +6785,124 @@ async function importLeadsCsv() {
     document.getElementById('csv-import-modal').style.display = 'none';
     await loadCustomers();
   } catch (e) { alert('Import error: ' + e.message); }
+}
+
+// ── Find & remove duplicate leads ───────────────────────────────────────────
+let _dedupeGroups = [];
+async function openDedupeModal() {
+  document.getElementById('dedupe-modal').style.display = 'flex';
+  document.getElementById('dedupe-confirm-btn').style.display = 'none';
+  const body = document.getElementById('dedupe-body');
+  body.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center">Scanning…</div>';
+  try {
+    const data = await apiFetch('/api/dashboard/customers/duplicates').then(r => r.json());
+    if (data.error) throw new Error(data.error);
+    _dedupeGroups = data.groups || [];
+    if (!_dedupeGroups.length) {
+      body.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center">✅ No duplicate leads found.</div>';
+      return;
+    }
+    const fmt = c => [c.phone, c.car_in_question, c.lead_date].filter(Boolean).join(' · ') || '—';
+    body.innerHTML = `<div style="font-size:13px;color:var(--gold);font-weight:600">${data.groupCount} duplicate group(s) · ${data.totalRemove} lead(s) to remove</div>` +
+      _dedupeGroups.map((g, gi) => `
+        <div style="border:1px solid var(--hair);border-radius:8px;padding:10px 12px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-size:12px;background:rgba(100,180,120,.15);color:#7fce9a;padding:2px 8px;border-radius:6px">KEEP</span>
+            <strong style="font-size:13px">${esc(g.keeper.name || '(no name)')}</strong>
+            <span style="font-size:11px;color:var(--muted)">${esc(fmt(g.keeper))} · #${g.keeper.id}</span>
+          </div>
+          ${g.remove.map(c => `
+            <label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;cursor:pointer">
+              <input type="checkbox" class="dedupe-cb" data-id="${c.id}" checked>
+              <span style="color:var(--danger)">remove</span>
+              <span>${esc(c.name || '(no name)')}</span>
+              <span style="color:var(--muted)">${esc(fmt(c))} · #${c.id}</span>
+            </label>`).join('')}
+        </div>`).join('');
+    document.getElementById('dedupe-confirm-btn').style.display = 'inline-flex';
+    if (window.lucide) lucide.createIcons();
+  } catch (e) {
+    body.innerHTML = `<div style="color:var(--danger);padding:20px">${esc(e.message)}</div>`;
+  }
+}
+async function confirmDedupe() {
+  const ids = [...document.querySelectorAll('.dedupe-cb:checked')].map(cb => Number(cb.dataset.id));
+  if (!ids.length) { alert('Select at least one lead to remove.'); return; }
+  if (!confirm(`Permanently delete ${ids.length} duplicate lead(s)? This cannot be undone.`)) return;
+  try {
+    const r = await apiFetch('/api/dashboard/customers/dedupe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) }).then(r => r.json());
+    if (r.error) throw new Error(r.error);
+    document.getElementById('dedupe-modal').style.display = 'none';
+    alert(`Removed ${r.deleted} duplicate lead(s).`);
+    await loadCustomers();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ── Google Sheet → CRM auto-sync ────────────────────────────────────────────
+async function openSheetSyncModal() {
+  document.getElementById('sheet-sync-modal').style.display = 'flex';
+  document.getElementById('ss-status').textContent = 'Loading…';
+  try {
+    const c = await apiFetch('/api/dashboard/leads/sheet-sync').then(r => r.json());
+    document.getElementById('ss-url').value = c.url || '';
+    document.getElementById('ss-enabled').checked = !!c.enabled;
+    document.getElementById('ss-interval').value = String(c.intervalMin || 15);
+    document.getElementById('ss-conflict').value = c.conflict || 'sheet';
+    renderSheetSyncStatus(c);
+    renderSheetSyncHook(c.hookUrl || '');
+  } catch (e) { document.getElementById('ss-status').textContent = 'Error: ' + e.message; }
+}
+function renderSheetSyncStatus(c) {
+  const el = document.getElementById('ss-status');
+  if (c.lastError) { el.innerHTML = `<span style="color:var(--danger)">⚠ ${esc(c.lastError)}</span>`; return; }
+  if (c.lastSyncAt) {
+    const r = c.lastResult || {};
+    el.innerHTML = `Last sync: ${new Date(c.lastSyncAt).toLocaleString()} — added ${r.inserted || 0}, updated ${r.updated || 0}, unchanged ${r.skipped || 0}.`;
+  } else { el.textContent = 'Not synced yet.'; }
+}
+function renderSheetSyncHook(url) {
+  document.getElementById('ss-hook-url').value = url || '';
+  document.getElementById('ss-hook-snippet').textContent = url
+    ? `function onChangeSync(e) {\n  UrlFetchApp.fetch("${url}", { method: "post", muteHttpExceptions: true });\n}`
+    : 'Save settings to generate your webhook URL.';
+}
+function readSheetSyncForm() {
+  return {
+    url: document.getElementById('ss-url').value.trim(),
+    enabled: document.getElementById('ss-enabled').checked,
+    intervalMin: Number(document.getElementById('ss-interval').value),
+    conflict: document.getElementById('ss-conflict').value,
+  };
+}
+async function saveSheetSync() {
+  const body = readSheetSyncForm();
+  if (body.url && !/\/spreadsheets\/d\//.test(body.url)) { alert('Please enter a valid Google Sheets URL.'); return; }
+  try {
+    const r = await apiFetch('/api/dashboard/leads/sheet-sync', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+    if (r.error) throw new Error(r.error);
+    const c = await apiFetch('/api/dashboard/leads/sheet-sync').then(r => r.json());
+    renderSheetSyncStatus(c);
+    renderSheetSyncHook(c.hookUrl || '');
+    alert('Sheet connection saved.');
+  } catch (e) { alert('Error: ' + e.message); }
+}
+async function runSheetSyncNow() {
+  const btn = document.getElementById('ss-run-btn');
+  const url = document.getElementById('ss-url').value.trim();
+  if (!url) { alert('Enter and save a Google Sheets URL first.'); return; }
+  btn.disabled = true; btn.textContent = 'Syncing…';
+  try {
+    // Persist current form first so "Sync now" uses the latest URL/settings.
+    await apiFetch('/api/dashboard/leads/sheet-sync', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(readSheetSyncForm()) });
+    const r = await apiFetch('/api/dashboard/leads/sheet-sync/run', { method: 'POST' }).then(r => r.json());
+    if (r.error) throw new Error(r.error);
+    const c = await apiFetch('/api/dashboard/leads/sheet-sync').then(r => r.json());
+    renderSheetSyncStatus(c);
+    renderSheetSyncHook(c.hookUrl || '');
+    alert(`Synced — added ${r.inserted || 0}, updated ${r.updated || 0}, unchanged ${r.skipped || 0}.`);
+    await loadCustomers();
+  } catch (e) { alert('Sync error: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Sync now'; }
 }
 
 // ── Deals ─────────────────────────────────────────────────────────────────
