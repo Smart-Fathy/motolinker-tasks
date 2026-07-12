@@ -2051,7 +2051,8 @@
       </div>
       <div class="modal-body" style="padding:24px;display:grid;gap:14px">
         <div style="font-size:12px;color:var(--muted);line-height:1.7;background:rgba(255,255,255,.03);padding:10px 14px;border-radius:8px;border:1px solid var(--hair)">
-          CSV columns (any order): <strong>name, phone, notes, status, origin, car, budget, next_action, been_contacted, sales_feedback, inquiry, date, time</strong><br>
+          CSV columns (any order): <strong>name, phone, notes, status, origin, car, budget, next_action, been_contacted, sales_feedback, inquiry, date, time, owner</strong><br>
+          Common header variants are recognised automatically (e.g. Full Name, Mobile / Phone Number, Lead Status, Vehicle / Model, Lead Source, Contacted, Lead Date). Columns matching your custom lead columns are imported too; unrecognised columns are ignored (you'll be told which).<br>
           <em>name</em> column is required. Status values: cold, warm, hot, immediate_delivery, not_interested, blacklist.
         </div>
         <div>
@@ -6689,7 +6690,9 @@ async function importLeadsCsv() {
       result = await apiFetch('/api/dashboard/customers/import', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sheetUrl }) }).then(r => r.json());
     }
     if (result.error) { alert('Import error: ' + result.error); return; }
-    alert(`Imported ${result.count} lead(s) successfully.`);
+    let msg = `Imported ${result.count} lead(s)` + (result.skipped ? `, skipped ${result.skipped} duplicate(s)` : '') + '.';
+    if (result.unmatchedHeaders && result.unmatchedHeaders.length) msg += `\n\nIgnored columns (no matching field): ${result.unmatchedHeaders.join(', ')}`;
+    alert(msg);
     document.getElementById('csv-import-modal').style.display = 'none';
     await loadCustomers();
   } catch (e) { alert('Import error: ' + e.message); }

@@ -1478,6 +1478,121 @@ function parseBudget(raw) {
   return { min: parseBudgetPart(str), max: null };
 }
 
+// ── Shared leads-CSV parser (used by both admin + employee import routes) ──────
+// Tolerant of the column names people actually use: an alias table for built-ins,
+// custom-column (cf_*) mapping from the saved config, quote-aware header parsing,
+// and BOM-safe. Returns { rows, unmatchedHeaders } (or { error } for bad input).
+const CSV_HEADER_ALIASES = {
+  name: ['name','full_name','fullname','customer_name','client_name','lead_name','contact_name','الاسم','اسم'],
+  phone: ['phone','mobile','mobile_number','phone_number','phoneno','tel','telephone','whatsapp','contact','contact_number','number','رقم','الهاتف','الموبايل'],
+  email: ['email','e_mail','mail','email_address','الايميل','البريد'],
+  source: ['source','origin','lead_source','channel','المصدر'],
+  notes: ['notes','note','comment','comments','remark','remarks','description','ملاحظات','ملاحظة'],
+  date: ['date','lead_date','created','created_at','created_date','entry_date','التاريخ'],
+  time: ['time','lead_time','الوقت'],
+  status: ['status','lead_status','stage','state','الحالة'],
+  car: ['car','car_in_question','vehicle','car_model','model','interested_in','car_of_interest','السيارة','العربية','الموديل'],
+  budget: ['budget','budget_lead','budget_egp','price','amount','value','الميزانية','السعر'],
+  next_action: ['next_action','next_step','action','followup_action','الاجراء'],
+  been_contacted: ['been_contacted','contacted','is_contacted','has_been_contacted','تم_التواصل'],
+  sales_feedback: ['sales_feedback','feedback','sales_notes'],
+  inquiry: ['inquiry','enquiry','question','الاستفسار'],
+  assigned_to: ['assigned_to','owner','assignee','rep','sales_rep','salesperson','agent','sales','المسؤول','الموظف'],
+};
+// Default enum option keys (mirrors LEAD_DEFAULT_COLS) so values canonicalize even
+// when the column config has never been customized.
+const LEADS_ENUM_DEFAULTS = {
+  status: [['cold','Cold'],['warm','Warm'],['hot','Hot'],['immediate_delivery','Immediate Delivery'],['not_interested','Not Interested'],['blacklist','Blacklist']],
+  source: [['fb_ad','FB Ad.'],['whatsapp','Whatsapp'],['messenger','Messenger'],['direct_call','Direct Call'],['ig_ads','IG ads'],['website','Website'],['walk_in','Walk-in'],['marketplace','Marketplace']],
+  next_action: [['followed_by_sales','Followed By Sales'],['need_follow_up','Need Follow Up'],['closed','Closed'],['no_answer','No Answer']],
+};
+const CSV_FIELD_TO_COLKEY = { status: 'lead_status', source: 'source', next_action: 'next_action' };
+function csvNormHeader(h) {
+  return String(h == null ? '' : h).replace(/^﻿/, '').trim().toLowerCase().replace(/^"|"$/g, '').replace(/[\s\-]+/g, '_').replace(/[^\w؀-ۿ]/g, '');
+}
+function csvSlug(s) {
+  return String(s == null ? '' : s).trim().toLowerCase().replace(/[\s\-]+/g, '_').replace(/[^\w؀-ۿ]/g, '');
+}
+// Map an imported enum value to its stored option key (e.g. "Warm"→"warm",
+// "FB Ad."→"fb_ad"); keep the raw value when nothing matches.
+function canonicalizeLeadEnum(field, raw, cols) {
+  const val = String(raw == null ? '' : raw).trim();
+  if (!val) return '';
+  const col = Array.isArray(cols) ? cols.find(c => c && c.key === CSV_FIELD_TO_COLKEY[field]) : null;
+  const opts = (col && Array.isArray(col.options) && col.options.length)
+    ? col.options.map(o => [o.key, o.label]) : (LEADS_ENUM_DEFAULTS[field] || []);
+  const map = {};
+  opts.forEach(([k, label]) => { map[csvSlug(k)] = k; map[csvSlug(label)] = k; });
+  return map[csvSlug(val)] || val;
+}
+async function loadLeadsColsConfig() {
+  try {
+    const { data } = await supabase.from('quotation_settings').select('value').eq('key', 'leads_columns_config').single();
+    if (data?.value) return JSON.parse(data.value);
+  } catch (_) {}
+  return null;
+}
+function parseLeadsCsv(csvText, cols, employees) {
+  const clean = String(csvText || '').replace(/^﻿/, '');
+  const lines = clean.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+  if (lines.length < 2) return { rows: [], unmatchedHeaders: [], error: 'Need header row + at least one data row' };
+  const rawHeaders = parseCsvLine(lines[0]).map(h => h.trim().replace(/^"|"$/g, ''));
+  // Reverse alias lookup: normalized header -> canonical built-in field.
+  const aliasLookup = {};
+  for (const [field, aliases] of Object.entries(CSV_HEADER_ALIASES)) {
+    aliasLookup[csvNormHeader(field)] = field;
+    aliases.forEach(a => { aliasLookup[csvNormHeader(a)] = field; });
+  }
+  // Custom columns (cf_*) from the saved config, matched by key or label.
+  const customLookup = {};
+  (Array.isArray(cols) ? cols : []).filter(c => c && typeof c.key === 'string' && c.key.startsWith('cf_') && !c.deleted)
+    .forEach(c => {
+      customLookup[csvNormHeader(c.key)] = c.key;
+      customLookup[csvNormHeader(c.key.replace(/^cf_/, ''))] = c.key;
+      if (c.label) customLookup[csvNormHeader(c.label)] = c.key;
+    });
+  const colMap = rawHeaders.map(h => {
+    const n = csvNormHeader(h);
+    if (aliasLookup[n]) return { field: aliasLookup[n] };
+    if (customLookup[n]) return { cf: customLookup[n] };
+    return { raw: h };
+  });
+  const unmatchedHeaders = colMap.map((m, i) => (m.raw != null ? rawHeaders[i] : null)).filter(h => h && h.trim());
+  // assigned_to (name/username/email) -> employee id.
+  const empBySlug = {};
+  (Array.isArray(employees) ? employees : []).forEach(e => {
+    [e.name, e.username, e.email].forEach(v => { const s = csvSlug(v); if (s) empBySlug[s] = e.id; });
+  });
+  const rows = lines.slice(1).map(line => {
+    const vals = parseCsvLine(line);
+    const f = {}, cf = {};
+    colMap.forEach((m, i) => {
+      const v = (vals[i] || '').trim().replace(/^"|"$/g, '');
+      if (m.field) { if (f[m.field] == null || f[m.field] === '') f[m.field] = v; }
+      else if (m.cf && v) { cf[m.cf] = v; }
+    });
+    return { f, cf };
+  }).filter(x => x.f.name && x.f.name.trim()).map(({ f, cf }) => {
+    const phone = f.phone || '';
+    const bud = parseBudget(f.budget);
+    const row = {
+      name: f.name.trim(), phone, phone_norm: normalizePhone(phone), email: f.email || '',
+      source: canonicalizeLeadEnum('source', f.source, cols),
+      notes: f.notes || '', lead_date: normalizeLeadDate(f.date), lead_time: f.time || '',
+      lead_status: canonicalizeLeadEnum('status', f.status, cols) || 'cold',
+      car_in_question: f.car || '', budget_lead: bud.min, budget_max: bud.max,
+      next_action: canonicalizeLeadEnum('next_action', f.next_action, cols),
+      been_contacted: /^(true|1|yes|y|x|✓|✔|نعم|صح)$/i.test((f.been_contacted || '').trim()),
+      sales_feedback: f.sales_feedback || '', inquiry: f.inquiry || '', created_by: 'csv_import',
+    };
+    if (Object.keys(cf).length) row.custom_fields = cf;
+    const aid = empBySlug[csvSlug(f.assigned_to)];
+    if (aid) row.assigned_to = aid;
+    return row;
+  });
+  return { rows, unmatchedHeaders };
+}
+
 receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.single('file'), express.json(), async (req, res) => {
   try {
     let csvText = '';
@@ -1492,26 +1607,10 @@ receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.s
       csvText = await r.text();
     }
     if (!csvText) return res.status(400).json({ error: 'No data to import' });
-    const lines = csvText.split('\n').map(l => l.trim()).filter(l => l);
-    if (lines.length < 2) return res.status(400).json({ error: 'Need header row + at least one data row' });
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, '').replace(/ /g, '_'));
-    const rows = lines.slice(1).map(line => {
-      const vals = parseCsvLine(line);
-      const r = {};
-      headers.forEach((h, i) => { r[h] = (vals[i] || '').trim().replace(/^"|"$/g, ''); });
-      return r;
-    }).filter(r => r.name).map(r => {
-      const phone = r.phone||'';
-      const bud = parseBudget(r.budget);
-      return {
-        name: r.name, phone, phone_norm: normalizePhone(phone), email: r.email||'', source: r.origin||r.source||'',
-        notes: r.notes||'', lead_date: normalizeLeadDate(r.date), lead_time: r.time||'',
-        lead_status: r.status||'cold', car_in_question: r.car||r.car_in_question||'',
-        budget_lead: bud.min, budget_max: bud.max,
-        next_action: r.next_action||'', been_contacted: /^(true|1|yes|y)$/i.test((r.been_contacted||'').trim()),
-        sales_feedback: r.sales_feedback||'', inquiry: r.inquiry||'', created_by: 'csv_import',
-      };
-    });
+    const cols = await loadLeadsColsConfig();
+    const { data: emps } = await supabase.from('employees').select('id,name,username,email');
+    const { rows, unmatchedHeaders, error: parseErr } = parseLeadsCsv(csvText, cols, emps || []);
+    if (parseErr) return res.status(400).json({ error: parseErr });
     if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
     // Dedup: skip rows whose normalized phone already exists in the DB OR repeats within this file.
     const norms = [...new Set(rows.map(r => r.phone_norm).filter(Boolean))];
@@ -1531,7 +1630,7 @@ receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.s
       const { error } = await supabase.from('customers').insert(toInsert);
       if (error) return res.status(500).json({ error: error.message });
     }
-    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50) });
+    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50), unmatchedHeaders });
   } catch (e) { console.error('[csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 
@@ -2908,26 +3007,10 @@ receiver.router.post('/api/employee/customers/import', requireEmployeeAuth, mult
       csvText = await r.text();
     }
     if (!csvText) return res.status(400).json({ error: 'No data to import' });
-    const lines = csvText.split('\n').map(l => l.trim()).filter(l => l);
-    if (lines.length < 2) return res.status(400).json({ error: 'Need header row + at least one data row' });
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, '').replace(/ /g, '_'));
-    const rows = lines.slice(1).map(line => {
-      const vals = parseCsvLine(line);
-      const r = {};
-      headers.forEach((h, i) => { r[h] = (vals[i] || '').trim().replace(/^"|"$/g, ''); });
-      return r;
-    }).filter(r => r.name).map(r => {
-      const phone = r.phone||'';
-      const bud = parseBudget(r.budget);
-      return {
-        name: r.name, phone, phone_norm: normalizePhone(phone), email: r.email||'', source: r.origin||r.source||'',
-        notes: r.notes||'', lead_date: normalizeLeadDate(r.date), lead_time: r.time||'',
-        lead_status: r.status||'cold', car_in_question: r.car||r.car_in_question||'',
-        budget_lead: bud.min, budget_max: bud.max,
-        next_action: r.next_action||'', been_contacted: /^(true|1|yes|y)$/i.test((r.been_contacted||'').trim()),
-        sales_feedback: r.sales_feedback||'', inquiry: r.inquiry||'', created_by: 'csv_import',
-      };
-    });
+    const cols = await loadLeadsColsConfig();
+    const { data: emps } = await supabase.from('employees').select('id,name,username,email');
+    const { rows, unmatchedHeaders, error: parseErr } = parseLeadsCsv(csvText, cols, emps || []);
+    if (parseErr) return res.status(400).json({ error: parseErr });
     if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
     const norms = [...new Set(rows.map(r => r.phone_norm).filter(Boolean))];
     const existing = new Set();
@@ -2946,7 +3029,7 @@ receiver.router.post('/api/employee/customers/import', requireEmployeeAuth, mult
       const { error } = await supabase.from('customers').insert(toInsert);
       if (error) return res.status(500).json({ error: error.message });
     }
-    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50) });
+    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50), unmatchedHeaders });
   } catch (e) { console.error('[emp-csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 
