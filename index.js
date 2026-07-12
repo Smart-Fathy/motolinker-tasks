@@ -1491,7 +1491,7 @@ const CSV_HEADER_ALIASES = {
   date: ['date','lead_date','created','created_at','created_date','entry_date','التاريخ'],
   time: ['time','lead_time','الوقت'],
   status: ['status','lead_status','stage','state','الحالة'],
-  car: ['car','car_in_question','vehicle','car_model','model','interested_in','car_of_interest','السيارة','العربية','الموديل'],
+  car: ['car','car_in_question','vehicle','car_model','model','interested_in','car_of_interest','vehicle_requested','requested_vehicle','vehicle_request','car_requested','requested_car','vehicle_of_interest','vehicle_needed','vehicle_model','vehicle_type','السيارة','العربية','الموديل','السياره','المركبة'],
   budget: ['budget','budget_lead','budget_egp','price','amount','value','الميزانية','السعر'],
   next_action: ['next_action','next_step','action','followup_action','الاجراء'],
   been_contacted: ['been_contacted','contacted','is_contacted','has_been_contacted','تم_التواصل'],
@@ -1645,6 +1645,77 @@ async function dedupLeadRows(rows) {
   return { toInsert, skippedNames };
 }
 
+// ── Import "update existing leads" (fill blanks) ──────────────────────────────
+// Index existing leads that any parsed row could match (phone, else name
+// composite), carrying their current values so we can fill only empty fields.
+const IMPORT_MATCH_COLS = 'id,name,phone,phone_norm,email,source,notes,lead_date,lead_time,lead_status,car_in_question,budget_lead,budget_max,next_action,been_contacted,sales_feedback,inquiry,assigned_to,custom_fields';
+async function loadExistingLeadsByKey(rows) {
+  const byKey = new Map();
+  const norms = [...new Set(rows.map(r => r.phone_norm).filter(Boolean))];
+  for (let i = 0; i < norms.length; i += 200) {
+    const { data: ex } = await supabase.from('customers').select(IMPORT_MATCH_COLS).in('phone_norm', norms.slice(i, i + 200));
+    (ex || []).forEach(e => { const k = 'p:' + e.phone_norm; if (e.phone_norm && !byKey.has(k)) byKey.set(k, e); });
+  }
+  const names = [...new Set(rows.filter(r => !r.phone_norm).map(r => r.name).filter(Boolean))];
+  for (let i = 0; i < names.length; i += 200) {
+    const { data: ex } = await supabase.from('customers').select(IMPORT_MATCH_COLS).in('name', names.slice(i, i + 200));
+    (ex || []).forEach(e => { const k = leadDedupKey({ phone_norm: '', name: e.name, car_in_question: e.car_in_question, budget_lead: e.budget_lead, lead_date: e.lead_date }); if (!byKey.has(k)) byKey.set(k, e); });
+  }
+  return byKey;
+}
+// Build a patch that ONLY fills fields empty in the CRM — never overwrites data
+// already there. Blank sheet cells are ignored. custom_fields merge key-by-key.
+const IMPORT_FILL_FIELDS = ['name', 'phone', 'email', 'source', 'notes', 'lead_date', 'lead_time', 'lead_status', 'car_in_question', 'budget_lead', 'budget_max', 'next_action', 'sales_feedback', 'inquiry'];
+function fillEmptyPatch(incoming, current) {
+  const patch = {}; const isEmpty = v => v == null || v === '';
+  for (const k of IMPORT_FILL_FIELDS) { const inc = incoming[k]; if (isEmpty(inc)) continue; if (isEmpty(current[k])) patch[k] = inc; }
+  if (incoming.been_contacted && !current.been_contacted) patch.been_contacted = true;
+  if (incoming.assigned_to != null && current.assigned_to == null) patch.assigned_to = incoming.assigned_to;
+  const incCf = incoming.custom_fields || {}, curCf = current.custom_fields || {};
+  const merged = { ...curCf }; let ch = false;
+  for (const [k, v] of Object.entries(incCf)) { if (v == null || v === '') continue; if (curCf[k] == null || curCf[k] === '') { merged[k] = v; ch = true; } }
+  if (ch) patch.custom_fields = merged;
+  if (Object.prototype.hasOwnProperty.call(patch, 'phone')) patch.phone_norm = normalizePhone(patch.phone);
+  return patch;
+}
+// Shared import: insert new leads and (when updateExisting) fill blanks on
+// matched ones. Returns { inserted, updated, skipped }.
+async function importLeadRows(rows, updateExisting) {
+  if (!updateExisting) {
+    const { toInsert, skippedNames } = await dedupLeadRows(rows);
+    if (toInsert.length) {
+      const { error } = await supabase.from('customers').insert(toInsert);
+      if (error) throw new Error(error.message);
+    }
+    return { inserted: toInsert.length, updated: 0, skipped: skippedNames.length, skippedNames };
+  }
+  const idx = await loadExistingLeadsByKey(rows);
+  let updated = 0, skipped = 0;
+  const toInsert = [], seen = new Set();
+  for (const row of rows) {
+    const key = leadDedupKey(row);
+    if (seen.has(key)) { skipped++; continue; }
+    seen.add(key);
+    const cur = idx.get(key);
+    if (cur) {
+      const patch = fillEmptyPatch(row, cur);
+      if (Object.keys(patch).length) {
+        patch.updated_at = new Date().toISOString();
+        const { error } = await supabase.from('customers').update(patch).eq('id', cur.id);
+        if (error) throw new Error(error.message);
+        updated++;
+      } else skipped++;
+    } else {
+      toInsert.push({ ...row, custom_fields: row.custom_fields || {} });
+    }
+  }
+  if (toInsert.length) {
+    const { error } = await supabase.from('customers').insert(toInsert);
+    if (error) throw new Error(error.message);
+  }
+  return { inserted: toInsert.length, updated, skipped, skippedNames: [] };
+}
+
 receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.single('file'), express.json(), async (req, res) => {
   try {
     let csvText = '';
@@ -1664,12 +1735,9 @@ receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.s
     const { rows, unmatchedHeaders, error: parseErr } = parseLeadsCsv(csvText, cols, emps || []);
     if (parseErr) return res.status(400).json({ error: parseErr });
     if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
-    const { toInsert, skippedNames } = await dedupLeadRows(rows);
-    if (toInsert.length) {
-      const { error } = await supabase.from('customers').insert(toInsert);
-      if (error) return res.status(500).json({ error: error.message });
-    }
-    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50), unmatchedHeaders });
+    const updateExisting = String(req.body?.updateExisting) === 'true';
+    const { inserted, updated, skipped, skippedNames } = await importLeadRows(rows, updateExisting);
+    res.json({ count: inserted, inserted, updated, skipped, skippedNames: (skippedNames || []).slice(0, 50), unmatchedHeaders });
   } catch (e) { console.error('[csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 
@@ -3084,12 +3152,9 @@ receiver.router.post('/api/employee/customers/import', requireEmployeeAuth, mult
     const { rows, unmatchedHeaders, error: parseErr } = parseLeadsCsv(csvText, cols, emps || []);
     if (parseErr) return res.status(400).json({ error: parseErr });
     if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
-    const { toInsert, skippedNames } = await dedupLeadRows(rows);
-    if (toInsert.length) {
-      const { error } = await supabase.from('customers').insert(toInsert);
-      if (error) return res.status(500).json({ error: error.message });
-    }
-    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50), unmatchedHeaders });
+    const updateExisting = String(req.body?.updateExisting) === 'true';
+    const { inserted, updated, skipped, skippedNames } = await importLeadRows(rows, updateExisting);
+    res.json({ count: inserted, inserted, updated, skipped, skippedNames: (skippedNames || []).slice(0, 50), unmatchedHeaders });
   } catch (e) { console.error('[emp-csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 

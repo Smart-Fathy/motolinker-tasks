@@ -2054,7 +2054,7 @@
       </div>
       <div class="modal-body" style="padding:24px;display:grid;gap:14px">
         <div style="font-size:12px;color:var(--muted);line-height:1.7;background:rgba(255,255,255,.03);padding:10px 14px;border-radius:8px;border:1px solid var(--hair)">
-          Match by column name: a CSV header is imported into the leads column with the same on-screen name (built-in or your own — including built-in columns you've renamed). Common variants are also recognised (e.g. Full Name, Mobile / Phone Number, Lead Status, Vehicle / Model, Lead Source, Contacted, Lead Date).<br>
+          Match by column name: a CSV header is imported into the leads column with the same on-screen name (built-in or your own — including built-in columns you've renamed). Common variants are also recognised (e.g. Full Name, Mobile / Phone Number, Lead Status, Vehicle / Model / Vehicle Requested, Lead Source, Contacted, Lead Date).<br>
           Headers that don't match any existing column are listed after import (not imported) — add those columns first (+ button), then re-import.<br>
           <em>name</em> column is required. Leads without a phone are de-duplicated by name + vehicle + budget + date.
         </div>
@@ -2067,6 +2067,10 @@
           <label class="form-label">Google Sheets URL <span style="color:var(--muted);font-weight:400">(must be publicly shared)</span></label>
           <input class="form-input" id="csv-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/…">
         </div>
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12px;color:var(--muted);line-height:1.6;background:rgba(255,255,255,.03);padding:10px 14px;border-radius:8px;border:1px solid var(--hair)">
+          <input type="checkbox" id="csv-update-existing" checked style="margin-top:2px">
+          <span><strong style="color:var(--text)">Update leads that already exist</strong> — fill in blank fields (e.g. Vehicle Requested) on matching leads from the sheet. Existing values are never overwritten. Leave off to only add brand-new leads.</span>
+        </label>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="document.getElementById('csv-import-modal').style.display='none'">Cancel</button>
@@ -6702,18 +6706,20 @@ function openCsvImportModal() {
 async function importLeadsCsv() {
   const fileInput = document.getElementById('csv-file-input');
   const sheetUrl = document.getElementById('csv-sheet-url').value.trim();
+  const updateExisting = document.getElementById('csv-update-existing')?.checked ? 'true' : 'false';
   if (!fileInput.files[0] && !sheetUrl) { alert('Please select a CSV file or enter a spreadsheet URL.'); return; }
   try {
     let result;
     if (fileInput.files[0]) {
       const fd = new FormData();
       fd.append('file', fileInput.files[0]);
+      fd.append('updateExisting', updateExisting);
       result = await apiFetch('/api/dashboard/customers/import', { method:'POST', body: fd }).then(r => r.json());
     } else {
-      result = await apiFetch('/api/dashboard/customers/import', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sheetUrl }) }).then(r => r.json());
+      result = await apiFetch('/api/dashboard/customers/import', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sheetUrl, updateExisting: updateExisting === 'true' }) }).then(r => r.json());
     }
     if (result.error) { alert('Import error: ' + result.error); return; }
-    let msg = `Imported ${result.count} lead(s)` + (result.skipped ? `, skipped ${result.skipped} duplicate(s)` : '') + '.';
+    let msg = `Imported ${result.count} new lead(s)` + (result.updated ? `, updated ${result.updated} existing` : '') + (result.skipped ? `, skipped ${result.skipped}` : '') + '.';
     if (result.unmatchedHeaders && result.unmatchedHeaders.length) msg += `\n\nThese columns aren't in your leads table, so they were skipped. Add them (+ button), then re-import:\n${result.unmatchedHeaders.join(', ')}`;
     alert(msg);
     document.getElementById('csv-import-modal').style.display = 'none';
