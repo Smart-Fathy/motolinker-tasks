@@ -1553,19 +1553,20 @@ function parseLeadsCsv(csvText, cols, employees) {
   }
   // Match against the user's ACTUAL columns (by current label + key) — including
   // built-ins they've RENAMED (e.g. car_in_question labelled "Vehicle Requested").
-  // Custom columns registered first, then built-ins, so a built-in wins on a label
-  // collision. This is what stops the importer from creating duplicate columns.
+  // Built-ins registered first, then customs, so a CUSTOM column wins on a label
+  // collision — this routes e.g. "Availability" to the user's text cf_availability
+  // rather than the built-in been_contacted (a boolean that can't hold the value).
   const labelLookup = {};
   const list = Array.isArray(cols) ? cols : [];
+  list.filter(c => c && typeof c.key === 'string' && !c.key.startsWith('cf_') && !c.deleted && BUILTIN_KEY_TO_FIELD[c.key]).forEach(c => {
+    const t = { field: BUILTIN_KEY_TO_FIELD[c.key] };
+    labelLookup[csvNormHeader(c.key)] = t;
+    if (c.label) labelLookup[csvNormHeader(c.label)] = t;
+  });
   list.filter(c => c && typeof c.key === 'string' && c.key.startsWith('cf_') && !c.deleted).forEach(c => {
     const t = { cf: c.key };
     labelLookup[csvNormHeader(c.key)] = t;
     labelLookup[csvNormHeader(c.key.replace(/^cf_/, ''))] = t;
-    if (c.label) labelLookup[csvNormHeader(c.label)] = t;
-  });
-  list.filter(c => c && typeof c.key === 'string' && !c.key.startsWith('cf_') && !c.deleted && BUILTIN_KEY_TO_FIELD[c.key]).forEach(c => {
-    const t = { field: BUILTIN_KEY_TO_FIELD[c.key] };
-    labelLookup[csvNormHeader(c.key)] = t;
     if (c.label) labelLookup[csvNormHeader(c.label)] = t;
   });
   const colMap = rawHeaders.map(h => {
