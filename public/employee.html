@@ -3104,7 +3104,7 @@ async function empImportCsv() {
     }
     if (result.error) return showToast('Import error: ' + result.error);
     document.getElementById('emp-csv-modal').style.display = 'none';
-    let msg = `Imported ${result.count} new lead(s)${result.updated ? ` · ${result.updated} updated` : ''}${result.skipped ? ` · ${result.skipped} skipped` : ''}.`;
+    let msg = `Imported ${result.count} new lead(s)${result.updated ? ` · ${result.updated} updated` : ''}${result.skipped ? ` · ${result.skipped} skipped` : ''}${result.deals ? ` · ${result.deals} deal(s) created` : ''}.`;
     if (result.unmatchedHeaders && result.unmatchedHeaders.length) msg += ` Not in your table (add them, then re-import): ${result.unmatchedHeaders.join(', ')}.`;
     showToast(msg);
     loadEmpLeads();

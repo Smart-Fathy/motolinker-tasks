@@ -6719,7 +6719,7 @@ async function importLeadsCsv() {
       result = await apiFetch('/api/dashboard/customers/import', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sheetUrl, updateExisting: updateExisting === 'true' }) }).then(r => r.json());
     }
     if (result.error) { alert('Import error: ' + result.error); return; }
-    let msg = `Imported ${result.count} new lead(s)` + (result.updated ? `, updated ${result.updated} existing` : '') + (result.skipped ? `, skipped ${result.skipped}` : '') + '.';
+    let msg = `Imported ${result.count} new lead(s)` + (result.updated ? `, updated ${result.updated} existing` : '') + (result.skipped ? `, skipped ${result.skipped}` : '') + (result.deals ? `, created ${result.deals} deal(s) for Hot leads` : '') + '.';
     if (result.unmatchedHeaders && result.unmatchedHeaders.length) msg += `\n\nThese columns aren't in your leads table, so they were skipped. Add them (+ button), then re-import:\n${result.unmatchedHeaders.join(', ')}`;
     alert(msg);
     document.getElementById('csv-import-modal').style.display = 'none';
