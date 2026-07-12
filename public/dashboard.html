@@ -2051,9 +2051,9 @@
       </div>
       <div class="modal-body" style="padding:24px;display:grid;gap:14px">
         <div style="font-size:12px;color:var(--muted);line-height:1.7;background:rgba(255,255,255,.03);padding:10px 14px;border-radius:8px;border:1px solid var(--hair)">
-          CSV columns (any order): <strong>name, phone, notes, status, origin, car, budget, next_action, been_contacted, sales_feedback, inquiry, date, time, owner</strong><br>
-          Common header variants are recognised automatically (e.g. Full Name, Mobile / Phone Number, Lead Status, Vehicle / Model, Lead Source, Contacted, Lead Date). Columns matching your custom lead columns are imported too; unrecognised columns are ignored (you'll be told which).<br>
-          <em>name</em> column is required. Status values: cold, warm, hot, immediate_delivery, not_interested, blacklist.
+          Match by column name: a CSV header is imported into the leads column with the same on-screen name (built-in or your own — including built-in columns you've renamed). Common variants are also recognised (e.g. Full Name, Mobile / Phone Number, Lead Status, Vehicle / Model, Lead Source, Contacted, Lead Date).<br>
+          Headers that don't match any existing column are listed after import (not imported) — add those columns first (+ button), then re-import.<br>
+          <em>name</em> column is required. Leads without a phone are de-duplicated by name + vehicle + budget + date.
         </div>
         <div>
           <label class="form-label">CSV File</label>
@@ -6691,11 +6691,9 @@ async function importLeadsCsv() {
     }
     if (result.error) { alert('Import error: ' + result.error); return; }
     let msg = `Imported ${result.count} lead(s)` + (result.skipped ? `, skipped ${result.skipped} duplicate(s)` : '') + '.';
-    if (result.createdColumns && result.createdColumns.length) msg += `\n\nCreated ${result.createdColumns.length} new column(s): ${result.createdColumns.join(', ')}`;
-    if (result.unmatchedHeaders && result.unmatchedHeaders.length) msg += `\n\nIgnored columns (empty in the file): ${result.unmatchedHeaders.join(', ')}`;
+    if (result.unmatchedHeaders && result.unmatchedHeaders.length) msg += `\n\nThese columns aren't in your leads table, so they were skipped. Add them (+ button), then re-import:\n${result.unmatchedHeaders.join(', ')}`;
     alert(msg);
     document.getElementById('csv-import-modal').style.display = 'none';
-    if (result.createdColumns && result.createdColumns.length) { _leadColsLoaded = false; await loadLeadCols(); renderLeadHead(); if (window.lucide) lucide.createIcons(); }
     await loadCustomers();
   } catch (e) { alert('Import error: ' + e.message); }
 }

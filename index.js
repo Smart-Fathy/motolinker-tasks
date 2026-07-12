@@ -1532,31 +1532,46 @@ async function loadLeadsColsConfig() {
   } catch (_) {}
   return null;
 }
+// Maps a built-in leads column key -> the canonical field the row builder fills.
+// (Virtual columns next_followup/owner are absent → not importable.)
+const BUILTIN_KEY_TO_FIELD = {
+  lead_date: 'date', lead_time: 'time', name: 'name', phone: 'phone', email: 'email',
+  lead_status: 'status', source: 'source', car_in_question: 'car', budget_lead: 'budget',
+  next_action: 'next_action', been_contacted: 'been_contacted', sales_feedback: 'sales_feedback',
+  inquiry: 'inquiry', notes: 'notes',
+};
 function parseLeadsCsv(csvText, cols, employees) {
   const clean = String(csvText || '').replace(/^﻿/, '');
   const lines = clean.split(/\r?\n/).map(l => l.trim()).filter(l => l);
   if (lines.length < 2) return { rows: [], unmatchedHeaders: [], error: 'Need header row + at least one data row' };
   const rawHeaders = parseCsvLine(lines[0]).map(h => h.trim().replace(/^"|"$/g, ''));
-  // Reverse alias lookup: normalized header -> canonical built-in field.
+  // Reverse alias lookup: normalized header -> canonical built-in field (default synonyms).
   const aliasLookup = {};
   for (const [field, aliases] of Object.entries(CSV_HEADER_ALIASES)) {
     aliasLookup[csvNormHeader(field)] = field;
     aliases.forEach(a => { aliasLookup[csvNormHeader(a)] = field; });
   }
-  // Custom columns (cf_*) from the saved config, matched by key or label.
-  const customLookup = {};
-  (Array.isArray(cols) ? cols : []).filter(c => c && typeof c.key === 'string' && c.key.startsWith('cf_') && !c.deleted)
-    .forEach(c => {
-      customLookup[csvNormHeader(c.key)] = c.key;
-      customLookup[csvNormHeader(c.key.replace(/^cf_/, ''))] = c.key;
-      if (c.label) customLookup[csvNormHeader(c.label)] = c.key;
-    });
-  // A user-defined column whose label/key matches the header wins over a built-in
-  // alias (so a custom "Budget" gets the data, not the built-in budget_lead).
+  // Match against the user's ACTUAL columns (by current label + key) — including
+  // built-ins they've RENAMED (e.g. car_in_question labelled "Vehicle Requested").
+  // Custom columns registered first, then built-ins, so a built-in wins on a label
+  // collision. This is what stops the importer from creating duplicate columns.
+  const labelLookup = {};
+  const list = Array.isArray(cols) ? cols : [];
+  list.filter(c => c && typeof c.key === 'string' && c.key.startsWith('cf_') && !c.deleted).forEach(c => {
+    const t = { cf: c.key };
+    labelLookup[csvNormHeader(c.key)] = t;
+    labelLookup[csvNormHeader(c.key.replace(/^cf_/, ''))] = t;
+    if (c.label) labelLookup[csvNormHeader(c.label)] = t;
+  });
+  list.filter(c => c && typeof c.key === 'string' && !c.key.startsWith('cf_') && !c.deleted && BUILTIN_KEY_TO_FIELD[c.key]).forEach(c => {
+    const t = { field: BUILTIN_KEY_TO_FIELD[c.key] };
+    labelLookup[csvNormHeader(c.key)] = t;
+    if (c.label) labelLookup[csvNormHeader(c.label)] = t;
+  });
   const colMap = rawHeaders.map(h => {
     const n = csvNormHeader(h);
-    if (customLookup[n]) return { cf: customLookup[n] };
-    if (aliasLookup[n]) return { field: aliasLookup[n] };
+    if (labelLookup[n]) return labelLookup[n];         // existing column (renamed built-in or custom)
+    if (aliasLookup[n]) return { field: aliasLookup[n] }; // default synonym
     return { raw: h };
   });
   // assigned_to (name/username/email) -> employee id.
@@ -1565,12 +1580,8 @@ function parseLeadsCsv(csvText, cols, employees) {
     [e.name, e.username, e.email].forEach(v => { const s = csvSlug(v); if (s) empBySlug[s] = e.id; });
   });
   const dataRows = lines.slice(1).map(line => parseCsvLine(line).map(v => (v || '').trim().replace(/^"|"$/g, '')));
-  // Unmatched headers, flagged with whether any row actually carries a value (so
-  // the caller can auto-create columns for data-bearing headers and skip empty ones).
-  const unmatched = colMap.map((m, i) => (m.raw != null
-    ? { header: rawHeaders[i], hasData: dataRows.some(r => (r[i] || '') !== '') }
-    : null)).filter(x => x && x.header && x.header.trim());
-  const unmatchedHeaders = unmatched.map(u => u.header);
+  // Headers that match no existing column and no alias — reported, never auto-created.
+  const unmatchedHeaders = colMap.map((m, i) => (m.raw != null ? rawHeaders[i] : null)).filter(h => h && h.trim());
   const rows = dataRows.map(vals => {
     const f = {}, cf = {};
     colMap.forEach((m, i) => {
@@ -1597,35 +1608,40 @@ function parseLeadsCsv(csvText, cols, employees) {
       custom_fields: cf, assigned_to: aid || null,
     };
   });
-  return { rows, unmatchedHeaders, unmatched };
+  return { rows, unmatchedHeaders };
 }
-// Full server-side import prep (shared by both routes): parse, auto-create a custom
-// column for any unmatched header that carries data (persisting the shared config),
-// then re-parse so those values land in custom_fields. Nothing with data is dropped.
-async function prepareLeadsImport(csvText, employees) {
-  let cols = await loadLeadsColsConfig();
-  const first = parseLeadsCsv(csvText, cols, employees);
-  if (first.error) return { error: first.error };
-  const toCreate = (first.unmatched || []).filter(u => u.hasData);
-  const createdColumns = [];
-  if (toCreate.length) {
-    const base = Array.isArray(cols) ? cols.slice() : [];
-    const existingKeys = new Set(base.map(c => c && c.key));
-    for (const u of toCreate) {
-      const root = 'cf_' + (csvSlug(u.header) || 'col');
-      let k = root, n = 2;
-      while (existingKeys.has(k)) k = root + '_' + (n++);
-      existingKeys.add(k);
-      base.push({ key: k, label: u.header, type: 'text', builtin: false, visible: true });
-      createdColumns.push(u.header);
-    }
-    try {
-      await supabase.from('quotation_settings').upsert({ key: 'leads_columns_config', value: JSON.stringify(base) }, { onConflict: 'key' });
-    } catch (e) { console.warn('[csv-import] auto-create persist failed:', e.message); }
-    cols = base;
+// Dedup key for a parsed row: normalized phone when present, else a composite of
+// name + vehicle + budget + date so phone-less leads don't duplicate on re-import.
+function leadDedupKey(r) {
+  if (r.phone_norm) return 'p:' + r.phone_norm;
+  return 'c:' + csvSlug(r.name) + '|' + csvSlug(r.car_in_question) + '|' + (r.budget_lead == null ? '' : r.budget_lead) + '|' + (r.lead_date || '');
+}
+// Filter parsed rows against the DB + within the file. Phoned rows dedup on phone;
+// phone-less rows dedup on the name+vehicle+budget+date composite (so they don't
+// duplicate on re-import). Returns { toInsert, skippedNames }.
+async function dedupLeadRows(rows) {
+  const existing = new Set();
+  const norms = [...new Set(rows.map(r => r.phone_norm).filter(Boolean))];
+  for (let i = 0; i < norms.length; i += 200) {
+    const { data: ex } = await supabase.from('customers').select('phone_norm').in('phone_norm', norms.slice(i, i + 200));
+    (ex || []).forEach(e => { if (e.phone_norm) existing.add('p:' + e.phone_norm); });
   }
-  const final = createdColumns.length ? parseLeadsCsv(csvText, cols, employees) : first;
-  return { rows: final.rows, createdColumns, unmatchedHeaders: final.unmatchedHeaders };
+  const phonelessNames = [...new Set(rows.filter(r => !r.phone_norm).map(r => r.name).filter(Boolean))];
+  for (let i = 0; i < phonelessNames.length; i += 200) {
+    const { data: ex } = await supabase.from('customers').select('name,car_in_question,budget_lead,lead_date').in('name', phonelessNames.slice(i, i + 200));
+    (ex || []).forEach(e => existing.add(leadDedupKey({ phone_norm: '', name: e.name, car_in_question: e.car_in_question, budget_lead: e.budget_lead, lead_date: e.lead_date })));
+  }
+  const seen = new Set();
+  const skippedNames = [];
+  const toInsert = rows.filter(r => {
+    const k = leadDedupKey(r);
+    if (existing.has(k) || seen.has(k)) { skippedNames.push(r.name); return false; }
+    seen.add(k);
+    return true;
+  });
+  // Guard the PostgREST first-row-defines-columns gotcha: every row carries custom_fields.
+  toInsert.forEach(r => { if (r.custom_fields == null) r.custom_fields = {}; });
+  return { toInsert, skippedNames };
 }
 
 receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.single('file'), express.json(), async (req, res) => {
@@ -1643,30 +1659,16 @@ receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.s
     }
     if (!csvText) return res.status(400).json({ error: 'No data to import' });
     const { data: emps } = await supabase.from('employees').select('id,name,username,email');
-    const { rows, createdColumns, unmatchedHeaders, error: parseErr } = await prepareLeadsImport(csvText, emps || []);
+    const cols = await loadLeadsColsConfig();
+    const { rows, unmatchedHeaders, error: parseErr } = parseLeadsCsv(csvText, cols, emps || []);
     if (parseErr) return res.status(400).json({ error: parseErr });
     if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
-    // Dedup: skip rows whose normalized phone already exists in the DB OR repeats within this file.
-    const norms = [...new Set(rows.map(r => r.phone_norm).filter(Boolean))];
-    const existing = new Set();
-    for (let i = 0; i < norms.length; i += 200) {
-      const { data: ex } = await supabase.from('customers').select('phone_norm').in('phone_norm', norms.slice(i, i + 200));
-      (ex || []).forEach(e => existing.add(e.phone_norm));
-    }
-    const seen = new Set();
-    const skippedNames = [];
-    const toInsert = rows.filter(r => {
-      if (r.phone_norm && (existing.has(r.phone_norm) || seen.has(r.phone_norm))) { skippedNames.push(r.name); return false; }
-      if (r.phone_norm) seen.add(r.phone_norm);
-      return true;
-    });
-    // Guard the PostgREST first-row-defines-columns gotcha: every row carries custom_fields.
-    toInsert.forEach(r => { if (r.custom_fields == null) r.custom_fields = {}; });
+    const { toInsert, skippedNames } = await dedupLeadRows(rows);
     if (toInsert.length) {
       const { error } = await supabase.from('customers').insert(toInsert);
       if (error) return res.status(500).json({ error: error.message });
     }
-    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50), unmatchedHeaders, createdColumns });
+    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50), unmatchedHeaders });
   } catch (e) { console.error('[csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 
@@ -3044,28 +3046,16 @@ receiver.router.post('/api/employee/customers/import', requireEmployeeAuth, mult
     }
     if (!csvText) return res.status(400).json({ error: 'No data to import' });
     const { data: emps } = await supabase.from('employees').select('id,name,username,email');
-    const { rows, createdColumns, unmatchedHeaders, error: parseErr } = await prepareLeadsImport(csvText, emps || []);
+    const cols = await loadLeadsColsConfig();
+    const { rows, unmatchedHeaders, error: parseErr } = parseLeadsCsv(csvText, cols, emps || []);
     if (parseErr) return res.status(400).json({ error: parseErr });
     if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
-    const norms = [...new Set(rows.map(r => r.phone_norm).filter(Boolean))];
-    const existing = new Set();
-    for (let i = 0; i < norms.length; i += 200) {
-      const { data: ex } = await supabase.from('customers').select('phone_norm').in('phone_norm', norms.slice(i, i + 200));
-      (ex || []).forEach(e => existing.add(e.phone_norm));
-    }
-    const seen = new Set();
-    const skippedNames = [];
-    const toInsert = rows.filter(r => {
-      if (r.phone_norm && (existing.has(r.phone_norm) || seen.has(r.phone_norm))) { skippedNames.push(r.name); return false; }
-      if (r.phone_norm) seen.add(r.phone_norm);
-      return true;
-    });
-    toInsert.forEach(r => { if (r.custom_fields == null) r.custom_fields = {}; });
+    const { toInsert, skippedNames } = await dedupLeadRows(rows);
     if (toInsert.length) {
       const { error } = await supabase.from('customers').insert(toInsert);
       if (error) return res.status(500).json({ error: error.message });
     }
-    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50), unmatchedHeaders, createdColumns });
+    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50), unmatchedHeaders });
   } catch (e) { console.error('[emp-csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 
