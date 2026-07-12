@@ -1551,23 +1551,30 @@ function parseLeadsCsv(csvText, cols, employees) {
       customLookup[csvNormHeader(c.key.replace(/^cf_/, ''))] = c.key;
       if (c.label) customLookup[csvNormHeader(c.label)] = c.key;
     });
+  // A user-defined column whose label/key matches the header wins over a built-in
+  // alias (so a custom "Budget" gets the data, not the built-in budget_lead).
   const colMap = rawHeaders.map(h => {
     const n = csvNormHeader(h);
-    if (aliasLookup[n]) return { field: aliasLookup[n] };
     if (customLookup[n]) return { cf: customLookup[n] };
+    if (aliasLookup[n]) return { field: aliasLookup[n] };
     return { raw: h };
   });
-  const unmatchedHeaders = colMap.map((m, i) => (m.raw != null ? rawHeaders[i] : null)).filter(h => h && h.trim());
   // assigned_to (name/username/email) -> employee id.
   const empBySlug = {};
   (Array.isArray(employees) ? employees : []).forEach(e => {
     [e.name, e.username, e.email].forEach(v => { const s = csvSlug(v); if (s) empBySlug[s] = e.id; });
   });
-  const rows = lines.slice(1).map(line => {
-    const vals = parseCsvLine(line);
+  const dataRows = lines.slice(1).map(line => parseCsvLine(line).map(v => (v || '').trim().replace(/^"|"$/g, '')));
+  // Unmatched headers, flagged with whether any row actually carries a value (so
+  // the caller can auto-create columns for data-bearing headers and skip empty ones).
+  const unmatched = colMap.map((m, i) => (m.raw != null
+    ? { header: rawHeaders[i], hasData: dataRows.some(r => (r[i] || '') !== '') }
+    : null)).filter(x => x && x.header && x.header.trim());
+  const unmatchedHeaders = unmatched.map(u => u.header);
+  const rows = dataRows.map(vals => {
     const f = {}, cf = {};
     colMap.forEach((m, i) => {
-      const v = (vals[i] || '').trim().replace(/^"|"$/g, '');
+      const v = vals[i] || '';
       if (m.field) { if (f[m.field] == null || f[m.field] === '') f[m.field] = v; }
       else if (m.cf && v) { cf[m.cf] = v; }
     });
@@ -1575,7 +1582,10 @@ function parseLeadsCsv(csvText, cols, employees) {
   }).filter(x => x.f.name && x.f.name.trim()).map(({ f, cf }) => {
     const phone = f.phone || '';
     const bud = parseBudget(f.budget);
-    const row = {
+    const aid = empBySlug[csvSlug(f.assigned_to)];
+    // Every row carries the SAME keys (custom_fields + assigned_to always present),
+    // so the bulk insert's column set — derived from the first row — never omits them.
+    return {
       name: f.name.trim(), phone, phone_norm: normalizePhone(phone), email: f.email || '',
       source: canonicalizeLeadEnum('source', f.source, cols),
       notes: f.notes || '', lead_date: normalizeLeadDate(f.date), lead_time: f.time || '',
@@ -1584,13 +1594,38 @@ function parseLeadsCsv(csvText, cols, employees) {
       next_action: canonicalizeLeadEnum('next_action', f.next_action, cols),
       been_contacted: /^(true|1|yes|y|x|✓|✔|نعم|صح)$/i.test((f.been_contacted || '').trim()),
       sales_feedback: f.sales_feedback || '', inquiry: f.inquiry || '', created_by: 'csv_import',
+      custom_fields: cf, assigned_to: aid || null,
     };
-    if (Object.keys(cf).length) row.custom_fields = cf;
-    const aid = empBySlug[csvSlug(f.assigned_to)];
-    if (aid) row.assigned_to = aid;
-    return row;
   });
-  return { rows, unmatchedHeaders };
+  return { rows, unmatchedHeaders, unmatched };
+}
+// Full server-side import prep (shared by both routes): parse, auto-create a custom
+// column for any unmatched header that carries data (persisting the shared config),
+// then re-parse so those values land in custom_fields. Nothing with data is dropped.
+async function prepareLeadsImport(csvText, employees) {
+  let cols = await loadLeadsColsConfig();
+  const first = parseLeadsCsv(csvText, cols, employees);
+  if (first.error) return { error: first.error };
+  const toCreate = (first.unmatched || []).filter(u => u.hasData);
+  const createdColumns = [];
+  if (toCreate.length) {
+    const base = Array.isArray(cols) ? cols.slice() : [];
+    const existingKeys = new Set(base.map(c => c && c.key));
+    for (const u of toCreate) {
+      const root = 'cf_' + (csvSlug(u.header) || 'col');
+      let k = root, n = 2;
+      while (existingKeys.has(k)) k = root + '_' + (n++);
+      existingKeys.add(k);
+      base.push({ key: k, label: u.header, type: 'text', builtin: false, visible: true });
+      createdColumns.push(u.header);
+    }
+    try {
+      await supabase.from('quotation_settings').upsert({ key: 'leads_columns_config', value: JSON.stringify(base) }, { onConflict: 'key' });
+    } catch (e) { console.warn('[csv-import] auto-create persist failed:', e.message); }
+    cols = base;
+  }
+  const final = createdColumns.length ? parseLeadsCsv(csvText, cols, employees) : first;
+  return { rows: final.rows, createdColumns, unmatchedHeaders: final.unmatchedHeaders };
 }
 
 receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.single('file'), express.json(), async (req, res) => {
@@ -1607,9 +1642,8 @@ receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.s
       csvText = await r.text();
     }
     if (!csvText) return res.status(400).json({ error: 'No data to import' });
-    const cols = await loadLeadsColsConfig();
     const { data: emps } = await supabase.from('employees').select('id,name,username,email');
-    const { rows, unmatchedHeaders, error: parseErr } = parseLeadsCsv(csvText, cols, emps || []);
+    const { rows, createdColumns, unmatchedHeaders, error: parseErr } = await prepareLeadsImport(csvText, emps || []);
     if (parseErr) return res.status(400).json({ error: parseErr });
     if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
     // Dedup: skip rows whose normalized phone already exists in the DB OR repeats within this file.
@@ -1626,11 +1660,13 @@ receiver.router.post('/api/dashboard/customers/import', requireAuth, multerCsv.s
       if (r.phone_norm) seen.add(r.phone_norm);
       return true;
     });
+    // Guard the PostgREST first-row-defines-columns gotcha: every row carries custom_fields.
+    toInsert.forEach(r => { if (r.custom_fields == null) r.custom_fields = {}; });
     if (toInsert.length) {
       const { error } = await supabase.from('customers').insert(toInsert);
       if (error) return res.status(500).json({ error: error.message });
     }
-    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50), unmatchedHeaders });
+    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50), unmatchedHeaders, createdColumns });
   } catch (e) { console.error('[csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 
@@ -3007,9 +3043,8 @@ receiver.router.post('/api/employee/customers/import', requireEmployeeAuth, mult
       csvText = await r.text();
     }
     if (!csvText) return res.status(400).json({ error: 'No data to import' });
-    const cols = await loadLeadsColsConfig();
     const { data: emps } = await supabase.from('employees').select('id,name,username,email');
-    const { rows, unmatchedHeaders, error: parseErr } = parseLeadsCsv(csvText, cols, emps || []);
+    const { rows, createdColumns, unmatchedHeaders, error: parseErr } = await prepareLeadsImport(csvText, emps || []);
     if (parseErr) return res.status(400).json({ error: parseErr });
     if (!rows.length) return res.status(400).json({ error: 'No valid rows (Name column is required)' });
     const norms = [...new Set(rows.map(r => r.phone_norm).filter(Boolean))];
@@ -3025,11 +3060,12 @@ receiver.router.post('/api/employee/customers/import', requireEmployeeAuth, mult
       if (r.phone_norm) seen.add(r.phone_norm);
       return true;
     });
+    toInsert.forEach(r => { if (r.custom_fields == null) r.custom_fields = {}; });
     if (toInsert.length) {
       const { error } = await supabase.from('customers').insert(toInsert);
       if (error) return res.status(500).json({ error: error.message });
     }
-    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50), unmatchedHeaders });
+    res.json({ count: toInsert.length, inserted: toInsert.length, skipped: skippedNames.length, skippedNames: skippedNames.slice(0, 50), unmatchedHeaders, createdColumns });
   } catch (e) { console.error('[emp-csv-import]', e); res.status(500).json({ error: e.message }); }
 });
 

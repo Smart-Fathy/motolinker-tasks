@@ -3100,8 +3100,10 @@ async function empImportCsv() {
     if (result.error) return showToast('Import error: ' + result.error);
     document.getElementById('emp-csv-modal').style.display = 'none';
     let msg = `Imported ${result.count} lead(s)${result.skipped ? ` · ${result.skipped} duplicate(s) skipped` : ''}.`;
-    if (result.unmatchedHeaders && result.unmatchedHeaders.length) msg += ` Ignored columns: ${result.unmatchedHeaders.join(', ')}.`;
+    if (result.createdColumns && result.createdColumns.length) msg += ` Created ${result.createdColumns.length} new column(s): ${result.createdColumns.join(', ')}.`;
+    if (result.unmatchedHeaders && result.unmatchedHeaders.length) msg += ` Ignored (empty): ${result.unmatchedHeaders.join(', ')}.`;
     showToast(msg);
+    if (result.createdColumns && result.createdColumns.length) _leadColsLoaded = false;
     loadEmpLeads();
   } catch (e) { showToast('Import error: ' + e.message); }
 }
