@@ -628,3 +628,38 @@ ALTER TABLE IF EXISTS public.notifications         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.form_submissions      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.automation_rules      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.automation_runs       ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================
+--  Recurring Tasks (templates that auto-generate tasks on a schedule)
+-- ============================================================
+--  A recurring_tasks row is a TEMPLATE. A background scheduler materializes a
+--  real row in `tasks` each time the template is due (every N days, or on chosen
+--  weekdays), assigned to the chosen employee(s). Generated tasks carry
+--  recurring_id so instances can be traced/de-duped. Templates never delete tasks.
+
+CREATE TABLE IF NOT EXISTS recurring_tasks (
+  id              BIGSERIAL PRIMARY KEY,
+  title           TEXT NOT NULL,
+  description     TEXT DEFAULT '',
+  assignee_id     TEXT,
+  assignee_ids    JSONB DEFAULT NULL,
+  priority        TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high','medium','low')),
+  milestone       TEXT DEFAULT '',
+  recurrence_type TEXT NOT NULL CHECK (recurrence_type IN ('interval','weekly')),
+  interval_days   INT,                    -- for recurrence_type='interval' (every N days)
+  weekdays        JSONB DEFAULT NULL,     -- for recurrence_type='weekly': array of 0..6 (0=Sunday)
+  due_offset_days INT NOT NULL DEFAULT 0, -- generated task's due_date = run date + this
+  start_date      DATE,                   -- don't generate before this (optional)
+  next_run_date   DATE,                   -- next date the scheduler will generate an instance
+  last_run_date   DATE,                   -- last date an instance was generated (de-dupe guard)
+  active          BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by      TEXT DEFAULT 'dashboard',
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_recurring_tasks_active_next ON recurring_tasks (active, next_run_date);
+
+-- Link generated task instances back to their template:
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurring_id BIGINT DEFAULT NULL;
+
+ALTER TABLE IF EXISTS public.recurring_tasks ENABLE ROW LEVEL SECURITY;

@@ -396,6 +396,158 @@ receiver.router.delete('/api/dashboard/tasks/:id', requireAuth, async (req, res)
   res.json({ ok: true });
 });
 
+// ── Recurring Tasks (templates that auto-generate tasks) ──────────────────────
+// Date helpers work on YYYY-MM-DD strings in UTC, matching how the rest of the
+// app computes "today" (new Date().toISOString().split('T')[0]).
+function rtToday() { return new Date().toISOString().split('T')[0]; }
+function rtAddDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().split('T')[0];
+}
+function rtWeekday(dateStr) { return new Date(dateStr + 'T00:00:00Z').getUTCDay(); } // 0=Sun..6=Sat
+function rtCleanWeekdays(v) {
+  const arr = Array.isArray(v) ? v : [];
+  return [...new Set(arr.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 6))].sort((a, b) => a - b);
+}
+// Smallest date >= base whose weekday is in the set (base itself counts).
+function rtNextWeeklyOnOrAfter(baseStr, weekdays) {
+  const wd = rtCleanWeekdays(weekdays);
+  if (!wd.length) return null;
+  for (let i = 0; i < 7; i++) { const d = rtAddDays(baseStr, i); if (wd.includes(rtWeekday(d))) return d; }
+  return null;
+}
+// Smallest date strictly after `afterStr` whose weekday is in the set.
+function rtNextWeeklyAfter(afterStr, weekdays) {
+  return rtNextWeeklyOnOrAfter(rtAddDays(afterStr, 1), weekdays);
+}
+// First run date for a template (on/after start_date, else today).
+function rtComputeInitialNextRun(rt) {
+  const today = rtToday();
+  let base = rt.start_date && rt.start_date > today ? rt.start_date : today;
+  if (rt.recurrence_type === 'weekly') return rtNextWeeklyOnOrAfter(base, rt.weekdays);
+  return base; // interval: fire on the start date (or today)
+}
+// Next run date after an instance was generated on `ranOn`.
+function rtComputeNextAfterRun(rt, ranOn) {
+  if (rt.recurrence_type === 'weekly') return rtNextWeeklyAfter(ranOn, rt.weekdays);
+  const step = Math.max(1, parseInt(rt.interval_days, 10) || 1);
+  return rtAddDays(ranOn, step);
+}
+// Validate + normalize a recurring-task body. Returns { row, error }.
+function rtBuildRow(body) {
+  const title = String(body.title || '').trim();
+  const { primary, list } = normalizeAssignees(body);
+  const recurrence_type = body.recurrence_type === 'weekly' ? 'weekly' : (body.recurrence_type === 'interval' ? 'interval' : null);
+  if (!title) return { error: 'Title is required' };
+  if (!primary) return { error: 'At least one assignee is required' };
+  if (!recurrence_type) return { error: 'Recurrence type must be "interval" or "weekly"' };
+  const priority = ['high', 'medium', 'low'].includes(body.priority) ? body.priority : 'medium';
+  let interval_days = null, weekdays = null;
+  if (recurrence_type === 'interval') {
+    interval_days = parseInt(body.interval_days, 10);
+    if (!Number.isInteger(interval_days) || interval_days < 1) return { error: 'Enter a valid number of days (1 or more)' };
+  } else {
+    weekdays = rtCleanWeekdays(body.weekdays);
+    if (!weekdays.length) return { error: 'Pick at least one weekday' };
+  }
+  const due_offset_days = Math.max(0, parseInt(body.due_offset_days, 10) || 0);
+  const start_date = body.start_date && /^\d{4}-\d{2}-\d{2}$/.test(body.start_date) ? body.start_date : null;
+  return { row: {
+    title, description: String(body.description || '').trim(),
+    assignee_id: primary, assignee_ids: list,
+    priority, milestone: String(body.milestone || '').trim(),
+    recurrence_type, interval_days, weekdays, due_offset_days, start_date,
+  } };
+}
+
+receiver.router.get('/api/dashboard/recurring-tasks', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('recurring_tasks').select('*').order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.post('/api/dashboard/recurring-tasks', requireAuth, express.json(), async (req, res) => {
+  const { row, error: verr } = rtBuildRow(req.body);
+  if (verr) return res.status(400).json({ error: verr });
+  row.next_run_date = rtComputeInitialNextRun(row);
+  row.created_by = 'dashboard';
+  const { data, error } = await supabase.from('recurring_tasks').insert(row).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.put('/api/dashboard/recurring-tasks/:id', requireAuth, express.json(), async (req, res) => {
+  // Active-only toggle: don't require the full recurrence payload.
+  if (Object.keys(req.body).length === 1 && typeof req.body.active === 'boolean') {
+    const { data, error } = await supabase.from('recurring_tasks').update({ active: req.body.active, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json(data);
+  }
+  const { row, error: verr } = rtBuildRow(req.body);
+  if (verr) return res.status(400).json({ error: verr });
+  if (typeof req.body.active === 'boolean') row.active = req.body.active;
+  row.next_run_date = rtComputeInitialNextRun(row); // recompute schedule from the edited recurrence
+  row.updated_at = new Date().toISOString();
+  const { data, error } = await supabase.from('recurring_tasks').update(row).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.delete('/api/dashboard/recurring-tasks/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('recurring_tasks').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// Generate one task instance from a template now (manual trigger).
+receiver.router.post('/api/dashboard/recurring-tasks/:id/run-now', requireAuth, async (req, res) => {
+  const { data: rt, error } = await supabase.from('recurring_tasks').select('*').eq('id', req.params.id).single();
+  if (error || !rt) return res.status(404).json({ error: 'Recurring task not found' });
+  const task = await generateRecurringInstance(rt, rtToday(), true);
+  if (!task) return res.status(500).json({ error: 'Could not create the task' });
+  res.json(task);
+});
+
+// Create a task row from a template for a given run date. `force` bypasses the
+// once-per-day guard (used by Run now). Advances the template's schedule.
+async function generateRecurringInstance(rt, runDate, force) {
+  if (!force && rt.last_run_date === runDate) return null; // already generated today
+  const list = taskAssigneeList(rt);
+  const due_date = rtAddDays(runDate, Math.max(0, rt.due_offset_days || 0));
+  const { data: task, error } = await supabase.from('tasks').insert({
+    title: rt.title, description: rt.description || '', channel_id: '', channel_name: '',
+    assignee_id: rt.assignee_id || (list[0] || null), assignee_ids: list,
+    due_date, priority: rt.priority || 'medium', milestone: rt.milestone || '',
+    created_by: 'recurring', status: 'todo', recurring_id: rt.id,
+  }).select().single();
+  if (error) { console.warn('[recurring] task insert failed:', error.message); return null; }
+  notifyEmployeeTaskAssigned(task);
+  await supabase.from('recurring_tasks').update({
+    last_run_date: runDate,
+    next_run_date: rtComputeNextAfterRun(rt, runDate),
+    updated_at: new Date().toISOString(),
+  }).eq('id', rt.id);
+  console.log('[recurring] generated task', task.id, 'from template', rt.id);
+  return task;
+}
+
+// Scheduler tick: generate instances for every active template due on/before today.
+async function runRecurringTasks() {
+  const today = rtToday();
+  const { data: due, error } = await supabase.from('recurring_tasks')
+    .select('*').eq('active', true).not('next_run_date', 'is', null).lte('next_run_date', today);
+  if (error) { console.warn('[recurring] sweep failed:', error.message); return; }
+  for (const rt of due || []) {
+    try { await generateRecurringInstance(rt, today, false); }
+    catch (e) { console.warn('[recurring] instance error for', rt.id, e.message); }
+  }
+}
+function scheduleRecurringTasks() {
+  setTimeout(() => runRecurringTasks().catch(console.error), 35 * 1000); // catch-up shortly after boot
+  setInterval(() => runRecurringTasks().catch(console.error), 60 * 60 * 1000); // hourly (guarded once/day)
+}
+
 // ── CSV Bulk Upload ───────────────────────────────────────────────────────────
 function normalizeDate(str) {
   if (!str) return str;
@@ -4033,6 +4185,7 @@ function scheduleFollowupReminders() {
   scheduleHoursLogReminder();
   scheduleFollowupReminders();
   scheduleAutomationSweep();
+  scheduleRecurringTasks();
   setTimeout(() => backfillHotLeadDeals().catch(console.error), 15 * 1000); // one-time: deals for pre-existing Hot leads
   if (process.env.WHATSAPP_ENABLED === 'true') initWhatsApp().catch(console.error);
   const port = process.env.PORT || 3000;

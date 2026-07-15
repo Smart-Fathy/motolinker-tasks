@@ -1198,6 +1198,7 @@
         <span class="table-title">All Tasks</span>
         <div class="table-filters">
           <button class="btn btn-primary" onclick="openTaskModal()" style="margin-right:4px">+ Add Task</button>
+          <button class="btn btn-outline"  onclick="openRecurringTasksModal()" style="margin-right:4px"><i data-lucide="repeat" style="width:14px;height:14px;vertical-align:-2px"></i> Recurring</button>
           <button class="btn btn-outline"  onclick="openCSVModal()"  style="margin-right:4px">CSV Upload</button>
           <input  type="text"   id="search"         class="filter-input search-input" placeholder="Search title or description…" oninput="filterTasks()">
           <select id="f-status"   class="filter-input" onchange="filterTasks()">
@@ -3160,6 +3161,158 @@ async function deleteTask(id) {
   if (!confirm(`Delete task #${id}? This cannot be undone.`)) return;
   await apiFetch(`/api/dashboard/tasks/${id}`, { method: 'DELETE' });
   loadDashboard();
+}
+
+// ── Recurring tasks (templates that auto-generate tasks) ──────────────────────
+const RT_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+let _recurringCache = [];
+
+async function openRecurringTasksModal() {
+  await preloadEmployeesForTasks();
+  showModal('Recurring Tasks', '<div id="rt-body"><div class="loading"><div class="spinner"></div></div></div>',
+    `<button class="btn btn-outline" onclick="hideModal()">Close</button>
+     <button class="btn btn-primary" onclick="openRecurringForm(null)">+ New recurring task</button>`);
+  await renderRecurringList();
+}
+
+async function renderRecurringList() {
+  const body = document.getElementById('rt-body');
+  if (!body) return;
+  let list;
+  try { list = await apiFetch('/api/dashboard/recurring-tasks').then(r => r.json()); }
+  catch (e) { body.innerHTML = `<div style="color:var(--danger)">${esc(e.message)}</div>`; return; }
+  _recurringCache = Array.isArray(list) ? list : [];
+  if (!_recurringCache.length) {
+    body.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center;font-size:13px">No recurring tasks yet.<br>Click "+ New recurring task" to set one up.</div>';
+    return;
+  }
+  body.innerHTML = `<div style="display:grid;gap:10px">${_recurringCache.map(rtCardHtml).join('')}</div>`;
+  if (window.lucide) lucide.createIcons();
+}
+
+function rtScheduleLabel(rt) {
+  if (rt.recurrence_type === 'weekly') {
+    const wd = (rt.weekdays || []).map(d => RT_WEEKDAYS[d]).filter(Boolean).join(', ');
+    return `Weekly · ${wd || '—'}`;
+  }
+  return `Every ${rt.interval_days} day${rt.interval_days === 1 ? '' : 's'}`;
+}
+function rtAssigneeNames(rt) {
+  const ids = (Array.isArray(rt.assignee_ids) && rt.assignee_ids.length ? rt.assignee_ids : (rt.assignee_id ? [rt.assignee_id] : [])).map(String);
+  return ids.map(id => { const e = (employeesForTasks || []).find(x => String(x.id) === id); return e ? e.name : id; }).join(', ') || '—';
+}
+function rtCardHtml(rt) {
+  return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+    <div style="min-width:180px;flex:1">
+      <div style="font-weight:600;font-size:13px;margin-bottom:4px">${esc(rt.title)} ${rt.active ? '' : '<span style="color:var(--muted);font-size:11px">· paused</span>'}</div>
+      <div style="font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:10px">
+        <span><i data-lucide="repeat" style="width:11px;height:11px;vertical-align:-1px"></i> ${esc(rtScheduleLabel(rt))}</span>
+        <span><i data-lucide="user" style="width:11px;height:11px;vertical-align:-1px"></i> ${esc(rtAssigneeNames(rt))}</span>
+        <span><i data-lucide="flag" style="width:11px;height:11px;vertical-align:-1px"></i> ${esc(rt.priority)}</span>
+        ${rt.active && rt.next_run_date ? `<span><i data-lucide="calendar" style="width:11px;height:11px;vertical-align:-1px"></i> Next: ${esc(rt.next_run_date)}</span>` : ''}
+      </div>
+    </div>
+    <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap">
+      <button class="btn btn-outline" style="padding:3px 8px;font-size:11px" onclick="rtRunNow(${rt.id})" title="Create a task from this now">Run now</button>
+      <button class="btn btn-outline" style="padding:3px 8px;font-size:11px" onclick="rtToggle(${rt.id}, ${rt.active ? 'false' : 'true'})">${rt.active ? 'Pause' : 'Resume'}</button>
+      <button class="btn btn-outline" style="padding:3px 8px;font-size:11px" onclick="openRecurringForm(${rt.id})">Edit</button>
+      <button class="btn btn-outline" style="padding:3px 8px;font-size:11px;color:var(--danger)" onclick="rtDelete(${rt.id})">Delete</button>
+    </div>
+  </div>`;
+}
+
+function openRecurringForm(id) {
+  const rt = id ? _recurringCache.find(x => x.id === id) : null;
+  const current = new Set((Array.isArray(rt?.assignee_ids) && rt.assignee_ids.length ? rt.assignee_ids : (rt?.assignee_id ? [rt.assignee_id] : [])).map(String));
+  const assigneeChecks = (employeesForTasks || []).map(e => `
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:13px">
+      <input type="checkbox" class="rt-assignee-cb" value="${e.id}" ${current.has(String(e.id)) ? 'checked' : ''} style="accent-color:var(--gold)"> ${esc(e.name)}
+    </label>`).join('');
+  const type = rt?.recurrence_type || 'interval';
+  const wd = new Set((rt?.weekdays || []).map(Number));
+  const weekdayBtns = RT_WEEKDAYS.map((l, i) => `
+    <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:5px 9px;cursor:pointer">
+      <input type="checkbox" class="rt-weekday-cb" value="${i}" ${wd.has(i) ? 'checked' : ''} style="accent-color:var(--gold)"> ${l}</label>`).join('');
+  showModal(rt ? 'Edit recurring task' : 'New recurring task', `
+    <div class="form-group"><label class="form-label">Title *</label><input class="form-control" id="rt-title" value="${esc(rt?.title || '')}" placeholder="e.g. Weekly stock report"></div>
+    <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="rt-desc" rows="2">${esc(rt?.description || '')}</textarea></div>
+    <div class="form-group"><label class="form-label">Assignee(s) * <span style="color:var(--muted);font-size:11px">(select one or more)</span></label>
+      <div style="max-height:130px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px">${assigneeChecks || '<div style="padding:8px;color:var(--muted);font-size:12px">No employees yet</div>'}</div>
+    </div>
+    <div class="form-group"><label class="form-label">Repeat *</label>
+      <select class="form-control" id="rt-type" onchange="rtToggleTypeFields()">
+        <option value="interval"${type === 'interval' ? ' selected' : ''}>Every N days</option>
+        <option value="weekly"${type === 'weekly' ? ' selected' : ''}>Weekly on specific day(s)</option>
+      </select>
+    </div>
+    <div class="form-group" id="rt-interval-wrap" style="display:${type === 'interval' ? 'block' : 'none'}">
+      <label class="form-label">Every how many days?</label>
+      <input class="form-control" id="rt-interval-days" type="number" min="1" value="${rt?.interval_days || 7}">
+    </div>
+    <div class="form-group" id="rt-weekly-wrap" style="display:${type === 'weekly' ? 'block' : 'none'}">
+      <label class="form-label">On which day(s)?</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${weekdayBtns}</div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Priority</label>
+        <select class="form-control" id="rt-priority">${['high', 'medium', 'low'].map(p => `<option value="${p}"${(rt?.priority || 'medium') === p ? ' selected' : ''}>${p[0].toUpperCase() + p.slice(1)}</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label">Start date <span style="color:var(--muted);font-size:11px">(optional)</span></label><input class="form-control" id="rt-start" type="date" value="${rt?.start_date || ''}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Due after (days)</label><input class="form-control" id="rt-due-offset" type="number" min="0" value="${rt?.due_offset_days || 0}" title="Each generated task is due this many days after it's created (0 = same day)"></div>
+      <div class="form-group"><label class="form-label">Milestone</label><input class="form-control" id="rt-milestone" value="${esc(rt?.milestone || '')}" placeholder="optional"></div>
+    </div>
+  `, `<button class="btn btn-outline" onclick="openRecurringTasksModal()">← Back</button>
+      <button class="btn btn-primary" onclick="saveRecurring(${id || 'null'})">Save</button>`);
+}
+
+function rtToggleTypeFields() {
+  const t = document.getElementById('rt-type').value;
+  document.getElementById('rt-interval-wrap').style.display = t === 'interval' ? 'block' : 'none';
+  document.getElementById('rt-weekly-wrap').style.display = t === 'weekly' ? 'block' : 'none';
+}
+
+async function saveRecurring(id) {
+  const assignee_ids = [...document.querySelectorAll('.rt-assignee-cb:checked')].map(cb => cb.value);
+  const type = document.getElementById('rt-type').value;
+  const body = {
+    title: document.getElementById('rt-title').value.trim(),
+    description: document.getElementById('rt-desc').value.trim(),
+    assignee_ids,
+    recurrence_type: type,
+    interval_days: type === 'interval' ? parseInt(document.getElementById('rt-interval-days').value, 10) : null,
+    weekdays: type === 'weekly' ? [...document.querySelectorAll('.rt-weekday-cb:checked')].map(cb => Number(cb.value)) : null,
+    priority: document.getElementById('rt-priority').value,
+    start_date: document.getElementById('rt-start').value || null,
+    due_offset_days: parseInt(document.getElementById('rt-due-offset').value, 10) || 0,
+    milestone: document.getElementById('rt-milestone').value.trim(),
+  };
+  if (!body.title || !assignee_ids.length) { alert('Title and at least one assignee are required'); return; }
+  if (type === 'interval' && (!body.interval_days || body.interval_days < 1)) { alert('Enter a valid number of days (1 or more)'); return; }
+  if (type === 'weekly' && !body.weekdays.length) { alert('Pick at least one weekday'); return; }
+  const url = id ? `/api/dashboard/recurring-tasks/${id}` : '/api/dashboard/recurring-tasks';
+  const r = await apiFetch(url, { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); alert('Error: ' + (e.error || r.status)); return; }
+  openRecurringTasksModal();
+}
+
+async function rtRunNow(id) {
+  const r = await apiFetch(`/api/dashboard/recurring-tasks/${id}/run-now`, { method: 'POST' });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); alert('Error: ' + (e.error || r.status)); return; }
+  alert('Task created and assigned.');
+  if (typeof loadDashboard === 'function') loadDashboard();
+  renderRecurringList();
+}
+
+async function rtToggle(id, active) {
+  await apiFetch(`/api/dashboard/recurring-tasks/${id}`, { method: 'PUT', body: JSON.stringify({ active }) });
+  renderRecurringList();
+}
+
+async function rtDelete(id) {
+  if (!confirm('Delete this recurring task? Tasks already generated from it will remain.')) return;
+  await apiFetch(`/api/dashboard/recurring-tasks/${id}`, { method: 'DELETE' });
+  renderRecurringList();
 }
 
 // ── Task comments (with @mentions) ────────────────────────────────────────────
