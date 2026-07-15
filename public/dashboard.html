@@ -912,8 +912,11 @@
   /* ── Leads column system (ClickUp-style) ── */
   #customers-table th.lead-col{ cursor:pointer; user-select:none; white-space:nowrap; }
   #customers-table th.lead-col:hover{ background:rgba(255,255,255,.05); }
-  #customers-table th.lead-col .col-chev{ width:12px; height:12px; opacity:.35; vertical-align:-2px; margin-left:4px; }
-  #customers-table th.lead-col:hover .col-chev{ opacity:.9; }
+  #customers-table th.lead-col .col-chev{ width:12px; height:12px; opacity:.35; vertical-align:-2px; }
+  #customers-table th.lead-col .col-chev-btn{ display:inline-flex; align-items:center; cursor:pointer; margin-left:4px; padding:0 2px; border-radius:4px; }
+  #customers-table th.lead-col:hover .col-chev, #customers-table th.lead-col .col-chev-btn:hover .col-chev{ opacity:.9; }
+  #customers-table th.lead-col .col-chev-btn:hover{ background:rgba(255,255,255,.1); }
+  .lead-menu button.active{ color:var(--primary); }
   #customers-table th.lead-col.drag-over{ box-shadow:inset 2px 0 0 var(--primary); }
   #customers-table td.lead-cell{ cursor:pointer; }
   #customers-table td.lead-cell:hover{ box-shadow:inset 0 0 0 1px rgba(201,163,94,.4); border-radius:4px; }
@@ -5947,7 +5950,7 @@ function renderLeadHead() {
     <th class="lead-col" draggable="true" data-colkey="${esc(c.key)}"
         ondragstart="leadColDragStart(event)" ondragover="leadColDragOver(event)" ondragleave="this.classList.remove('drag-over')"
         ondrop="leadColDrop(event)" ondragend="leadColDragEnd()"
-        onclick="openLeadColMenu(event,'${esc(c.key)}')">${esc(c.label)}${leadSortArrow(c.key)}<i data-lucide="chevron-down" class="col-chev"></i></th>`).join('');
+        onclick="leadHeaderClick(event,'${esc(c.key)}')" title="Click to sort">${esc(c.label)}${leadSortArrow(c.key)}<span class="col-chev-btn" onclick="event.stopPropagation();openLeadColMenu(event,'${esc(c.key)}')" title="Column options"><i data-lucide="chevron-down" class="col-chev"></i></span></th>`).join('');
   tr.innerHTML = `
     <th style="width:36px;padding:8px 6px"><input type="checkbox" id="select-all-leads" onchange="toggleSelectAllLeads(this)"></th>
     ${ths}
@@ -5957,9 +5960,10 @@ function renderLeadHead() {
 }
 
 let _dragColKey = null;
-function leadColDragStart(e) { _dragColKey = e.currentTarget.dataset.colkey; e.dataTransfer.effectAllowed = 'move'; }
+let _leadColDidDrag = false; // swallow the click that can trail a header drag
+function leadColDragStart(e) { _dragColKey = e.currentTarget.dataset.colkey; _leadColDidDrag = true; e.dataTransfer.effectAllowed = 'move'; }
 function leadColDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
-function leadColDragEnd() { document.querySelectorAll('#leads-head-row th.drag-over').forEach(t => t.classList.remove('drag-over')); _dragColKey = null; }
+function leadColDragEnd() { document.querySelectorAll('#leads-head-row th.drag-over').forEach(t => t.classList.remove('drag-over')); _dragColKey = null; setTimeout(() => { _leadColDidDrag = false; }, 0); }
 function leadColDrop(e) {
   e.preventDefault();
   const target = e.currentTarget.dataset.colkey;
@@ -6419,19 +6423,19 @@ function leadSortValue(c, col) {
   const key = col.key;
   if (key === 'next_followup') { const d = _pendingFollowups[c.id]; return d ? new Date(d).getTime() : null; }
   if (key === 'owner') { if (!c.assigned_to) return null; const e = (employeesForTasks || []).find(x => String(x.id) === String(c.assigned_to)); return (e ? e.name : ('#' + c.assigned_to)) || null; }
-  if (key === 'budget_lead') { return c.budget_lead != null && c.budget_lead !== '' ? Number(c.budget_lead) : null; }
+  if (key === 'budget_lead') { const n = Number(c.budget_lead); return c.budget_lead != null && c.budget_lead !== '' && isFinite(n) ? n : null; }
   const raw = col.builtin ? c[key] : (c.custom_fields || {})[key];
   if (key === 'lead_date' || col.type === 'date') { if (!raw) return null; const t = new Date(raw).getTime(); return isNaN(t) ? null : t; }
   if (col.type === 'checkbox') return isChecked(raw) ? 1 : 0;
   if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); const k = normKey(raw, m); return (m[k] || raw || '') || null; }
-  if (col.type === 'number') return raw != null && raw !== '' ? Number(raw) : null;
+  if (col.type === 'number') { const n = Number(raw); return raw != null && raw !== '' && isFinite(n) ? n : null; }
   const s = (raw == null ? '' : String(raw)).trim();
   return s || null;
 }
 function applyLeadSort(list) {
   if (!_leadSort || !_leadSort.key) return list;
   const col = leadCol(_leadSort.key);
-  if (!col) return list;
+  if (!col || col.deleted || col.visible === false) return list; // don't sort by a hidden/removed column
   const dir = _leadSort.dir === 'desc' ? -1 : 1;
   const isEmpty = v => v === null || v === undefined || v === '';
   return [...list].sort((a, b) => {
@@ -6452,6 +6456,16 @@ function setLeadSort(key, dir) {
   try { localStorage.setItem('ml_leads_sort', JSON.stringify(_leadSort)); } catch (_) {}
   renderLeadHead();
   filterCustomers();
+}
+// Header click cycles the column: asc → desc → cleared.
+function toggleLeadSort(key) {
+  if (!_leadSort || _leadSort.key !== key) return setLeadSort(key, 'asc');
+  if (_leadSort.dir === 'asc') return setLeadSort(key, 'desc');
+  return setLeadSort(null);
+}
+function leadHeaderClick(e, key) {
+  if (_leadColDidDrag) { _leadColDidDrag = false; return; } // swallow the click that trails a drag
+  toggleLeadSort(key);
 }
 function leadSortArrow(key) {
   if (!_leadSort || _leadSort.key !== key) return '';
