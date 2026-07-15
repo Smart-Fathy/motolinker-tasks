@@ -1785,13 +1785,28 @@
         <div>
           <label class="form-label">When… (trigger)</label>
           <select class="form-input" id="am-trigger" onchange="amTriggerChanged()">
-            <option value="lead.created">A lead is created</option>
-            <option value="lead.status_changed">A lead's status changes</option>
-            <option value="lead.contacted">A lead is marked contacted</option>
-            <option value="deal.created">A deal is created</option>
-            <option value="deal.stage_changed">A deal's stage changes</option>
-            <option value="quote.generated">A quotation is generated</option>
-            <option value="no_activity_days">A lead has no activity for N days</option>
+            <optgroup label="Leads &amp; Deals (CRM)">
+              <option value="lead.created">A lead is created</option>
+              <option value="lead.status_changed">A lead's status changes</option>
+              <option value="lead.contacted">A lead is marked contacted</option>
+              <option value="deal.created">A deal is created</option>
+              <option value="deal.stage_changed">A deal's stage changes</option>
+              <option value="quote.generated">A quotation is generated</option>
+              <option value="no_activity_days">A lead has no activity for N days</option>
+            </optgroup>
+            <optgroup label="Tasks">
+              <option value="task.created">A task is created</option>
+              <option value="task.completed">A task is completed</option>
+              <option value="task.overdue">A task becomes overdue</option>
+            </optgroup>
+            <optgroup label="Requests">
+              <option value="request.created">A request is submitted</option>
+              <option value="request.status_changed">A request's status changes</option>
+            </optgroup>
+            <optgroup label="Website &amp; Team">
+              <option value="submission.created">A website form is submitted</option>
+              <option value="hours.not_logged">An employee hasn't logged hours (end of day)</option>
+            </optgroup>
           </select>
         </div>
         <div id="am-days-wrap" style="display:none">
@@ -2657,10 +2672,31 @@ function exportReport(which) {
 // ── Automations ────────────────────────────────────────────────────────────────
 let _autoRules = [];
 let _autoDraft = { conditions: [], actions: [] };
-const AM_TRIGGER_LABELS = { 'lead.created':'Lead created', 'lead.status_changed':'Lead status changed', 'lead.contacted':'Lead marked contacted', 'deal.created':'Deal created', 'deal.stage_changed':'Deal stage changed', 'quote.generated':'Quote generated', 'no_activity_days':'No activity for N days' };
+const AM_TRIGGER_LABELS = { 'lead.created':'Lead created', 'lead.status_changed':'Lead status changed', 'lead.contacted':'Lead marked contacted', 'deal.created':'Deal created', 'deal.stage_changed':'Deal stage changed', 'quote.generated':'Quote generated', 'no_activity_days':'No activity for N days', 'task.created':'Task created', 'task.completed':'Task completed', 'task.overdue':'Task overdue', 'request.created':'Request submitted', 'request.status_changed':'Request status changed', 'submission.created':'Website form submitted', 'hours.not_logged':"Hours not logged" };
 const AM_FIELDS = ['source','lead_status','stage','been_contacted','budget_lead','budget_egp','name','car_in_question','to'];
+// Which condition fields make sense per trigger (falls back to AM_FIELDS).
+const AM_TRIGGER_FIELDS = {
+  'lead.created': ['source','lead_status','been_contacted','budget_lead','name','car_in_question'],
+  'lead.status_changed': ['source','lead_status','been_contacted','budget_lead','name','car_in_question','to'],
+  'lead.contacted': ['source','lead_status','budget_lead','name','car_in_question'],
+  'deal.created': ['stage','budget_egp','name','car_in_question'],
+  'deal.stage_changed': ['stage','budget_egp','name','car_in_question','to'],
+  'quote.generated': ['name'],
+  'no_activity_days': ['source','lead_status','budget_lead','name'],
+  'task.created': ['priority','status','title'],
+  'task.completed': ['priority','title'],
+  'task.overdue': ['priority','title'],
+  'request.created': ['priority','category','title'],
+  'request.status_changed': ['priority','category','status','title','to'],
+  'submission.created': ['name','email','phone','source','car_in_question'],
+  'hours.not_logged': ['name'],
+};
+function amFieldsForTrigger() { const t = document.getElementById('am-trigger')?.value; return AM_TRIGGER_FIELDS[t] || AM_FIELDS; }
 const AM_OPS = [['equals','is'],['not_equals','is not'],['contains','contains'],['changed_to','changed to'],['gt','>'],['lt','<'],['is_empty','is empty'],['not_empty','is not empty']];
-const AM_ACTIONS = [['notify','Send a notification'],['create_followup','Create a follow-up'],['create_task','Create a task'],['create_deal','Create a deal'],['set_lead_status','Set lead status'],['assign_lead','Assign the lead to a rep'],['edit_lead','Edit the lead profile'],['delete_deals','Remove the lead from deals (needs approval)'],['delete_lead','Delete the lead (needs approval)']];
+const AM_ACTIONS = [['notify','Send a notification'],['notify_all','Notify all employees'],['create_followup','Create a follow-up'],['create_task','Create a task'],['create_deal','Create a deal'],['set_lead_status','Set lead status'],['assign_lead','Assign the lead to a rep'],['edit_lead','Edit the lead profile'],['delete_deals','Remove the lead from deals (needs approval)'],['delete_lead','Delete the lead (needs approval)']];
+const AM_TASK_STATUSES = [['todo','To Do'],['in_progress','In Progress'],['done','Done']];
+const AM_REQUEST_STATUSES = [['pending','Pending'],['in_review','In Review'],['approved','Approved'],['rejected','Rejected']];
+const AM_PRIORITIES = [['high','High'],['medium','Medium'],['low','Low']];
 const AM_LEAD_STATUSES = [['cold','Cold'],['warm','Warm'],['hot','Hot'],['immediate_delivery','Immediate Delivery'],['not_interested','Not Interested'],['blacklist','Blacklist']];
 function amActionLabel(t){ const f = AM_ACTIONS.find(a => a[0] === t); return f ? f[1] : t; }
 function amEmpOptions(sel){ return '<option value="">— select rep —</option>' + (employeesForTasks || []).map(e => `<option value="${e.id}"${String(sel) === String(e.id) ? ' selected' : ''}>${esc(e.name)}</option>`).join(''); }
@@ -2674,12 +2710,16 @@ const AM_LEAD_SCOPED_ACTIONS = ['assign_lead','create_followup','set_lead_status
 const AM_EDIT_FIELDS = [['lead_status','Status'],['source','Origin'],['next_action','Next Action'],['been_contacted','Contacted'],['assigned_to','Owner (rep)'],['car_in_question','Car'],['budget_lead','Budget'],['name','Name'],['phone','Phone'],['notes','Notes']];
 function amNorm(s){ return String(s == null ? '' : s).trim().toLowerCase().replace(/[\s-]+/g, '_'); }
 function amFieldOptions(field){
+  const t = document.getElementById('am-trigger')?.value || '';
   if (field === 'lead_status') return AM_LEAD_STATUSES;
-  if (field === 'stage' || field === 'to') return AM_DEAL_STAGES;
+  if (field === 'stage') return AM_DEAL_STAGES;
+  if (field === 'to') return t.startsWith('request') ? AM_REQUEST_STATUSES : AM_DEAL_STAGES; // "changed to" target
   if (field === 'source') return AM_ORIGINS;
   if (field === 'next_action') return AM_NEXT_ACTIONS;
   if (field === 'been_contacted') return AM_BOOLS;
-  return null; // free-text (budget, name, car_in_question, …)
+  if (field === 'priority') return AM_PRIORITIES;
+  if (field === 'status') return t.startsWith('task') ? AM_TASK_STATUSES : t.startsWith('request') ? AM_REQUEST_STATUSES : null;
+  return null; // free-text (budget, name, car_in_question, title, category, email, phone, …)
 }
 // The value control for a condition row: a dropdown for enum fields, free text otherwise,
 // and nothing for is_empty / not_empty.
@@ -2747,7 +2787,8 @@ function openAutomationModal(id) {
 }
 function amTriggerChanged() {
   document.getElementById('am-days-wrap').style.display = document.getElementById('am-trigger').value === 'no_activity_days' ? 'block' : 'none';
-  amRenderActions(); // refresh the lead-scoped-action hint for the new trigger
+  amRenderConditions(); // field list depends on the trigger
+  amRenderActions();    // refresh the lead-scoped-action hint for the new trigger
 }
 function amAddCondition() { _autoDraft.conditions.push({ field: 'source', op: 'equals', value: '' }); amRenderConditions(); }
 function amDelCondition(i) { _autoDraft.conditions.splice(i, 1); amRenderConditions(); }
@@ -2755,7 +2796,7 @@ function amRenderConditions() {
   document.getElementById('am-conditions').innerHTML = _autoDraft.conditions.map((cd, i) => `
     <div style="display:flex;gap:6px;align-items:center">
       <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="_autoDraft.conditions[${i}].field=this.value;_autoDraft.conditions[${i}].value='';amRenderConditions()">
-        ${AM_FIELDS.map(f => `<option value="${f}"${cd.field === f ? ' selected' : ''}>${f}</option>`).join('')}
+        ${amFieldsForTrigger().map(f => `<option value="${f}"${cd.field === f ? ' selected' : ''}>${f}</option>`).join('')}
       </select>
       <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="_autoDraft.conditions[${i}].op=this.value;amRenderConditions()">
         ${AM_OPS.map(o => `<option value="${o[0]}"${cd.op === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}
@@ -2769,6 +2810,7 @@ function amDelAction(i) { _autoDraft.actions.splice(i, 1); amRenderActions(); }
 function amChangeActionType(i, type) {
   const base = { type };
   if (type === 'notify') Object.assign(base, { to: 'admin', title: '', body: '' });
+  if (type === 'notify_all') Object.assign(base, { title: '', body: '' });
   if (type === 'create_followup') Object.assign(base, { days: 1, note: '', assign_to: 'none' });
   if (type === 'create_task') Object.assign(base, { title: '', priority: 'medium', due_days: 1 });
   if (type === 'create_deal') Object.assign(base, { stage: 'lead' });
@@ -2805,6 +2847,10 @@ function amActionParams(a, i) {
     </select>
     ${a.to === 'employee' ? `<select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].employee_id=this.value">${amEmpOptions(a.employee_id)}</select>` : ''}
     ${inp('Title (use {{name}}, {{phone}})', 'title', a.title)}
+    ${inp('Message body', 'body', a.body)}`;
+  if (a.type === 'notify_all') return `
+    <div style="font-size:11px;color:var(--muted)"><i data-lucide="megaphone" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></i> Sends this notification to every employee.</div>
+    ${inp('Title', 'title', a.title)}
     ${inp('Message body', 'body', a.body)}`;
   if (a.type === 'create_followup') return `
     ${inp('in N days', 'days', a.days != null ? a.days : 1, 'number')}
@@ -2854,10 +2900,19 @@ function amActionParams(a, i) {
   return '';
 }
 function amRenderActions() {
-  const trig = document.getElementById('am-trigger')?.value;
+  const trig = document.getElementById('am-trigger')?.value || '';
+  // Lead-scoped actions only run when the event is tied to a lead. Lead/deal triggers always are;
+  // quote & website-submission may be; task/request/hours triggers never are.
+  const leadLinked = trig.startsWith('lead.') || trig.startsWith('deal.') || trig === 'no_activity_days';
+  const maybeLinked = trig === 'quote.generated' || trig === 'submission.created';
   document.getElementById('am-actions').innerHTML = _autoDraft.actions.map((a, i) => {
-    const needsLead = trig === 'quote.generated' && AM_LEAD_SCOPED_ACTIONS.includes(a.type);
-    const hint = needsLead ? `<div style="font-size:11px;color:var(--muted)"><i data-lucide="info" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></i> Runs only when the quotation is linked to a lead.</div>` : '';
+    const isLeadAction = AM_LEAD_SCOPED_ACTIONS.includes(a.type);
+    let hint = '';
+    if (isLeadAction && !leadLinked) {
+      hint = maybeLinked
+        ? `<div style="font-size:11px;color:var(--muted)"><i data-lucide="info" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></i> Runs only when this is linked to a lead.</div>`
+        : `<div style="font-size:11px;color:var(--warning,#e0a800)"><i data-lucide="alert-triangle" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></i> This action needs a lead — it won't do anything for this trigger. Use “Send a notification”, “Notify all employees” or “Create a task” instead.</div>`;
+    }
     return `
     <div style="border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;gap:6px">
       <div style="display:flex;gap:6px;align-items:center">

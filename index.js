@@ -367,6 +367,7 @@ receiver.router.post('/api/dashboard/tasks', requireAuth, express.json(), async 
   if (error) return res.status(500).json({ error: error.message });
   // Notify every assignee via SSE (if portal is open) and push (always)
   notifyEmployeeTaskAssigned(task);
+  runAutomations('task.created', taskCtx(task));
   res.json(task);
 });
 
@@ -379,14 +380,15 @@ receiver.router.put('/api/dashboard/tasks/:id', requireAuth, express.json(), asy
     updates.assignee_id = primary;
     updates.assignee_ids = list;
   }
-  // Capture prior assignees to detect (re)assignment
-  const { data: prev } = await supabase.from('tasks').select('assignee_id, assignee_ids').eq('id', req.params.id).single();
+  // Capture prior assignees + status to detect (re)assignment and completion
+  const { data: prev } = await supabase.from('tasks').select('assignee_id, assignee_ids, status').eq('id', req.params.id).single();
   const { data, error } = await supabase.from('tasks').update(updates).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
   // Notify only newly-added assignees
   const before = new Set(taskAssigneeList(prev));
   const added = taskAssigneeList(data).filter(id => !before.has(id));
   if (added.length) notifyEmployeeTaskAssigned({ ...data, assignee_ids: added });
+  if (data.status === 'done' && prev?.status !== 'done') runAutomations('task.completed', taskCtx(data));
   res.json(data);
 });
 
@@ -601,6 +603,7 @@ receiver.router.post('/api/dashboard/tasks/bulk', requireAuth, upload.single('fi
   if (inserts.length) {
     const { data, error } = await supabase.from('tasks').insert(inserts).select();
     if (error) return res.status(500).json({ error: error.message });
+    (data || []).forEach(t => runAutomations('task.created', taskCtx(t)));
     return res.json({ inserted: data.length, errors });
   }
   res.json({ inserted: 0, errors });
@@ -879,6 +882,7 @@ receiver.router.post('/api/dashboard/requests', requireAuth, express.json(), asy
   if (assignee_id) {
     createNotification(`employee_${assignee_id}`, { type: 'request', title: 'A request was assigned to you', body: title, url: '/employee#requests' }, 'always');
   }
+  runAutomations('request.created', requestCtx(data));
   res.json(data);
 });
 
@@ -905,6 +909,7 @@ receiver.router.put('/api/dashboard/requests/:id', requireAuth, express.json(), 
   if (data?.assignee_id && String(data.assignee_id) !== String(existing?.assignee_id || '')) {
     createNotification(`employee_${data.assignee_id}`, { type: 'request', title: 'A request was assigned to you', body: data.title, url: '/employee#requests' }, 'always');
   }
+  if (existing && data && existing.status !== data.status) runAutomations('request.status_changed', { ...requestCtx(data), from: existing.status, to: data.status });
   res.json(data);
 });
 
@@ -1286,6 +1291,7 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json
       url: '/employee#requests',
     }, 'always');
   }
+  runAutomations('request.created', requestCtx(data));
   res.json(data);
 });
 
@@ -1429,7 +1435,7 @@ receiver.router.put('/api/employee/my-tasks/:id', requireEmployeeAuth, express.j
     const { data: emp } = await supabase.from('employees').select('slack_user_id').eq('id', req.employee.id).single();
     const ids = [String(req.employee.id), emp?.slack_user_id].filter(Boolean);
     // Verify the task is actually assigned to this employee (single or multi assignee)
-    const { data: task } = await supabase.from('tasks').select('id, assignee_id, assignee_ids').eq('id', req.params.id).single();
+    const { data: task } = await supabase.from('tasks').select('id, assignee_id, assignee_ids, status').eq('id', req.params.id).single();
     const assigned = task && (ids.includes(task.assignee_id) || (Array.isArray(task.assignee_ids) && task.assignee_ids.map(String).includes(String(req.employee.id))));
     if (!assigned) return res.status(403).json({ error: 'Task not assigned to you' });
     const completedAt = new Date().toISOString();
@@ -1437,6 +1443,7 @@ receiver.router.put('/api/employee/my-tasks/:id', requireEmployeeAuth, express.j
       .update({ status: 'done', completed_at: completedAt, updated_at: completedAt })
       .eq('id', req.params.id).select().single();
     if (error) return res.status(500).json({ error: error.message });
+    if (task?.status !== 'done') runAutomations('task.completed', taskCtx(data));
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1450,6 +1457,7 @@ receiver.router.post('/api/employee/my-tasks', requireEmployeeAuth, express.json
       .insert({ title, description: description || '', channel_id: '', channel_name: '', assignee_id: String(req.employee.id), assignee_ids: [String(req.employee.id)], due_date, priority: priority || 'medium', milestone: milestone || '', created_by: req.employee.username, status: 'todo' })
       .select().single();
     if (error) return res.status(500).json({ error: error.message });
+    runAutomations('task.created', taskCtx(task));
     res.json(task);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2212,6 +2220,36 @@ function dealCtx(d) {
       assigned_to: d.assigned_to, name: d.customers?.name, phone: d.customers?.phone, car_in_question: d.customers?.car_in_question, budget_lead: d.customers?.budget_lead },
   };
 }
+// ── Non-CRM automation contexts ──────────────────────────────────────────────
+function taskCtx(t) {
+  const primary = (Array.isArray(t.assignee_ids) && t.assignee_ids.length ? t.assignee_ids[0] : t.assignee_id) || null;
+  return { entityType: 'task', entityId: t.id, customerId: null, ownerId: primary,
+    fields: { title: t.title, priority: t.priority, status: t.status, milestone: t.milestone || '', assigned_to: primary, due_date: t.due_date } };
+}
+function requestCtx(r) {
+  return { entityType: 'request', entityId: r.id, customerId: null, ownerId: r.assignee_id || null,
+    fields: { title: r.title, priority: r.priority, status: r.status, category: r.category || '', assigned_to: r.assignee_id || null } };
+}
+function submissionCtx(s, customerId) {
+  // The public form already creates/matches the lead (customerId), so lead-scoped
+  // actions (assign, follow-up, …) work when it's linked.
+  return { entityType: 'submission', entityId: s.id, customerId: customerId || null, ownerId: null,
+    fields: { name: s.name, phone: s.phone, email: s.email, car_in_question: s.car_interest, source: s.source, message: s.message } };
+}
+function hoursCtx(emp) {
+  return { entityType: 'hours', entityId: emp.id, customerId: null, ownerId: emp.id, fields: { name: emp.name } };
+}
+// Deep-link a notification to the right admin page for the entity that fired.
+function autoNotifUrl(ctx) {
+  switch (ctx.entityType) {
+    case 'deal': return '/dashboard#deals';
+    case 'task': return '/dashboard#tasks';
+    case 'request': return '/dashboard#requests';
+    case 'submission': return '/dashboard#submissions';
+    case 'hours': return '/dashboard#hours';
+    default: return '/dashboard#customers';
+  }
+}
 function autoTmpl(str, ctx) {
   const f = ctx.fields || {};
   return String(str || '').replace(/\{\{(\w+)\}\}/g, (_, k) => (f[k] != null ? String(f[k]) : ''));
@@ -2276,9 +2314,19 @@ async function runAutomationAction(a, ctx, ruleName) {
     case 'notify': {
       await createNotification(autoTarget(a, ctx), {
         type: 'automation', title: autoTmpl(a.title, ctx) || 'Automation',
-        body: autoTmpl(a.body, ctx), url: ctx.entityType === 'deal' ? '/dashboard#deals' : '/dashboard#customers',
+        body: autoTmpl(a.body, ctx), url: autoNotifUrl(ctx),
       }, 'always');
       break;
+    }
+    case 'notify_all': {
+      const { data: emps } = await supabase.from('employees').select('id');
+      for (const e of (emps || [])) {
+        await createNotification(`employee_${e.id}`, {
+          type: 'automation', title: autoTmpl(a.title, ctx) || 'Announcement',
+          body: autoTmpl(a.body, ctx), url: autoNotifUrl(ctx),
+        }, 'always');
+      }
+      return `notify_all → ${(emps || []).length} employee(s)`;
     }
     case 'create_followup': {
       if (!ctx.customerId) return 'create_followup skipped — not linked to a lead';
@@ -2407,9 +2455,28 @@ async function runNoActivitySweep() {
     }
   } catch (e) { console.warn('[automations] no-activity sweep failed:', e.message); }
 }
+// Scheduled trigger: tasks past their due date and still open (once per task).
+async function runTaskOverdueSweep() {
+  try {
+    const { data: rules } = await supabase.from('automation_rules').select('*').eq('enabled', true).eq('trigger_type', 'task.overdue');
+    if (!rules || !rules.length) return;
+    const today = new Date().toISOString().split('T')[0];
+    const { data: tasks } = await supabase.from('tasks').select('*').lt('due_date', today).neq('status', 'done').limit(2000);
+    for (const rule of rules) {
+      for (const t of (tasks || [])) {
+        const { data: fired } = await supabase.from('automation_runs').select('id').eq('rule_id', rule.id).eq('entity_id', t.id).limit(1);
+        if (fired?.length) continue;                       // already fired for this task
+        const ctx = taskCtx(t);
+        if (!automationMatches(rule, ctx)) continue;
+        await runAutomationActions(rule, ctx, 'task.overdue');
+      }
+    }
+  } catch (e) { console.warn('[automations] task-overdue sweep failed:', e.message); }
+}
 function scheduleAutomationSweep() {
-  setTimeout(() => runNoActivitySweep().catch(console.error), 60 * 1000);
-  setInterval(() => runNoActivitySweep().catch(console.error), 60 * 60 * 1000);
+  const sweep = () => { runNoActivitySweep().catch(console.error); runTaskOverdueSweep().catch(console.error); };
+  setTimeout(sweep, 60 * 1000);
+  setInterval(sweep, 60 * 60 * 1000);
 }
 
 // Automation rules CRUD
@@ -4063,6 +4130,7 @@ receiver.router.post('/api/submissions', express.json(), async (req, res) => {
       body: [cleanPhone && `Phone: ${cleanPhone}`, cleanCar && `Interest: ${cleanCar}`, cleanMsg].filter(Boolean).join(' · ') || 'New website submission',
       url: customerId ? '/dashboard#customers' : '/dashboard#submissions',
     }, 'always').catch(() => {});
+    if (sub) runAutomations('submission.created', submissionCtx(sub, customerId));
     res.json({ ok: true, id: sub?.id, customer_id: customerId, lead_created: isNew });
   } catch (e) {
     console.error('[submissions]', e);
@@ -4115,22 +4183,21 @@ function scheduleDueDateReminders() {
 }
 
 async function sendHoursLogReminder() {
-  if (!vapidKeys) return;
   const today = new Date().toISOString().split('T')[0];
   const [{ data: allEmps }, { data: logsToday }] = await Promise.all([
-    supabase.from('employees').select('id'),
+    supabase.from('employees').select('id,name'),
     supabase.from('hours_logs').select('employee_id').eq('log_date', today),
   ]);
   const loggedIds = new Set((logsToday || []).map(l => l.employee_id));
   for (const emp of allEmps || []) {
-    if (!loggedIds.has(emp.id)) {
-      createNotification(`employee_${emp.id}`, {
-        type: 'hours',
-        title: 'Log your hours',
-        body: "Please log today's working hours before you leave.",
-        url: '/employee#log',
-      }, 'offline');
-    }
+    if (loggedIds.has(emp.id)) continue;
+    if (vapidKeys) createNotification(`employee_${emp.id}`, {
+      type: 'hours',
+      title: 'Log your hours',
+      body: "Please log today's working hours before you leave.",
+      url: '/employee#log',
+    }, 'offline');
+    runAutomations('hours.not_logged', hoursCtx(emp)); // let admins customize what happens
   }
 }
 
