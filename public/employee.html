@@ -491,6 +491,8 @@
   #emp-leads-table td.lead-cell{ cursor:pointer; }
   #emp-leads-table td.lead-cell:hover{ box-shadow:inset 0 0 0 1px rgba(201,163,94,.4); border-radius:4px; }
   #emp-leads-head th.lead-col{ cursor:pointer; }
+  #emp-leads-head th.lead-col .col-chev-btn:hover{ background:rgba(255,255,255,.1); }
+  .lead-menu button.active{ color:var(--primary); }
   #emp-leads-head th.lead-col.drag-over{ box-shadow:inset 2px 0 0 var(--primary); }
   .lead-menu{ position:fixed; z-index:10060; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,.55); min-width:190px; max-height:70vh; overflow-y:auto; padding:6px; display:none; }
   .lead-menu.open{ display:block; }
@@ -2635,6 +2637,8 @@ const EMP_NEXT_ACTION_LABELS = { followed_by_sales:'Followed By Sales', need_fol
 const EMP_LEAD_STATUS_OPTS   = [['cold','Cold'],['warm','Warm'],['hot','Hot'],['immediate_delivery','Immediate Delivery'],['not_interested','Not Interested'],['blacklist','Blacklist']];
 let _empLeads = [];
 let _empCoworkers = null;
+// Sort state (persisted): { key, dir:'asc'|'desc' }
+let _leadSort = (() => { try { return JSON.parse(localStorage.getItem('ml_emp_leads_sort')) || { key: null, dir: 'asc' }; } catch (_) { return { key: null, dir: 'asc' }; } })();
 
 async function loadEmpCoworkers() { if (_empCoworkers) return _empCoworkers; try { _empCoworkers = await ef('/api/employee/coworkers').then(r => r.json()); } catch (_) { _empCoworkers = []; } return _empCoworkers; }
 function empEmpName(id) { return (_empCoworkers || []).find(e => String(e.id) === String(id))?.name || ''; }
@@ -2663,9 +2667,64 @@ async function loadEmpLeads() {
   }
 }
 
+// ── Sort by any column ────────────────────────────────────────────────────────
+function leadSortValue(c, col) {
+  const key = col.key;
+  if (key === 'next_followup') { const d = _pendingFollowups[c.id]; return d ? new Date(d).getTime() : null; }
+  if (key === 'owner') { if (!c.assigned_to) return null; return (empEmpName(c.assigned_to) || ('#' + c.assigned_to)) || null; }
+  if (key === 'budget_lead') { const n = Number(c.budget_lead); return c.budget_lead != null && c.budget_lead !== '' && isFinite(n) ? n : null; }
+  const raw = col.builtin ? c[key] : (c.custom_fields || {})[key];
+  if (key === 'lead_date' || col.type === 'date') { if (!raw) return null; const t = new Date(raw).getTime(); return isNaN(t) ? null : t; }
+  if (col.type === 'checkbox') return isChecked(raw) ? 1 : 0;
+  if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); const k = normKey(raw, m); return (m[k] || raw || '') || null; }
+  if (col.type === 'number') { const n = Number(raw); return raw != null && raw !== '' && isFinite(n) ? n : null; }
+  const s = (raw == null ? '' : String(raw)).trim();
+  return s || null;
+}
+function applyLeadSort(list) {
+  if (!_leadSort || !_leadSort.key) return list;
+  const col = leadCol(_leadSort.key);
+  if (!col || col.deleted || col.visible === false) return list; // don't sort by a hidden/removed column
+  const dir = _leadSort.dir === 'desc' ? -1 : 1;
+  const isEmpty = v => v === null || v === undefined || v === '';
+  return [...list].sort((a, b) => {
+    const va = leadSortValue(a, col), vb = leadSortValue(b, col);
+    const ea = isEmpty(va), eb = isEmpty(vb);
+    if (ea && eb) return 0;
+    if (ea) return 1;
+    if (eb) return -1;
+    let r;
+    if (typeof va === 'number' && typeof vb === 'number') r = va - vb;
+    else r = String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' });
+    return r * dir;
+  });
+}
+function setLeadSort(key, dir) {
+  closeLeadMenu();
+  _leadSort = key ? { key, dir: dir || 'asc' } : { key: null, dir: 'asc' };
+  try { localStorage.setItem('ml_emp_leads_sort', JSON.stringify(_leadSort)); } catch (_) {}
+  renderLeadHead();
+  empFilterLeads();
+}
+// Header click cycles the column: asc → desc → cleared.
+function toggleLeadSort(key) {
+  if (!_leadSort || _leadSort.key !== key) return setLeadSort(key, 'asc');
+  if (_leadSort.dir === 'asc') return setLeadSort(key, 'desc');
+  return setLeadSort(null);
+}
+function leadHeaderClick(e, key) {
+  if (_leadColDidDrag) { _leadColDidDrag = false; return; }
+  toggleLeadSort(key);
+}
+function leadSortArrow(key) {
+  if (!_leadSort || _leadSort.key !== key) return '';
+  return `<span class="lead-sort-arrow" style="color:var(--primary);margin-left:3px;font-size:10px">${_leadSort.dir === 'desc' ? '▼' : '▲'}</span>`;
+}
+
 function empFilterLeads() {
   const q = (document.getElementById('emp-lead-search')?.value || '').toLowerCase();
-  empRenderLeads(q ? _empLeads.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.car_in_question||'').toLowerCase().includes(q)) : _empLeads);
+  const base = q ? _empLeads.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.car_in_question||'').toLowerCase().includes(q)) : _empLeads;
+  empRenderLeads(applyLeadSort(base));
 }
 
 function empRenderLeads(list) {
@@ -2717,6 +2776,7 @@ let _leadColsLoaded = false;
 let _pendingFollowups = {}; // customer_id -> earliest pending due_at (ISO)
 let _editingLeadCell = false;
 let _dragColKey = null;
+let _leadColDidDrag = false; // swallow the click that can trail a header drag
 let _leadMenuEl = null;
 let _typeColKey = null;
 
@@ -2764,16 +2824,16 @@ function renderLeadHead() {
     <th class="lead-col" draggable="true" data-colkey="${esc(c.key)}" style="${thStyle}"
         ondragstart="leadColDragStart(event)" ondragover="leadColDragOver(event)" ondragleave="this.classList.remove('drag-over')"
         ondrop="leadColDrop(event)" ondragend="leadColDragEnd()"
-        onclick="openLeadColMenu(event,'${esc(c.key)}')">${esc(c.label)} <i data-lucide="chevron-down" style="width:11px;height:11px;display:inline-block;vertical-align:middle"></i></th>`).join('');
+        onclick="leadHeaderClick(event,'${esc(c.key)}')" title="Click to sort">${esc(c.label)}${leadSortArrow(c.key)} <span class="col-chev-btn" onclick="event.stopPropagation();openLeadColMenu(event,'${esc(c.key)}')" title="Column options" style="cursor:pointer;display:inline-flex;align-items:center;padding:0 2px;border-radius:4px"><i data-lucide="chevron-down" style="width:11px;height:11px;display:inline-block;vertical-align:middle"></i></span></th>`).join('');
   tr.innerHTML = ths +
     `<th style="${thStyle};width:34px;text-align:center"><button onclick="openAddLeadColModal()" title="Add column" style="background:none;border:1px dashed var(--border);border-radius:6px;color:var(--muted);cursor:pointer;width:24px;height:24px;font-size:15px;line-height:1">+</button></th>` +
     `<th style="${thStyle};text-align:right">Actions</th>`;
   requestAnimationFrame(() => lucide.createIcons());
 }
 
-function leadColDragStart(e) { _dragColKey = e.currentTarget.dataset.colkey; e.dataTransfer.effectAllowed = 'move'; }
+function leadColDragStart(e) { _dragColKey = e.currentTarget.dataset.colkey; _leadColDidDrag = true; e.dataTransfer.effectAllowed = 'move'; }
 function leadColDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
-function leadColDragEnd() { document.querySelectorAll('#emp-leads-head th.drag-over').forEach(t => t.classList.remove('drag-over')); _dragColKey = null; }
+function leadColDragEnd() { document.querySelectorAll('#emp-leads-head th.drag-over').forEach(t => t.classList.remove('drag-over')); _dragColKey = null; setTimeout(() => { _leadColDidDrag = false; }, 0); }
 function leadColDrop(e) {
   e.preventDefault();
   const target = e.currentTarget.dataset.colkey; const src = _dragColKey; leadColDragEnd();
@@ -2809,7 +2869,12 @@ function openLeadColMenu(e, key) {
   const m = ensureLeadMenu(); m.dataset.mode = 'colmenu';
   const vis = _leadCols.filter(c => c.visible && !c.deleted); const vi = vis.findIndex(c => c.key === key);
   const canType = col.type !== 'virtual' && !['name', 'budget_lead', 'lead_date'].includes(col.key);
+  const sorted = _leadSort && _leadSort.key === key;
   m.innerHTML = `
+    <button onclick="setLeadSort('${esc(key)}','asc')"${sorted && _leadSort.dir === 'asc' ? ' class="active"' : ''}><i data-lucide="arrow-up-narrow-wide" style="width:13px;height:13px"></i> Sort ascending</button>
+    <button onclick="setLeadSort('${esc(key)}','desc')"${sorted && _leadSort.dir === 'desc' ? ' class="active"' : ''}><i data-lucide="arrow-down-wide-narrow" style="width:13px;height:13px"></i> Sort descending</button>
+    ${sorted ? `<button onclick="setLeadSort(null)"><i data-lucide="x" style="width:13px;height:13px"></i> Clear sort</button>` : ''}
+    <div class="lead-menu-sep"></div>
     <button onclick="leadColRename('${esc(key)}')"><i data-lucide="pencil" style="width:13px;height:13px"></i> Rename</button>
     ${canType ? `<button onclick="openLeadTypeModal('${esc(key)}')"><i data-lucide="shuffle" style="width:13px;height:13px"></i> Change type</button>` : ''}
     ${(col.type === 'select' || col.type === 'radio') ? `<button onclick="openLeadOptsModal('${esc(key)}')"><i data-lucide="list" style="width:13px;height:13px"></i> Edit options</button>` : ''}
