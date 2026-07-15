@@ -5844,6 +5844,8 @@ async function saveQtSettings() {
 // ── Leads (Customers) ─────────────────────────────────────────────────────
 let _allCustomers = [];
 let _selectedLeads = new Set();
+// Sort state: { key, dir:'asc'|'desc' } — persisted so the choice sticks.
+let _leadSort = (() => { try { return JSON.parse(localStorage.getItem('ml_leads_sort')) || { key: null, dir: 'asc' }; } catch (_) { return { key: null, dir: 'asc' }; } })();
 
 const LEAD_STATUS_COLORS = { cold:'rgba(255,255,255,.06)', warm:'rgba(230,150,80,.18)', hot:'rgba(239,68,68,.14)', immediate_delivery:'rgba(100,180,120,.14)', not_interested:'rgba(150,150,150,.1)', blacklist:'rgba(60,0,0,.35)' };
 const LEAD_STATUS_TEXT   = { cold:'#b9b3a4', warm:'var(--gold)', hot:'#f87171', immediate_delivery:'#6dd8a4', not_interested:'#888', blacklist:'#f87171' };
@@ -5945,7 +5947,7 @@ function renderLeadHead() {
     <th class="lead-col" draggable="true" data-colkey="${esc(c.key)}"
         ondragstart="leadColDragStart(event)" ondragover="leadColDragOver(event)" ondragleave="this.classList.remove('drag-over')"
         ondrop="leadColDrop(event)" ondragend="leadColDragEnd()"
-        onclick="openLeadColMenu(event,'${esc(c.key)}')">${esc(c.label)}<i data-lucide="chevron-down" class="col-chev"></i></th>`).join('');
+        onclick="openLeadColMenu(event,'${esc(c.key)}')">${esc(c.label)}${leadSortArrow(c.key)}<i data-lucide="chevron-down" class="col-chev"></i></th>`).join('');
   tr.innerHTML = `
     <th style="width:36px;padding:8px 6px"><input type="checkbox" id="select-all-leads" onchange="toggleSelectAllLeads(this)"></th>
     ${ths}
@@ -6003,7 +6005,12 @@ function openLeadColMenu(e, key) {
   const vis = _leadCols.filter(c => c.visible && !c.deleted);
   const vi = vis.findIndex(c => c.key === key);
   const canType = col.type !== 'virtual' && !['name', 'budget_lead', 'lead_date'].includes(col.key);
+  const sorted = _leadSort && _leadSort.key === key;
   m.innerHTML = `
+    <button onclick="setLeadSort('${esc(key)}','asc')"${sorted && _leadSort.dir === 'asc' ? ' class="active"' : ''}><i data-lucide="arrow-up-narrow-wide" style="width:13px;height:13px"></i> Sort ascending</button>
+    <button onclick="setLeadSort('${esc(key)}','desc')"${sorted && _leadSort.dir === 'desc' ? ' class="active"' : ''}><i data-lucide="arrow-down-wide-narrow" style="width:13px;height:13px"></i> Sort descending</button>
+    ${sorted ? `<button onclick="setLeadSort(null)"><i data-lucide="x" style="width:13px;height:13px"></i> Clear sort</button>` : ''}
+    <div class="lead-menu-sep"></div>
     <button onclick="leadColRename('${esc(key)}')"><i data-lucide="pencil" style="width:13px;height:13px"></i> Rename</button>
     ${canType ? `<button onclick="openLeadTypeModal('${esc(key)}')"><i data-lucide="shuffle" style="width:13px;height:13px"></i> Change type</button>` : ''}
     ${(col.type === 'select' || col.type === 'radio') ? `<button onclick="openLeadOptsModal('${esc(key)}')"><i data-lucide="list" style="width:13px;height:13px"></i> Edit options</button>` : ''}
@@ -6404,6 +6411,53 @@ function normKey(v, labels) {
   return snake;                                      // fallback
 }
 
+// ── Sort by any column ────────────────────────────────────────────────────────
+// A comparable value per column type: numbers/budget numeric, dates as epoch,
+// checkbox boolean, selects by their human label, everything else as text.
+// Empty values return null and always sort last (in both directions).
+function leadSortValue(c, col) {
+  const key = col.key;
+  if (key === 'next_followup') { const d = _pendingFollowups[c.id]; return d ? new Date(d).getTime() : null; }
+  if (key === 'owner') { if (!c.assigned_to) return null; const e = (employeesForTasks || []).find(x => String(x.id) === String(c.assigned_to)); return (e ? e.name : ('#' + c.assigned_to)) || null; }
+  if (key === 'budget_lead') { return c.budget_lead != null && c.budget_lead !== '' ? Number(c.budget_lead) : null; }
+  const raw = col.builtin ? c[key] : (c.custom_fields || {})[key];
+  if (key === 'lead_date' || col.type === 'date') { if (!raw) return null; const t = new Date(raw).getTime(); return isNaN(t) ? null : t; }
+  if (col.type === 'checkbox') return isChecked(raw) ? 1 : 0;
+  if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); const k = normKey(raw, m); return (m[k] || raw || '') || null; }
+  if (col.type === 'number') return raw != null && raw !== '' ? Number(raw) : null;
+  const s = (raw == null ? '' : String(raw)).trim();
+  return s || null;
+}
+function applyLeadSort(list) {
+  if (!_leadSort || !_leadSort.key) return list;
+  const col = leadCol(_leadSort.key);
+  if (!col) return list;
+  const dir = _leadSort.dir === 'desc' ? -1 : 1;
+  const isEmpty = v => v === null || v === undefined || v === '';
+  return [...list].sort((a, b) => {
+    const va = leadSortValue(a, col), vb = leadSortValue(b, col);
+    const ea = isEmpty(va), eb = isEmpty(vb);
+    if (ea && eb) return 0;
+    if (ea) return 1;   // empties always last
+    if (eb) return -1;
+    let r;
+    if (typeof va === 'number' && typeof vb === 'number') r = va - vb;
+    else r = String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' });
+    return r * dir;
+  });
+}
+function setLeadSort(key, dir) {
+  closeLeadMenu();
+  _leadSort = key ? { key, dir: dir || 'asc' } : { key: null, dir: 'asc' };
+  try { localStorage.setItem('ml_leads_sort', JSON.stringify(_leadSort)); } catch (_) {}
+  renderLeadHead();
+  filterCustomers();
+}
+function leadSortArrow(key) {
+  if (!_leadSort || _leadSort.key !== key) return '';
+  return `<span class="lead-sort-arrow" style="color:var(--primary);margin-left:3px;font-size:10px">${_leadSort.dir === 'desc' ? '▼' : '▲'}</span>`;
+}
+
 function filterCustomers() {
   const q    = (document.getElementById('customer-search')?.value || '').toLowerCase();
   const from = document.getElementById('lead-date-from')?.value || '';
@@ -6421,7 +6475,7 @@ function filterCustomers() {
     const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
     list = list.filter(c => _pendingFollowups[c.id] && new Date(_pendingFollowups[c.id]) <= endOfDay);
   }
-  renderCustomers(list);
+  renderCustomers(applyLeadSort(list));
 }
 
 function clearLeadFilters() {
