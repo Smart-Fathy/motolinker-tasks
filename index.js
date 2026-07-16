@@ -313,6 +313,111 @@ function csvSerialize(rows, columns) {
   return lines.join('\r\n');
 }
 
+// ── Customizable Leads report ─────────────────────────────────────────────────
+// Group leads by any dimension (status, origin, budget range, owner, month,
+// vehicle, or a custom column) and measure by count or budget. Powers the
+// "Custom Leads Report" builder in the Reports page.
+function fmtShortNum(n) {
+  n = Number(n) || 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(n % 1e6 ? 1 : 0).replace(/\.0$/, '') + 'M';
+  if (n >= 1e3) return Math.round(n / 1e3) + 'k';
+  return String(n);
+}
+function parseBudgetBuckets(str) {
+  const def = [500000, 1000000, 1500000, 2000000, 3000000];
+  if (!str) return def;
+  const nums = [];
+  for (const raw of String(str).split(/[,\s]+/)) {
+    let t = raw.trim().toLowerCase(); if (!t) continue;
+    let mult = 1;
+    if (/k$/.test(t)) { mult = 1e3; t = t.slice(0, -1); }
+    else if (/m$/.test(t)) { mult = 1e6; t = t.slice(0, -1); }
+    const n = parseFloat(t.replace(/[^\d.]/g, ''));
+    if (isFinite(n) && n > 0) nums.push(Math.round(n * mult));
+  }
+  const arr = [...new Set(nums)].sort((a, b) => a - b);
+  return arr.length ? arr : def;
+}
+// Returns [sortKey, label] for a budget value against ascending thresholds.
+function budgetBucketOf(v, buckets) {
+  if (v == null || v === '' || isNaN(Number(v))) return ['b999', 'No budget'];
+  const n = Number(v);
+  for (let i = 0; i < buckets.length; i++) {
+    if (n < buckets[i]) return ['b' + String(i).padStart(3, '0'), i === 0 ? ('< ' + fmtShortNum(buckets[0])) : (fmtShortNum(buckets[i - 1]) + '–' + fmtShortNum(buckets[i]))];
+  }
+  return ['b' + String(buckets.length).padStart(3, '0'), fmtShortNum(buckets[buckets.length - 1]) + '+'];
+}
+function enumLabelMap(field) {
+  const m = {};
+  (LEADS_ENUM_DEFAULTS[field] || []).forEach(([k, l]) => { m[k] = l; });
+  return m;
+}
+async function buildLeadsReport(q) {
+  const { fromISO, toISO } = reportRange(q);
+  const fromDay = fromISO.slice(0, 10), toDay = toISO.slice(0, 10);
+  const GROUPS = ['lead_status', 'source', 'budget', 'next_action', 'been_contacted', 'owner', 'month', 'car_in_question'];
+  let groupBy = String(q.groupBy || 'lead_status');
+  const isCustom = groupBy.startsWith('cf_');
+  if (!GROUPS.includes(groupBy) && !isCustom) groupBy = 'lead_status';
+  const measure = ['count', 'budget_sum', 'budget_avg'].includes(q.measure) ? q.measure : 'count';
+  const statusFilter = q.status ? String(q.status) : '';
+  const sourceFilter = q.source ? String(q.source) : '';
+  const buckets = parseBudgetBuckets(q.buckets);
+
+  const { data: all } = await supabase.from('customers')
+    .select('id,lead_status,source,budget_lead,budget_max,next_action,been_contacted,assigned_to,car_in_question,lead_date,created_at,custom_fields')
+    .limit(20000);
+  const effDay = c => c.lead_date || (c.created_at || '').slice(0, 10);
+  let leads = (all || []).filter(c => { const d = effDay(c); return d && d >= fromDay && d <= toDay; });
+  if (statusFilter) leads = leads.filter(c => (c.lead_status || 'cold') === statusFilter);
+  if (sourceFilter) leads = leads.filter(c => (c.source || '') === sourceFilter);
+
+  const { data: emps } = await supabase.from('employees').select('id,name');
+  const empName = id => (emps || []).find(e => String(e.id) === String(id))?.name || (id ? '#' + id : 'Unassigned');
+  const statusLabels = enumLabelMap('status'), originLabels = enumLabelMap('source'), naLabels = enumLabelMap('next_action');
+  const isTrue = v => v === true || v === 'true' || v === 1 || v === '1';
+
+  function keyLabel(c) {
+    switch (groupBy) {
+      case 'lead_status': { const k = c.lead_status || 'cold'; return [k, statusLabels[k] || k]; }
+      case 'source': { const k = c.source || ''; return [k || '~none', k ? (originLabels[k] || k) : '(no origin)']; }
+      case 'next_action': { const k = c.next_action || ''; return [k || '~none', k ? (naLabels[k] || k) : '(none)']; }
+      case 'been_contacted': { const b = isTrue(c.been_contacted); return [b ? 'a_yes' : 'b_no', b ? 'Contacted' : 'Not contacted']; }
+      case 'owner': { const k = c.assigned_to; return [String(k || '~unassigned'), empName(k)]; }
+      case 'month': { const m = (effDay(c) || '').slice(0, 7); return [m || 'zzzz', m || '(no date)']; }
+      case 'car_in_question': { const k = (c.car_in_question || '').trim(); return [k || '~none', k || '(none)']; }
+      case 'budget': return budgetBucketOf(c.budget_lead, buckets);
+      default: { const v = (c.custom_fields || {})[groupBy]; const s = (v == null ? '' : String(v)).trim(); return [s || '~none', s || '(none)']; }
+    }
+  }
+  const map = {};
+  let totalCount = 0, totalBudget = 0, hotCount = 0;
+  for (const c of leads) {
+    const [k, label] = keyLabel(c);
+    if (!map[k]) map[k] = { key: k, label, count: 0, budget: 0 };
+    const b = Number(c.budget_lead) || 0;
+    map[k].count++; map[k].budget += b;
+    totalCount++; totalBudget += b;
+    if ((c.lead_status || 'cold') === 'hot') hotCount++;
+  }
+  let entries = Object.values(map);
+  if (groupBy === 'budget' || groupBy === 'month') entries.sort((a, b) => String(a.key).localeCompare(String(b.key)));
+  else entries.sort((a, b) => measure === 'count' ? b.count - a.count : b.budget - a.budget);
+  const rows = entries.map(r => ({
+    label: r.label, count: r.count,
+    value: measure === 'budget_avg' ? Math.round(r.budget / (r.count || 1)) : Math.round(r.budget),
+  }));
+  return {
+    groupBy, measure, rows,
+    totals: { count: totalCount, budget: Math.round(totalBudget), avg: totalCount ? Math.round(totalBudget / totalCount) : 0 },
+    hotCount, range: { from: fromDay, to: toDay },
+  };
+}
+receiver.router.get('/api/dashboard/reports/leads', requireAuth, async (req, res) => {
+  try { res.json(await buildLeadsReport(req.query)); }
+  catch (e) { console.error('[reports-leads]', e); res.status(500).json({ error: e.message }); }
+});
+
 receiver.router.get('/api/dashboard/reports/export.csv', requireAuth, async (req, res) => {
   try {
     const rep = await buildSalesReport(req.query);
