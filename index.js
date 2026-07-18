@@ -408,11 +408,13 @@ async function buildLeadsReport(q) {
   const naLabels = cfgLabels('next_action', enumLabelMap('next_action'));
   const isTrue = v => v === true || v === 'true' || v === 1 || v === '1';
 
+  // Group identity is the DISPLAYED label (normalized) — so a value stored as an
+  // option key and the same value stored as its label always land in one group.
   function keyLabel(c) {
     switch (groupBy) {
-      case 'lead_status': { const raw = c.lead_status || 'cold'; const k = autoNorm(raw); return [k, statusLabels[k] || raw]; }
-      case 'source': { const raw = c.source || ''; const k = autoNorm(raw); return [k || '~none', raw ? (originLabels[k] || raw) : '(no origin)']; }
-      case 'next_action': { const raw = c.next_action || ''; const k = autoNorm(raw); return [k || '~none', raw ? (naLabels[k] || raw) : '(none)']; }
+      case 'lead_status': { const raw = c.lead_status || 'cold'; const label = statusLabels[autoNorm(raw)] || raw; return [autoNorm(label), label]; }
+      case 'source': { const raw = c.source || ''; if (!raw) return ['~none', '(no origin)']; const label = originLabels[autoNorm(raw)] || raw; return [autoNorm(label), label]; }
+      case 'next_action': { const raw = c.next_action || ''; if (!raw) return ['~none', '(none)']; const label = naLabels[autoNorm(raw)] || raw; return [autoNorm(label), label]; }
       case 'been_contacted': { const b = isTrue(c.been_contacted); return [b ? 'a_yes' : 'b_no', b ? 'Contacted' : 'Not contacted']; }
       case 'owner': { const k = c.assigned_to; return [String(k || '~unassigned'), empName(k)]; }
       case 'month': { const m = (effDay(c) || '').slice(0, 7); return [m || 'zzzz', m || '(no date)']; }
