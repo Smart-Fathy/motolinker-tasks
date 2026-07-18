@@ -360,8 +360,11 @@ async function buildLeadsReport(q) {
   const isCustom = groupBy.startsWith('cf_');
   if (!GROUPS.includes(groupBy) && !isCustom) groupBy = 'lead_status';
   const measure = ['count', 'budget_sum', 'budget_avg'].includes(q.measure) ? q.measure : 'count';
-  const statusFilter = q.status ? String(q.status) : '';
-  const sourceFilter = q.source ? String(q.source) : '';
+  // Values may be stored as raw labels ("Hot", "Whatsapp") rather than canonical
+  // keys, so every enum comparison/grouping normalizes first (autoNorm: lowercase,
+  // spaces→_). This is what makes the Hot count and status/origin filters correct.
+  const statusFilter = q.status ? autoNorm(q.status) : '';
+  const sourceFilter = q.source ? autoNorm(q.source) : '';
   const buckets = parseBudgetBuckets(q.buckets);
 
   const { data: all } = await supabase.from('customers')
@@ -369,8 +372,20 @@ async function buildLeadsReport(q) {
     .limit(20000);
   const effDay = c => c.lead_date || (c.created_at || '').slice(0, 10);
   let leads = (all || []).filter(c => { const d = effDay(c); return d && d >= fromDay && d <= toDay; });
-  if (statusFilter) leads = leads.filter(c => (c.lead_status || 'cold') === statusFilter);
-  if (sourceFilter) leads = leads.filter(c => (c.source || '') === sourceFilter);
+  if (statusFilter) leads = leads.filter(c => autoNorm(c.lead_status || 'cold') === statusFilter);
+  if (sourceFilter) leads = leads.filter(c => autoNorm(c.source || '') === sourceFilter);
+
+  // Budget can live in the built-in budget_lead OR a custom "Budget" column
+  // (some configs deleted the built-in and use cf_budget). Fall back per lead.
+  const colsCfg = await loadLeadsColsConfig();
+  const budgetCf = (Array.isArray(colsCfg) ? colsCfg : []).find(c => c && typeof c.key === 'string' && c.key.startsWith('cf_') && !c.deleted && autoNorm(c.label || '') === 'budget')?.key || 'cf_budget';
+  const effBudget = c => {
+    if (c.budget_lead != null && c.budget_lead !== '' && isFinite(Number(c.budget_lead))) return Number(c.budget_lead);
+    const raw = (c.custom_fields || {})[budgetCf];
+    if (raw == null || raw === '') return null;
+    const b = parseBudget(raw);
+    return b && b.min != null ? Number(b.min) : null;
+  };
 
   const { data: emps } = await supabase.from('employees').select('id,name');
   const empName = id => (emps || []).find(e => String(e.id) === String(id))?.name || (id ? '#' + id : 'Unassigned');
@@ -379,14 +394,14 @@ async function buildLeadsReport(q) {
 
   function keyLabel(c) {
     switch (groupBy) {
-      case 'lead_status': { const k = c.lead_status || 'cold'; return [k, statusLabels[k] || k]; }
-      case 'source': { const k = c.source || ''; return [k || '~none', k ? (originLabels[k] || k) : '(no origin)']; }
-      case 'next_action': { const k = c.next_action || ''; return [k || '~none', k ? (naLabels[k] || k) : '(none)']; }
+      case 'lead_status': { const raw = c.lead_status || 'cold'; const k = autoNorm(raw); return [k, statusLabels[k] || raw]; }
+      case 'source': { const raw = c.source || ''; const k = autoNorm(raw); return [k || '~none', raw ? (originLabels[k] || raw) : '(no origin)']; }
+      case 'next_action': { const raw = c.next_action || ''; const k = autoNorm(raw); return [k || '~none', raw ? (naLabels[k] || raw) : '(none)']; }
       case 'been_contacted': { const b = isTrue(c.been_contacted); return [b ? 'a_yes' : 'b_no', b ? 'Contacted' : 'Not contacted']; }
       case 'owner': { const k = c.assigned_to; return [String(k || '~unassigned'), empName(k)]; }
       case 'month': { const m = (effDay(c) || '').slice(0, 7); return [m || 'zzzz', m || '(no date)']; }
       case 'car_in_question': { const k = (c.car_in_question || '').trim(); return [k || '~none', k || '(none)']; }
-      case 'budget': return budgetBucketOf(c.budget_lead, buckets);
+      case 'budget': return budgetBucketOf(effBudget(c), buckets);
       default: { const v = (c.custom_fields || {})[groupBy]; const s = (v == null ? '' : String(v)).trim(); return [s || '~none', s || '(none)']; }
     }
   }
@@ -395,10 +410,10 @@ async function buildLeadsReport(q) {
   for (const c of leads) {
     const [k, label] = keyLabel(c);
     if (!map[k]) map[k] = { key: k, label, count: 0, budget: 0 };
-    const b = Number(c.budget_lead) || 0;
+    const b = effBudget(c) || 0;
     map[k].count++; map[k].budget += b;
     totalCount++; totalBudget += b;
-    if ((c.lead_status || 'cold') === 'hot') hotCount++;
+    if (autoNorm(c.lead_status || 'cold') === 'hot') hotCount++;
   }
   let entries = Object.values(map);
   if (groupBy === 'budget' || groupBy === 'month') entries.sort((a, b) => String(a.key).localeCompare(String(b.key)));

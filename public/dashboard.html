@@ -1633,6 +1633,9 @@
           <button class="btn btn-outline" onclick="openDedupeModal()">
             <i data-lucide="copy-check" style="width:15px;height:15px"></i> Find Duplicates
           </button>
+          <button class="btn btn-outline" onclick="exportLeadsTable()" title="Export the table as CSV — visible columns only, respecting your filters and sort">
+            <i data-lucide="download" style="width:15px;height:15px"></i> Export
+          </button>
           <button class="btn btn-outline" onclick="openCsvImportModal()">
             <i data-lucide="upload" style="width:15px;height:15px"></i> Import CSV
           </button>
@@ -6715,7 +6718,36 @@ function clearLeadFilters() {
   filterCustomers();
 }
 
+let _lastRenderedLeads = []; // filtered+sorted list currently on screen (feeds Export)
+
+// Plain-text value of a lead cell, mirroring how leadCellHtml displays it.
+function leadCellText(c, col) {
+  const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
+  if (col.key === 'next_followup') { const d = _pendingFollowups[c.id]; return d ? new Date(d).toLocaleString() : ''; }
+  if (col.key === 'owner') { return c.assigned_to ? ((employeesForTasks || []).find(x => String(x.id) === String(c.assigned_to))?.name || ('#' + c.assigned_to)) : ''; }
+  if (col.key === 'budget_lead') { return c.budget_lead != null && c.budget_lead !== '' ? (c.budget_max ? `${c.budget_lead} - ${c.budget_max}` : String(c.budget_lead)) : ''; }
+  if (col.type === 'checkbox') return isChecked(raw) ? 'Yes' : 'No';
+  if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); const k = normKey(raw, m); return m[k] || (raw == null ? '' : String(raw)); }
+  return raw == null ? '' : String(raw);
+}
+// Export the table exactly as shown: visible columns only, current filters + sort.
+function exportLeadsTable() {
+  const vis = (_leadCols || []).filter(c => c.visible && !c.deleted);
+  const list = _lastRenderedLeads || [];
+  if (!list.length) { alert('No leads to export (adjust your filters).'); return; }
+  const cell = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const lines = [vis.map(c => cell(c.label)).join(',')];
+  for (const c of list) lines.push(vis.map(col => cell(leadCellText(c, col))).join(','));
+  // UTF-8 BOM so Excel opens Arabic text correctly
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `motolinker-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
 function renderCustomers(list) {
+  _lastRenderedLeads = list;
   const tbody = document.getElementById('customers-tbody');
   const vis = (_leadCols || []).filter(c => c.visible && !c.deleted);
   const span = vis.length + 3; // select-all + add-column + actions
