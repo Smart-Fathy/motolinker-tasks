@@ -1067,6 +1067,7 @@
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <input class="form-control" id="emp-lead-search" placeholder="Search name, phone, car…" oninput="empFilterLeads()" style="max-width:240px">
             <button class="btn btn-outline" id="lead-cols-btn" onclick="openLeadColsPicker(event)"><i data-lucide="columns-3" style="width:15px;height:15px"></i> Columns</button>
+            <button class="btn btn-outline" onclick="exportLeadsTable()" title="Export the table as CSV — visible columns only"><i data-lucide="download" style="width:15px;height:15px"></i> Export</button>
             <button class="btn btn-outline" onclick="openEmpCsvModal()"><i data-lucide="upload" style="width:15px;height:15px"></i> Import CSV</button>
             <button class="btn btn-primary" onclick="openEmpLeadModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> Add Lead</button>
           </div>
@@ -2727,7 +2728,35 @@ function empFilterLeads() {
   empRenderLeads(applyLeadSort(base));
 }
 
+let _lastRenderedLeads = []; // filtered+sorted list currently on screen (feeds Export)
+
+// Plain-text value of a lead cell (mirrors leadCellHtml display rules).
+function leadCellText(c, col) {
+  const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
+  if (col.key === 'next_followup') { const d = _pendingFollowups[c.id]; return d ? new Date(d).toLocaleString() : ''; }
+  if (col.key === 'owner') { return c.assigned_to ? (empEmpName(c.assigned_to) || ('#' + c.assigned_to)) : ''; }
+  if (col.key === 'budget_lead') { return c.budget_lead != null && c.budget_lead !== '' ? (c.budget_max ? `${c.budget_lead} - ${c.budget_max}` : String(c.budget_lead)) : ''; }
+  if (col.type === 'checkbox') return isChecked(raw) ? 'Yes' : 'No';
+  if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); const k = normKey(raw, m); return m[k] || (raw == null ? '' : String(raw)); }
+  return raw == null ? '' : String(raw);
+}
+// Export the table exactly as shown: visible columns only, current search + sort.
+function exportLeadsTable() {
+  const vis = (_leadCols || []).filter(c => c.visible && !c.deleted);
+  const list = _lastRenderedLeads || [];
+  if (!list.length) { showToast('No leads to export.'); return; }
+  const cell = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const lines = [vis.map(c => cell(c.label)).join(',')];
+  for (const c of list) lines.push(vis.map(col => cell(leadCellText(c, col))).join(','));
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }); // BOM: Arabic-safe in Excel
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `motolinker-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
 function empRenderLeads(list) {
+  _lastRenderedLeads = list;
   const tbody = document.getElementById('emp-leads-tbody');
   const vis = (_leadCols || []).filter(c => c.visible && !c.deleted);
   const span = vis.length + 2; // add-column + actions
