@@ -389,7 +389,23 @@ async function buildLeadsReport(q) {
 
   const { data: emps } = await supabase.from('employees').select('id,name');
   const empName = id => (emps || []).find(e => String(e.id) === String(id))?.name || (id ? '#' + id : 'Unassigned');
-  const statusLabels = enumLabelMap('status'), originLabels = enumLabelMap('source'), naLabels = enumLabelMap('next_action');
+  // Label enum values the way the LEADS TABLE does: the user's saved column
+  // options win (they may have renamed/replaced options); defaults are only a
+  // fallback. Indexed by autoNorm of both option key and label so raws stored
+  // either way resolve to the same display name.
+  const cfgLabels = (colKey, defaults) => {
+    const m = { ...defaults };
+    const col = (Array.isArray(colsCfg) ? colsCfg : []).find(c => c && c.key === colKey && !c.deleted);
+    (col && Array.isArray(col.options) ? col.options : []).forEach(o => {
+      if (!o || o.label == null) return;
+      m[autoNorm(o.key)] = o.label;
+      m[autoNorm(o.label)] = o.label;
+    });
+    return m;
+  };
+  const statusLabels = cfgLabels('lead_status', enumLabelMap('status'));
+  const originLabels = cfgLabels('source', enumLabelMap('source'));
+  const naLabels = cfgLabels('next_action', enumLabelMap('next_action'));
   const isTrue = v => v === true || v === 'true' || v === 1 || v === '1';
 
   function keyLabel(c) {
