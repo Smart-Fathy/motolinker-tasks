@@ -353,12 +353,12 @@ function enumLabelMap(field) {
   return m;
 }
 async function buildLeadsReport(q) {
-  const { fromISO, toISO } = reportRange(q);
-  const fromDay = fromISO.slice(0, 10), toDay = toISO.slice(0, 10);
   const GROUPS = ['lead_status', 'source', 'budget', 'next_action', 'been_contacted', 'owner', 'month', 'car_in_question'];
+  const validDim = d => GROUPS.includes(d) || (typeof d === 'string' && d.startsWith('cf_'));
   let groupBy = String(q.groupBy || 'lead_status');
-  const isCustom = groupBy.startsWith('cf_');
-  if (!GROUPS.includes(groupBy) && !isCustom) groupBy = 'lead_status';
+  if (!validDim(groupBy)) groupBy = 'lead_status';
+  let splitBy = String(q.splitBy || '');
+  if (!validDim(splitBy) || splitBy === groupBy) splitBy = '';   // optional 2nd dimension (cross-tab)
   const measure = ['count', 'budget_sum', 'budget_avg'].includes(q.measure) ? q.measure : 'count';
   // Values may be stored as raw labels ("Hot", "Whatsapp") rather than canonical
   // keys, so every enum comparison/grouping normalizes first (autoNorm: lowercase,
@@ -366,12 +366,22 @@ async function buildLeadsReport(q) {
   const statusFilter = q.status ? autoNorm(q.status) : '';
   const sourceFilter = q.source ? autoNorm(q.source) : '';
   const buckets = parseBudgetBuckets(q.buckets);
+  // ALL-TIME by default so totals match the Leads table exactly; the date filter
+  // applies only when the user supplies a range.
+  const fromDay = q.from ? String(q.from).slice(0, 10) : null;
+  const toDay = q.to ? String(q.to).slice(0, 10) : null;
 
   const { data: all } = await supabase.from('customers')
     .select('id,lead_status,source,budget_lead,budget_max,next_action,been_contacted,assigned_to,car_in_question,lead_date,created_at,custom_fields')
-    .limit(20000);
+    .limit(50000);
   const effDay = c => c.lead_date || (c.created_at || '').slice(0, 10);
-  let leads = (all || []).filter(c => { const d = effDay(c); return d && d >= fromDay && d <= toDay; });
+  let leads = (all || []).filter(c => {
+    if (!fromDay && !toDay) return true;               // no range → every lead (incl. dateless)
+    const d = effDay(c); if (!d) return false;
+    if (fromDay && d < fromDay) return false;
+    if (toDay && d > toDay) return false;
+    return true;
+  });
   if (statusFilter) leads = leads.filter(c => autoNorm(c.lead_status || 'cold') === statusFilter);
   if (sourceFilter) leads = leads.filter(c => autoNorm(c.source || '') === sourceFilter);
 
@@ -408,43 +418,69 @@ async function buildLeadsReport(q) {
   const naLabels = cfgLabels('next_action', enumLabelMap('next_action'));
   const isTrue = v => v === true || v === 'true' || v === 1 || v === '1';
 
-  // Group identity is the DISPLAYED label (normalized) — so a value stored as an
-  // option key and the same value stored as its label always land in one group.
-  function keyLabel(c) {
-    switch (groupBy) {
+  // [key,label] for ANY dimension — reused for group-by AND split-by. Group
+  // identity is the DISPLAYED label (normalized) so a value stored as an option
+  // key and the same value stored as its label always land together.
+  function dimKeyLabel(dim, c) {
+    if (dim.startsWith('cf_')) { const v = (c.custom_fields || {})[dim]; const s = (v == null ? '' : String(v)).trim(); return [s ? autoNorm(s) : '~none', s || '(none)']; }
+    switch (dim) {
       case 'lead_status': { const raw = c.lead_status || 'cold'; const label = statusLabels[autoNorm(raw)] || raw; return [autoNorm(label), label]; }
       case 'source': { const raw = c.source || ''; if (!raw) return ['~none', '(no origin)']; const label = originLabels[autoNorm(raw)] || raw; return [autoNorm(label), label]; }
       case 'next_action': { const raw = c.next_action || ''; if (!raw) return ['~none', '(none)']; const label = naLabels[autoNorm(raw)] || raw; return [autoNorm(label), label]; }
       case 'been_contacted': { const b = isTrue(c.been_contacted); return [b ? 'a_yes' : 'b_no', b ? 'Contacted' : 'Not contacted']; }
       case 'owner': { const k = c.assigned_to; return [String(k || '~unassigned'), empName(k)]; }
       case 'month': { const m = (effDay(c) || '').slice(0, 7); return [m || 'zzzz', m || '(no date)']; }
-      case 'car_in_question': { const k = (c.car_in_question || '').trim(); return [k || '~none', k || '(none)']; }
+      case 'car_in_question': { const k = (c.car_in_question || '').trim(); return [k ? autoNorm(k) : '~none', k || '(none)']; }
       case 'budget': return budgetBucketOf(effBudget(c), buckets);
-      default: { const v = (c.custom_fields || {})[groupBy]; const s = (v == null ? '' : String(v)).trim(); return [s || '~none', s || '(none)']; }
+      default: { const raw = c.lead_status || 'cold'; const label = statusLabels[autoNorm(raw)] || raw; return [autoNorm(label), label]; }
     }
   }
-  const map = {};
-  let totalCount = 0, totalBudget = 0, hotCount = 0;
-  for (const c of leads) {
-    const [k, label] = keyLabel(c);
-    if (!map[k]) map[k] = { key: k, label, count: 0, budget: 0 };
-    const b = effBudget(c) || 0;
-    map[k].count++; map[k].budget += b;
-    totalCount++; totalBudget += b;
-    if (autoNorm(c.lead_status || 'cold') === 'hot') hotCount++;
-  }
-  let entries = Object.values(map);
-  if (groupBy === 'budget' || groupBy === 'month') entries.sort((a, b) => String(a.key).localeCompare(String(b.key)));
-  else entries.sort((a, b) => measure === 'count' ? b.count - a.count : b.budget - a.budget);
-  const rows = entries.map(r => ({
-    label: r.label, count: r.count,
-    value: measure === 'budget_avg' ? Math.round(r.budget / (r.count || 1)) : Math.round(r.budget),
-  }));
-  return {
-    groupBy, measure, rows,
-    totals: { count: totalCount, budget: Math.round(totalBudget), avg: totalCount ? Math.round(totalBudget / totalCount) : 0 },
-    hotCount, range: { from: fromDay, to: toDay },
+  const measureVal = (count, budget) => measure === 'count' ? count : measure === 'budget_avg' ? Math.round(budget / (count || 1)) : Math.round(budget);
+  const orderEntries = (obj, dim) => {
+    const arr = Object.values(obj);
+    if (dim === 'budget' || dim === 'month') arr.sort((a, b) => String(a.key).localeCompare(String(b.key)));
+    else arr.sort((a, b) => measure === 'count' ? b.count - a.count : b.budget - a.budget);
+    return arr;
   };
+
+  let totalCount = 0, totalBudget = 0, hotCount = 0;
+  const tally = c => { const b = effBudget(c) || 0; totalCount++; totalBudget += b; if (autoNorm(c.lead_status || 'cold') === 'hot') hotCount++; return b; };
+  const totalsOut = () => ({ count: totalCount, budget: Math.round(totalBudget), avg: totalCount ? Math.round(totalBudget / totalCount) : 0 });
+  const rangeOut = { from: fromDay || '', to: toDay || '' };
+
+  if (splitBy) {
+    // Cross-tab: primary group rows × split-by category columns.
+    const map = {};      // primKey -> {key,label,count,budget,sub:{splitKey:{count,budget}}}
+    const splitAgg = {}; // splitKey -> {key,label,count,budget}
+    for (const c of leads) {
+      const b = tally(c);
+      const [pk, pl] = dimKeyLabel(groupBy, c);
+      const [sk, sl] = dimKeyLabel(splitBy, c);
+      if (!map[pk]) map[pk] = { key: pk, label: pl, count: 0, budget: 0, sub: {} };
+      map[pk].count++; map[pk].budget += b;
+      if (!map[pk].sub[sk]) map[pk].sub[sk] = { count: 0, budget: 0 };
+      map[pk].sub[sk].count++; map[pk].sub[sk].budget += b;
+      if (!splitAgg[sk]) splitAgg[sk] = { key: sk, label: sl, count: 0, budget: 0 };
+      splitAgg[sk].count++; splitAgg[sk].budget += b;
+    }
+    const splitCats = orderEntries(splitAgg, splitBy).map(s => ({ key: s.key, label: s.label }));
+    const rows = orderEntries(map, groupBy).map(r => ({
+      label: r.label, count: r.count, value: measureVal(r.count, r.budget),
+      cells: splitCats.reduce((o, s) => { const cell = r.sub[s.key]; o[s.key] = cell ? measureVal(cell.count, cell.budget) : 0; return o; }, {}),
+    }));
+    return { groupBy, splitBy, measure, splitCats, rows, totals: totalsOut(), hotCount, range: rangeOut };
+  }
+
+  // Single dimension (unchanged output shape)
+  const map = {};
+  for (const c of leads) {
+    const b = tally(c);
+    const [k, label] = dimKeyLabel(groupBy, c);
+    if (!map[k]) map[k] = { key: k, label, count: 0, budget: 0 };
+    map[k].count++; map[k].budget += b;
+  }
+  const rows = orderEntries(map, groupBy).map(r => ({ label: r.label, count: r.count, value: measureVal(r.count, r.budget) }));
+  return { groupBy, splitBy: '', measure, rows, totals: totalsOut(), hotCount, range: rangeOut };
 }
 receiver.router.get('/api/dashboard/reports/leads', requireAuth, async (req, res) => {
   try { res.json(await buildLeadsReport(req.query)); }

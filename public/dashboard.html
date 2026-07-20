@@ -1715,56 +1715,17 @@
   <!-- Reports / Sales Analytics -->
   <div id="page-reports" class="page">
     <div class="page-body" style="max-width:none">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-        <div>
-          <div class="page-title">Sales &amp; Revenue</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:4px">Pipeline, win-rate, revenue and conversion — computed live from your deals.</div>
-        </div>
-        <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
-          <div><label class="form-label" style="font-size:11px">From</label><input class="form-input" id="rep-from" type="date" style="padding:6px 8px;font-size:12px"></div>
-          <div><label class="form-label" style="font-size:11px">To</label><input class="form-input" id="rep-to" type="date" style="padding:6px 8px;font-size:12px"></div>
-          <div><label class="form-label" style="font-size:11px">Source</label>
-            <select class="form-input" id="rep-source" style="padding:6px 8px;font-size:12px">
-              <option value="">All sources</option>
-              <option value="fb_ad">FB Ad.</option><option value="whatsapp">Whatsapp</option>
-              <option value="messenger">Messenger</option><option value="direct_call">Direct Call</option>
-              <option value="ig_ads">IG ads</option><option value="website">Website</option>
-              <option value="walk_in">Walk-in</option><option value="marketplace">Marketplace</option>
-            </select>
-          </div>
-          <button class="btn btn-primary" onclick="loadReports()" style="font-size:12px"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Apply</button>
-          <button class="btn btn-outline" onclick="exportReport('summary')" style="font-size:12px"><i data-lucide="download" style="width:14px;height:14px"></i> CSV</button>
-        </div>
-      </div>
-      <div id="reports-stats" class="stats-grid" style="margin-bottom:22px"></div>
-      <div class="charts-grid">
-        <div class="chart-card">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Conversion funnel</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('pipeline')">CSV</button></div>
-          <div class="chart-wrap"><canvas id="repFunnel"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Revenue won by month</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('revenue_by_month')">CSV</button></div>
-          <div class="chart-wrap"><canvas id="repRevenue"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Deals by source</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('by_source')">CSV</button></div>
-          <div class="chart-wrap"><canvas id="repSource"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Rep leaderboard (revenue won)</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('by_rep')">CSV</button></div>
-          <div class="chart-wrap"><canvas id="repRep"></canvas></div>
-        </div>
-      </div>
-
-      <!-- Custom Leads Report (build your own breakdown) -->
-      <div style="margin-top:34px;border-top:1px solid var(--border);padding-top:26px">
+      <!-- Custom Leads Report (primary) -->
+      <div>
         <div style="margin-bottom:16px">
-          <div class="page-title" style="font-size:20px">Custom Leads Report</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:4px">Break your leads down by any dimension — status, origin, budget range, owner, month, or a custom column — and measure by count or budget.</div>
+          <div class="page-title">Custom Leads Report</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Break your leads down by any dimension — status, origin, budget range, owner, month, or a custom column — optionally split by a second dimension, and measure by count or budget.</div>
         </div>
         <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:18px">
           <div><label class="form-label" style="font-size:11px">Group by</label>
             <select class="form-input" id="lr-groupby" style="padding:6px 8px;font-size:12px" onchange="lrGroupChanged()"></select></div>
+          <div><label class="form-label" style="font-size:11px">Split by</label>
+            <select class="form-input" id="lr-splitby" style="padding:6px 8px;font-size:12px" onchange="lrGroupChanged()"></select></div>
           <div><label class="form-label" style="font-size:11px">Measure</label>
             <select class="form-input" id="lr-measure" style="padding:6px 8px;font-size:12px">
               <option value="count">Lead count</option>
@@ -1800,6 +1761,50 @@
           <div class="chart-card">
             <div class="card-title">Chart</div>
             <div class="chart-wrap"><canvas id="lrChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sales & Revenue (secondary) -->
+      <div style="margin-top:34px;border-top:1px solid var(--border);padding-top:26px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+          <div>
+            <div class="page-title" style="font-size:20px">Sales &amp; Revenue</div>
+            <div style="font-size:13px;color:var(--muted);margin-top:4px">Pipeline, win-rate, revenue and conversion — computed live from your deals.</div>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+            <div><label class="form-label" style="font-size:11px">From</label><input class="form-input" id="rep-from" type="date" style="padding:6px 8px;font-size:12px"></div>
+            <div><label class="form-label" style="font-size:11px">To</label><input class="form-input" id="rep-to" type="date" style="padding:6px 8px;font-size:12px"></div>
+            <div><label class="form-label" style="font-size:11px">Source</label>
+              <select class="form-input" id="rep-source" style="padding:6px 8px;font-size:12px">
+                <option value="">All sources</option>
+                <option value="fb_ad">FB Ad.</option><option value="whatsapp">Whatsapp</option>
+                <option value="messenger">Messenger</option><option value="direct_call">Direct Call</option>
+                <option value="ig_ads">IG ads</option><option value="website">Website</option>
+                <option value="walk_in">Walk-in</option><option value="marketplace">Marketplace</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" onclick="loadReports()" style="font-size:12px"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Apply</button>
+            <button class="btn btn-outline" onclick="exportReport('summary')" style="font-size:12px"><i data-lucide="download" style="width:14px;height:14px"></i> CSV</button>
+          </div>
+        </div>
+        <div id="reports-stats" class="stats-grid" style="margin-bottom:22px"></div>
+        <div class="charts-grid">
+          <div class="chart-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Conversion funnel</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('pipeline')">CSV</button></div>
+            <div class="chart-wrap"><canvas id="repFunnel"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Revenue won by month</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('revenue_by_month')">CSV</button></div>
+            <div class="chart-wrap"><canvas id="repRevenue"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Deals by source</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('by_source')">CSV</button></div>
+            <div class="chart-wrap"><canvas id="repSource"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Rep leaderboard (revenue won)</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('by_rep')">CSV</button></div>
+            <div class="chart-wrap"><canvas id="repRep"></canvas></div>
           </div>
         </div>
       </div>
@@ -2732,37 +2737,38 @@ function lrGroupLabel(key) {
   if (b) return b[1];
   return (_leadCols || []).find(c => c.key === key)?.label || key;
 }
-function lrPopulateGroupBy() {
-  const sel = document.getElementById('lr-groupby');
-  if (!sel) return;
-  const cur = sel.value;
+const LR_PALETTE = ['#c99a4e', '#f59e0b', '#10b981', '#3b82f6', '#a855f7', '#ef4444', '#14b8a6', '#64748b', '#e6c98a', '#8b5cf6', '#0ea5e9', '#f97316'];
+function lrDimOptions(includeNone) {
   const base = LR_GROUP_OPTS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
   const customs = (_leadCols || []).filter(c => !c.builtin && !c.deleted);
   const custom = customs.length ? `<optgroup label="Custom columns">${customs.map(c => `<option value="${esc(c.key)}">${esc(c.label)}</option>`).join('')}</optgroup>` : '';
-  sel.innerHTML = base + custom;
-  if (cur) sel.value = cur;
+  return (includeNone ? '<option value="">— none —</option>' : '') + base + custom;
+}
+function lrPopulateGroupBy() {
+  const g = document.getElementById('lr-groupby'), s = document.getElementById('lr-splitby');
+  if (g) { const cur = g.value; g.innerHTML = lrDimOptions(false); if (cur) g.value = cur; }
+  if (s) { const cur = s.value; s.innerHTML = lrDimOptions(true); if (cur) s.value = cur; }
 }
 function lrGroupChanged() {
-  const g = document.getElementById('lr-groupby')?.value;
-  document.getElementById('lr-buckets-wrap').style.display = g === 'budget' ? 'block' : 'none';
+  const g = document.getElementById('lr-groupby')?.value, s = document.getElementById('lr-splitby')?.value;
+  document.getElementById('lr-buckets-wrap').style.display = (g === 'budget' || s === 'budget') ? 'block' : 'none';
 }
-function lrDateDefaults() {
-  const to = document.getElementById('lr-to'), from = document.getElementById('lr-from');
-  if (to && !to.value) to.value = new Date().toISOString().slice(0, 10);
-  if (from && !from.value) from.value = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
-}
+function lrDateDefaults() { /* all-time by default — leave the date inputs empty so totals match the Leads table */ }
 function lrQuery() {
   const p = new URLSearchParams();
-  p.set('groupBy', document.getElementById('lr-groupby').value);
+  const g = document.getElementById('lr-groupby').value;
+  const sb = document.getElementById('lr-splitby').value;
+  p.set('groupBy', g);
+  if (sb && sb !== g) p.set('splitBy', sb);
   p.set('measure', document.getElementById('lr-measure').value);
   const f = document.getElementById('lr-from').value, t = document.getElementById('lr-to').value;
   const st = document.getElementById('lr-status').value, sr = document.getElementById('lr-source').value;
   if (f) p.set('from', f); if (t) p.set('to', t); if (st) p.set('status', st); if (sr) p.set('source', sr);
-  if (document.getElementById('lr-groupby').value === 'budget') { const bk = document.getElementById('lr-buckets').value.trim(); if (bk) p.set('buckets', bk); }
+  if (g === 'budget' || sb === 'budget') { const bk = document.getElementById('lr-buckets').value.trim(); if (bk) p.set('buckets', bk); }
   return p.toString();
 }
 async function loadLeadsReport() {
-  try { await loadLeadCols(); } catch (_) {}   // for custom-column group-by options
+  try { await loadLeadCols(); } catch (_) {}   // for custom-column dimension options
   lrPopulateGroupBy(); lrGroupChanged(); lrDateDefaults();
   const tbl = document.getElementById('lr-table');
   if (tbl) tbl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
@@ -2776,13 +2782,18 @@ async function loadLeadsReport() {
   requestAnimationFrame(() => lucide.createIcons());
 }
 function lrMeasureName(m) { return m === 'count' ? 'Lead count' : m === 'budget_sum' ? 'Total budget' : 'Avg budget'; }
+function lrRangeLabel(d) { return (d.range && (d.range.from || d.range.to)) ? `${d.range.from || '…'} → ${d.range.to || '…'}` : 'All time'; }
+function lrFmt(d, v) { return d.measure === 'count' ? Number(v).toLocaleString() : egp(v); }
 function renderLeadsReport(d) {
-  const rows = d.rows || [];
   document.getElementById('lr-kpis').innerHTML = `
-    <div class="stat-card total"><div class="stat-label">Total Leads</div><div class="stat-value">${d.totals.count.toLocaleString()}</div><div class="stat-sub">${d.range.from} → ${d.range.to}</div></div>
+    <div class="stat-card total"><div class="stat-label">Total Leads</div><div class="stat-value">${d.totals.count.toLocaleString()}</div><div class="stat-sub">${lrRangeLabel(d)}</div></div>
     <div class="stat-card high-pri"><div class="stat-label">Hot Leads</div><div class="stat-value">${d.hotCount.toLocaleString()}</div><div class="stat-sub">${d.totals.count ? Math.round(d.hotCount / d.totals.count * 100) : 0}% of leads</div></div>
     <div class="stat-card done"><div class="stat-label">Total Budget</div><div class="stat-value" style="font-size:20px">${egp(d.totals.budget)}</div><div class="stat-sub">Sum of lead budgets</div></div>
     <div class="stat-card in-progress"><div class="stat-label">Avg Budget</div><div class="stat-value" style="font-size:20px">${egp(d.totals.avg)}</div><div class="stat-sub">Per lead</div></div>`;
+  return d.splitBy ? renderLeadsCrossTab(d) : renderLeadsSingle(d);
+}
+function renderLeadsSingle(d) {
+  const rows = d.rows || [];
   const isCount = d.measure === 'count';
   const maxV = Math.max(1, ...rows.map(r => isCount ? r.count : (Number(r.value) || 0)));
   const gl = lrGroupLabel(d.groupBy);
@@ -2800,20 +2811,42 @@ function renderLeadsReport(d) {
           <td style="padding:6px 8px;text-align:right;color:var(--muted)">${right}</td></tr>`;
       }).join('')}</tbody>
     </table>` : '<div style="color:var(--muted);padding:24px;text-align:center">No leads match these filters.</div>';
-  // Chart: doughnut for low-cardinality categories, horizontal bar otherwise
   const labels = rows.map(r => r.label);
   const data = rows.map(r => isCount ? r.count : (Number(r.value) || 0));
   const doughnut = ['lead_status', 'source', 'been_contacted', 'next_action'].includes(d.groupBy);
-  const palette = ['#c99a4e', '#f59e0b', '#10b981', '#3b82f6', '#a855f7', '#ef4444', '#14b8a6', '#64748b', '#e6c98a', '#8b5cf6', '#0ea5e9', '#f97316'];
   if (charts.lrChart) charts.lrChart.destroy();
   charts.lrChart = new Chart(document.getElementById('lrChart'), doughnut ? {
-    type: 'doughnut',
-    data: { labels, datasets: [{ data, backgroundColor: palette, borderWidth: 0 }] },
+    type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: LR_PALETTE, borderWidth: 0 }] },
     options: { responsive: true, maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8 } } } },
   } : {
-    type: 'bar',
-    data: { labels, datasets: [{ label: isCount ? 'Leads' : 'EGP', data, backgroundColor: '#c99a4e', borderRadius: 6 }] },
+    type: 'bar', data: { labels, datasets: [{ label: isCount ? 'Leads' : 'EGP', data, backgroundColor: '#c99a4e', borderRadius: 6 }] },
     options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } },
+  });
+}
+function renderLeadsCrossTab(d) {
+  const rows = d.rows || [], cats = d.splitCats || [];
+  const gl = lrGroupLabel(d.groupBy), sl = lrGroupLabel(d.splitBy);
+  document.getElementById('lr-table-title').textContent = `${gl} × ${sl} · ${lrMeasureName(d.measure)}`;
+  document.getElementById('lr-table').innerHTML = rows.length ? `
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+        <th style="padding:6px 8px">${esc(gl)} \\ ${esc(sl)}</th>
+        ${cats.map(c => `<th style="padding:6px 8px;text-align:right;white-space:nowrap">${esc(c.label)}</th>`).join('')}
+        <th style="padding:6px 8px;text-align:right;font-weight:700">Total</th></tr></thead>
+      <tbody>${rows.map(r => `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+        <td style="padding:6px 8px;font-weight:600">${esc(r.label)}</td>
+        ${cats.map(c => { const v = r.cells[c.key] || 0; return `<td style="padding:6px 8px;text-align:right;color:${v ? 'inherit' : 'var(--muted)'}">${v ? lrFmt(d, v) : '·'}</td>`; }).join('')}
+        <td style="padding:6px 8px;text-align:right;font-weight:700">${lrFmt(d, d.measure === 'count' ? r.count : r.value)}</td></tr>`).join('')}
+      </tbody></table>` : '<div style="color:var(--muted);padding:24px;text-align:center">No leads match these filters.</div>';
+  // Stacked bar: one bar per primary group, a segment per split category
+  const labels = rows.map(r => r.label);
+  const datasets = cats.map((c, i) => ({ label: c.label, data: rows.map(r => r.cells[c.key] || 0), backgroundColor: LR_PALETTE[i % LR_PALETTE.length], borderWidth: 0 }));
+  if (charts.lrChart) charts.lrChart.destroy();
+  charts.lrChart = new Chart(document.getElementById('lrChart'), {
+    type: 'bar', data: { labels, datasets },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 6 } } },
+      scales: { x: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }, y: { stacked: true } } },
   });
 }
 function lrCsvCell(v) { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
@@ -2821,16 +2854,23 @@ function exportLeadsReport() {
   const d = _leadsReportData;
   if (!d) { alert('Click Apply to run the report first.'); return; }
   const gl = lrGroupLabel(d.groupBy);
-  const isCount = d.measure === 'count';
-  const lines = [[gl, 'Leads', isCount ? 'Percent' : 'Budget_EGP'].map(lrCsvCell).join(',')];
-  for (const r of d.rows) {
-    const right = isCount ? (d.totals.count ? Math.round(r.count / d.totals.count * 100) : 0) + '%' : r.value;
-    lines.push([lrCsvCell(r.label), r.count, lrCsvCell(right)].join(','));
+  let lines;
+  if (d.splitBy) {
+    const cats = d.splitCats || [];
+    lines = [[gl, ...cats.map(c => c.label), 'Total'].map(lrCsvCell).join(',')];
+    for (const r of d.rows) lines.push([r.label, ...cats.map(c => r.cells[c.key] || 0), (d.measure === 'count' ? r.count : r.value)].map(lrCsvCell).join(','));
+  } else {
+    const isCount = d.measure === 'count';
+    lines = [[gl, 'Leads', isCount ? 'Percent' : 'Budget_EGP'].map(lrCsvCell).join(',')];
+    for (const r of d.rows) {
+      const right = isCount ? (d.totals.count ? Math.round(r.count / d.totals.count * 100) : 0) + '%' : r.value;
+      lines.push([lrCsvCell(r.label), r.count, lrCsvCell(right)].join(','));
+    }
   }
-  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `motolinker-leads-${d.groupBy}-${d.range.from}_${d.range.to}.csv`;
+  a.href = url; a.download = `motolinker-leads-${d.groupBy}${d.splitBy ? '-x-' + d.splitBy : ''}.csv`;
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
 
@@ -6647,7 +6687,13 @@ function leadSortValue(c, col) {
   const raw = col.builtin ? c[key] : (c.custom_fields || {})[key];
   if (key === 'lead_date' || col.type === 'date') { if (!raw) return null; const t = new Date(raw).getTime(); return isNaN(t) ? null : t; }
   if (col.type === 'checkbox') return isChecked(raw) ? 1 : 0;
-  if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); const k = normKey(raw, m); return (m[k] || raw || '') || null; }
+  if (col.type === 'select' || col.type === 'radio') {
+    // Sort by the option's position in the column config (Cold→Warm→Hot…), not alphabetically.
+    if (raw == null || raw === '') return null;
+    const k = normKey(raw, colOptMap(col));
+    const idx = (col.options || []).findIndex(o => o.key === k);
+    return idx >= 0 ? idx : null; // unknown/orphan values (e.g. pending_contact) sort last
+  }
   if (col.type === 'number') { const n = Number(raw); return raw != null && raw !== '' && isFinite(n) ? n : null; }
   const s = (raw == null ? '' : String(raw)).trim();
   return s || null;
