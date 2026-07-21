@@ -1955,7 +1955,7 @@
           <div style="position:relative">
             <label class="form-label">Car in Question <span id="cm-car-hint" style="color:var(--muted);font-weight:400;font-size:11px"></span></label>
             <input class="form-input" id="cm-car" placeholder="Search inventory or type a vehicle…" autocomplete="off">
-            <input type="hidden" id="cm-car-price">
+            <input type="hidden" id="cm-car-price"><input type="hidden" id="cm-car-images">
             <div id="cm-car-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.45)"></div>
           </div>
           <div>
@@ -7122,6 +7122,9 @@ function ldGenerateQuote() {
     if (nameEl && c.name) nameEl.value = c.name;
     const vehName = c.car_in_question || (c.custom_fields && c.custom_fields.cf_vehicle_requested) || '';
     if (vehEl && vehName) vehEl.value = vehName;
+    // Prefill the quotation's images from the attached inventory vehicle.
+    const vehImgs = (c.custom_fields && Array.isArray(c.custom_fields.cf_vehicle_images)) ? c.custom_fields.cf_vehicle_images : [];
+    if (vehImgs.length && typeof renderImgPreviews === 'function') { qtExistingImages = vehImgs.slice(0, 5); renderImgPreviews(); }
     const pick = document.getElementById('qt-customer-id');
     if (pick) pick.value = String(c.id);
     // Prefill a pricing line from the attached inventory vehicle's price (EGP → USD via exchange).
@@ -7191,9 +7194,10 @@ function isVehicleField(col) {
 // ── Vehicle inventory combobox (search the website inventory, attach to a lead) ──
 // Reusable across admin + employee lead modals. Fills the car text field and stashes
 // the selected price in a hidden input. Free-typing is allowed (clears the price).
-function attachVehicleSearch(inputId, priceId, resultsId, endpoint, hintId) {
+function attachVehicleSearch(inputId, priceId, resultsId, endpoint, hintId, imagesId) {
   const input = document.getElementById(inputId), results = document.getElementById(resultsId);
   const priceEl = document.getElementById(priceId), hint = hintId && document.getElementById(hintId);
+  const imagesEl = imagesId && document.getElementById(imagesId);
   if (!input || !results || input._vehBound) return;
   input._vehBound = true;
   let t = null, lastReq = 0;
@@ -7202,6 +7206,7 @@ function attachVehicleSearch(inputId, priceId, resultsId, endpoint, hintId) {
   const run = async () => {
     const q = input.value.trim();
     if (priceEl) priceEl.value = ''; // manual typing = no known price until a pick
+    if (imagesEl) imagesEl.value = '';
     if (q.length < 1) { hide(); return; }
     const reqId = ++lastReq;
     try {
@@ -7224,6 +7229,7 @@ function attachVehicleSearch(inputId, priceId, resultsId, endpoint, hintId) {
         const it = results._items[+el.dataset.i];
         input.value = it.name;
         if (priceEl) priceEl.value = it.price != null ? it.price : '';
+        if (imagesEl) imagesEl.value = JSON.stringify(Array.isArray(it.images) ? it.images : (it.image ? [it.image] : []));
         hide();
       }));
       results.style.display = 'block';
@@ -7247,7 +7253,8 @@ function openCustomerModal(id) {
   fillLeadSelect('cm-next-action', 'next_action', '— None —', c?.next_action);
   document.getElementById('cm-car').value = c?.car_in_question || '';
   document.getElementById('cm-car-price').value = (c?.custom_fields && c.custom_fields.cf_vehicle_price) || '';
-  attachVehicleSearch('cm-car', 'cm-car-price', 'cm-car-results', '/api/dashboard/inventory/search', 'cm-car-hint');
+  document.getElementById('cm-car-images').value = (c?.custom_fields && Array.isArray(c.custom_fields.cf_vehicle_images)) ? JSON.stringify(c.custom_fields.cf_vehicle_images) : '';
+  attachVehicleSearch('cm-car', 'cm-car-price', 'cm-car-results', '/api/dashboard/inventory/search', 'cm-car-hint', 'cm-car-images');
   document.getElementById('cm-budget').value = (c?.budget_max != null && c?.budget_max !== '') ? `${c.budget_lead}-${c.budget_max}` : (c?.budget_lead || '');
   document.getElementById('cm-been-contacted').checked = c?.been_contacted || false;
   // Owner (sales rep) picker
@@ -7284,7 +7291,7 @@ function openCustomerModal(id) {
     if (isVehicleField(col)) {
       return `<div style="position:relative"><label class="form-label">${esc(col.label)} <span id="cm-cf-${esc(col.key)}-hint" style="color:var(--muted);font-weight:400;font-size:11px"></span></label>
         <input class="form-input" id="cm-cf-${esc(col.key)}" value="${esc(v ?? '')}" placeholder="Search inventory or type a vehicle…" autocomplete="off">
-        <input type="hidden" id="cm-cf-${esc(col.key)}-price">
+        <input type="hidden" id="cm-cf-${esc(col.key)}-price"><input type="hidden" id="cm-cf-${esc(col.key)}-images">
         <div id="cm-cf-${esc(col.key)}-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.45)"></div></div>`;
     }
     const t = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text';
@@ -7294,7 +7301,8 @@ function openCustomerModal(id) {
   // Wire the inventory combobox onto each vehicle custom column + prefill its price.
   custom.filter(isVehicleField).forEach(col => {
     const pe = document.getElementById('cm-cf-' + col.key + '-price'); if (pe) pe.value = (c?.custom_fields && c.custom_fields.cf_vehicle_price) || '';
-    attachVehicleSearch('cm-cf-' + col.key, 'cm-cf-' + col.key + '-price', 'cm-cf-' + col.key + '-results', '/api/dashboard/inventory/search', 'cm-cf-' + col.key + '-hint');
+    const ie = document.getElementById('cm-cf-' + col.key + '-images'); if (ie) ie.value = (c?.custom_fields && Array.isArray(c.custom_fields.cf_vehicle_images)) ? JSON.stringify(c.custom_fields.cf_vehicle_images) : '';
+    attachVehicleSearch('cm-cf-' + col.key, 'cm-cf-' + col.key + '-price', 'cm-cf-' + col.key + '-results', '/api/dashboard/inventory/search', 'cm-cf-' + col.key + '-hint', 'cm-cf-' + col.key + '-images');
   });
   // The static "Car in Question" field: hide it when the built-in column is removed/hidden
   // (this install uses the custom "Vehicle Requested" instead); otherwise keep its picker.
@@ -7334,9 +7342,11 @@ async function saveCustomer() {
       : col.type === 'number' ? (el.value === '' ? null : Number(el.value))
       : el.value;
   });
-  // Stash the picked inventory vehicle's price (from whichever vehicle field was used) so quotes can prefill it.
+  // Stash the picked inventory vehicle's price + images (from whichever vehicle field was used) so quotes can prefill them.
   const vpEl = [...document.querySelectorAll('#customer-modal input[type=hidden][id$="-price"]')].find(el => el.value);
   if (vpEl) cf.cf_vehicle_price = Number(vpEl.value); else delete cf.cf_vehicle_price;
+  const viEl = [...document.querySelectorAll('#customer-modal input[type=hidden][id$="-images"]')].find(el => el.value);
+  if (viEl) { try { const arr = JSON.parse(viEl.value); if (Array.isArray(arr) && arr.length) cf.cf_vehicle_images = arr; else delete cf.cf_vehicle_images; } catch (_) { delete cf.cf_vehicle_images; } } else delete cf.cf_vehicle_images;
   if (Object.keys(cf).length || customCols.length) payload.custom_fields = cf;
   if (!payload.name) { alert('Name is required.'); return; }
   try {

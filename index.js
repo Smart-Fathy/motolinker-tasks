@@ -32,6 +32,8 @@ const INVENTORY_NAME_COLS = (process.env.INVENTORY_NAME_COL || 'name,title,vehic
 const INVENTORY_PRICE_COLS = (process.env.INVENTORY_PRICE_COL || 'price,price_egp,selling_price,cash_price,amount,base_price').split(',').map(s => s.trim()).filter(Boolean);
 const INVENTORY_SUBTITLE_COLS = (process.env.INVENTORY_SUBTITLE_COLS || 'brand,make,model,year,trim,variant,condition').split(',').map(s => s.trim()).filter(Boolean);
 const INVENTORY_SEARCH_COLS = (process.env.INVENTORY_SEARCH_COLS || '').split(',').map(s => s.trim()).filter(Boolean); // if set → server-side .or() filter
+const INVENTORY_IMAGE_COL = process.env.INVENTORY_IMAGE_COL || 'image_url';
+const INVENTORY_GALLERY_COL = process.env.INVENTORY_GALLERY_COL || 'gallery';
 function invFirstVal(row, cols) { for (const c of cols) { if (row[c] != null && row[c] !== '') return row[c]; } return null; }
 function invMapRow(row) {
   const id = row.id ?? row.uuid ?? row.slug ?? invFirstVal(row, INVENTORY_NAME_COLS) ?? null;
@@ -41,7 +43,12 @@ function invMapRow(row) {
   const priceNum = priceRaw != null ? Number(String(priceRaw).replace(/[^\d.]/g, '')) : null;
   const price = (priceNum != null && isFinite(priceNum) && priceNum > 0) ? priceNum : null;
   const subtitle = [...new Set(INVENTORY_SUBTITLE_COLS.map(c => row[c]).filter(v => v != null && v !== '' && String(v) !== String(name)))].join(' · ');
-  return { id, name: String(name), price, subtitle };
+  // Images: main image_url + gallery (array of URL strings or objects with url/src).
+  const galVal = row[INVENTORY_GALLERY_COL];
+  const mainImg = row[INVENTORY_IMAGE_COL] || null;
+  const gallery = Array.isArray(galVal) ? galVal.map(g => typeof g === 'string' ? g : (g && (g.url || g.src || g.image_url))).filter(Boolean) : [];
+  const images = [...new Set([...(mainImg ? [mainImg] : []), ...gallery])].slice(0, 5); // main first, deduped
+  return { id, name: String(name), price, subtitle, image: mainImg || images[0] || null, images };
 }
 async function inventorySearch(q, limit = 20) {
   const db = inventoryDb();
