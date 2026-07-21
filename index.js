@@ -1137,7 +1137,7 @@ receiver.router.get('/api/email/callback', async (req, res) => {
         const emp = empRows && empRows[0];
         if (!emp) return res.redirect('/employee?google_login_error=' + encodeURIComponent('No account linked to this Google address. Contact your admin.'));
         const sessionToken = generateToken();
-        const permissions = { requests:true, drive:true, sheets:true, pdfscraper:false, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, ...(emp.permissions || {}) };
+        const permissions = normEmpPerms(emp.permissions);
         employeeSessions.set(sessionToken, { id: emp.id, name: emp.name, username: emp.username, permissions });
         return res.redirect('/employee?emp_token=' + sessionToken);
       }
@@ -1472,6 +1472,70 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json
 // Employee auth
 const DEFAULT_PERMISSIONS = { requests: true, drive: true, sheets: true, pdfscraper: false, email: false, viewAllRequests: false, quotation: false, leads: false, deals: false };
 
+// ── Advanced permissions: per-action + data scope for CRM sections ────────────
+// Backward compatible: legacy flat booleans (e.g. leads:true) normalize to full
+// actions + no scope. The rich shape adds <section>Actions objects and a scope.
+const PERM_ACTIONS = {
+  leads: ['view', 'create', 'edit', 'delete', 'import', 'export'],
+  deals: ['view', 'create', 'edit', 'delete', 'move'],
+  quotation: ['draft', 'history', 'settings', 'delete', 'attachLead'],
+};
+function normEmpPerms(raw) {
+  const p = { ...DEFAULT_PERMISSIONS, ...(raw || {}) };
+  for (const [section, actions] of Object.entries(PERM_ACTIONS)) {
+    const master = p[section] === true;
+    const given = raw && raw[section + 'Actions'] && typeof raw[section + 'Actions'] === 'object' ? raw[section + 'Actions'] : null;
+    const out = {};
+    for (const a of actions) out[a] = given ? given[a] === true : master; // legacy: master on ⇒ all actions
+    p[section + 'Actions'] = out;
+  }
+  const s = (raw && typeof raw.scope === 'object' && raw.scope) ? raw.scope : {};
+  p.scope = {
+    assignedOnly: s.assignedOnly === true,
+    dealStages: Array.isArray(s.dealStages) ? s.dealStages.filter(x => DEAL_STAGES.includes(x)) : [],
+    leadStatuses: Array.isArray(s.leadStatuses) ? s.leadStatuses.map(x => autoNorm(x)).filter(Boolean) : [],
+  };
+  return p;
+}
+// Can this employee perform <action> in <section>? Master must be on AND the action allowed.
+function empCan(emp, section, action) {
+  const p = emp && emp.permissions; if (!p) return false;
+  if (p[section] !== true) return false;
+  const acts = p[section + 'Actions'];
+  return !!(acts && acts[action] === true);
+}
+function empHasScope(emp) {
+  const s = emp && emp.permissions && emp.permissions.scope;
+  return !!(s && (s.assignedOnly || (s.dealStages && s.dealStages.length) || (s.leadStatuses && s.leadStatuses.length)));
+}
+// Set of customers.id that satisfy the employee's dealStages scope (empty scope ⇒ null = no restriction).
+async function scopedQuotedIds(emp) {
+  const stages = emp?.permissions?.scope?.dealStages || [];
+  if (!stages.length) return null;
+  const { data } = await supabase.from('deals').select('customer_id').in('stage', stages);
+  return new Set((data || []).map(d => d.customer_id));
+}
+// Is a single customer row visible to this employee under their scope? (AND across dimensions)
+function customerInScope(c, emp, stageIdSet) {
+  const s = emp?.permissions?.scope; if (!s) return true;
+  if (s.assignedOnly && String(c.assigned_to || '') !== String(emp.id)) return false;
+  if (s.leadStatuses && s.leadStatuses.length && !s.leadStatuses.includes(autoNorm(c.lead_status || ''))) return false;
+  if (s.dealStages && s.dealStages.length && stageIdSet && !stageIdSet.has(c.id)) return false;
+  return true;
+}
+// Deal-row scope: dealStages match the deal's own stage; assignedOnly / leadStatuses
+// use the deal's own assignee and the embedded customer's fields.
+function dealInScope(d, emp) {
+  const s = emp?.permissions?.scope; if (!s) return true;
+  if (s.dealStages && s.dealStages.length && !s.dealStages.includes(d.stage)) return false;
+  if (s.assignedOnly) {
+    const mine = String(d.assigned_to || '') === String(emp.id) || String(d.customers?.assigned_to || '') === String(emp.id);
+    if (!mine) return false;
+  }
+  if (s.leadStatuses && s.leadStatuses.length && !s.leadStatuses.includes(autoNorm(d.customers?.lead_status || ''))) return false;
+  return true;
+}
+
 // Google login for employee portal
 receiver.router.get('/api/employee/auth/google', (req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.status(400).send('Google login not configured');
@@ -1495,7 +1559,7 @@ receiver.router.post('/api/employee/login', express.json(), async (req, res) => 
   const { data: emp } = await supabase.from('employees').select('*').eq('username', username).single();
   if (!emp || !verifyPassword(password, emp.password_hash)) return res.status(401).json({ error: 'Invalid username or password' });
   const token = generateToken();
-  const permissions = { ...DEFAULT_PERMISSIONS, ...(emp.permissions || {}) };
+  const permissions = normEmpPerms(emp.permissions);
   employeeSessions.set(token, { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions });
   res.json({ token, name: emp.name, username: emp.username, id: emp.id, job_title: emp.job_title || '', permissions, avatar_url: emp.avatar_url || '', status_text: emp.status_text || '', status_emoji: emp.status_emoji || '' });
 });
@@ -1504,7 +1568,7 @@ receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res)
   try {
     const { data } = await supabase.from('employees').select('permissions,job_title,avatar_url,status_text,status_emoji,username').eq('id', req.employee.id).single();
     if (data) {
-      const permissions = { ...DEFAULT_PERMISSIONS, ...(data.permissions || {}) };
+      const permissions = normEmpPerms(data.permissions);
       req.employee.permissions = permissions;
       req.employee.job_title = data.job_title || '';
       req.employee.username = data.username || req.employee.username;
@@ -1667,14 +1731,14 @@ receiver.router.post('/api/employee/hours', requireEmployeeAuth, express.json(),
 receiver.router.get('/api/dashboard/employees', requireAuth, async (_req, res) => {
   const { data, error } = await supabase.from('employees').select('id, name, username, email, job_title, slack_user_id, permissions, created_at, avatar_url, status_text, status_emoji').order('name');
   if (error) return res.status(500).json({ error: error.message });
-  res.json((data || []).map(e => ({ ...e, permissions: { ...DEFAULT_PERMISSIONS, ...(e.permissions || {}) } })));
+  res.json((data || []).map(e => ({ ...e, permissions: normEmpPerms(e.permissions) })));
 });
 receiver.router.post('/api/dashboard/employees', requireAuth, express.json(), async (req, res) => {
   const { name, username, password, email, job_title, slack_user_id, permissions } = req.body;
   if (!name || !username || !password) return res.status(400).json({ error: 'Name, username and password are required' });
   const { data: existing } = await supabase.from('employees').select('id').eq('username', username).single();
   if (existing) return res.status(409).json({ error: 'Username already taken' });
-  const perms = { ...DEFAULT_PERMISSIONS, ...(permissions || {}) };
+  const perms = normEmpPerms(permissions);
   const { data, error } = await supabase.from('employees')
     .insert({ name, username, password_hash: hashPassword(password), email: (email || '').toLowerCase().trim(), job_title: job_title || '', slack_user_id: slack_user_id || '', permissions: perms })
     .select('id, name, username, email, job_title, slack_user_id, permissions, created_at, avatar_url, status_text, status_emoji').single();
@@ -1685,7 +1749,7 @@ receiver.router.put('/api/dashboard/employees/:id', requireAuth, express.json(),
   const { name, username, password, email, job_title, slack_user_id, permissions } = req.body;
   const updates = { name, username, email: (email || '').toLowerCase().trim(), job_title: job_title || '', slack_user_id: slack_user_id || '', updated_at: new Date().toISOString() };
   if (password) updates.password_hash = hashPassword(password);
-  if (permissions) updates.permissions = { ...DEFAULT_PERMISSIONS, ...permissions };
+  if (permissions) updates.permissions = normEmpPerms(permissions);
   const { data, error } = await supabase.from('employees').update(updates).eq('id', req.params.id)
     .select('id, name, username, email, job_title, slack_user_id, permissions, created_at, avatar_url, status_text, status_emoji').single();
   if (error) return res.status(500).json({ error: error.message });
@@ -3357,22 +3421,23 @@ function generateQuoteId() {
 
 // ── Employee CRM (gated by the leads/deals permission; delete goes via approval) ──
 receiver.router.get('/api/employee/leads', requireEmployeeAuth, async (req, res) => {
-  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'leads', 'view')) return res.status(403).json({ error: 'Not permitted' });
   const { data, error } = await supabase.from('customers').select('*').order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+  const stageIdSet = await scopedQuotedIds(req.employee);
+  res.json((data || []).filter(c => customerInScope(c, req.employee, stageIdSet)));
 });
 
 // Read the shared leads column config (read-only; config editing stays admin-only)
 receiver.router.get('/api/employee/leads/columns', requireEmployeeAuth, async (req, res) => {
-  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!(empCan(req.employee, 'leads', 'view') || empCan(req.employee, 'quotation', 'attachLead'))) return res.status(403).json({ error: 'Not permitted' });
   const { data } = await supabase.from('quotation_settings').select('value').eq('key', 'leads_columns_config').single();
   let columns = null; try { if (data?.value) columns = JSON.parse(data.value); } catch (_) {}
   res.json({ columns });
 });
 
 receiver.router.post('/api/employee/leads', requireEmployeeAuth, express.json(), async (req, res) => {
-  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'leads', 'create')) return res.status(403).json({ error: 'Not permitted' });
   const { name, phone, email, source, notes, lead_date, lead_time, lead_status, car_in_question, budget_lead, budget_max, next_action, been_contacted, sales_feedback, inquiry, assigned_to, custom_fields, force } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
   const phone_norm = normalizePhone(phone);
@@ -3393,7 +3458,7 @@ receiver.router.post('/api/employee/leads', requireEmployeeAuth, express.json(),
 });
 
 receiver.router.put('/api/employee/leads/:id', requireEmployeeAuth, express.json(), async (req, res) => {
-  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'leads', 'edit')) return res.status(403).json({ error: 'Not permitted' });
   const { data: prev } = await supabase.from('customers').select('lead_status,been_contacted').eq('id', req.params.id).single();
   const patch = { ...req.body, updated_at: new Date().toISOString() };
   delete patch.force; delete patch.created_by; delete patch.id;
@@ -3418,14 +3483,14 @@ receiver.router.put('/api/employee/leads/:id', requireEmployeeAuth, express.json
 });
 
 receiver.router.get('/api/employee/deals', requireEmployeeAuth, async (req, res) => {
-  if (req.employee.permissions?.deals !== true) return res.status(403).json({ error: 'Not permitted' });
-  const { data, error } = await supabase.from('deals').select('*, customers(name,phone,email)').order('created_at', { ascending: false });
+  if (!empCan(req.employee, 'deals', 'view')) return res.status(403).json({ error: 'Not permitted' });
+  const { data, error } = await supabase.from('deals').select('*, customers(name,phone,email,lead_status,assigned_to)').order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+  res.json((data || []).filter(d => dealInScope(d, req.employee)));
 });
 
 receiver.router.post('/api/employee/deals', requireEmployeeAuth, express.json(), async (req, res) => {
-  if (req.employee.permissions?.deals !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'deals', 'create')) return res.status(403).json({ error: 'Not permitted' });
   const { customer_id, title, stage, car_model, budget_egp, notes, assigned_to } = req.body;
   if (!customer_id || !title) return res.status(400).json({ error: 'customer_id and title are required' });
   const { data, error } = await supabase.from('deals')
@@ -3438,7 +3503,13 @@ receiver.router.post('/api/employee/deals', requireEmployeeAuth, express.json(),
 });
 
 receiver.router.put('/api/employee/deals/:id', requireEmployeeAuth, express.json(), async (req, res) => {
-  if (req.employee.permissions?.deals !== true) return res.status(403).json({ error: 'Not permitted' });
+  // A pure stage change needs 'move'; any other field edit needs 'edit'.
+  {
+    const keys = Object.keys(req.body || {});
+    const onlyStage = keys.length && keys.every(k => k === 'stage');
+    const allowed = onlyStage ? (empCan(req.employee, 'deals', 'move') || empCan(req.employee, 'deals', 'edit')) : empCan(req.employee, 'deals', 'edit');
+    if (!allowed) return res.status(403).json({ error: 'Not permitted' });
+  }
   const { data: prev } = await supabase.from('deals').select('stage').eq('id', req.params.id).single();
   const updates = { ...req.body, updated_at: new Date().toISOString() };
   delete updates.created_by; delete updates.id;
@@ -3471,7 +3542,7 @@ receiver.router.put('/api/employee/deals/:id', requireEmployeeAuth, express.json
 receiver.router.post('/api/employee/deletion-requests', requireEmployeeAuth, express.json(), async (req, res) => {
   const { entity_type, entity_id, reason } = req.body || {};
   if (!['lead', 'deal'].includes(entity_type) || !entity_id) return res.status(400).json({ error: 'entity_type (lead|deal) and entity_id are required' });
-  const permOk = entity_type === 'lead' ? req.employee.permissions?.leads === true : req.employee.permissions?.deals === true;
+  const permOk = entity_type === 'lead' ? empCan(req.employee, 'leads', 'delete') : empCan(req.employee, 'deals', 'delete');
   if (!permOk) return res.status(403).json({ error: 'Not permitted' });
   let label = '';
   if (entity_type === 'lead') {
@@ -3500,10 +3571,11 @@ receiver.router.get('/api/employee/deletion-requests', requireEmployeeAuth, asyn
 
 // ── Employee Lead 360° profile: timeline, follow-ups, linked quotations & deals ──
 receiver.router.get('/api/employee/customers/:id/profile', requireEmployeeAuth, async (req, res) => {
-  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'leads', 'view')) return res.status(403).json({ error: 'Not permitted' });
   const id = parseInt(req.params.id);
   const { data: customer, error } = await supabase.from('customers').select('*').eq('id', id).single();
   if (error || !customer) return res.status(404).json({ error: 'Lead not found' });
+  if (empHasScope(req.employee) && !customerInScope(customer, req.employee, await scopedQuotedIds(req.employee))) return res.status(403).json({ error: 'Not permitted' });
   const [activities, followups, quotations, deals] = await Promise.all([
     supabase.from('lead_activities').select('*').eq('customer_id', id).order('created_at', { ascending: false }).limit(200),
     supabase.from('lead_followups').select('*').eq('customer_id', id).order('due_at', { ascending: true }),
@@ -3520,7 +3592,7 @@ receiver.router.get('/api/employee/customers/:id/profile', requireEmployeeAuth, 
 });
 
 receiver.router.post('/api/employee/customers/:id/activities', requireEmployeeAuth, express.json(), async (req, res) => {
-  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'leads', 'edit')) return res.status(403).json({ error: 'Not permitted' });
   const type = ['note', 'call', 'whatsapp', 'meeting'].includes(req.body?.type) ? req.body.type : 'note';
   const body = String(req.body?.body || '').trim().slice(0, 2000);
   if (!body) return res.status(400).json({ error: 'Activity text is required' });
@@ -3532,7 +3604,7 @@ receiver.router.post('/api/employee/customers/:id/activities', requireEmployeeAu
 });
 
 receiver.router.post('/api/employee/customers/:id/followups', requireEmployeeAuth, express.json(), async (req, res) => {
-  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'leads', 'edit')) return res.status(403).json({ error: 'Not permitted' });
   const due_at = req.body?.due_at;
   if (!due_at || isNaN(new Date(due_at).getTime())) return res.status(400).json({ error: 'A valid due date/time is required' });
   const note = String(req.body?.note || '').trim().slice(0, 500);
@@ -3546,7 +3618,7 @@ receiver.router.post('/api/employee/customers/:id/followups', requireEmployeeAut
 });
 
 receiver.router.put('/api/employee/followups/:id', requireEmployeeAuth, express.json(), async (req, res) => {
-  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'leads', 'edit')) return res.status(403).json({ error: 'Not permitted' });
   const status = ['done', 'cancelled', 'pending'].includes(req.body?.status) ? req.body.status : 'done';
   const patch = { status, completed_at: status === 'done' ? new Date().toISOString() : null };
   const { data, error } = await supabase.from('lead_followups').update(patch).eq('id', req.params.id).select().single();
@@ -3558,7 +3630,7 @@ receiver.router.put('/api/employee/followups/:id', requireEmployeeAuth, express.
 });
 
 receiver.router.get('/api/employee/followups/pending', requireEmployeeAuth, async (req, res) => {
-  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'leads', 'view')) return res.status(403).json({ error: 'Not permitted' });
   const { data, error } = await supabase.from('lead_followups')
     .select('id,customer_id,due_at,note,assigned_to').eq('status', 'pending').order('due_at', { ascending: true }).limit(500);
   if (error) return res.status(500).json({ error: error.message });
@@ -3567,7 +3639,7 @@ receiver.router.get('/api/employee/followups/pending', requireEmployeeAuth, asyn
 
 // Write the shared leads column config (gated by the leads permission; config is global)
 receiver.router.put('/api/employee/leads/columns', requireEmployeeAuth, express.json(), async (req, res) => {
-  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'leads', 'edit')) return res.status(403).json({ error: 'Not permitted' });
   const columns = req.body?.columns;
   if (!Array.isArray(columns)) return res.status(400).json({ error: 'columns array required' });
   const { error } = await supabase.from('quotation_settings')
@@ -3578,7 +3650,7 @@ receiver.router.put('/api/employee/leads/columns', requireEmployeeAuth, express.
 
 // CSV / Google-Sheets import (mirrors the admin importer; deduped on normalized phone)
 receiver.router.post('/api/employee/customers/import', requireEmployeeAuth, multerCsv.single('file'), express.json(), async (req, res) => {
-  if (req.employee.permissions?.leads !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'leads', 'import')) return res.status(403).json({ error: 'Not permitted' });
   try {
     let csvText = '';
     if (req.file) {
@@ -3640,7 +3712,8 @@ receiver.router.delete('/api/dashboard/quotations/:id', requireAuth, async (req,
 
 // Employee quotation settings — read + write (shared, company-wide; gated by the quotation permission)
 receiver.router.get('/api/employee/quotation/settings', requireEmployeeAuth, async (req, res) => {
-  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
+  // Reading settings is needed to build a draft, so draft OR settings access suffices.
+  if (!(empCan(req.employee, 'quotation', 'draft') || empCan(req.employee, 'quotation', 'settings'))) return res.status(403).json({ error: 'Not permitted' });
   const { data } = await supabase.from('quotation_settings').select('key,value');
   const settings = {};
   for (const row of data || []) settings[row.key] = row.value;
@@ -3648,7 +3721,7 @@ receiver.router.get('/api/employee/quotation/settings', requireEmployeeAuth, asy
 });
 
 receiver.router.put('/api/employee/quotation/settings', requireEmployeeAuth, express.json(), async (req, res) => {
-  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'quotation', 'settings')) return res.status(403).json({ error: 'Not permitted' });
   const entries = Object.entries(req.body || {}).map(([key, value]) => ({ key, value: String(value) }));
   if (!entries.length) return res.json({ ok: true });
   const { error } = await supabase.from('quotation_settings').upsert(entries, { onConflict: 'key' });
@@ -3658,14 +3731,14 @@ receiver.router.put('/api/employee/quotation/settings', requireEmployeeAuth, exp
 
 // Employee history shows ALL quotations (shared), matching the admin dashboard.
 receiver.router.get('/api/employee/quotations', requireEmployeeAuth, async (req, res) => {
-  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'quotation', 'history')) return res.status(403).json({ error: 'Not permitted' });
   const { data, error } = await supabase.from('quotations').select('id,quote_id,title,created_by,created_at').order('created_at', { ascending: false }).limit(100);
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
 
 receiver.router.get('/api/employee/quotations/:id', requireEmployeeAuth, async (req, res) => {
-  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'quotation', 'history')) return res.status(403).json({ error: 'Not permitted' });
   const { data, error } = await supabase.from('quotations').select('*').eq('id', req.params.id).single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
@@ -3673,7 +3746,7 @@ receiver.router.get('/api/employee/quotations/:id', requireEmployeeAuth, async (
 
 // Any employee with quotation access can delete any quotation from the shared history.
 receiver.router.delete('/api/employee/quotations/:id', requireEmployeeAuth, async (req, res) => {
-  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'quotation', 'delete')) return res.status(403).json({ error: 'Not permitted' });
   const { error } = await supabase.from('quotations').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
@@ -3989,14 +4062,25 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
 
 // ─── Employee Quotation Draft ──────────────────────────────────────────────────
 receiver.router.get('/api/employee/quotation/newid', requireEmployeeAuth, (req, res) => {
-  if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
+  if (!empCan(req.employee, 'quotation', 'draft')) return res.status(403).json({ error: 'Not permitted' });
   res.json({ id: generateQuoteId() });
+});
+
+// Slim, scope-aware lead list for the quotation/deal lead-picker — usable WITHOUT
+// the Leads section (needs quotation "attach to a lead" OR leads view).
+receiver.router.get('/api/employee/lead-options', requireEmployeeAuth, async (req, res) => {
+  const emp = req.employee;
+  if (!(empCan(emp, 'quotation', 'attachLead') || empCan(emp, 'leads', 'view') || empCan(emp, 'deals', 'create'))) return res.status(403).json({ error: 'Not permitted' });
+  const { data, error } = await supabase.from('customers').select('id,name,phone,lead_status,assigned_to').order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  const stageIdSet = await scopedQuotedIds(emp);
+  res.json((data || []).filter(c => customerInScope(c, emp, stageIdSet)).map(c => ({ id: c.id, name: c.name, phone: c.phone })));
 });
 
 receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
   quotationImgUpload.array('images', 5), async (req, res) => {
     try {
-      if (req.employee.permissions?.quotation !== true) return res.status(403).json({ error: 'Not permitted' });
+      if (!empCan(req.employee, 'quotation', 'draft')) return res.status(403).json({ error: 'Not permitted' });
       const { id, date, validTo, name, vehicleModel, items: itemsJson, logistics: logisticsJson, currency, exchange, issuer, customSpecs: customSpecsJson } = req.body;
       const items       = JSON.parse(itemsJson       || '[]');
       const logistics   = JSON.parse(logisticsJson   || '[]');
@@ -4018,7 +4102,13 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
 
       res.json({ pdf: Buffer.from(pdfBuffer).toString('base64') });
       // Save/update the quotation record (best-effort). Images persisted in `data` for edit/duplicate.
-      const custId = req.body.customer_id ? parseInt(req.body.customer_id) : null;
+      let custId = req.body.customer_id ? parseInt(req.body.customer_id) : null;
+      // Scope guard: an employee without full leads view can only attach to a lead
+      // that is inside their scope — otherwise silently drop the link (quote still generates).
+      if (custId && !empCan(req.employee, 'leads', 'view')) {
+        const { data: tgt } = await supabase.from('customers').select('id,lead_status,assigned_to').eq('id', custId).single();
+        if (!tgt || !customerInScope(tgt, req.employee, await scopedQuotedIds(req.employee))) custId = null;
+      }
       const pk = req.body.quotation_pk ? parseInt(req.body.quotation_pk) : null;
       const record = {
         title: `${vehicleModel || 'Quotation'} — ${name || ''}`.trim(),

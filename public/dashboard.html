@@ -3832,9 +3832,11 @@ async function loadEmployees() {
         <thead><tr><th>Name</th><th>Username</th><th>Job Title</th><th>Status</th><th>Email</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>${emps.map(e => {
           const p = e.permissions || {};
+          const sc = p.scope || {};
+          const scoped = !!(sc.assignedOnly || (sc.dealStages && sc.dealStages.length) || (sc.leadStatuses && sc.leadStatuses.length));
           const badges = Object.entries(permLabels).map(([k, lbl]) =>
             `<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;margin:1px;background:${p[k]?'rgba(99,102,241,.15)':'rgba(255,255,255,.05)'};color:${p[k]?'var(--primary)':'var(--muted)'}">${lbl}</span>`
-          ).join('');
+          ).join('') + (scoped ? `<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin:1px;background:rgba(230,150,80,.18);color:var(--gold)" title="Data scope is limited">⛨ Scoped</span>` : '');
           const initials = (e.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
           const avatar = e.avatar_url ? `<img src="${esc(e.avatar_url)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;font-size:10px;font-weight:700;vertical-align:middle;margin-right:8px">${initials}</span>`;
           const statusStr = (e.status_emoji || e.status_text) ? `${e.status_emoji||''} ${esc(e.status_text||'')}`.trim() : '—';
@@ -3860,19 +3862,53 @@ async function loadEmployees() {
   requestAnimationFrame(() => lucide.createIcons());
 }
 
+// ── Advanced employee permissions editor ──────────────────────────────────────
+const EMP_SIMPLE_PERMS = [
+  { key:'requests',        label:'Requests',          desc:'Submit & view own requests', def:true },
+  { key:'viewAllRequests', label:'View All Requests', desc:'See every employee\'s requests', def:false },
+  { key:'drive',           label:'My Drive',          desc:'Browse Google Drive files', def:true },
+  { key:'sheets',          label:'My Sheets',         desc:'Browse Google Sheets', def:true },
+  { key:'email',           label:'Email',             desc:'Access personal email', def:false },
+];
+const EMP_CRM_ACTIONS = {
+  leads:     [['view','View'],['create','Add'],['edit','Edit'],['delete','Delete (needs approval)'],['import','Import'],['export','Export']],
+  deals:     [['view','View'],['create','Add'],['edit','Edit'],['move','Move stage'],['delete','Delete (needs approval)']],
+  quotation: [['draft','Draft & generate'],['history','History'],['settings','Settings'],['delete','Delete'],['attachLead','Attach to a lead']],
+};
+const EMP_DEAL_STAGES = ['lead','contacted','quoted','negotiating','won','lost'];
+function empScopeStatusOpts() {
+  try { const o = leadCol('lead_status')?.options; if (Array.isArray(o) && o.length) return o.map(x => [x.key, x.label]); } catch (_) {}
+  return (typeof AM_LEAD_STATUSES !== 'undefined') ? AM_LEAD_STATUSES : [['cold','Cold'],['warm','Warm'],['hot','Hot']];
+}
+function empCnorm(s) { return String(s == null ? '' : s).toLowerCase().trim().replace(/[\s-]+/g, '_'); }
+function empActs(p, section) { return (p && p[section + 'Actions']) || {}; }
+function empCrmBlock(section, label, p) {
+  const on = p && p[section] === true;
+  const acts = empActs(p, section);
+  return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+    <label style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="perm-${section}" ${on ? 'checked' : ''} onchange="empToggleSection('${section}')" style="accent-color:var(--primary);width:15px;height:15px"> ${label}
+    </label>
+    <div id="perm-${section}-actions" style="display:${on ? 'flex' : 'none'};flex-wrap:wrap;gap:12px;margin-top:8px;padding-left:23px">
+      ${EMP_CRM_ACTIONS[section].map(([a, al]) => `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="perm-act" data-section="${section}" data-action="${a}" ${acts[a] ? 'checked' : ''} style="accent-color:var(--primary)"> ${al}</label>`).join('')}
+    </div>
+  </div>`;
+}
+function empToggleSection(section) {
+  const on = document.getElementById('perm-' + section)?.checked;
+  const wrap = document.getElementById('perm-' + section + '-actions');
+  if (wrap) wrap.style.display = on ? 'flex' : 'none';
+  // Turning a section ON with no actions ticked ⇒ default to all actions (matches "master on = full").
+  if (on) {
+    const boxes = [...document.querySelectorAll(`.perm-act[data-section="${section}"]`)];
+    if (boxes.length && !boxes.some(b => b.checked)) boxes.forEach(b => { b.checked = true; });
+  }
+}
 function openEmpModal(id) {
   const e = id ? allEmployees.find(x => x.id === id) : null;
   const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, ...(e?.permissions||{}) };
-  const permItems = [
-    { key:'requests',        label:'Requests',          desc:'Submit & view own requests' },
-    { key:'viewAllRequests', label:'View All Requests',  desc:'See all requests from every employee' },
-    { key:'drive',           label:'My Drive',           desc:'Browse Google Drive files' },
-    { key:'sheets',          label:'My Sheets',          desc:'Browse Google Sheets' },
-    { key:'email',           label:'Email',              desc:'Access personal email' },
-    { key:'quotation',       label:'Quotation',    desc:'Create quotations and generate PDFs' },
-    { key:'leads',           label:'Leads',              desc:'Add, edit & manage leads (deletion needs admin approval)' },
-    { key:'deals',           label:'Deals',              desc:'Add, edit & move deals (deletion needs admin approval)' },
-  ];
+  const scope = (p.scope && typeof p.scope === 'object') ? p.scope : { assignedOnly:false, dealStages:[], leadStatuses:[] };
+  const scopeStatuses = (scope.leadStatuses || []).map(empCnorm);
   showModal(e ? 'Edit Employee' : 'Create Employee', `
     <div class="form-row">
       <div class="form-group"><label class="form-label">Full Name *</label><input class="form-control" id="em-name" value="${esc(e?.name||'')}" placeholder="e.g. Sara Ahmed"></div>
@@ -3886,22 +3922,63 @@ function openEmpModal(id) {
       <div class="form-group"><label class="form-label">Job Title</label><input class="form-control" id="em-job-title" value="${esc(e?.job_title||'')}" placeholder="e.g. Sales Manager"></div>
     </div>
     <div class="form-group" style="margin-top:4px">
-      <label class="form-label">Portal Permissions</label>
+      <label class="form-label">General access</label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
-        ${permItems.map(item => `
-        <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--surface);transition:border .15s" onclick="this.style.borderColor=document.getElementById('perm-${item.key}').checked?'var(--border)':'var(--primary)'">
+        ${EMP_SIMPLE_PERMS.map(item => `
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--surface)">
           <input type="checkbox" id="perm-${item.key}" ${p[item.key]?'checked':''} style="margin-top:2px;accent-color:var(--primary);width:15px;height:15px;flex-shrink:0">
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--text)">${item.label}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">${item.desc}</div>
-          </div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--text)">${item.label}</div><div style="font-size:11px;color:var(--muted);margin-top:2px">${item.desc}</div></div>
         </label>`).join('')}
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:8px">
+      <label class="form-label">CRM access — tick a section, then the exact actions allowed</label>
+      <div style="margin-top:6px">
+        ${empCrmBlock('leads', 'Leads', p)}
+        ${empCrmBlock('deals', 'Deals', p)}
+        ${empCrmBlock('quotation', 'Quotation', p)}
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:8px">
+      <label class="form-label">Data scope — limit which leads/deals this employee can see (leave all unticked = everything)</label>
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:6px;display:grid;gap:12px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="scope-assigned" ${scope.assignedOnly?'checked':''} style="accent-color:var(--primary);width:15px;height:15px"> Only leads/deals <strong>assigned to this employee</strong>
+        </label>
+        <div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:5px">Only leads whose deal is in these stage(s):</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px">
+            ${EMP_DEAL_STAGES.map(s => `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="scope-stage" value="${s}" ${(scope.dealStages||[]).includes(s)?'checked':''} style="accent-color:var(--primary)"> ${s.charAt(0).toUpperCase()+s.slice(1)}</label>`).join('')}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:5px">Only leads with these status(es):</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px">
+            ${empScopeStatusOpts().map(([k,l]) => `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="scope-status" value="${esc(k)}" ${scopeStatuses.includes(empCnorm(k))?'checked':''} style="accent-color:var(--primary)"> ${esc(l)}</label>`).join('')}
+          </div>
+        </div>
       </div>
     </div>
   `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEmployee(${id||'null'})">Save</button>`);
 }
 
+function empBuildPerms() {
+  const perms = {};
+  ['requests', 'viewAllRequests', 'drive', 'sheets', 'email'].forEach(k => { perms[k] = document.getElementById('perm-' + k)?.checked || false; });
+  ['leads', 'deals', 'quotation'].forEach(sec => {
+    perms[sec] = document.getElementById('perm-' + sec)?.checked || false;
+    const acts = {};
+    document.querySelectorAll(`.perm-act[data-section="${sec}"]`).forEach(cb => { acts[cb.dataset.action] = cb.checked; });
+    perms[sec + 'Actions'] = acts;
+  });
+  perms.scope = {
+    assignedOnly: document.getElementById('scope-assigned')?.checked || false,
+    dealStages: [...document.querySelectorAll('.scope-stage:checked')].map(c => c.value),
+    leadStatuses: [...document.querySelectorAll('.scope-status:checked')].map(c => c.value),
+  };
+  return perms; // server normEmpPerms() validates/normalizes
+}
 async function saveEmployee(id) {
   const body = {
     name:          document.getElementById('em-name').value.trim(),
@@ -3909,16 +3986,7 @@ async function saveEmployee(id) {
     password:      document.getElementById('em-password').value,
     email:         document.getElementById('em-email').value.trim(),
     job_title:     document.getElementById('em-job-title').value.trim(),
-    permissions: {
-      requests:        document.getElementById('perm-requests')?.checked        ?? true,
-      viewAllRequests: document.getElementById('perm-viewAllRequests')?.checked ?? false,
-      drive:           document.getElementById('perm-drive')?.checked            ?? true,
-      sheets:          document.getElementById('perm-sheets')?.checked           ?? true,
-      email:           document.getElementById('perm-email')?.checked            ?? false,
-      quotation:       document.getElementById('perm-quotation')?.checked        ?? false,
-      leads:           document.getElementById('perm-leads')?.checked            ?? false,
-      deals:           document.getElementById('perm-deals')?.checked            ?? false,
-    },
+    permissions: empBuildPerms(),
   };
   if (!body.name || !body.username) { alert('Name and username are required'); return; }
   if (!id && !body.password) { alert('Password is required for new employees'); return; }
