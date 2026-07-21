@@ -14,6 +14,56 @@ const receiver = { router: expressApp, app: expressApp };
 
 const supabase    = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
+// ─── Website inventory (separate Supabase project) — live vehicle search ────────
+// Read-only client to the marketing site's DB so sales can attach a real vehicle
+// to a lead. Configured via env; when unset the vehicle picker degrades to plain
+// free-text. Column mapping is heuristic with env overrides so it works without
+// hard-coding the site's schema.
+let _inventoryClient = null, _inventoryClientTried = false;
+function inventoryDb() {
+  if (_inventoryClientTried) return _inventoryClient;
+  _inventoryClientTried = true;
+  const url = process.env.INVENTORY_SUPABASE_URL, key = process.env.INVENTORY_SUPABASE_KEY;
+  if (url && key) { try { _inventoryClient = createClient(url, key); } catch (e) { console.warn('[inventory] client init failed:', e.message); } }
+  return _inventoryClient;
+}
+const INVENTORY_TABLE = process.env.INVENTORY_TABLE || 'vehicles';
+const INVENTORY_NAME_COLS = (process.env.INVENTORY_NAME_COL || 'name,title,vehicle,full_name').split(',').map(s => s.trim()).filter(Boolean);
+const INVENTORY_PRICE_COLS = (process.env.INVENTORY_PRICE_COL || 'price,price_egp,selling_price,cash_price,amount,base_price').split(',').map(s => s.trim()).filter(Boolean);
+const INVENTORY_SUBTITLE_COLS = (process.env.INVENTORY_SUBTITLE_COLS || 'brand,make,model,year,trim,variant,condition').split(',').map(s => s.trim()).filter(Boolean);
+const INVENTORY_SEARCH_COLS = (process.env.INVENTORY_SEARCH_COLS || '').split(',').map(s => s.trim()).filter(Boolean); // if set → server-side .or() filter
+function invFirstVal(row, cols) { for (const c of cols) { if (row[c] != null && row[c] !== '') return row[c]; } return null; }
+function invMapRow(row) {
+  const id = row.id ?? row.uuid ?? row.slug ?? invFirstVal(row, INVENTORY_NAME_COLS) ?? null;
+  let name = invFirstVal(row, INVENTORY_NAME_COLS);
+  if (!name) name = [row.brand || row.make, row.model, row.year, row.trim || row.variant].filter(Boolean).join(' ').trim() || ('#' + id);
+  const priceRaw = invFirstVal(row, INVENTORY_PRICE_COLS);
+  const priceNum = priceRaw != null ? Number(String(priceRaw).replace(/[^\d.]/g, '')) : null;
+  const price = (priceNum != null && isFinite(priceNum) && priceNum > 0) ? priceNum : null;
+  const subtitle = [...new Set(INVENTORY_SUBTITLE_COLS.map(c => row[c]).filter(v => v != null && v !== '' && String(v) !== String(name)))].join(' · ');
+  return { id, name: String(name), price, subtitle };
+}
+async function inventorySearch(q, limit = 20) {
+  const db = inventoryDb();
+  if (!db) return { configured: false, items: [] };
+  const term = String(q || '').replace(/[,()*"\\%]/g, ' ').trim();
+  try {
+    let query = db.from(INVENTORY_TABLE).select('*').limit(term ? 400 : 50);
+    if (term && INVENTORY_SEARCH_COLS.length) {
+      query = db.from(INVENTORY_TABLE).select('*').or(INVENTORY_SEARCH_COLS.map(c => `${c}.ilike.%${term}%`).join(',')).limit(limit);
+    }
+    const { data, error } = await query;
+    if (error) { console.warn('[inventory] query error:', error.message); return { configured: true, items: [], error: error.message }; }
+    let items = (data || []).map(invMapRow).filter(x => x.name);
+    // When no server-side filter, match the term against name+subtitle client-side.
+    if (term && !INVENTORY_SEARCH_COLS.length) {
+      const t = term.toLowerCase();
+      items = items.filter(x => (x.name + ' ' + x.subtitle).toLowerCase().includes(t));
+    }
+    return { configured: true, items: items.slice(0, limit) };
+  } catch (e) { console.warn('[inventory] search failed:', e.message); return { configured: true, items: [], error: e.message }; }
+}
+
 // ─── VAPID (Web Push) ─────────────────────────────────────────────────────────
 let vapidKeys = null; // { publicKey, privateKey } — from env, DB, or generated
 
@@ -1765,6 +1815,18 @@ receiver.router.get('/api/dashboard/employees-for-tasks', requireAuth, async (_r
   const { data, error } = await supabase.from('employees').select('id,name,slack_user_id').order('name');
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
+});
+
+// ── Website inventory search (attach a vehicle to a lead) ─────────────────────
+receiver.router.get('/api/dashboard/inventory/search', requireAuth, async (req, res) => {
+  res.json(await inventorySearch(req.query.q, 20));
+});
+receiver.router.get('/api/employee/inventory/search', requireEmployeeAuth, async (req, res) => {
+  const emp = req.employee;
+  if (!(empCan(emp, 'leads', 'create') || empCan(emp, 'leads', 'edit') || empCan(emp, 'quotation', 'draft') || empCan(emp, 'quotation', 'attachLead'))) {
+    return res.status(403).json({ error: 'Not permitted' });
+  }
+  res.json(await inventorySearch(req.query.q, 20));
 });
 
 // ── Customers ─────────────────────────────────────────────────────────────────
