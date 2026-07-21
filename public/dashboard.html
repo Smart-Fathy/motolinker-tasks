@@ -7120,7 +7120,8 @@ function ldGenerateQuote() {
     const vehEl = document.getElementById('qt-vehicle');
     if (nameEl && !nameEl.value) nameEl.value = c.name || '';
     if (nameEl && c.name) nameEl.value = c.name;
-    if (vehEl && c.car_in_question) vehEl.value = c.car_in_question;
+    const vehName = c.car_in_question || (c.custom_fields && c.custom_fields.cf_vehicle_requested) || '';
+    if (vehEl && vehName) vehEl.value = vehName;
     const pick = document.getElementById('qt-customer-id');
     if (pick) pick.value = String(c.id);
     // Prefill a pricing line from the attached inventory vehicle's price (EGP → USD via exchange).
@@ -7178,6 +7179,15 @@ function fillLeadSelect(id, colKey, emptyLabel, rawValue) {
   sel.value = [...sel.options].some(o => o.value === k) ? k : (emptyLabel != null ? '' : (col.options?.[0]?.key || ''));
 }
 
+// Is this lead column the "vehicle requested" field? (built-in car_in_question, the
+// custom cf_vehicle_requested, or a column labelled Car / Vehicle / Vehicle Requested).
+// Deliberately excludes "Vehicle Offered".
+function isVehicleField(col) {
+  const key = col?.key || '';
+  if (key === 'car_in_question' || key === 'cf_vehicle_requested') return true;
+  const lbl = (col?.label || '').trim().toLowerCase();
+  return lbl === 'vehicle requested' || lbl === 'car in question' || lbl === 'car' || lbl === 'vehicle';
+}
 // ── Vehicle inventory combobox (search the website inventory, attach to a lead) ──
 // Reusable across admin + employee lead modals. Fills the car text field and stashes
 // the selected price in a hidden input. Free-typing is allowed (clears the price).
@@ -7271,10 +7281,26 @@ function openCustomerModal(id) {
           ${(col.options || []).map(o => `<option value="${esc(o.key)}"${k === o.key ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}
         </select></div>`;
     }
+    if (isVehicleField(col)) {
+      return `<div style="position:relative"><label class="form-label">${esc(col.label)} <span id="cm-cf-${esc(col.key)}-hint" style="color:var(--muted);font-weight:400;font-size:11px"></span></label>
+        <input class="form-input" id="cm-cf-${esc(col.key)}" value="${esc(v ?? '')}" placeholder="Search inventory or type a vehicle…" autocomplete="off">
+        <input type="hidden" id="cm-cf-${esc(col.key)}-price">
+        <div id="cm-cf-${esc(col.key)}-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.45)"></div></div>`;
+    }
     const t = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text';
     return `<div><label class="form-label">${esc(col.label)}</label>
       <input class="form-input" id="cm-cf-${esc(col.key)}" type="${t}" value="${esc(v ?? '')}"></div>`;
   }).join('');
+  // Wire the inventory combobox onto each vehicle custom column + prefill its price.
+  custom.filter(isVehicleField).forEach(col => {
+    const pe = document.getElementById('cm-cf-' + col.key + '-price'); if (pe) pe.value = (c?.custom_fields && c.custom_fields.cf_vehicle_price) || '';
+    attachVehicleSearch('cm-cf-' + col.key, 'cm-cf-' + col.key + '-price', 'cm-cf-' + col.key + '-results', '/api/dashboard/inventory/search', 'cm-cf-' + col.key + '-hint');
+  });
+  // The static "Car in Question" field: hide it when the built-in column is removed/hidden
+  // (this install uses the custom "Vehicle Requested" instead); otherwise keep its picker.
+  const carCol = (_leadCols || []).find(x => x.key === 'car_in_question');
+  const carWrap = document.getElementById('cm-car')?.closest('div');
+  if (carWrap) carWrap.style.display = (carCol && (carCol.deleted || carCol.visible === false)) ? 'none' : '';
   document.getElementById('customer-modal').style.display = 'flex';
 }
 
@@ -7308,9 +7334,9 @@ async function saveCustomer() {
       : col.type === 'number' ? (el.value === '' ? null : Number(el.value))
       : el.value;
   });
-  // Stash the inventory vehicle's price (if one was picked) so quotes can prefill it.
-  const vp = document.getElementById('cm-car-price')?.value;
-  if (vp) cf.cf_vehicle_price = Number(vp); else delete cf.cf_vehicle_price;
+  // Stash the picked inventory vehicle's price (from whichever vehicle field was used) so quotes can prefill it.
+  const vpEl = [...document.querySelectorAll('#customer-modal input[type=hidden][id$="-price"]')].find(el => el.value);
+  if (vpEl) cf.cf_vehicle_price = Number(vpEl.value); else delete cf.cf_vehicle_price;
   if (Object.keys(cf).length || customCols.length) payload.custom_fields = cf;
   if (!payload.name) { alert('Name is required.'); return; }
   try {
