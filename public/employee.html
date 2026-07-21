@@ -1066,10 +1066,10 @@
           </div>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <input class="form-control" id="emp-lead-search" placeholder="Search name, phone, car…" oninput="empFilterLeads()" style="max-width:240px">
-            <button class="btn btn-outline" id="lead-cols-btn" onclick="openLeadColsPicker(event)"><i data-lucide="columns-3" style="width:15px;height:15px"></i> Columns</button>
-            <button class="btn btn-outline" onclick="exportLeadsTable()" title="Export the table as CSV — visible columns only"><i data-lucide="download" style="width:15px;height:15px"></i> Export</button>
-            <button class="btn btn-outline" onclick="openEmpCsvModal()"><i data-lucide="upload" style="width:15px;height:15px"></i> Import CSV</button>
-            <button class="btn btn-primary" onclick="openEmpLeadModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> Add Lead</button>
+            <button class="btn btn-outline" id="lead-cols-btn" data-perm="leads.edit" onclick="openLeadColsPicker(event)"><i data-lucide="columns-3" style="width:15px;height:15px"></i> Columns</button>
+            <button class="btn btn-outline" data-perm="leads.export" onclick="exportLeadsTable()" title="Export the table as CSV — visible columns only"><i data-lucide="download" style="width:15px;height:15px"></i> Export</button>
+            <button class="btn btn-outline" data-perm="leads.import" onclick="openEmpCsvModal()"><i data-lucide="upload" style="width:15px;height:15px"></i> Import CSV</button>
+            <button class="btn btn-primary" data-perm="leads.create" onclick="openEmpLeadModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> Add Lead</button>
           </div>
         </div>
         <div class="card" style="padding:0;overflow:hidden">
@@ -1093,7 +1093,7 @@
             <div class="card-title" style="margin:0">Deals Pipeline</div>
             <div style="font-size:12px;color:var(--muted);margin-top:4px">Drag cards to change stage · add and edit deals</div>
           </div>
-          <button class="btn btn-primary" onclick="openEmpDealModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> Add Deal</button>
+          <button class="btn btn-primary" data-perm="deals.create" onclick="openEmpDealModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> Add Deal</button>
         </div>
         <div id="emp-deals-kanban" style="display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:12px;align-items:start;overflow-x:auto">
           <div class="loading"><span class="spinner"></span> Loading…</div>
@@ -1424,9 +1424,9 @@
 
         <!-- Tabs -->
         <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:24px">
-          <button id="emp-qt-tab-draft"    class="tab active" onclick="empSwitchQtTab('draft')"    style="font-size:13px;padding:8px 18px">Draft</button>
-          <button id="emp-qt-tab-history"  class="tab"        onclick="empSwitchQtTab('history')"  style="font-size:13px;padding:8px 18px">History</button>
-          <button id="emp-qt-tab-settings" class="tab"        onclick="empSwitchQtTab('settings')" style="font-size:13px;padding:8px 18px">Settings</button>
+          <button id="emp-qt-tab-draft"    class="tab active" data-perm="quotation.draft"    onclick="empSwitchQtTab('draft')"    style="font-size:13px;padding:8px 18px">Draft</button>
+          <button id="emp-qt-tab-history"  class="tab"        data-perm="quotation.history"  onclick="empSwitchQtTab('history')"  style="font-size:13px;padding:8px 18px">History</button>
+          <button id="emp-qt-tab-settings" class="tab"        data-perm="quotation.settings" onclick="empSwitchQtTab('settings')" style="font-size:13px;padding:8px 18px">Settings</button>
         </div>
 
         <!-- ══ TAB: Draft ══ -->
@@ -1794,8 +1794,25 @@ function showLogin() {
 // Sections that can be controlled by admin permissions
 const PERM_SECTIONS = ['requests', 'drive', 'sheets', 'email', 'quotation', 'leads', 'deals'];
 
+// Normalized permissions of the logged-in employee (rich shape from the server).
+let empPerms = {};
+// Can the employee perform <action> in <section>? Master on AND the action allowed.
+function empCan(section, action) {
+  const p = empPerms || {};
+  if (p[section] !== true) return false;
+  const a = p[section + 'Actions'];
+  return !!(a && a[action] === true);
+}
+// Hide any element tagged data-perm="section.action" the employee can't do.
+function applyActionPerms() {
+  document.querySelectorAll('[data-perm]').forEach(el => {
+    const [section, action] = (el.dataset.perm || '').split('.');
+    el.style.display = empCan(section, action) ? '' : 'none';
+  });
+}
 function applyPermissions(permissions) {
   const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, ...(permissions||{}) };
+  empPerms = p;
   PERM_SECTIONS.forEach(section => {
     const navEl   = document.getElementById('nav-' + section);
     const bnavEl  = document.getElementById('bnav-' + section);
@@ -1805,6 +1822,7 @@ function applyPermissions(permissions) {
     if (bnavEl) bnavEl.style.display = display;
     if (pageEl) pageEl.dataset.permitted = p[section] ? '1' : '0';
   });
+  applyActionPerms();
   // Show "Tools" section head only if quotation is enabled (and open the group so it's visible)
   const toolsLabel = document.getElementById('nav-label-tools');
   if (toolsLabel) { toolsLabel.style.display = p.quotation ? '' : 'none'; if (p.quotation) toolsLabel.closest('.nav-group')?.classList.add('open'); }
@@ -2765,8 +2783,8 @@ function empRenderLeads(list) {
       ${vis.map(col => leadCellHtml(c, col)).join('')}
       <td></td>
       <td style="padding:10px 14px;white-space:nowrap;text-align:right">
-        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEmpLeadModal(${c.id})" title="Edit" style="padding:4px 8px"><i data-lucide="pencil" style="width:13px;height:13px"></i></button>
-        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();empRequestDeleteLead(${c.id})" title="Request deletion" style="padding:4px 8px;color:var(--danger);border-color:var(--danger)"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+        ${empCan('leads','edit') ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEmpLeadModal(${c.id})" title="Edit" style="padding:4px 8px"><i data-lucide="pencil" style="width:13px;height:13px"></i></button>` : ''}
+        ${empCan('leads','delete') ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();empRequestDeleteLead(${c.id})" title="Request deletion" style="padding:4px 8px;color:var(--danger);border-color:var(--danger)"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>` : ''}
       </td>
     </tr>`).join('');
   requestAnimationFrame(() => lucide.createIcons());
@@ -3502,8 +3520,9 @@ let _empDragDealId = null;
 
 async function loadEmpDeals() {
   await loadEmpCoworkers();
-  // Best-effort: load leads too so the deal modal's lead picker is populated (needs leads permission).
-  try { const L = await ef('/api/employee/leads').then(r => r.json()); if (Array.isArray(L)) _empLeads = L; } catch (_) {}
+  // Best-effort: load the slim scoped lead list so the deal modal's lead picker is populated
+  // (works for deal-creators even without full Leads access).
+  try { const L = await ef('/api/employee/lead-options').then(r => r.json()); if (Array.isArray(L)) _empLeads = L; } catch (_) {}
   const kanban = document.getElementById('emp-deals-kanban');
   try {
     _empDeals = await ef('/api/employee/deals').then(r => r.json());
@@ -3535,8 +3554,8 @@ function empDealCard(d) {
     <div style="display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
       <div style="font-size:13px;font-weight:600;line-height:1.3">${esc(d.title)}</div>
       <div style="display:flex;gap:2px;flex-shrink:0">
-        <button onclick="event.stopPropagation();openEmpDealModal(${d.id})" title="Edit" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 4px"><i data-lucide="pencil" style="width:13px;height:13px"></i></button>
-        <button onclick="event.stopPropagation();empRequestDeleteDeal(${d.id})" title="Request deletion" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:2px 4px"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+        ${empCan('deals','edit') ? `<button onclick="event.stopPropagation();openEmpDealModal(${d.id})" title="Edit" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 4px"><i data-lucide="pencil" style="width:13px;height:13px"></i></button>` : ''}
+        ${empCan('deals','delete') ? `<button onclick="event.stopPropagation();empRequestDeleteDeal(${d.id})" title="Request deletion" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:2px 4px"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>` : ''}
       </div>
     </div>
     ${cust ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${esc(cust.name)}</div>` : ''}
@@ -3818,7 +3837,7 @@ async function loadEmpQuotation() {
   // employee can see leads; otherwise it stays "— No lead —"). Always visible, like admin.
   try {
     const pick = document.getElementById('emp-qt-customer-id');
-    const r = await ef('/api/employee/leads');
+    const r = await ef('/api/employee/lead-options');
     if (r.ok && pick) {
       const leads = await r.json();
       if (Array.isArray(leads)) {
@@ -3859,9 +3878,9 @@ async function loadEmpQtHistory() {
         <td>${esc(q.created_by || '—')}</td>
         <td>${new Date(q.created_at).toLocaleDateString()}</td>
         <td style="white-space:nowrap;text-align:right">
-          <button class="btn btn-sm btn-outline" onclick="empEditQuotation(${q.id})"><i data-lucide="pencil" style="width:12px;height:12px"></i> Edit</button>
-          <button class="btn btn-sm btn-outline" onclick="empDuplicateQuotation(${q.id})"><i data-lucide="copy" style="width:12px;height:12px"></i> Duplicate</button>
-          <button class="btn btn-sm btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="deleteEmpQuotation(${q.id})"><i data-lucide="trash-2" style="width:12px;height:12px"></i> Delete</button>
+          ${empCan('quotation','draft') ? `<button class="btn btn-sm btn-outline" onclick="empEditQuotation(${q.id})"><i data-lucide="pencil" style="width:12px;height:12px"></i> Edit</button>
+          <button class="btn btn-sm btn-outline" onclick="empDuplicateQuotation(${q.id})"><i data-lucide="copy" style="width:12px;height:12px"></i> Duplicate</button>` : ''}
+          ${empCan('quotation','delete') ? `<button class="btn btn-sm btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="deleteEmpQuotation(${q.id})"><i data-lucide="trash-2" style="width:12px;height:12px"></i> Delete</button>` : ''}
         </td>
       </tr>`).join('')}</tbody></table>`;
     requestAnimationFrame(() => lucide.createIcons());
