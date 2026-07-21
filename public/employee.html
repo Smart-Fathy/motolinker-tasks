@@ -1127,7 +1127,11 @@
               <option value="website">Website</option><option value="walk_in">Walk-in</option><option value="marketplace">Marketplace</option>
             </select>
           </div>
-          <div><label class="form-label">Car in Question</label><input class="form-control" id="eml-car" placeholder="e.g. Deepal S05"></div>
+          <div style="position:relative"><label class="form-label">Car in Question <span id="eml-car-hint" style="color:var(--muted);font-weight:400;font-size:11px"></span></label>
+            <input class="form-control" id="eml-car" placeholder="Search inventory or type a vehicle…" autocomplete="off">
+            <input type="hidden" id="eml-car-price">
+            <div id="eml-car-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.45)"></div>
+          </div>
           <div><label class="form-label">Budget (EGP)</label><input class="form-control" id="eml-budget" placeholder="e.g. 1700000 or 1.7M - 2M"></div>
           <div><label class="form-label">Next Action</label>
             <select class="form-control" id="eml-next-action">
@@ -3420,9 +3424,57 @@ function ldGenerateQuote() {
     const vehEl = document.getElementById('emp-qt-vehicle');
     if (nameEl) nameEl.value = c.name || '';
     if (vehEl && c.car_in_question) vehEl.value = c.car_in_question;
+    const vp = Number(c.custom_fields?.cf_vehicle_price) || 0;
+    if (vp > 0 && typeof empAddPricingRow === 'function') {
+      const ex = (typeof empGetExchange === 'function' ? empGetExchange() : 0);
+      empAddPricingRow(c.car_in_question || 'Vehicle', 1, ex > 0 ? Math.round(vp / ex) : vp);
+    }
   }, 150);
 }
 
+// Vehicle inventory combobox for the employee lead modal (uses ef()).
+function empAttachVehicleSearch() {
+  const input = document.getElementById('eml-car'), results = document.getElementById('eml-car-results');
+  const priceEl = document.getElementById('eml-car-price'), hint = document.getElementById('eml-car-hint');
+  if (!input || !results || input._vehBound) return;
+  input._vehBound = true;
+  let t = null, lastReq = 0;
+  const hide = () => { results.style.display = 'none'; };
+  const money = n => (Number(n) || 0).toLocaleString() + ' EGP';
+  const run = async () => {
+    const q = input.value.trim();
+    if (priceEl) priceEl.value = '';
+    if (q.length < 1) { hide(); return; }
+    const reqId = ++lastReq;
+    try {
+      const r = await ef(`/api/employee/inventory/search?q=${encodeURIComponent(q)}`);
+      const d = await r.json();
+      if (reqId !== lastReq) return;
+      if (d.configured === false) { if (hint) hint.textContent = '(inventory not connected)'; hide(); return; }
+      if (hint) hint.textContent = '';
+      const items = d.items || [];
+      if (!items.length) { hide(); return; }
+      results.innerHTML = items.map((it, i) => `
+        <div class="veh-opt" data-i="${i}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;gap:10px;align-items:center"
+             onmouseover="this.style.background='rgba(201,163,94,.12)'" onmouseout="this.style.background='none'">
+          <div style="min-width:0"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</div>${it.subtitle ? `<div style="font-size:11px;color:var(--muted)">${esc(it.subtitle)}</div>` : ''}</div>
+          ${it.price ? `<div style="font-size:12px;color:var(--primary);white-space:nowrap;font-weight:600">${money(it.price)}</div>` : ''}
+        </div>`).join('');
+      results._items = items;
+      [...results.querySelectorAll('.veh-opt')].forEach(el => el.addEventListener('mousedown', ev => {
+        ev.preventDefault();
+        const it = results._items[+el.dataset.i];
+        input.value = it.name;
+        if (priceEl) priceEl.value = it.price != null ? it.price : '';
+        hide();
+      }));
+      results.style.display = 'block';
+    } catch (_) { hide(); }
+  };
+  input.addEventListener('input', () => { clearTimeout(t); t = setTimeout(run, 250); });
+  input.addEventListener('focus', () => { if (input.value.trim()) run(); });
+  input.addEventListener('blur', () => setTimeout(hide, 200));
+}
 function openEmpLeadModal(id) {
   const c = id ? _empLeads.find(x => x.id === id) : null;
   document.getElementById('eml-title').textContent = c ? 'Edit Lead' : 'Add Lead';
@@ -3459,6 +3511,8 @@ function openEmpLeadModal(id) {
     return `<div><label class="form-label">${esc(col.label)}</label>
       <input class="form-control" id="eml-cf-${esc(col.key)}" type="${t}" value="${esc(v ?? '')}"></div>`;
   }).join('');
+  document.getElementById('eml-car-price').value = (c?.custom_fields && c.custom_fields.cf_vehicle_price) || '';
+  empAttachVehicleSearch();
   document.getElementById('emp-lead-modal').style.display = 'flex';
 }
 async function saveEmpLead() {
@@ -3474,17 +3528,17 @@ async function saveEmpLead() {
     assigned_to: g('eml-owner') ? parseInt(g('eml-owner')) : null,
   };
   const customCols = (_leadCols || []).filter(x => !x.builtin);
-  if (customCols.length) {
-    const existing = id ? (_empLeads.find(x => String(x.id) === String(id))?.custom_fields || {}) : {};
-    const cf = { ...existing };
-    customCols.forEach(col => {
-      const el = document.getElementById('eml-cf-' + col.key); if (!el) return;
-      cf[col.key] = col.type === 'checkbox' ? el.checked
-        : col.type === 'number' ? (el.value === '' ? null : Number(el.value))
-        : el.value;
-    });
-    payload.custom_fields = cf;
-  }
+  const existingCf = id ? (_empLeads.find(x => String(x.id) === String(id))?.custom_fields || {}) : {};
+  const cf = { ...existingCf };
+  customCols.forEach(col => {
+    const el = document.getElementById('eml-cf-' + col.key); if (!el) return;
+    cf[col.key] = col.type === 'checkbox' ? el.checked
+      : col.type === 'number' ? (el.value === '' ? null : Number(el.value))
+      : el.value;
+  });
+  const vp = document.getElementById('eml-car-price')?.value;
+  if (vp) cf.cf_vehicle_price = Number(vp); else delete cf.cf_vehicle_price;
+  if (Object.keys(cf).length || customCols.length) payload.custom_fields = cf;
   if (!payload.name) return showToast('Name is required.');
   try {
     const url = id ? `/api/employee/leads/${id}` : '/api/employee/leads';

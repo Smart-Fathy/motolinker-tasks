@@ -1952,9 +1952,11 @@
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div>
-            <label class="form-label">Car in Question</label>
-            <input class="form-input" id="cm-car" placeholder="e.g. Deepal S05">
+          <div style="position:relative">
+            <label class="form-label">Car in Question <span id="cm-car-hint" style="color:var(--muted);font-weight:400;font-size:11px"></span></label>
+            <input class="form-input" id="cm-car" placeholder="Search inventory or type a vehicle…" autocomplete="off">
+            <input type="hidden" id="cm-car-price">
+            <div id="cm-car-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.45)"></div>
           </div>
           <div>
             <label class="form-label">Budget (EGP)</label>
@@ -7121,6 +7123,12 @@ function ldGenerateQuote() {
     if (vehEl && c.car_in_question) vehEl.value = c.car_in_question;
     const pick = document.getElementById('qt-customer-id');
     if (pick) pick.value = String(c.id);
+    // Prefill a pricing line from the attached inventory vehicle's price (EGP → USD via exchange).
+    const vp = Number(c.custom_fields?.cf_vehicle_price) || 0;
+    if (vp > 0 && typeof addPricingRow === 'function') {
+      const ex = (typeof getExchange === 'function' ? getExchange() : 0);
+      addPricingRow(c.car_in_question || 'Vehicle', 1, ex > 0 ? Math.round(vp / ex) : vp);
+    }
   }, 350);
 }
 
@@ -7170,6 +7178,52 @@ function fillLeadSelect(id, colKey, emptyLabel, rawValue) {
   sel.value = [...sel.options].some(o => o.value === k) ? k : (emptyLabel != null ? '' : (col.options?.[0]?.key || ''));
 }
 
+// ── Vehicle inventory combobox (search the website inventory, attach to a lead) ──
+// Reusable across admin + employee lead modals. Fills the car text field and stashes
+// the selected price in a hidden input. Free-typing is allowed (clears the price).
+function attachVehicleSearch(inputId, priceId, resultsId, endpoint, hintId) {
+  const input = document.getElementById(inputId), results = document.getElementById(resultsId);
+  const priceEl = document.getElementById(priceId), hint = hintId && document.getElementById(hintId);
+  if (!input || !results || input._vehBound) return;
+  input._vehBound = true;
+  let t = null, lastReq = 0;
+  const hide = () => { results.style.display = 'none'; };
+  const money = n => (Number(n) || 0).toLocaleString() + ' EGP';
+  const run = async () => {
+    const q = input.value.trim();
+    if (priceEl) priceEl.value = ''; // manual typing = no known price until a pick
+    if (q.length < 1) { hide(); return; }
+    const reqId = ++lastReq;
+    try {
+      const r = await apiFetch(`${endpoint}?q=${encodeURIComponent(q)}`);
+      const d = await r.json();
+      if (reqId !== lastReq) return; // stale response
+      if (hint && d.configured === false) { hint.textContent = '(inventory not connected)'; hide(); return; }
+      if (hint) hint.textContent = '';
+      const items = d.items || [];
+      if (!items.length) { hide(); return; }
+      results.innerHTML = items.map((it, i) => `
+        <div class="veh-opt" data-i="${i}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;gap:10px;align-items:center"
+             onmouseover="this.style.background='rgba(201,163,94,.12)'" onmouseout="this.style.background='none'">
+          <div style="min-width:0"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</div>${it.subtitle ? `<div style="font-size:11px;color:var(--muted)">${esc(it.subtitle)}</div>` : ''}</div>
+          ${it.price ? `<div style="font-size:12px;color:var(--primary);white-space:nowrap;font-weight:600">${money(it.price)}</div>` : ''}
+        </div>`).join('');
+      results._items = items;
+      [...results.querySelectorAll('.veh-opt')].forEach(el => el.addEventListener('mousedown', ev => {
+        ev.preventDefault();
+        const it = results._items[+el.dataset.i];
+        input.value = it.name;
+        if (priceEl) priceEl.value = it.price != null ? it.price : '';
+        hide();
+      }));
+      results.style.display = 'block';
+    } catch (_) { hide(); }
+  };
+  input.addEventListener('input', () => { clearTimeout(t); t = setTimeout(run, 250); });
+  input.addEventListener('focus', () => { if (input.value.trim()) run(); });
+  input.addEventListener('blur', () => setTimeout(hide, 200));
+}
+
 function openCustomerModal(id) {
   const c = id ? _allCustomers.find(x => x.id === id) : null;
   document.getElementById('customer-modal-title').textContent = c ? 'Edit Lead' : 'Add Lead';
@@ -7182,6 +7236,8 @@ function openCustomerModal(id) {
   fillLeadSelect('cm-source', 'source', '— Unknown —', c?.source);
   fillLeadSelect('cm-next-action', 'next_action', '— None —', c?.next_action);
   document.getElementById('cm-car').value = c?.car_in_question || '';
+  document.getElementById('cm-car-price').value = (c?.custom_fields && c.custom_fields.cf_vehicle_price) || '';
+  attachVehicleSearch('cm-car', 'cm-car-price', 'cm-car-results', '/api/dashboard/inventory/search', 'cm-car-hint');
   document.getElementById('cm-budget').value = (c?.budget_max != null && c?.budget_max !== '') ? `${c.budget_lead}-${c.budget_max}` : (c?.budget_lead || '');
   document.getElementById('cm-been-contacted').checked = c?.been_contacted || false;
   // Owner (sales rep) picker
@@ -7243,18 +7299,19 @@ async function saveCustomer() {
     assigned_to:    document.getElementById('cm-owner')?.value ? parseInt(document.getElementById('cm-owner').value) : null,
   };
   const customCols = (_leadCols || []).filter(x => !x.builtin);
-  if (customCols.length) {
-    const existing = id ? (_allCustomers.find(x => String(x.id) === String(id))?.custom_fields || {}) : {};
-    const cf = { ...existing };
-    customCols.forEach(col => {
-      const el = document.getElementById('cm-cf-' + col.key);
-      if (!el) return;
-      cf[col.key] = col.type === 'checkbox' ? el.checked
-        : col.type === 'number' ? (el.value === '' ? null : Number(el.value))
-        : el.value;
-    });
-    payload.custom_fields = cf;
-  }
+  const existingCf = id ? (_allCustomers.find(x => String(x.id) === String(id))?.custom_fields || {}) : {};
+  const cf = { ...existingCf };
+  customCols.forEach(col => {
+    const el = document.getElementById('cm-cf-' + col.key);
+    if (!el) return;
+    cf[col.key] = col.type === 'checkbox' ? el.checked
+      : col.type === 'number' ? (el.value === '' ? null : Number(el.value))
+      : el.value;
+  });
+  // Stash the inventory vehicle's price (if one was picked) so quotes can prefill it.
+  const vp = document.getElementById('cm-car-price')?.value;
+  if (vp) cf.cf_vehicle_price = Number(vp); else delete cf.cf_vehicle_price;
+  if (Object.keys(cf).length || customCols.length) payload.custom_fields = cf;
   if (!payload.name) { alert('Name is required.'); return; }
   try {
     const url = id ? `/api/dashboard/customers/${id}` : '/api/dashboard/customers';
