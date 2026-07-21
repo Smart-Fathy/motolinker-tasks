@@ -3423,7 +3423,8 @@ function ldGenerateQuote() {
     const nameEl = document.getElementById('emp-qt-name');
     const vehEl = document.getElementById('emp-qt-vehicle');
     if (nameEl) nameEl.value = c.name || '';
-    if (vehEl && c.car_in_question) vehEl.value = c.car_in_question;
+    const vehName = c.car_in_question || (c.custom_fields && c.custom_fields.cf_vehicle_requested) || '';
+    if (vehEl && vehName) vehEl.value = vehName;
     const vp = Number(c.custom_fields?.cf_vehicle_price) || 0;
     if (vp > 0 && typeof empAddPricingRow === 'function') {
       const ex = (typeof empGetExchange === 'function' ? empGetExchange() : 0);
@@ -3432,10 +3433,17 @@ function ldGenerateQuote() {
   }, 150);
 }
 
+// Is this lead column the "vehicle requested" field? (excludes "Vehicle Offered")
+function isVehicleField(col) {
+  const key = col?.key || '';
+  if (key === 'car_in_question' || key === 'cf_vehicle_requested') return true;
+  const lbl = (col?.label || '').trim().toLowerCase();
+  return lbl === 'vehicle requested' || lbl === 'car in question' || lbl === 'car' || lbl === 'vehicle';
+}
 // Vehicle inventory combobox for the employee lead modal (uses ef()).
-function empAttachVehicleSearch() {
-  const input = document.getElementById('eml-car'), results = document.getElementById('eml-car-results');
-  const priceEl = document.getElementById('eml-car-price'), hint = document.getElementById('eml-car-hint');
+function empAttachVehicleSearch(inputId = 'eml-car', priceId = 'eml-car-price', resultsId = 'eml-car-results', hintId = 'eml-car-hint') {
+  const input = document.getElementById(inputId), results = document.getElementById(resultsId);
+  const priceEl = document.getElementById(priceId), hint = document.getElementById(hintId);
   if (!input || !results || input._vehBound) return;
   input._vehBound = true;
   let t = null, lastReq = 0;
@@ -3507,12 +3515,25 @@ function openEmpLeadModal(id) {
           ${(col.options || []).map(o => `<option value="${esc(o.key)}"${k === o.key ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}
         </select></div>`;
     }
+    if (isVehicleField(col)) {
+      return `<div style="position:relative"><label class="form-label">${esc(col.label)} <span id="eml-cf-${esc(col.key)}-hint" style="color:var(--muted);font-weight:400;font-size:11px"></span></label>
+        <input class="form-control" id="eml-cf-${esc(col.key)}" value="${esc(v ?? '')}" placeholder="Search inventory or type a vehicle…" autocomplete="off">
+        <input type="hidden" id="eml-cf-${esc(col.key)}-price">
+        <div id="eml-cf-${esc(col.key)}-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.45)"></div></div>`;
+    }
     const t = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text';
     return `<div><label class="form-label">${esc(col.label)}</label>
       <input class="form-control" id="eml-cf-${esc(col.key)}" type="${t}" value="${esc(v ?? '')}"></div>`;
   }).join('');
   document.getElementById('eml-car-price').value = (c?.custom_fields && c.custom_fields.cf_vehicle_price) || '';
-  empAttachVehicleSearch();
+  empAttachVehicleSearch(); // static eml-car
+  custom.filter(isVehicleField).forEach(col => {
+    const pe = document.getElementById('eml-cf-' + col.key + '-price'); if (pe) pe.value = (c?.custom_fields && c.custom_fields.cf_vehicle_price) || '';
+    empAttachVehicleSearch('eml-cf-' + col.key, 'eml-cf-' + col.key + '-price', 'eml-cf-' + col.key + '-results', 'eml-cf-' + col.key + '-hint');
+  });
+  const carCol = (_leadCols || []).find(x => x.key === 'car_in_question');
+  const carWrap = document.getElementById('eml-car')?.closest('div');
+  if (carWrap) carWrap.style.display = (carCol && (carCol.deleted || carCol.visible === false)) ? 'none' : '';
   document.getElementById('emp-lead-modal').style.display = 'flex';
 }
 async function saveEmpLead() {
@@ -3536,8 +3557,8 @@ async function saveEmpLead() {
       : col.type === 'number' ? (el.value === '' ? null : Number(el.value))
       : el.value;
   });
-  const vp = document.getElementById('eml-car-price')?.value;
-  if (vp) cf.cf_vehicle_price = Number(vp); else delete cf.cf_vehicle_price;
+  const vpEl = [...document.querySelectorAll('#emp-lead-modal input[type=hidden][id$="-price"]')].find(el => el.value);
+  if (vpEl) cf.cf_vehicle_price = Number(vpEl.value); else delete cf.cf_vehicle_price;
   if (Object.keys(cf).length || customCols.length) payload.custom_fields = cf;
   if (!payload.name) return showToast('Name is required.');
   try {
