@@ -1078,6 +1078,7 @@
         <div class="nav-group-items">
           <div class="nav-item"        onclick="navigate('customers')"  id="nav-customers">    <span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads</div>
           <div class="nav-item"        onclick="navigate('deals')"      id="nav-deals">        <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals</div>
+          <div class="nav-item"        onclick="navigate('stock')"      id="nav-stock">        <span class="nav-icon"><i data-lucide="car-front"></i></span> Car Stock</div>
           <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><i data-lucide="mail"></i></span> Submissions</div>
           <div class="nav-item"        onclick="navigate('reports')"    id="nav-reports">      <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span> Reports</div>
           <div class="nav-item"        onclick="navigate('automations')" id="nav-automations"> <span class="nav-icon"><i data-lucide="workflow"></i></span> Automations</div>
@@ -1708,6 +1709,24 @@
       </div>
       <div id="deals-kanban" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:start;overflow-x:auto;min-width:900px">
         <!-- Columns rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CAR STOCK PAGE (immediate-delivery inventory) ──────────────── -->
+  <div id="page-stock" class="page">
+    <div class="page-header">
+      <span class="page-title">Car Stock</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="openStockCsvModal()"><i data-lucide="upload" style="width:14px;height:14px"></i> Bulk upload CSV</button>
+        <button class="btn btn-primary" onclick="openStockForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add vehicle</button>
+      </div>
+    </div>
+    <div style="padding:0 28px 28px">
+      <div id="stock-summary" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:18px"></div>
+      <input id="stock-search" type="text" placeholder="Search make, model or trim…" oninput="renderStock()" style="width:100%;max-width:360px;margin-top:16px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+      <div id="stock-table-container" style="margin-top:14px">
+        <div class="loading"><div class="spinner"></div> Loading stock…</div>
       </div>
     </div>
   </div>
@@ -2790,7 +2809,6 @@ function renderLeadsReport(d) {
   document.getElementById('lr-kpis').innerHTML = `
     <div class="stat-card total"><div class="stat-label">Total Leads</div><div class="stat-value">${d.totals.count.toLocaleString()}</div><div class="stat-sub">${lrRangeLabel(d)}</div></div>
     <div class="stat-card high-pri"><div class="stat-label">Hot Leads</div><div class="stat-value">${d.hotCount.toLocaleString()}</div><div class="stat-sub">${d.totals.count ? Math.round(d.hotCount / d.totals.count * 100) : 0}% of leads</div></div>
-    <div class="stat-card done"><div class="stat-label">Total Budget</div><div class="stat-value" style="font-size:20px">${egp(d.totals.budget)}</div><div class="stat-sub">Sum of lead budgets</div></div>
     <div class="stat-card in-progress"><div class="stat-label">Avg Budget</div><div class="stat-value" style="font-size:20px">${egp(d.totals.avg)}</div><div class="stat-sub">Per lead</div></div>`;
   return d.splitBy ? renderLeadsCrossTab(d) : renderLeadsSingle(d);
 }
@@ -3739,9 +3757,127 @@ async function uploadCSV() {
   loadDashboard();
 }
 
+// ── Car Stock (immediate-delivery inventory) ────────────────────────────────────
+let _stockCache = [];
+async function loadStock() {
+  const body = document.getElementById('stock-table-container');
+  if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div> Loading stock…</div>';
+  let list = [];
+  try { list = await apiFetch('/api/dashboard/stock').then(r => r.json()); }
+  catch (_) { if (body) body.innerHTML = '<div class="error-msg">Failed to load stock.</div>'; return; }
+  _stockCache = Array.isArray(list) ? list : [];
+  renderStock();
+}
+function renderStock() {
+  const body = document.getElementById('stock-table-container');
+  const sumEl = document.getElementById('stock-summary');
+  if (!body) return;
+  const models = new Set(_stockCache.map(v => `${(v.make||'').toLowerCase()}|${(v.model||'').toLowerCase()}`));
+  const totalUnits = _stockCache.reduce((s, v) => s + (Number(v.quantity) || 0), 0);
+  const totalValue = _stockCache.reduce((s, v) => s + (Number(v.price) || 0) * (Number(v.quantity) || 0), 0);
+  if (sumEl) sumEl.innerHTML = `
+    <div class="stat-card total"><div class="stat-label">Listings</div><div class="stat-value">${_stockCache.length.toLocaleString()}</div><div class="stat-sub">${models.size} model(s)</div></div>
+    <div class="stat-card high-pri"><div class="stat-label">Units in stock</div><div class="stat-value">${totalUnits.toLocaleString()}</div><div class="stat-sub">Ready for delivery</div></div>
+    <div class="stat-card in-progress"><div class="stat-label">Stock value</div><div class="stat-value" style="font-size:20px">${egp(totalValue)}</div><div class="stat-sub">Price × quantity</div></div>`;
+  const term = (document.getElementById('stock-search')?.value || '').trim().toLowerCase();
+  const rows = _stockCache.filter(v => !term || `${v.make} ${v.model} ${v.trim}`.toLowerCase().includes(term));
+  if (!rows.length) {
+    body.innerHTML = `<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">${_stockCache.length ? 'No vehicles match your search.' : 'No vehicles in stock yet.<br>Click “Add vehicle” or “Bulk upload CSV” to get started.'}</div>`;
+    return;
+  }
+  body.innerHTML = `
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+        <th style="padding:8px 10px">Make</th><th style="padding:8px 10px">Model</th><th style="padding:8px 10px">Trim</th>
+        <th style="padding:8px 10px;text-align:right">Price</th><th style="padding:8px 10px;text-align:right">Qty</th>
+        <th style="padding:8px 10px">Notes</th><th style="padding:8px 10px;text-align:right">Actions</th></tr></thead>
+      <tbody>${rows.map(v => `
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px;font-weight:600">${esc(v.make || '')}</td>
+          <td style="padding:8px 10px">${esc(v.model || '')}</td>
+          <td style="padding:8px 10px">${esc(v.trim || '—')}</td>
+          <td style="padding:8px 10px;text-align:right">${v.price ? egp(v.price) : '—'}</td>
+          <td style="padding:8px 10px;text-align:right"><span style="display:inline-block;min-width:26px;text-align:center;padding:2px 8px;border-radius:10px;font-weight:600;background:${(Number(v.quantity)||0) > 0 ? 'var(--primary-soft,#e0e7ff)' : '#fee2e2'};color:${(Number(v.quantity)||0) > 0 ? 'var(--primary,#4338ca)' : '#b91c1c'}">${Number(v.quantity)||0}</span></td>
+          <td style="padding:8px 10px;color:var(--muted);max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(v.notes || '')}</td>
+          <td style="padding:8px 10px;text-align:right;white-space:nowrap">
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openStockForm(${v.id})">Edit</button>
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteStock(${v.id})">Delete</button>
+          </td>
+        </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+function openStockForm(id) {
+  const v = id ? _stockCache.find(x => x.id === id) : null;
+  showModal(v ? 'Edit vehicle' : 'Add vehicle', `
+    <div style="display:grid;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label class="form-label">Make *</label><input id="stk-make" class="form-input" value="${esc(v?.make || '')}" placeholder="e.g. Toyota"></div>
+        <div><label class="form-label">Model *</label><input id="stk-model" class="form-input" value="${esc(v?.model || '')}" placeholder="e.g. Corolla"></div>
+      </div>
+      <div><label class="form-label">Trim</label><input id="stk-trim" class="form-input" value="${esc(v?.trim || '')}" placeholder="e.g. GLI 1.6 (leave blank if none)"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label class="form-label">Price (EGP)</label><input id="stk-price" class="form-input" type="number" min="0" step="any" value="${v?.price ?? ''}" placeholder="e.g. 1150000"></div>
+        <div><label class="form-label">Quantity in stock</label><input id="stk-qty" class="form-input" type="number" min="0" step="1" value="${v?.quantity ?? ''}" placeholder="e.g. 4"></div>
+      </div>
+      <div><label class="form-label">Notes</label><input id="stk-notes" class="form-input" value="${esc(v?.notes || '')}" placeholder="Colours available, options…"></div>
+      <div id="stk-err" class="error-msg" style="display:none"></div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+     <button class="btn btn-primary" onclick="saveStock(${id || 'null'})">${v ? 'Save changes' : 'Add vehicle'}</button>`);
+}
+async function saveStock(id) {
+  const payload = {
+    make: document.getElementById('stk-make').value.trim(),
+    model: document.getElementById('stk-model').value.trim(),
+    trim: document.getElementById('stk-trim').value.trim(),
+    price: document.getElementById('stk-price').value,
+    quantity: document.getElementById('stk-qty').value,
+    notes: document.getElementById('stk-notes').value.trim(),
+  };
+  const err = document.getElementById('stk-err');
+  if (!payload.make || !payload.model) { err.textContent = 'Make and Model are required.'; err.style.display = 'block'; return; }
+  const url = id ? `/api/dashboard/stock/${id}` : '/api/dashboard/stock';
+  const r = await apiFetch(url, { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+  const d = await r.json();
+  if (!r.ok) { err.textContent = d.error || 'Failed to save.'; err.style.display = 'block'; return; }
+  hideModal();
+  loadStock();
+}
+async function deleteStock(id) {
+  const v = _stockCache.find(x => x.id === id);
+  if (!confirm(`Delete ${v ? `${v.make} ${v.model} ${v.trim || ''}`.trim() : 'this vehicle'} from stock?`)) return;
+  await apiFetch(`/api/dashboard/stock/${id}`, { method: 'DELETE' });
+  loadStock();
+}
+function openStockCsvModal() {
+  showModal('Bulk upload vehicles', `
+    <div style="display:grid;gap:12px;font-size:13px">
+      <p style="color:var(--muted);margin:0">Upload a CSV with columns: <strong>make, model, trim, price, quantity, notes</strong>. Make and Model are required; a model with several trims = one row per trim.</p>
+      <a class="btn btn-outline" href="/api/dashboard/stock/template.csv${authToken ? '?_t=' + encodeURIComponent(authToken) : ''}" download style="justify-self:start"><i data-lucide="download" style="width:14px;height:14px"></i> Download sample template</a>
+      <input id="stock-csv-file" type="file" accept=".csv,text/csv" class="form-input">
+      <div id="stock-csv-result"></div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="hideModal()">Close</button>
+     <button class="btn btn-primary" onclick="importStockCsv()">Upload</button>`);
+  requestAnimationFrame(() => lucide.createIcons());
+}
+async function importStockCsv() {
+  const file = document.getElementById('stock-csv-file').files[0];
+  const res = document.getElementById('stock-csv-result');
+  if (!file) { res.innerHTML = '<div class="error-msg">Please choose a CSV file.</div>'; return; }
+  const fd = new FormData(); fd.append('file', file);
+  const headers = {}; if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+  res.innerHTML = '<div style="color:var(--muted)">Uploading…</div>';
+  const r = await fetch('/api/dashboard/stock/bulk', { method: 'POST', headers, body: fd });
+  const data = await r.json();
+  if (!r.ok || data.error) { res.innerHTML = `<div class="error-msg">${esc(data.error || 'Upload failed')}</div>`; return; }
+  res.innerHTML = `<div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;padding:10px 14px;border-radius:8px;font-size:13px">Imported <strong>${data.inserted}</strong> vehicle(s)${data.errors?.length ? `<br><span style="color:var(--warning)">${data.errors.map(esc).join('<br>')}</span>` : ''}</div>`;
+  loadStock();
+}
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();

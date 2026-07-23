@@ -663,3 +663,21 @@ CREATE INDEX IF NOT EXISTS idx_recurring_tasks_active_next ON recurring_tasks (a
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurring_id BIGINT DEFAULT NULL;
 
 ALTER TABLE IF EXISTS public.recurring_tasks ENABLE ROW LEVEL SECURITY;
+
+-- ── Car Stock (immediate-delivery inventory) ──────────────────────────────────
+-- Vehicles physically in stock for immediate delivery. One row per make+model+trim
+-- (a model may have several trims → several rows). `quantity` = units on hand.
+CREATE TABLE IF NOT EXISTS stock_vehicles (
+  id          BIGSERIAL PRIMARY KEY,
+  make        TEXT NOT NULL,
+  model       TEXT NOT NULL,
+  trim        TEXT DEFAULT '',
+  price       NUMERIC DEFAULT 0,        -- price per car
+  quantity    INT NOT NULL DEFAULT 0,   -- units in stock
+  notes       TEXT DEFAULT '',
+  created_by  TEXT DEFAULT 'dashboard',
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_stock_vehicles_make_model ON stock_vehicles (make, model);
+ALTER TABLE IF EXISTS public.stock_vehicles ENABLE ROW LEVEL SECURITY;

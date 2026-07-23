@@ -781,6 +781,89 @@ function scheduleRecurringTasks() {
   setInterval(() => runRecurringTasks().catch(console.error), 60 * 60 * 1000); // hourly (guarded once/day)
 }
 
+// ─── Car Stock (immediate-delivery inventory) ───────────────────────────────────
+// A CRM-owned list of vehicles physically in stock for immediate delivery. One row
+// per make+model+trim (a model may carry several trims); `quantity` = units on hand,
+// `price` = price per car. Separate from the read-only website inventory picker.
+const STOCK_CSV_HEADERS = ['make', 'model', 'trim', 'price', 'quantity', 'notes'];
+function stockBuildRow(body) {
+  const b = body || {};
+  const make = String(b.make || '').trim();
+  const model = String(b.model || '').trim();
+  if (!make) return { error: 'Make is required' };
+  if (!model) return { error: 'Model is required' };
+  const priceNum = Number(String(b.price ?? '').replace(/[^\d.]/g, ''));
+  const qtyNum = parseInt(String(b.quantity ?? '').replace(/[^\d-]/g, ''), 10);
+  return { row: {
+    make, model,
+    trim: String(b.trim || '').trim(),
+    price: (isFinite(priceNum) && priceNum > 0) ? priceNum : 0,
+    quantity: (isFinite(qtyNum) && qtyNum > 0) ? qtyNum : 0,
+    notes: String(b.notes || '').trim(),
+  } };
+}
+
+receiver.router.get('/api/dashboard/stock', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('stock_vehicles').select('*').order('make', { ascending: true }).order('model', { ascending: true }).order('trim', { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.post('/api/dashboard/stock', requireAuth, express.json(), async (req, res) => {
+  const { row, error: verr } = stockBuildRow(req.body);
+  if (verr) return res.status(400).json({ error: verr });
+  row.created_by = 'dashboard';
+  const { data, error } = await supabase.from('stock_vehicles').insert(row).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.put('/api/dashboard/stock/:id', requireAuth, express.json(), async (req, res) => {
+  const { row, error: verr } = stockBuildRow(req.body);
+  if (verr) return res.status(400).json({ error: verr });
+  row.updated_at = new Date().toISOString();
+  const { data, error } = await supabase.from('stock_vehicles').update(row).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.delete('/api/dashboard/stock/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('stock_vehicles').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// Downloadable sample CSV template for bulk upload.
+receiver.router.get('/api/dashboard/stock/template.csv', requireAuth, (_req, res) => {
+  const sample = [
+    STOCK_CSV_HEADERS.join(','),
+    'Toyota,Corolla,GLI 1.6,1150000,4,White & black available',
+    'Toyota,Corolla,XLI 1.6,1050000,2,',
+    'Hyundai,Tucson,Smart,1750000,1,Panoramic roof',
+  ].join('\n');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="car-stock-template.csv"');
+  res.send('﻿' + sample); // BOM for Excel
+});
+
+// Bulk import stock vehicles from a CSV (make,model,trim,price,quantity,notes).
+receiver.router.post('/api/dashboard/stock/bulk', requireAuth, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No CSV file uploaded' });
+  const rows = parseCSV(req.file.buffer.toString('utf-8'));
+  if (!rows.length) return res.status(400).json({ error: 'CSV has no data rows' });
+  const inserts = [], errors = [];
+  rows.forEach((row, i) => {
+    const { row: built, error } = stockBuildRow(row);
+    if (error) { errors.push(`Row ${i + 2}: ${error}`); return; }
+    built.created_by = 'dashboard_bulk';
+    inserts.push(built);
+  });
+  if (!inserts.length) return res.json({ inserted: 0, errors });
+  const { data, error } = await supabase.from('stock_vehicles').insert(inserts).select();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ inserted: data.length, errors });
+});
+
 // ── CSV Bulk Upload ───────────────────────────────────────────────────────────
 function normalizeDate(str) {
   if (!str) return str;
