@@ -3943,6 +3943,25 @@ receiver.router.get('/api/dashboard/quotations/:id', requireAuth, async (req, re
   res.json(data);
 });
 
+// Re-render a saved quotation to PDF straight from its stored data, so it can be
+// viewed from the lead profile without loading it back into the draft form.
+receiver.router.post('/api/dashboard/quotations/:id/pdf', requireAuth, async (req, res) => {
+  try {
+    const { data: row, error } = await supabase.from('quotations').select('*').eq('id', req.params.id).single();
+    if (error || !row) return res.status(404).json({ error: 'Quotation not found' });
+    const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
+    const settings = {};
+    for (const s of settingsRows || []) settings[s.key] = s.value;
+    const d = row.data || {};
+    const html = buildQuotationHtml({ ...d, template: quoteTheme(d.template).key, settings });
+    const pdf = await renderQuotationPdf(html);
+    res.json({ pdf: Buffer.from(pdf).toString('base64'), name: row.quote_id || 'quotation' });
+  } catch (e) {
+    console.error('[quotation-pdf]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 receiver.router.delete('/api/dashboard/quotations/:id', requireAuth, async (req, res) => {
   const { error } = await supabase.from('quotations').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
@@ -4317,6 +4336,19 @@ receiver.router.post('/api/dashboard/contracts/pdf', requireAuth, express.json({
   }
 });
 
+// Render a saved contract by id (used by the lead profile's document viewer).
+receiver.router.post('/api/dashboard/contracts/:id/pdf', requireAuth, async (req, res) => {
+  try {
+    const { data: row, error } = await supabase.from('contracts').select('*').eq('id', req.params.id).single();
+    if (error || !row) return res.status(404).json({ error: 'Contract not found' });
+    const pdf = await renderQuotationPdf(buildContractHtml(row.data || {}));
+    res.json({ pdf: Buffer.from(pdf).toString('base64'), name: row.contract_no || 'contract' });
+  } catch (e) {
+    console.error('[contract-pdf-id]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Auto-generate a contract when a deal reaches the Won stage ────────────────
 // Idempotent: one contract per deal (guarded by idx_contracts_deal_unique and an
 // explicit lookup so re-entering Won never produces duplicates).
@@ -4507,6 +4539,22 @@ receiver.router.post('/api/dashboard/purchase-orders/pdf', requireAuth, express.
     res.json({ pdf: Buffer.from(pdf).toString('base64') });
   } catch (e) {
     console.error('[po-pdf]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Render a saved purchase order by id (used by the lead profile's document viewer).
+receiver.router.post('/api/dashboard/purchase-orders/:id/pdf', requireAuth, async (req, res) => {
+  try {
+    const { data: row, error } = await supabase.from('purchase_orders').select('*').eq('id', req.params.id).single();
+    if (error || !row) return res.status(404).json({ error: 'Purchase order not found' });
+    const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
+    const settings = {};
+    for (const s of settingsRows || []) settings[s.key] = s.value;
+    const pdf = await renderQuotationPdf(buildPurchaseOrderHtml({ ...row, settings }), { landscape: true });
+    res.json({ pdf: Buffer.from(pdf).toString('base64'), name: row.po_number || 'purchase-order' });
+  } catch (e) {
+    console.error('[po-pdf-id]', e);
     res.status(500).json({ error: e.message });
   }
 });
