@@ -2501,12 +2501,13 @@ receiver.router.get('/api/dashboard/customers/:id/profile', requireAuth, async (
   const id = parseInt(req.params.id);
   const { data: customer, error } = await supabase.from('customers').select('*').eq('id', id).single();
   if (error || !customer) return res.status(404).json({ error: 'Lead not found' });
-  const [activities, followups, quotations, deals, contracts] = await Promise.all([
+  const [activities, followups, quotations, deals, contracts, purchaseOrders] = await Promise.all([
     supabase.from('lead_activities').select('*').eq('customer_id', id).order('created_at', { ascending: false }).limit(200),
     supabase.from('lead_followups').select('*').eq('customer_id', id).order('due_at', { ascending: true }),
     supabase.from('quotations').select('id,quote_id,title,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
     supabase.from('deals').select('id,title,stage,budget_egp,created_at').eq('customer_id', id).order('created_at', { ascending: false }),
     supabase.from('contracts').select('id,contract_no,title,status,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
+    supabase.from('purchase_orders').select('id,po_number,title,supplier,status,items,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
   ]);
   res.json({
     customer,
@@ -2515,6 +2516,7 @@ receiver.router.get('/api/dashboard/customers/:id/profile', requireAuth, async (
     quotations: quotations.data || [],
     deals: deals.data || [],
     contracts: contracts.data || [],
+    purchaseOrders: purchaseOrders.data || [],
   });
 });
 
@@ -3809,12 +3811,13 @@ receiver.router.get('/api/employee/customers/:id/profile', requireEmployeeAuth, 
   const { data: customer, error } = await supabase.from('customers').select('*').eq('id', id).single();
   if (error || !customer) return res.status(404).json({ error: 'Lead not found' });
   if (empHasScope(req.employee) && !customerInScope(customer, req.employee, await scopedQuotedIds(req.employee))) return res.status(403).json({ error: 'Not permitted' });
-  const [activities, followups, quotations, deals, contracts] = await Promise.all([
+  const [activities, followups, quotations, deals, contracts, purchaseOrders] = await Promise.all([
     supabase.from('lead_activities').select('*').eq('customer_id', id).order('created_at', { ascending: false }).limit(200),
     supabase.from('lead_followups').select('*').eq('customer_id', id).order('due_at', { ascending: true }),
     supabase.from('quotations').select('id,quote_id,title,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
     supabase.from('deals').select('id,title,stage,budget_egp,created_at').eq('customer_id', id).order('created_at', { ascending: false }),
     supabase.from('contracts').select('id,contract_no,title,status,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
+    supabase.from('purchase_orders').select('id,po_number,title,supplier,status,items,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
   ]);
   res.json({
     customer,
@@ -3823,6 +3826,7 @@ receiver.router.get('/api/employee/customers/:id/profile', requireEmployeeAuth, 
     quotations: quotations.data || [],
     deals: deals.data || [],
     contracts: contracts.data || [],
+    purchaseOrders: purchaseOrders.data || [],
   });
 });
 
@@ -4350,10 +4354,282 @@ async function autoCreateContractForWonDeal(deal) {
   } catch (e) { console.warn('[contract] auto-create error:', e.message); return null; }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Purchase Orders ───────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// Mirrors the ordering sheet: one PO holds many vehicle lines, each with its own
+// client/consignee, spec, PI price, tracking status, VIN and client-file link.
+
+const PO_LINE_STATUSES = [
+  { key: 'send_to_supplier', label: 'SEND TO SUPPLIER',      bg: '#dbe4ff', fg: '#2f3f8f' },
+  { key: 'in_preparation',   label: 'Car in Preparation',    bg: '#f3ddf7', fg: '#7b2d8e' },
+  { key: 'in_logistics',     label: 'In Logistics',          bg: '#fdecc8', fg: '#8a5a00' },
+  { key: 'delivered',        label: 'Car Delivered to moto', bg: '#d7f2d9', fg: '#1e6b2a' },
+];
+const PO_LINE_STATUS_KEYS = PO_LINE_STATUSES.map(s => s.key);
+function poLineStatus(key) {
+  return PO_LINE_STATUSES.find(s => s.key === key) || PO_LINE_STATUSES[0];
+}
+const PO_STATUSES = ['draft', 'sent', 'confirmed', 'closed'];
+
+function generatePoNumber() {
+  const now = new Date();
+  const y = String(now.getFullYear()).slice(-2);
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  return `PO${y}${m}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+}
+
+// Normalize one vehicle line from the UI / import.
+function poBuildItem(raw) {
+  const r = raw || {};
+  const num = (v, def = 0) => {
+    const n = Number(String(v ?? '').replace(/[^\d.]/g, ''));
+    return isFinite(n) && n > 0 ? n : def;
+  };
+  return {
+    client:       String(r.client || '').trim(),
+    consignee:    String(r.consignee || '').trim(),
+    units:        Math.max(1, parseInt(String(r.units ?? '1').replace(/[^\d]/g, ''), 10) || 1),
+    brand:        String(r.brand || '').trim(),
+    model:        String(r.model || '').trim(),
+    trim:         String(r.trim || '').trim(),
+    color:        String(r.color || '').trim(),
+    year:         String(r.year || '').trim(),
+    accessories:  String(r.accessories || '').trim(),
+    payment_term: String(r.payment_term || '').trim(),
+    pi_price:     num(r.pi_price),
+    status:       PO_LINE_STATUS_KEYS.includes(r.status) ? r.status : 'send_to_supplier',
+    vin:          String(r.vin || '').trim(),
+    file_link:    String(r.file_link || '').trim(),
+  };
+}
+
+function poBuildRow(body) {
+  const b = body || {};
+  const items = (Array.isArray(b.items) ? b.items : []).map(poBuildItem)
+    .filter(it => it.client || it.brand || it.model || it.vin);
+  return {
+    po_number: String(b.po_number || '').trim() || generatePoNumber(),
+    title:     String(b.title || '').trim(),
+    supplier:  String(b.supplier || '').trim(),
+    po_date:   String(b.po_date || '').trim() || null,
+    currency:  String(b.currency || 'USD').trim() || 'USD',
+    notes:     String(b.notes || '').trim(),
+    items,
+    customer_id: b.customer_id ? parseInt(b.customer_id) : null,
+    status:    PO_STATUSES.includes(b.status) ? b.status : 'draft',
+  };
+}
+function poTotal(items) {
+  return (items || []).reduce((s, it) => s + (Number(it.pi_price) || 0) * (Number(it.units) || 1), 0);
+}
+
+receiver.router.get('/api/dashboard/purchase-orders', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('purchase_orders')
+    .select('id,po_number,title,supplier,po_date,currency,status,customer_id,items,created_by,created_at')
+    .order('created_at', { ascending: false }).limit(200);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.get('/api/dashboard/purchase-orders/new/defaults', requireAuth, async (req, res) => {
+  try {
+    const customerId = req.query.customer_id ? parseInt(req.query.customer_id) : null;
+    const cust = customerId
+      ? await supabase.from('customers').select('*').eq('id', customerId).single().then(r => r.data)
+      : null;
+    // Seed the first line from the lead so the sheet opens partly filled.
+    const item = poBuildItem({});
+    if (cust) {
+      const cf = cust.custom_fields || {};
+      const car = String(cf.cf_vehicle_requested || cust.car_in_question || '').trim();
+      const bits = car.split(/\s+/).filter(Boolean);
+      item.client = cust.name || '';
+      item.consignee = cust.name || '';
+      item.brand = bits[0] || '';
+      item.model = bits.slice(1).join(' ') || '';
+      item.color = cf.cf_color || '';
+      item.year = cf.cf_year || '';
+    }
+    res.json({
+      po_number: generatePoNumber(),
+      po_date: new Date().toISOString().slice(0, 10),
+      currency: 'USD',
+      items: [item],
+      customer_id: customerId || null,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+receiver.router.get('/api/dashboard/purchase-orders/:id', requireAuth, async (req, res) => {
+  const { data, error } = await supabase.from('purchase_orders').select('*').eq('id', req.params.id).single();
+  if (error) return res.status(404).json({ error: 'Purchase order not found' });
+  res.json(data);
+});
+
+receiver.router.post('/api/dashboard/purchase-orders', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
+  const row = poBuildRow(req.body);
+  row.created_by = 'dashboard';
+  const { data, error } = await supabase.from('purchase_orders').insert(row).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+  if (data.customer_id) {
+    logLeadActivity(data.customer_id, {
+      type: 'note', body: `Purchase order created — ${data.po_number}`,
+      meta: { purchase_order_id: data.id, po_number: data.po_number },
+      authorKey: 'admin', authorName: 'Admin',
+    });
+  }
+});
+
+receiver.router.put('/api/dashboard/purchase-orders/:id', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
+  const row = poBuildRow(req.body);
+  row.updated_at = new Date().toISOString();
+  delete row.po_number; // immutable once issued
+  const { data, error } = await supabase.from('purchase_orders').update(row).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.delete('/api/dashboard/purchase-orders/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('purchase_orders').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+receiver.router.post('/api/dashboard/purchase-orders/pdf', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
+    const settings = {};
+    for (const r of settingsRows || []) settings[r.key] = r.value;
+    const html = buildPurchaseOrderHtml({ ...poBuildRow(req.body), settings });
+    const pdf = await renderQuotationPdf(html, { landscape: true });
+    res.json({ pdf: Buffer.from(pdf).toString('base64') });
+  } catch (e) {
+    console.error('[po-pdf]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Landscape A4 sheet reproducing the ordering table, on company letterhead.
+function buildPurchaseOrderHtml(po) {
+  const s = po.settings || {};
+  const T = quoteTheme(po.template);
+  const GOLD = T.accent, INK = T.ink, SOFT = T.soft;
+  const cur = escHtml(po.currency || 'USD');
+  const money = n => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const items = po.items || [];
+  const totalUnits = items.reduce((a, it) => a + (Number(it.units) || 1), 0);
+
+  const rows = items.map((it, i) => {
+    const st = poLineStatus(it.status);
+    return `<tr style="${i % 2 ? `background:${T.zebra}` : ''}">
+      <td class="c">${i + 1}</td>
+      <td>${escHtml(it.client)}</td>
+      <td>${escHtml(it.consignee)}</td>
+      <td class="c">${Number(it.units) || 1}</td>
+      <td class="c">${escHtml(it.brand)}</td>
+      <td>${escHtml(it.model)}</td>
+      <td>${escHtml(it.trim)}</td>
+      <td>${escHtml(it.color)}</td>
+      <td class="c">${escHtml(it.year)}</td>
+      <td class="acc">${escHtml(it.accessories).replace(/\n/g, '<br>')}</td>
+      <td>${escHtml(it.payment_term)}</td>
+      <td class="r">${it.pi_price ? cur + ' ' + money(it.pi_price) : ''}</td>
+      <td class="c"><span class="pill" style="background:${st.bg};color:${st.fg}">${escHtml(st.label)}</span></td>
+      <td class="c mono">${escHtml(it.vin)}</td>
+      <td class="c">${it.file_link ? `<a href="${escHtml(it.file_link)}">link</a>` : ''}</td>
+    </tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">${T.fontLink}
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:Arial,Helvetica,sans-serif; font-size:9px; color:${INK}; background:#fff; }
+  .page { width:1123px; min-height:794px; padding:20px 24px 70px; position:relative; }
+  .head { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  .head img { max-height:52px; width:auto; display:block; }
+  .title { font-family:${T.titleFont}; font-size:22px; font-weight:900; letter-spacing:${T.titleSpacing}; color:${INK}; }
+  .meta { border-collapse:collapse; }
+  .meta td { border:1px solid ${GOLD}; padding:3px 8px; font-size:9px; }
+  .meta .k { background:${SOFT}; font-weight:700; white-space:nowrap; }
+  .meta .v { font-weight:700; color:${T.meta}; min-width:96px; }
+  .rule { border-top:2px solid ${GOLD}; margin:10px 0; }
+  table.grid { width:100%; border-collapse:collapse; table-layout:fixed; }
+  table.grid th { background:${INK}; color:#fff; font-family:${T.titleFont}; font-size:8.5px;
+    padding:6px 4px; border:1px solid ${GOLD}; text-align:center; }
+  table.grid td { border:1px solid ${GOLD}; padding:5px 5px; vertical-align:middle; word-wrap:break-word; }
+  td.c { text-align:center; } td.r { text-align:right; }
+  td.mono { font-family:'Courier New',monospace; font-size:7.5px; letter-spacing:-.2px; }
+  td.acc { font-size:8px; line-height:1.45; }
+  .pill { display:inline-block; padding:2px 7px; border-radius:9px; font-size:8px; font-weight:700;
+    line-height:1.5; max-width:100%; }
+  .tot td { background:${SOFT}; font-weight:700; border:1px solid ${GOLD}; padding:6px 5px; font-size:10px; }
+  .notes { margin-top:10px; border:1px solid ${GOLD}; padding:8px 12px; font-size:9px; line-height:1.7; }
+  .sign { margin-top:16px; display:flex; gap:40px; }
+  .sign div { flex:1; border-top:1px solid ${INK}; padding-top:5px; font-size:9px; }
+  .foot { position:absolute; left:24px; right:24px; bottom:16px; border-top:2px solid ${GOLD};
+    padding-top:7px; display:flex; justify-content:space-between; align-items:center; font-size:8px; color:#777; }
+</style></head><body>
+<div class="page">
+  <div class="head">
+    <img src="${BRAND_LOGO_URL}">
+    <div class="title">PURCHASE ORDER</div>
+    <table class="meta">
+      <tr><td class="k">PO No.</td><td class="v">${escHtml(po.po_number || '')}</td></tr>
+      <tr><td class="k">DATE</td><td class="v">${escHtml(po.po_date || '')}</td></tr>
+      <tr><td class="k">SUPPLIER</td><td class="v">${escHtml(po.supplier || '')}</td></tr>
+      <tr><td class="k">CURRENCY</td><td class="v">${cur}</td></tr>
+    </table>
+  </div>
+  <div class="rule"></div>
+
+  <table class="grid">
+    <!-- widths sum to 1072px = the 1123px page minus its 24px side padding -->
+    <colgroup>
+      <col style="width:24px"><col style="width:100px"><col style="width:100px"><col style="width:32px">
+      <col style="width:44px"><col style="width:58px"><col style="width:68px"><col style="width:94px">
+      <col style="width:34px"><col style="width:134px"><col style="width:74px"><col style="width:62px">
+      <col style="width:102px"><col style="width:90px"><col style="width:56px">
+    </colgroup>
+    <thead><tr>
+      <th>No</th><th>CLIENT</th><th>CONSIGNEE</th><th>UNITS</th><th>BRAND</th><th>MODEL</th><th>TRIM</th>
+      <th>COLOR EXT / INT</th><th>YEAR</th><th>ACCESSORIES / REMARKS</th><th>PAYMENT TERM</th>
+      <th>PI PRICE</th><th>STATUS</th><th>VIN</th><th>Client file Link</th>
+    </tr></thead>
+    <tbody>
+      ${rows || `<tr><td colspan="15" class="c" style="padding:16px;color:#999">No vehicle lines</td></tr>`}
+      <tr class="tot">
+        <td colspan="3" style="text-align:right">TOTAL</td>
+        <td class="c">${totalUnits}</td>
+        <td colspan="7"></td>
+        <td class="r">${cur} ${money(poTotal(items))}</td>
+        <td colspan="3"></td>
+      </tr>
+    </tbody>
+  </table>
+
+  ${po.notes ? `<div class="notes"><strong>Notes:</strong> ${escHtml(po.notes).replace(/\n/g, '<br>')}</div>` : ''}
+
+  <div class="sign">
+    <div>Prepared by — ${escHtml(s.company_name || 'MOTOLINKERS')}</div>
+    <div>Supplier confirmation / stamp</div>
+  </div>
+
+  <div class="foot">
+    <div><strong style="color:${INK}">${escHtml(s.company_name || 'MOTOLINKERS')}</strong> &nbsp; ${escHtml(s.company_address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo')}</div>
+    <div>${escHtml(s.company_email || 'info@motolinkers.com')} &nbsp;|&nbsp; ${escHtml(s.company_phone || '+2 010 000 78104')} &nbsp;|&nbsp; ${escHtml(po.po_number || '')}</div>
+  </div>
+</div>
+</body></html>`;
+}
+
 // Render quotation HTML to a PDF buffer via Puppeteer, blocking any resource
 // load that isn't an inline data: URL or https: (prevents file:// LFI and
 // internal http:// SSRF from authored/injected markup).
-async function renderQuotationPdf(html) {
+async function renderQuotationPdf(html, opts) {
+  const { landscape = false } = opts || {};
   const puppeteer = require('puppeteer');
   const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
   try {
@@ -4367,6 +4643,7 @@ async function renderQuotationPdf(html) {
     await page.setContent(html, { waitUntil: 'networkidle0' });
     return await page.pdf({
       format: 'A4',
+      landscape,
       printBackground: true,
       margin: { top: '0', bottom: '0', left: '0', right: '0' },
     });

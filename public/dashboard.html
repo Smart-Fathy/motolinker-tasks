@@ -981,6 +981,15 @@
   .color-dot{ width:11px; height:11px; border-radius:50%; border:1px solid rgba(255,255,255,.25); flex-shrink:0; }
   .stock-notes{ margin-top:11px; font-size:12px; color:var(--muted); }
   .stock-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+  /* ── Purchase Order line-item grid ── */
+  /* The 15-column vehicle sheet needs far more room than the default modal */
+  .modal.modal-wide { max-width: min(1500px, 96vw); }
+  .po-lbl { font-size:11px; color:var(--muted); margin-bottom:3px; font-weight:600; }
+  .po-th { position:sticky; top:0; z-index:1; background:var(--bg); color:var(--muted);
+           font-size:10px; letter-spacing:.4px; text-transform:uppercase; font-weight:700;
+           padding:8px 6px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; }
+  .po-td { padding:4px 5px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .po-td .form-input { width:100%; }
   /* Chat pages: lift the Help agent clear of the composer's send button (mobile + desktop) */
   body.has-chat-composer .hb-fab{ bottom:calc(84px + env(safe-area-inset-bottom, 0px)) !important; }
   @media (max-width:768px){ body.has-chat-composer .hb-fab{ bottom:calc(96px + env(safe-area-inset-bottom, 0px)) !important; } }
@@ -1115,6 +1124,7 @@
         <div class="nav-group-items">
           <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation</div>
           <div class="nav-item"        onclick="navigate('contracts')"  id="nav-contracts">    <span class="nav-icon"><i data-lucide="file-signature"></i></span> Contract</div>
+          <div class="nav-item"        onclick="navigate('purchaseorders')" id="nav-purchaseorders"><span class="nav-icon"><i data-lucide="shopping-cart"></i></span> Purchase Orders</div>
         </div>
       </div>
       <div class="nav-group" data-group="chat">
@@ -1781,6 +1791,40 @@
     </div>
   </div>
 
+  <!-- ── PURCHASE ORDERS PAGE ────────────────────────────────────────── -->
+  <div id="page-purchaseorders" class="page">
+    <div class="page-header">
+      <span class="page-title">Purchase Orders</span>
+      <button class="btn btn-primary" onclick="openPoForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> New purchase order</button>
+    </div>
+    <div style="padding:0 28px 28px">
+      <div style="font-size:12.5px;color:var(--muted);margin-top:14px">
+        Order sheet sent to suppliers. Each PO holds one or more vehicle lines with their own client, spec, PI price and tracking status.
+      </div>
+      <div id="po-list" style="margin-top:14px">
+        <div class="loading"><div class="spinner"></div> Loading purchase orders…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Purchase Order PDF preview -->
+  <div id="po-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto">
+    <div style="background:#1a1d35;border:1px solid rgba(255,255,255,.08);border-radius:16px;width:100%;max-width:1100px;overflow:hidden">
+      <div style="padding:18px 24px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
+          <i data-lucide="shopping-cart" style="width:18px;height:18px"></i> Purchase Order Preview
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-primary btn-sm" onclick="downloadPoPdf()"><i data-lucide="download" style="width:14px;height:14px"></i> Download PDF</button>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('po-modal').style.display='none'">Close</button>
+        </div>
+      </div>
+      <div style="padding:12px">
+        <iframe id="po-preview-frame" style="width:100%;min-height:70vh;border:none;border-radius:8px;background:#fff"></iframe>
+      </div>
+    </div>
+  </div>
+
   <!-- Contract PDF preview -->
   <div id="ct-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto">
     <div style="background:#1a1d35;border:1px solid rgba(255,255,255,.08);border-radius:16px;width:100%;max-width:900px;overflow:hidden">
@@ -2206,6 +2250,7 @@
       <button class="btn btn-sm btn-outline" onclick="ldEdit()"><i data-lucide="edit-2" style="width:13px;height:13px"></i> Edit</button>
       <button class="btn btn-sm btn-primary" onclick="ldGenerateQuote()"><i data-lucide="file-badge" style="width:13px;height:13px"></i> Generate Quotation</button>
       <button class="btn btn-sm btn-outline" onclick="ldGenerateContract()"><i data-lucide="file-signature" style="width:13px;height:13px"></i> Generate Contract</button>
+      <button class="btn btn-sm btn-outline" onclick="ldGeneratePo()"><i data-lucide="shopping-cart" style="width:13px;height:13px"></i> Purchase Order</button>
     </div>
     <div class="lead-drawer-body" id="lead-drawer-body">
       <div class="loading"><div class="spinner"></div></div>
@@ -4292,9 +4337,273 @@ async function deleteContract(id) {
   loadContracts();
 }
 
+// ── Purchase Orders ─────────────────────────────────────────────────────────────
+// One PO = many vehicle lines, mirroring the supplier ordering sheet.
+const PO_LINE_STATUSES = [
+  { key: 'send_to_supplier', label: 'SEND TO SUPPLIER',      bg: '#dbe4ff', fg: '#2f3f8f' },
+  { key: 'in_preparation',   label: 'Car in Preparation',    bg: '#f3ddf7', fg: '#7b2d8e' },
+  { key: 'in_logistics',     label: 'In Logistics',          bg: '#fdecc8', fg: '#8a5a00' },
+  { key: 'delivered',        label: 'Car Delivered to moto', bg: '#d7f2d9', fg: '#1e6b2a' },
+];
+const PO_STATUS = { draft: 'Draft', sent: 'Sent', confirmed: 'Confirmed', closed: 'Closed' };
+const PO_COLS = [
+  ['client', 'CLIENT', 150], ['consignee', 'CONSIGNEE', 150], ['units', 'UNITS', 62],
+  ['brand', 'BRAND', 92], ['model', 'MODEL', 110], ['trim', 'TRIM', 120],
+  ['color', 'COLOR EXT / INT', 160], ['year', 'YEAR', 66],
+  ['accessories', 'ACCESSORIES / REMARKS', 200], ['payment_term', 'PAYMENT TERM', 130],
+  ['pi_price', 'PI PRICE', 100], ['status', 'STATUS', 168],
+  ['vin', 'VIN', 150], ['file_link', 'Client file Link', 140],
+];
+let _poCache = [];
+let _poEditing = null;
+
+function poLineStatus(key) { return PO_LINE_STATUSES.find(s => s.key === key) || PO_LINE_STATUSES[0]; }
+function poLineTotal(items) {
+  return (items || []).reduce((s, it) => s + (Number(it.pi_price) || 0) * (Number(it.units) || 1), 0);
+}
+
+async function loadPurchaseOrders() {
+  const body = document.getElementById('po-list');
+  if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div> Loading purchase orders…</div>';
+  let list = [];
+  try { list = await apiFetch('/api/dashboard/purchase-orders').then(r => r.json()); }
+  catch (_) { if (body) body.innerHTML = '<div class="error-msg">Failed to load purchase orders.</div>'; return; }
+  if (list && list.error) {
+    body.innerHTML = `<div class="error-msg">${esc(list.error)}<br><span style="font-size:12px">If this mentions a missing <code>purchase_orders</code> table, run <code>migrations/002_purchase_orders.sql</code> on the Supabase project.</span></div>`;
+    return;
+  }
+  _poCache = Array.isArray(list) ? list : [];
+  if (!_poCache.length) {
+    body.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No purchase orders yet.<br>Click “New purchase order” to create one.</div>';
+    return;
+  }
+  body.innerHTML = `
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+        <th style="padding:8px 10px">PO #</th><th style="padding:8px 10px">Supplier</th>
+        <th style="padding:8px 10px;text-align:right">Lines</th><th style="padding:8px 10px;text-align:right">Total</th>
+        <th style="padding:8px 10px">Status</th><th style="padding:8px 10px">Date</th>
+        <th style="padding:8px 10px;text-align:right">Actions</th></tr></thead>
+      <tbody>${_poCache.map(p => {
+        const items = Array.isArray(p.items) ? p.items : [];
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px;font-family:monospace;font-weight:600">${esc(p.po_number)}</td>
+          <td style="padding:8px 10px">${esc(p.supplier || '—')}</td>
+          <td style="padding:8px 10px;text-align:right">${items.length}</td>
+          <td style="padding:8px 10px;text-align:right">${esc(p.currency || 'USD')} ${poLineTotal(items).toLocaleString()}</td>
+          <td style="padding:8px 10px">${esc(PO_STATUS[p.status] || p.status)}</td>
+          <td style="padding:8px 10px;color:var(--muted)">${esc(p.po_date || (p.created_at ? new Date(p.created_at).toLocaleDateString() : ''))}</td>
+          <td style="padding:8px 10px;text-align:right;white-space:nowrap">
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openPoForm(${p.id})">Edit</button>
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="previewPo(${p.id})">PDF</button>
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deletePo(${p.id})">Delete</button>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
+async function openPoForm(id, seedCustomerId) {
+  let rec;
+  if (id) {
+    rec = await apiFetch(`/api/dashboard/purchase-orders/${id}`).then(r => r.json());
+  } else {
+    const qs = seedCustomerId ? `?customer_id=${encodeURIComponent(seedCustomerId)}` : '';
+    rec = await apiFetch('/api/dashboard/purchase-orders/new/defaults' + qs).then(r => r.json());
+  }
+  _poEditing = { id, po_number: rec.po_number };
+  showModal(id ? `Purchase order ${rec.po_number}` : 'New purchase order', `
+    <!-- minmax(0,1fr): stops the wide vehicle table from stretching every row -->
+    <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:14px;max-height:66vh;overflow-y:auto;padding-right:4px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;min-width:0">
+        <div><div class="po-lbl">PO number</div><input id="po-number" class="form-input" value="${esc(rec.po_number || '')}" ${id ? 'readonly' : ''}></div>
+        <div><div class="po-lbl">Date</div><input id="po-date" class="form-input" type="date" value="${esc(rec.po_date || '')}"></div>
+        <div><div class="po-lbl">Supplier</div><input id="po-supplier" class="form-input" value="${esc(rec.supplier || '')}" placeholder="e.g. BYD Auto Industry"></div>
+        <div><div class="po-lbl">Currency</div><input id="po-currency" class="form-input" value="${esc(rec.currency || 'USD')}"></div>
+        <div><div class="po-lbl">Status</div><select id="po-status" class="form-input">
+          ${Object.entries(PO_STATUS).map(([k, l]) => `<option value="${k}" ${(rec.status || 'draft') === k ? 'selected' : ''}>${l}</option>`).join('')}
+        </select></div>
+        <div><div class="po-lbl">Lead <span style="color:var(--muted);font-weight:400">(attach to profile)</span></div>
+          <select id="po-customer-id" class="form-input"><option value="">— No lead —</option></select></div>
+      </div>
+
+      <div>
+        <div class="po-lbl" style="margin-bottom:6px">Vehicle lines</div>
+        <!-- min-width:0 lets this grid item shrink so the wide table scrolls
+             inside it instead of stretching the whole modal -->
+        <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:10px">
+          <table id="po-grid" style="border-collapse:collapse;font-size:12px;min-width:1500px">
+            <thead><tr>
+              <th class="po-th" style="width:38px">No</th>
+              ${PO_COLS.map(([, label, w]) => `<th class="po-th" style="min-width:${w}px">${esc(label)}</th>`).join('')}
+              <th class="po-th" style="width:38px"></th>
+            </tr></thead>
+            <tbody id="po-rows"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="poAddRow()">+ Add vehicle line</button>
+          <div id="po-total" style="font-size:13px;font-weight:700;color:var(--primary)"></div>
+        </div>
+      </div>
+
+      <div><div class="po-lbl">Notes</div><textarea id="po-notes" class="form-input" rows="2" placeholder="Shipping instructions, remarks…">${esc(rec.notes || '')}</textarea></div>
+      <div id="po-err" class="error-msg" style="display:none"></div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+     <button class="btn btn-outline" onclick="savePo(true)">Save &amp; preview PDF</button>
+     <button class="btn btn-primary" onclick="savePo(false)">Save</button>`,
+    { wide: true });
+
+  const items = Array.isArray(rec.items) && rec.items.length ? rec.items : [{}];
+  items.forEach(it => poAddRow(it));
+  await poPopulateLeadPicker(rec.customer_id || seedCustomerId || null);
+}
+
+function poAddRow(it) {
+  const tbody = document.getElementById('po-rows');
+  if (!tbody) return;
+  const v = it || {};
+  const tr = document.createElement('tr');
+  tr.className = 'po-row';
+  const cell = (key, val, type) => {
+    if (key === 'status') {
+      return `<td class="po-td"><select class="form-input po-f" data-k="status" style="font-size:12px;padding:5px 6px">
+        ${PO_LINE_STATUSES.map(s => `<option value="${s.key}" ${(val || 'send_to_supplier') === s.key ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}
+      </select></td>`;
+    }
+    if (key === 'accessories') {
+      return `<td class="po-td"><textarea class="form-input po-f" data-k="accessories" rows="3" style="font-size:11.5px;padding:5px 6px;resize:vertical">${esc(val || '')}</textarea></td>`;
+    }
+    // numbers arrive as numbers from the API — esc() only handles strings
+    return `<td class="po-td"><input class="form-input po-f" data-k="${key}" ${type ? `type="${type}" min="0"` : ''} value="${esc(val == null ? '' : String(val))}" style="font-size:12px;padding:5px 6px"></td>`;
+  };
+  tr.innerHTML = `<td class="po-td po-no" style="text-align:center;color:var(--muted)"></td>` +
+    PO_COLS.map(([k]) => cell(k, v[k], k === 'units' || k === 'pi_price' ? 'number' : '')).join('') +
+    `<td class="po-td" style="text-align:center"><button class="btn btn-outline" style="padding:2px 7px;font-size:14px;color:var(--danger);border-color:var(--danger)" title="Remove line">×</button></td>`;
+  tr.querySelector('button').onclick = () => { tr.remove(); poRenumber(); };
+  tr.querySelectorAll('.po-f').forEach(el => el.addEventListener('input', poRenumber));
+  tbody.appendChild(tr);
+  poRenumber();
+}
+
+// Keep the No column and the running total in sync with the grid.
+function poRenumber() {
+  const rows = [...document.querySelectorAll('.po-row')];
+  rows.forEach((r, i) => { const c = r.querySelector('.po-no'); if (c) c.textContent = i + 1; });
+  const totEl = document.getElementById('po-total');
+  if (totEl) {
+    const cur = document.getElementById('po-currency')?.value || 'USD';
+    totEl.textContent = `${rows.length} line(s) · Total ${cur} ${poLineTotal(poCollectItems()).toLocaleString()}`;
+  }
+}
+
+function poCollectItems() {
+  return [...document.querySelectorAll('.po-row')].map(r => {
+    const o = {};
+    r.querySelectorAll('.po-f').forEach(el => { o[el.dataset.k] = el.value; });
+    return o;
+  });
+}
+
+async function poPopulateLeadPicker(selectedId) {
+  const pick = document.getElementById('po-customer-id');
+  if (!pick) return;
+  try {
+    const leads = _allCustomers.length ? _allCustomers : await apiFetch('/api/dashboard/customers').then(r => r.json());
+    if (!Array.isArray(leads)) return;
+    if (!_allCustomers.length) _allCustomers = leads;
+    pick.innerHTML = '<option value="">— No lead —</option>' +
+      [...leads].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(l => `<option value="${l.id}">${esc(l.name)}${l.phone ? ' · ' + esc(l.phone) : ''}</option>`).join('');
+    if (selectedId) pick.value = String(selectedId);
+  } catch (_) {}
+}
+
+function poCollect() {
+  return {
+    po_number: document.getElementById('po-number').value.trim(),
+    po_date: document.getElementById('po-date').value || null,
+    supplier: document.getElementById('po-supplier').value.trim(),
+    currency: document.getElementById('po-currency').value.trim() || 'USD',
+    status: document.getElementById('po-status').value,
+    customer_id: document.getElementById('po-customer-id')?.value || null,
+    notes: document.getElementById('po-notes').value.trim(),
+    items: poCollectItems(),
+  };
+}
+
+async function savePo(thenPreview) {
+  const payload = poCollect();
+  const err = document.getElementById('po-err');
+  const filled = payload.items.filter(it => it.client || it.brand || it.model || it.vin);
+  if (!filled.length) { err.textContent = 'Add at least one vehicle line (client, brand or model).'; err.style.display = 'block'; return; }
+  payload.title = `${payload.supplier || 'PO'} — ${filled.length} vehicle(s)`;
+  const url = _poEditing.id ? `/api/dashboard/purchase-orders/${_poEditing.id}` : '/api/dashboard/purchase-orders';
+  const r = await apiFetch(url, { method: _poEditing.id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+  const d = await r.json();
+  if (!r.ok) { err.textContent = d.error || 'Failed to save.'; err.style.display = 'block'; return; }
+  hideModal();
+  loadPurchaseOrders();
+  if (thenPreview) renderPoPdf(payload);
+}
+
+async function previewPo(id) {
+  const rec = await apiFetch(`/api/dashboard/purchase-orders/${id}`).then(r => r.json());
+  _poEditing = { id: rec.id, po_number: rec.po_number };
+  renderPoPdf(rec);
+}
+
+async function renderPoPdf(payload) {
+  const modal = document.getElementById('po-modal');
+  const frame = document.getElementById('po-preview-frame');
+  frame.removeAttribute('src');
+  modal.style.display = 'flex';
+  try {
+    const r = await apiFetch('/api/dashboard/purchase-orders/pdf', { method: 'POST', body: JSON.stringify(payload) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed to render');
+    const bytes = Uint8Array.from(atob(d.pdf), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    if (frame._blobUrl) URL.revokeObjectURL(frame._blobUrl);
+    frame._blobUrl = URL.createObjectURL(blob);
+    frame.src = frame._blobUrl;
+  } catch (e) {
+    alert('Could not render the purchase order: ' + e.message);
+    modal.style.display = 'none';
+  }
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+function downloadPoPdf() {
+  const frame = document.getElementById('po-preview-frame');
+  const url = frame && frame._blobUrl;
+  if (!url) return;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `PurchaseOrder_${(_poEditing && _poEditing.po_number) || 'motolinkers'}.pdf`;
+  a.click();
+}
+
+async function deletePo(id) {
+  const p = _poCache.find(x => x.id === id);
+  if (!confirm(`Delete purchase order ${p ? p.po_number : ''}?`)) return;
+  await apiFetch(`/api/dashboard/purchase-orders/${id}`, { method: 'DELETE' });
+  loadPurchaseOrders();
+}
+
+// Lead drawer → new PO already attached to (and seeded from) this lead.
+function ldGeneratePo() {
+  if (!_ldProfile) return;
+  const cid = _ldProfile.customer.id;
+  closeLeadProfile();
+  navigate('purchaseorders');
+  openPoForm(null, cid);
+}
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, contracts: loadContracts, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
@@ -4361,10 +4670,12 @@ async function logout() {
 }
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
-function showModal(title, bodyHTML, footerHTML) {
+function showModal(title, bodyHTML, footerHTML, opts) {
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML   = bodyHTML;
   document.getElementById('modal-footer').innerHTML = footerHTML;
+  // `wide` opts-in to the roomy layout (used by the purchase-order sheet)
+  document.getElementById('modal-box').classList.toggle('modal-wide', !!(opts && opts.wide));
   document.getElementById('modal-overlay').style.display = 'flex';
 }
 function hideModal() { document.getElementById('modal-overlay').style.display = 'none'; }
@@ -7565,6 +7876,19 @@ function renderLeadDrawer() {
       <button class="btn btn-sm btn-outline" style="flex-shrink:0" onclick="closeLeadProfile();navigate('contracts');openContractForm(${ct.id})">Open</button>
     </div>`).join('') : '<div style="color:var(--muted);font-size:12px">No contracts yet — one is drafted automatically when a deal is Won.</div>';
 
+  // Purchase orders attached to this lead
+  const pos = _ldProfile.purchaseOrders || [];
+  const posHtml = pos.length ? pos.map(p => {
+    const items = Array.isArray(p.items) ? p.items : [];
+    return `<div class="ld-quote-row">
+      <div style="min-width:0">
+        <div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.supplier || p.title || p.po_number)}</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px"><code>${esc(p.po_number)}</code> · ${items.length} line(s) · ${esc(PO_STATUS[p.status] || p.status)} · ${new Date(p.created_at).toLocaleDateString()}</div>
+      </div>
+      <button class="btn btn-sm btn-outline" style="flex-shrink:0" onclick="closeLeadProfile();navigate('purchaseorders');openPoForm(${p.id})">Open</button>
+    </div>`;
+  }).join('') : '<div style="color:var(--muted);font-size:12px">No purchase orders yet.</div>';
+
   // Deals
   const deals = _ldProfile.deals || [];
   const dealsHtml = deals.length ? deals.map(d => `
@@ -7597,6 +7921,10 @@ function renderLeadDrawer() {
     <div class="ld-section">
       <div class="ld-section-title">Contracts <span style="font-weight:400;text-transform:none;letter-spacing:0">${contracts.length || ''}</span></div>
       ${contractsHtml}
+    </div>
+    <div class="ld-section">
+      <div class="ld-section-title">Purchase Orders <span style="font-weight:400;text-transform:none;letter-spacing:0">${pos.length || ''}</span></div>
+      ${posHtml}
     </div>
     <div class="ld-section">
       <div class="ld-section-title">Deals ${deals.length ? `<button class="btn btn-sm btn-outline" style="font-size:10px;padding:3px 8px" onclick="closeLeadProfile();navigate('deals');filterDealsByCustomer(${c.id})">View in pipeline</button>` : ''}</div>

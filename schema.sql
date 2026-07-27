@@ -707,3 +707,26 @@ CREATE INDEX IF NOT EXISTS idx_contracts_deal     ON contracts (deal_id);
 CREATE INDEX IF NOT EXISTS idx_contracts_created  ON contracts (created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_deal_unique ON contracts (deal_id) WHERE deal_id IS NOT NULL;
 ALTER TABLE IF EXISTS public.contracts ENABLE ROW LEVEL SECURITY;
+
+-- ── Purchase Orders ───────────────────────────────────────────────────────────
+-- Vehicle lines live in `items` (JSONB array), one object per sheet row:
+--   { client, consignee, units, brand, model, trim, color, year, accessories,
+--     payment_term, pi_price, status, vin, file_link }
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id           BIGSERIAL PRIMARY KEY,
+  po_number    TEXT UNIQUE NOT NULL,
+  title        TEXT NOT NULL DEFAULT '',
+  supplier     TEXT DEFAULT '',
+  po_date      DATE,
+  currency     TEXT NOT NULL DEFAULT 'USD',
+  notes        TEXT DEFAULT '',
+  items        JSONB NOT NULL DEFAULT '[]'::jsonb,
+  customer_id  BIGINT DEFAULT NULL,
+  status       TEXT NOT NULL DEFAULT 'draft',   -- draft | sent | confirmed | closed
+  created_by   TEXT DEFAULT 'dashboard',
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_customer ON purchase_orders (customer_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_created  ON purchase_orders (created_at DESC);
+ALTER TABLE IF EXISTS public.purchase_orders ENABLE ROW LEVEL SECURITY;
