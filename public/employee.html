@@ -848,6 +848,9 @@
           <button class="nav-item"        id="nav-deals" onclick="navigate('deals')" style="display:none">
             <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals
           </button>
+          <button class="nav-item"        id="nav-reports" onclick="navigate('reports')" style="display:none">
+            <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span> Reports
+          </button>
         </div>
       </div>
       <div class="nav-group" data-group="chat">
@@ -1419,6 +1422,51 @@
       </div>
     </div>
 
+    <!-- ── Reports Page (per-report permission) ── -->
+    <div class="page" id="page-reports">
+      <div class="page-body" style="max-width:1000px">
+        <div style="margin-bottom:20px">
+          <div style="font-size:20px;font-weight:700">Reports</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Figures cover only the leads and deals you have access to.</div>
+        </div>
+
+        <!-- Custom Leads Report -->
+        <div id="emp-rep-leads-card" data-perm="reports.leads" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+            <div style="font-size:15px;font-weight:700">Custom Leads Report</div>
+            <button class="btn btn-outline btn-sm" data-perm="reports.export" onclick="empExportLeadsReport()" style="display:none">
+              <i data-lucide="download" style="width:13px;height:13px"></i> Export CSV
+            </button>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+            <select id="emp-rep-groupby" class="form-input" style="max-width:220px" onchange="empLoadLeadsReport()">
+              <option value="lead_status">Group by Status</option>
+              <option value="source">Group by Origin</option>
+              <option value="owner">Group by Owner</option>
+              <option value="month">Group by Month</option>
+              <option value="been_contacted">Group by Contacted</option>
+              <option value="car_in_question">Group by Vehicle</option>
+            </select>
+            <input id="emp-rep-from" type="date" class="form-input" style="max-width:160px" onchange="empLoadLeadsReport()">
+            <input id="emp-rep-to" type="date" class="form-input" style="max-width:160px" onchange="empLoadLeadsReport()">
+          </div>
+          <div id="emp-rep-leads-kpis" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px"></div>
+          <div id="emp-rep-leads-table"></div>
+        </div>
+
+        <!-- Sales & Revenue -->
+        <div id="emp-rep-sales-card" data-perm="reports.sales" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px">
+          <div style="font-size:15px;font-weight:700;margin-bottom:14px">Sales &amp; Revenue</div>
+          <div id="emp-rep-sales-kpis" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px"></div>
+          <div id="emp-rep-sales-table"></div>
+        </div>
+
+        <div id="emp-rep-empty" style="display:none;color:var(--muted);font-size:13px;padding:24px;text-align:center">
+          You don't have access to any reports yet.
+        </div>
+      </div>
+    </div>
+
     <!-- ── Quotation Draft Page ── -->
     <div class="page" id="page-quotation">
       <div class="page-body" style="max-width:860px">
@@ -1803,7 +1851,7 @@ function showLogin() {
 }
 
 // Sections that can be controlled by admin permissions
-const PERM_SECTIONS = ['requests', 'drive', 'sheets', 'email', 'quotation', 'leads', 'deals'];
+const PERM_SECTIONS = ['requests', 'drive', 'sheets', 'email', 'quotation', 'leads', 'deals', 'reports'];
 
 // Normalized permissions of the logged-in employee (rich shape from the server).
 let empPerms = {};
@@ -1822,7 +1870,7 @@ function applyActionPerms() {
   });
 }
 function applyPermissions(permissions) {
-  const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, ...(permissions||{}) };
+  const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, reports:false, ...(permissions||{}) };
   empPerms = p;
   PERM_SECTIONS.forEach(section => {
     const navEl   = document.getElementById('nav-' + section);
@@ -1839,7 +1887,13 @@ function applyPermissions(permissions) {
   if (toolsLabel) { toolsLabel.style.display = p.quotation ? '' : 'none'; if (p.quotation) toolsLabel.closest('.nav-group')?.classList.add('open'); }
   // Show "CRM" section head only if leads or deals is enabled
   const crmLabel = document.getElementById('nav-label-crm');
-  if (crmLabel) { const on = p.leads || p.deals; crmLabel.style.display = on ? '' : 'none'; if (on) crmLabel.closest('.nav-group')?.classList.add('open'); }
+  if (crmLabel) { const on = p.leads || p.deals || p.reports; crmLabel.style.display = on ? '' : 'none'; if (on) crmLabel.closest('.nav-group')?.classList.add('open'); }
+  // Reports is only reachable if at least one individual report is granted
+  const anyReport = empCan('reports', 'leads') || empCan('reports', 'sales');
+  const repNav = document.getElementById('nav-reports');
+  const repPage = document.getElementById('page-reports');
+  if (repNav) repNav.style.display = anyReport ? '' : 'none';
+  if (repPage) repPage.dataset.permitted = anyReport ? '1' : '0';
 }
 
 /* ── Issues center (CTO only) ── */
@@ -2165,8 +2219,8 @@ async function logout() {
 }
 
 /* ── Navigation ── */
-const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', notif: 'Notifications', issues: 'Issues' };
-const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation, leads: loadEmpLeads, deals: loadEmpDeals, notif: loadNotifPage, issues: loadIssues };
+const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', notif: 'Notifications', issues: 'Issues' };
+const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation, leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, notif: loadNotifPage, issues: loadIssues };
 let _currentEmpPage = 'log';
 function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
@@ -3610,6 +3664,110 @@ const EMP_DEAL_STAGES = ['lead','contacted','quoted','negotiating','won','lost']
 const EMP_DEAL_STAGE_LABELS = { lead:'Lead', contacted:'Contacted', quoted:'Quoted', negotiating:'Negotiating', won:'Won', lost:'Lost' };
 let _empDeals = [];
 let _empDragDealId = null;
+
+/* ── Reports (only the ones this employee is granted) ── */
+function empRepEgp(n) { return (Number(n) || 0).toLocaleString() + ' EGP'; }
+function empRepTile(label, value, sub) {
+  return `<div style="flex:1;min-width:140px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+    <div style="font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">${esc(label)}</div>
+    <div style="font-size:19px;font-weight:700;margin-top:3px">${esc(value)}</div>
+    ${sub ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(sub)}</div>` : ''}
+  </div>`;
+}
+
+async function loadEmpReports() {
+  const anyReport = empCan('reports', 'leads') || empCan('reports', 'sales');
+  document.getElementById('emp-rep-empty').style.display = anyReport ? 'none' : 'block';
+  if (empCan('reports', 'leads')) await empLoadLeadsReport();
+  if (empCan('reports', 'sales')) await empLoadSalesReport();
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+async function empLoadLeadsReport() {
+  if (!empCan('reports', 'leads')) return;
+  const tbl = document.getElementById('emp-rep-leads-table');
+  const kpi = document.getElementById('emp-rep-leads-kpis');
+  tbl.innerHTML = '<div class="loading"><span class="spinner"></span> Loading…</div>';
+  const qs = new URLSearchParams({ groupBy: document.getElementById('emp-rep-groupby').value });
+  const from = document.getElementById('emp-rep-from').value;
+  const to = document.getElementById('emp-rep-to').value;
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  try {
+    const r = await ef('/api/employee/reports/leads?' + qs.toString());
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed');
+    kpi.innerHTML = empRepTile('My Leads', (d.totals?.count || 0).toLocaleString(),
+        (d.range && (d.range.from || d.range.to)) ? `${d.range.from || '…'} → ${d.range.to || '…'}` : 'All time')
+      + empRepTile('Hot Leads', (d.hotCount || 0).toLocaleString(),
+        d.totals?.count ? Math.round(d.hotCount / d.totals.count * 100) + '% of leads' : '0%')
+      + empRepTile('Avg Budget', empRepEgp(d.totals?.avg), 'Per lead');
+    const rows = d.rows || [];
+    const max = Math.max(1, ...rows.map(x => x.count || 0));
+    tbl.innerHTML = rows.length ? `
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+          <th style="padding:7px 8px">Group</th><th style="padding:7px 8px;text-align:right">Leads</th>
+          <th style="padding:7px 8px;text-align:right">% of total</th></tr></thead>
+        <tbody>${rows.map(x => `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:7px 8px">${esc(x.label)}
+            <div style="height:3px;border-radius:2px;background:var(--primary);opacity:.5;margin-top:4px;width:${Math.round((x.count || 0) / max * 100)}%"></div></td>
+          <td style="padding:7px 8px;text-align:right;font-weight:600">${(x.count || 0).toLocaleString()}</td>
+          <td style="padding:7px 8px;text-align:right;color:var(--muted)">${d.totals?.count ? Math.round(x.count / d.totals.count * 100) : 0}%</td>
+        </tr>`).join('')}</tbody>
+      </table>` : '<div style="color:var(--muted);font-size:13px;padding:16px;text-align:center">No leads in range.</div>';
+  } catch (e) {
+    tbl.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:12px">${esc(e.message)}</div>`;
+  }
+}
+
+async function empLoadSalesReport() {
+  if (!empCan('reports', 'sales')) return;
+  const tbl = document.getElementById('emp-rep-sales-table');
+  const kpi = document.getElementById('emp-rep-sales-kpis');
+  tbl.innerHTML = '<div class="loading"><span class="spinner"></span> Loading…</div>';
+  try {
+    const r = await ef('/api/employee/reports/summary');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed');
+    kpi.innerHTML = empRepTile('Open pipeline', empRepEgp(d.totalPipeline))
+      + empRepTile('Revenue won', empRepEgp(d.revenueWon), `${d.wonCount || 0} deal(s)`)
+      + empRepTile('Win rate', (d.winRate || 0) + '%')
+      + empRepTile('Avg deal', empRepEgp(d.avgDeal));
+    const stages = d.pipelineByStage || [];
+    tbl.innerHTML = stages.length ? `
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+          <th style="padding:7px 8px">Stage</th><th style="padding:7px 8px;text-align:right">Deals</th>
+          <th style="padding:7px 8px;text-align:right">Value</th></tr></thead>
+        <tbody>${stages.map(s => `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:7px 8px;text-transform:capitalize">${esc(s.stage)}</td>
+          <td style="padding:7px 8px;text-align:right;font-weight:600">${(s.count || 0).toLocaleString()}</td>
+          <td style="padding:7px 8px;text-align:right">${empRepEgp(s.value)}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : '<div style="color:var(--muted);font-size:13px;padding:16px;text-align:center">No deals yet.</div>';
+  } catch (e) {
+    tbl.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:12px">${esc(e.message)}</div>`;
+  }
+}
+
+async function empExportLeadsReport() {
+  if (!(empCan('reports', 'leads') && empCan('reports', 'export'))) return;
+  const qs = new URLSearchParams({ groupBy: document.getElementById('emp-rep-groupby').value });
+  const from = document.getElementById('emp-rep-from').value;
+  const to = document.getElementById('emp-rep-to').value;
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  try {
+    const r = await ef('/api/employee/reports/leads-export.csv?' + qs.toString());
+    if (!r.ok) throw new Error('Export failed');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'leads-report.csv'; a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) { alert(e.message); }
+}
 
 async function loadEmpDeals() {
   await loadEmpCoworkers();
