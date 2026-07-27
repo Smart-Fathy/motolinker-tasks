@@ -958,6 +958,32 @@
   .deal-col{ transition:background .15s ease, box-shadow .15s ease, transform .15s ease; }
   .deal-col.drag-over{ background:rgba(201,163,94,.08) !important; box-shadow:inset 0 0 0 2px var(--primary), 0 0 24px rgba(201,163,94,.25); transform:scale(1.01); }
   .deal-col.drag-over > div:first-child .nav-group-label{ color:var(--primary); }
+  /* ── Car Stock cards ── */
+  .stock-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px; }
+  .stock-card{ background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px; display:flex; flex-direction:column; }
+  .stock-card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .stock-title{ font-size:15px; font-weight:700; line-height:1.3; }
+  .stock-trim{ font-size:12.5px; color:var(--muted); margin-top:2px; }
+  .stock-qty{ flex-shrink:0; font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:11px; white-space:nowrap; }
+  .stock-qty.in{ background:rgba(201,163,94,.15); color:var(--primary); }
+  .stock-qty.out{ background:rgba(220,38,38,.14); color:#f87171; }
+  .stock-price{ font-size:17px; font-weight:700; color:var(--primary); margin:8px 0 12px; }
+  .spec-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:8px;
+              border-top:1px solid var(--border); border-bottom:1px solid var(--border); padding:11px 0; }
+  .spec-cell{ min-width:0; }
+  .spec-k{ font-size:10px; letter-spacing:.4px; text-transform:uppercase; color:var(--muted); }
+  .spec-v{ font-size:12.5px; font-weight:600; margin-top:1px; word-break:break-word; }
+  .stock-colors{ margin-top:12px; }
+  .stock-sec-label{ font-size:10px; letter-spacing:.4px; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  .color-chip{ display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:3px 9px;
+               border:1px solid var(--border); border-radius:12px; }
+  .color-chip b{ color:var(--primary); }
+  .color-dot{ width:11px; height:11px; border-radius:50%; border:1px solid rgba(255,255,255,.25); flex-shrink:0; }
+  .stock-notes{ margin-top:11px; font-size:12px; color:var(--muted); }
+  .stock-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+  /* Chat pages: lift the Help agent clear of the composer's send button (mobile + desktop) */
+  body.has-chat-composer .hb-fab{ bottom:calc(84px + env(safe-area-inset-bottom, 0px)) !important; }
+  @media (max-width:768px){ body.has-chat-composer .hb-fab{ bottom:calc(96px + env(safe-area-inset-bottom, 0px)) !important; } }
   /* ── Brand dropdown component (replaces native select menus) ── */
   .bselect-hidden{ display:none !important; }
   .bselect-trigger{
@@ -1088,6 +1114,7 @@
         <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Tools</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
         <div class="nav-group-items">
           <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation</div>
+          <div class="nav-item"        onclick="navigate('contracts')"  id="nav-contracts">    <span class="nav-icon"><i data-lucide="file-signature"></i></span> Contract</div>
         </div>
       </div>
       <div class="nav-group" data-group="chat">
@@ -1724,9 +1751,45 @@
     </div>
     <div style="padding:0 28px 28px">
       <div id="stock-summary" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:18px"></div>
-      <input id="stock-search" type="text" placeholder="Search make, model or trim…" oninput="renderStock()" style="width:100%;max-width:360px;margin-top:16px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+      <input id="stock-search" class="form-input" type="text" placeholder="Search make, model or trim…" oninput="renderStock()" style="max-width:360px;margin-top:16px">
       <div id="stock-table-container" style="margin-top:14px">
         <div class="loading"><div class="spinner"></div> Loading stock…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CONTRACTS PAGE (Arabic car import contract) ─────────────────── -->
+  <div id="page-contracts" class="page">
+    <div class="page-header">
+      <span class="page-title">Contracts</span>
+      <button class="btn btn-primary" onclick="openContractForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> New contract</button>
+    </div>
+    <div style="padding:0 28px 28px">
+      <div style="font-size:12.5px;color:var(--muted);margin-top:14px">
+        Arabic vehicle import contract (عقد شراء وإستيراد سيارة لحساب الغير). A draft is created automatically whenever a deal moves to <strong>Won</strong>.
+      </div>
+      <div id="contracts-list" style="margin-top:14px">
+        <div class="loading"><div class="spinner"></div> Loading contracts…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contract PDF preview -->
+  <div id="ct-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto">
+    <div style="background:#1a1d35;border:1px solid rgba(255,255,255,.08);border-radius:16px;width:100%;max-width:900px;overflow:hidden">
+      <div style="padding:18px 24px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
+          <i data-lucide="file-signature" style="width:18px;height:18px"></i> Contract Preview
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-primary btn-sm" onclick="downloadContractPdf()">
+            <i data-lucide="download" style="width:14px;height:14px"></i> Download PDF
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('ct-modal').style.display='none'">Close</button>
+        </div>
+      </div>
+      <div style="padding:12px">
+        <iframe id="ct-preview-frame" style="width:100%;min-height:70vh;border:none;border-radius:8px;background:#fff"></iframe>
       </div>
     </div>
   </div>
@@ -3758,6 +3821,13 @@ async function uploadCSV() {
 }
 
 // ── Car Stock (immediate-delivery inventory) ────────────────────────────────────
+// Spec sheet shown on every car card — keys mirror STOCK_SPEC_FIELDS on the server.
+const STOCK_SPEC_FIELDS = [
+  ['range_km', 'Range (KM)'], ['motor_ps', 'Motor (PS)'], ['power_train', 'Power Train'],
+  ['drive_train', 'Drive Train'], ['transmission', 'Transmission'], ['battery', 'Battery'],
+  ['top_speed', 'Top Speed'], ['fast_charge', 'Fast Charge'], ['seats', 'Seats'],
+  ['body', 'Body'], ['year', 'Year'],
+];
 let _stockCache = [];
 async function loadStock() {
   const body = document.getElementById('stock-table-container');
@@ -3785,26 +3855,49 @@ function renderStock() {
     body.innerHTML = `<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">${_stockCache.length ? 'No vehicles match your search.' : 'No vehicles in stock yet.<br>Click “Add vehicle” or “Bulk upload CSV” to get started.'}</div>`;
     return;
   }
-  body.innerHTML = `
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
-        <th style="padding:8px 10px">Make</th><th style="padding:8px 10px">Model</th><th style="padding:8px 10px">Trim</th>
-        <th style="padding:8px 10px;text-align:right">Price</th><th style="padding:8px 10px;text-align:right">Qty</th>
-        <th style="padding:8px 10px">Notes</th><th style="padding:8px 10px;text-align:right">Actions</th></tr></thead>
-      <tbody>${rows.map(v => `
-        <tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:8px 10px;font-weight:600">${esc(v.make || '')}</td>
-          <td style="padding:8px 10px">${esc(v.model || '')}</td>
-          <td style="padding:8px 10px">${esc(v.trim || '—')}</td>
-          <td style="padding:8px 10px;text-align:right">${v.price ? egp(v.price) : '—'}</td>
-          <td style="padding:8px 10px;text-align:right"><span style="display:inline-block;min-width:26px;text-align:center;padding:2px 8px;border-radius:10px;font-weight:600;background:${(Number(v.quantity)||0) > 0 ? 'var(--primary-soft,#e0e7ff)' : '#fee2e2'};color:${(Number(v.quantity)||0) > 0 ? 'var(--primary,#4338ca)' : '#b91c1c'}">${Number(v.quantity)||0}</span></td>
-          <td style="padding:8px 10px;color:var(--muted);max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(v.notes || '')}</td>
-          <td style="padding:8px 10px;text-align:right;white-space:nowrap">
-            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openStockForm(${v.id})">Edit</button>
-            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteStock(${v.id})">Delete</button>
-          </td>
-        </tr>`).join('')}</tbody>
-    </table></div>`;
+  body.innerHTML = `<div class="stock-grid">${rows.map(stockCardHtml).join('')}</div>`;
+  requestAnimationFrame(() => lucide.createIcons());
+}
+// One card per car: title, price, spec sheet and per-colour stock counts.
+function stockCardHtml(v) {
+  const specs = v.specs || {};
+  const colors = Array.isArray(v.colors) ? v.colors : [];
+  const qty = Number(v.quantity) || 0;
+  const specCells = STOCK_SPEC_FIELDS.filter(([k]) => String(specs[k] ?? '').trim())
+    .map(([k, label]) => `<div class="spec-cell"><div class="spec-k">${esc(label)}</div><div class="spec-v">${esc(specs[k])}</div></div>`).join('');
+  const colorChips = colors.length
+    ? colors.map(c => `<span class="color-chip"><span class="color-dot" style="background:${stockColorSwatch(c.name)}"></span>${esc(c.name)}<b>${Number(c.qty) || 0}</b></span>`).join('')
+    : '<span style="color:var(--muted);font-size:12px">No colours recorded</span>';
+  return `
+    <div class="stock-card">
+      <div class="stock-card-head">
+        <div style="min-width:0">
+          <div class="stock-title">${esc(v.make || '')} ${esc(v.model || '')}</div>
+          ${v.trim ? `<div class="stock-trim">${esc(v.trim)}</div>` : ''}
+        </div>
+        <span class="stock-qty ${qty > 0 ? 'in' : 'out'}">${qty} in stock</span>
+      </div>
+      <div class="stock-price">${v.price ? egp(v.price) : 'Price not set'}</div>
+      ${specCells ? `<div class="spec-grid">${specCells}</div>` : '<div style="color:var(--muted);font-size:12px;margin:10px 0">No specs recorded yet.</div>'}
+      <div class="stock-colors">
+        <div class="stock-sec-label">Available colours</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${colorChips}</div>
+      </div>
+      ${v.notes ? `<div class="stock-notes">${esc(v.notes)}</div>` : ''}
+      <div class="stock-actions">
+        <button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="openStockForm(${v.id})"><i data-lucide="pencil" style="width:13px;height:13px"></i> Edit</button>
+        <button class="btn btn-outline" style="padding:5px 10px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteStock(${v.id})"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete</button>
+      </div>
+    </div>`;
+}
+// Map a colour name to a swatch; unknown names fall back to a neutral grey.
+function stockColorSwatch(name) {
+  const n = String(name || '').trim().toLowerCase();
+  const map = { white:'#f8fafc', black:'#111827', grey:'#6b7280', gray:'#6b7280', silver:'#cbd5e1', red:'#dc2626',
+    blue:'#2563eb', 'navy':'#1e3a8a', green:'#16a34a', yellow:'#eab308', orange:'#ea580c', brown:'#92400e',
+    beige:'#e7d7bf', gold:'#c9a35e', purple:'#7c3aed', pink:'#ec4899' };
+  for (const k in map) if (n.includes(k)) return map[k];
+  return '#9ca3af';
 }
 function openStockForm(id) {
   const v = id ? _stockCache.find(x => x.id === id) : null;
@@ -3815,17 +3908,51 @@ function openStockForm(id) {
         <div><label class="form-label">Model *</label><input id="stk-model" class="form-input" value="${esc(v?.model || '')}" placeholder="e.g. Corolla"></div>
       </div>
       <div><label class="form-label">Trim</label><input id="stk-trim" class="form-input" value="${esc(v?.trim || '')}" placeholder="e.g. GLI 1.6 (leave blank if none)"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div><label class="form-label">Price (EGP)</label><input id="stk-price" class="form-input" type="number" min="0" step="any" value="${v?.price ?? ''}" placeholder="e.g. 1150000"></div>
-        <div><label class="form-label">Quantity in stock</label><input id="stk-qty" class="form-input" type="number" min="0" step="1" value="${v?.quantity ?? ''}" placeholder="e.g. 4"></div>
+      <div><label class="form-label">Price (EGP)</label><input id="stk-price" class="form-input" type="number" min="0" step="any" value="${v?.price ?? ''}" placeholder="e.g. 1150000"></div>
+
+      <div>
+        <label class="form-label">Specifications</label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+          ${STOCK_SPEC_FIELDS.map(([k, label]) => `<div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">${esc(label)}</div><input id="stk-spec-${k}" class="form-input" value="${esc((v?.specs || {})[k] || '')}"></div>`).join('')}
+        </div>
       </div>
-      <div><label class="form-label">Notes</label><input id="stk-notes" class="form-input" value="${esc(v?.notes || '')}" placeholder="Colours available, options…"></div>
+
+      <div>
+        <label class="form-label">Colours &amp; stock per colour</label>
+        <div id="stk-colors"></div>
+        <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="stkAddColorRow()">+ Add colour</button>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">Total quantity in stock is the sum of these colours. Leave empty to set the total manually below.</div>
+      </div>
+
+      <div><label class="form-label">Total quantity (used only when no colours are listed)</label><input id="stk-qty" class="form-input" type="number" min="0" step="1" value="${v?.quantity ?? ''}" placeholder="e.g. 4"></div>
+      <div><label class="form-label">Notes</label><input id="stk-notes" class="form-input" value="${esc(v?.notes || '')}" placeholder="Options, delivery notes…"></div>
       <div id="stk-err" class="error-msg" style="display:none"></div>
     </div>`,
     `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
      <button class="btn btn-primary" onclick="saveStock(${id || 'null'})">${v ? 'Save changes' : 'Add vehicle'}</button>`);
+  const existing = Array.isArray(v?.colors) ? v.colors : [];
+  (existing.length ? existing : [{ name: '', qty: '' }]).forEach(c => stkAddColorRow(c.name, c.qty));
+}
+function stkAddColorRow(name, qty) {
+  const wrap = document.getElementById('stk-colors');
+  if (!wrap) return;
+  const row = document.createElement('div');
+  row.className = 'stk-color-row';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 90px 34px;gap:8px;margin-bottom:6px';
+  row.innerHTML = `
+    <input class="form-input stk-color-name" placeholder="Colour (e.g. White)" value="${esc(name || '')}">
+    <input class="form-input stk-color-qty" type="number" min="0" step="1" placeholder="Qty" value="${qty ?? ''}">
+    <button class="btn btn-outline" style="padding:0;font-size:15px;color:var(--danger);border-color:var(--danger)" title="Remove">×</button>`;
+  row.querySelector('button').onclick = () => row.remove();
+  wrap.appendChild(row);
 }
 async function saveStock(id) {
+  const specs = {};
+  STOCK_SPEC_FIELDS.forEach(([k]) => { specs[k] = (document.getElementById('stk-spec-' + k)?.value || '').trim(); });
+  const colors = [...document.querySelectorAll('.stk-color-row')].map(r => ({
+    name: r.querySelector('.stk-color-name').value.trim(),
+    qty: r.querySelector('.stk-color-qty').value,
+  })).filter(c => c.name);
   const payload = {
     make: document.getElementById('stk-make').value.trim(),
     model: document.getElementById('stk-model').value.trim(),
@@ -3833,6 +3960,7 @@ async function saveStock(id) {
     price: document.getElementById('stk-price').value,
     quantity: document.getElementById('stk-qty').value,
     notes: document.getElementById('stk-notes').value.trim(),
+    specs, colors,
   };
   const err = document.getElementById('stk-err');
   if (!payload.make || !payload.model) { err.textContent = 'Make and Model are required.'; err.style.display = 'block'; return; }
@@ -3852,7 +3980,8 @@ async function deleteStock(id) {
 function openStockCsvModal() {
   showModal('Bulk upload vehicles', `
     <div style="display:grid;gap:12px;font-size:13px">
-      <p style="color:var(--muted);margin:0">Upload a CSV with columns: <strong>make, model, trim, price, quantity, notes</strong>. Make and Model are required; a model with several trims = one row per trim.</p>
+      <p style="color:var(--muted);margin:0">Upload a CSV with columns: <strong>make, model, trim, price, range_km, motor_ps, power_train, drive_train, transmission, battery, top_speed, fast_charge, seats, body, year, colors, quantity, notes</strong>.</p>
+      <p style="color:var(--muted);margin:0">Make and Model are required; a model with several trims = one row per trim. Colours use <code>Name:Qty | Name:Qty</code> (e.g. <code>White:2 | Black:1</code>) and their sum becomes the total quantity.</p>
       <a class="btn btn-outline" href="/api/dashboard/stock/template.csv${authToken ? '?_t=' + encodeURIComponent(authToken) : ''}" download style="justify-self:start"><i data-lucide="download" style="width:14px;height:14px"></i> Download sample template</a>
       <input id="stock-csv-file" type="file" accept=".csv,text/csv" class="form-input">
       <div id="stock-csv-result"></div>
@@ -3875,9 +4004,235 @@ async function importStockCsv() {
   loadStock();
 }
 
+// ── Contracts (Arabic vehicle import contract) ──────────────────────────────────
+let _contractsCache = [];
+let _ctPdfBase64 = null;
+const CT_STATUS = { draft: 'Draft', signed: 'Signed', cancelled: 'Cancelled' };
+
+async function loadContracts() {
+  const body = document.getElementById('contracts-list');
+  if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div> Loading contracts…</div>';
+  let list = [];
+  try { list = await apiFetch('/api/dashboard/contracts').then(r => r.json()); }
+  catch (_) { if (body) body.innerHTML = '<div class="error-msg">Failed to load contracts.</div>'; return; }
+  if (list && list.error) {
+    body.innerHTML = `<div class="error-msg">${esc(list.error)}<br><span style="font-size:12px">If this mentions a missing <code>contracts</code> table, run <code>migrations/001_stock_specs_colors_contracts.sql</code> on the Supabase project.</span></div>`;
+    return;
+  }
+  _contractsCache = Array.isArray(list) ? list : [];
+  if (!_contractsCache.length) {
+    body.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No contracts yet.<br>Click “New contract”, or move a deal to <strong>Won</strong> to have one drafted automatically.</div>';
+    return;
+  }
+  body.innerHTML = `
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+        <th style="padding:8px 10px">Contract #</th><th style="padding:8px 10px">Title</th>
+        <th style="padding:8px 10px">Status</th><th style="padding:8px 10px">Created</th>
+        <th style="padding:8px 10px;text-align:right">Actions</th></tr></thead>
+      <tbody>${_contractsCache.map(c => `
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px;font-family:monospace;font-weight:600">${esc(c.contract_no)}</td>
+          <td style="padding:8px 10px">${esc(c.title || '—')}${c.created_by === 'auto_won' ? ' <span style="font-size:10.5px;color:var(--primary);border:1px solid var(--primary);border-radius:8px;padding:1px 6px">auto</span>' : ''}</td>
+          <td style="padding:8px 10px">${esc(CT_STATUS[c.status] || c.status)}</td>
+          <td style="padding:8px 10px;color:var(--muted)">${c.created_at ? new Date(c.created_at).toLocaleDateString() : ''}</td>
+          <td style="padding:8px 10px;text-align:right;white-space:nowrap">
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openContractForm(${c.id})">Edit</button>
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="previewContract(${c.id})">PDF</button>
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteContract(${c.id})">Delete</button>
+          </td>
+        </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+// Text input bound to a dotted path inside the contract `data` object.
+function ctField(label, path, value, ph) {
+  return `<div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">${esc(label)}</div>
+    <input class="form-input ct-f" data-path="${esc(path)}" value="${esc(value ?? '')}" placeholder="${esc(ph || '')}"></div>`;
+}
+function ctGet(obj, path) {
+  return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+function ctSet(obj, path, val) {
+  const keys = path.split('.');
+  let o = obj;
+  keys.slice(0, -1).forEach(k => { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; });
+  o[keys[keys.length - 1]] = val;
+}
+
+async function openContractForm(id) {
+  let rec = null, data = null, contractNo = '';
+  if (id) {
+    rec = await apiFetch(`/api/dashboard/contracts/${id}`).then(r => r.json());
+    data = rec.data || {}; contractNo = rec.contract_no;
+  } else {
+    const d = await apiFetch('/api/dashboard/contracts/new/defaults').then(r => r.json());
+    data = d.data || {}; contractNo = d.contract_no;
+  }
+  _ctEditing = { id, contract_no: contractNo, data };
+  const cd = data.contractDate || {}, co = data.company || {}, rp = data.rep || {}, by = data.buyer || {}, ve = data.vehicle || {};
+  const pays = Array.isArray(data.payments) ? data.payments : [];
+  const g = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px';
+  showModal(id ? `Contract ${contractNo}` : 'New contract', `
+    <div style="display:grid;gap:16px;max-height:66vh;overflow-y:auto;padding-right:4px">
+      <div>
+        <label class="form-label">Contract date · تاريخ العقد</label>
+        <div style="${g}">
+          ${ctField('Day (اليوم)', 'contractDate.day', cd.day)}
+          ${ctField('DD', 'contractDate.d', cd.d)}
+          ${ctField('MM', 'contractDate.m', cd.m)}
+          ${ctField('YYYY', 'contractDate.y', cd.y)}
+        </div>
+      </div>
+      <div>
+        <label class="form-label">First party — company · الطرف الأول</label>
+        <div style="${g}">
+          ${ctField('Company name', 'company.name', co.name)}
+          ${ctField('Commercial register', 'company.commercialReg', co.commercialReg)}
+          ${ctField('Tax ID', 'company.taxId', co.taxId)}
+          ${ctField('Address', 'company.address', co.address)}
+          ${ctField('Represented by', 'company.repIn', co.repIn)}
+        </div>
+        <div style="${g};margin-top:10px">
+          ${ctField('Rep. name', 'rep.name', rp.name)}
+          ${ctField('Rep. national ID', 'rep.nationalId', rp.nationalId)}
+          ${ctField('ID issue date', 'rep.idDate', rp.idDate)}
+          ${ctField('Nationality', 'rep.nationality', rp.nationality)}
+          ${ctField('Religion', 'rep.religion', rp.religion)}
+          ${ctField('Rep. address', 'rep.address', rp.address)}
+          ${ctField('Capacity (بصفة)', 'rep.role', rp.role)}
+        </div>
+      </div>
+      <div>
+        <label class="form-label">Second party — buyer · الطرف الثاني</label>
+        <div style="${g}">
+          ${ctField('Buyer name', 'buyer.name', by.name)}
+          ${ctField('National ID', 'buyer.nationalId', by.nationalId)}
+          ${ctField('ID issue date', 'buyer.idDate', by.idDate)}
+          ${ctField('Nationality', 'buyer.nationality', by.nationality)}
+          ${ctField('Religion', 'buyer.religion', by.religion)}
+          ${ctField('Address', 'buyer.address', by.address)}
+        </div>
+      </div>
+      <div>
+        <label class="form-label">Vehicle · بيانات السيارة</label>
+        <div style="${g}">
+          ${ctField('Make (ماركة)', 'vehicle.make', ve.make)}
+          ${ctField('Model (موديل)', 'vehicle.model', ve.model)}
+          ${ctField('Colour (اللون)', 'vehicle.color', ve.color)}
+          ${ctField('Year (سنة الصنع)', 'vehicle.year', ve.year)}
+          ${ctField('Notes (ملاحظات)', 'vehicle.notes', ve.notes)}
+          ${ctField('Import country', 'importCountry', data.importCountry)}
+        </div>
+      </div>
+      <div>
+        <label class="form-label">Financials · البند الثالث</label>
+        <div style="${g}">
+          ${ctField('Total amount', 'total', data.total)}
+          ${ctField('Amount in words', 'totalWords', data.totalWords)}
+          ${ctField('Late fee / day', 'lateFee', data.lateFee)}
+          ${ctField('Late fee in words', 'lateFeeWords', data.lateFeeWords)}
+          ${ctField('Delivery deadline (البند الرابع)', 'deliveryDeadline', data.deliveryDeadline)}
+        </div>
+        <div style="margin-top:10px">
+          ${pays.map((p, i) => `<div style="display:grid;grid-template-columns:150px 1fr;gap:8px;margin-bottom:6px;align-items:center">
+            <input class="form-input ct-f" data-path="payments.${i}.amount" value="${esc(p.amount || '')}" placeholder="Amount">
+            <div style="font-size:12px;color:var(--muted)">${esc(p.when || '')}${p.label ? ` (${esc(p.label)})` : ''}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+      <div>
+        <label class="form-label">Status</label>
+        <select id="ct-status" class="form-input">
+          ${Object.entries(CT_STATUS).map(([k, l]) => `<option value="${k}" ${(rec?.status || 'draft') === k ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div id="ct-err" class="error-msg" style="display:none"></div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+     <button class="btn btn-outline" onclick="saveContract(true)">Save &amp; preview PDF</button>
+     <button class="btn btn-primary" onclick="saveContract(false)">Save</button>`);
+}
+let _ctEditing = null;
+
+function ctCollect() {
+  const data = JSON.parse(JSON.stringify(_ctEditing.data || {}));
+  document.querySelectorAll('.ct-f').forEach(inp => {
+    const path = inp.dataset.path;
+    // payments.<i>.amount needs the array preserved rather than turned into an object
+    const m = path.match(/^payments\.(\d+)\.(\w+)$/);
+    if (m) {
+      if (!Array.isArray(data.payments)) data.payments = [];
+      if (!data.payments[+m[1]]) data.payments[+m[1]] = {};
+      data.payments[+m[1]][m[2]] = inp.value.trim();
+    } else ctSet(data, path, inp.value.trim());
+  });
+  return data;
+}
+
+async function saveContract(thenPreview) {
+  const data = ctCollect();
+  const err = document.getElementById('ct-err');
+  if (!(data.buyer && data.buyer.name)) { err.textContent = 'Buyer name is required.'; err.style.display = 'block'; return; }
+  const title = `عقد — ${data.buyer.name}`;
+  const status = document.getElementById('ct-status').value;
+  const body = JSON.stringify({ contract_no: _ctEditing.contract_no, title, data, status });
+  const url = _ctEditing.id ? `/api/dashboard/contracts/${_ctEditing.id}` : '/api/dashboard/contracts';
+  const r = await apiFetch(url, { method: _ctEditing.id ? 'PUT' : 'POST', body });
+  const d = await r.json();
+  if (!r.ok) { err.textContent = d.error || 'Failed to save.'; err.style.display = 'block'; return; }
+  hideModal();
+  loadContracts();
+  if (thenPreview) renderContractPdf(data);
+}
+
+async function previewContract(id) {
+  const rec = await apiFetch(`/api/dashboard/contracts/${id}`).then(r => r.json());
+  renderContractPdf(rec.data || {});
+}
+
+async function renderContractPdf(data) {
+  const modal = document.getElementById('ct-modal');
+  const frame = document.getElementById('ct-preview-frame');
+  frame.removeAttribute('src');
+  modal.style.display = 'flex';
+  try {
+    const r = await apiFetch('/api/dashboard/contracts/pdf', { method: 'POST', body: JSON.stringify({ data }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed to render');
+    _ctPdfBase64 = d.pdf;
+    const bytes = Uint8Array.from(atob(d.pdf), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    if (frame._blobUrl) URL.revokeObjectURL(frame._blobUrl);
+    frame._blobUrl = URL.createObjectURL(blob);
+    frame.src = frame._blobUrl;
+  } catch (e) {
+    alert('Could not render the contract: ' + e.message);
+    modal.style.display = 'none';
+  }
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+function downloadContractPdf() {
+  const frame = document.getElementById('ct-preview-frame');
+  const url = frame && frame._blobUrl;
+  if (!url) return;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Contract_${(_ctEditing && _ctEditing.contract_no) || 'motolinkers'}.pdf`;
+  a.click();
+}
+
+async function deleteContract(id) {
+  const c = _contractsCache.find(x => x.id === id);
+  if (!confirm(`Delete contract ${c ? c.contract_no : ''}?`)) return;
+  await apiFetch(`/api/dashboard/contracts/${id}`, { method: 'DELETE' });
+  loadContracts();
+}
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, contracts: loadContracts, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
@@ -3887,6 +4242,8 @@ function navigate(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.getElementById('nav-' + page).classList.add('active');
   currentPage = page;
+  // Pages with a bottom composer need the Help agent lifted above the send button
+  document.body.classList.toggle('has-chat-composer', page === 'chat' || page === 'whatsapp');
   openGroupForPage(page); // reveal the group containing the active item
   if (pageLoaders[page]) pageLoaders[page]();
   closeSidebar(); // close on mobile after navigation
