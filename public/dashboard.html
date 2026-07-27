@@ -1807,6 +1807,28 @@
     </div>
   </div>
 
+  <!-- Shared document viewer — opens above the lead drawer (z-index 701) -->
+  <div id="doc-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1200;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto">
+    <div style="background:#1a1d35;border:1px solid rgba(255,255,255,.08);border-radius:16px;width:100%;max-width:1100px;overflow:hidden">
+      <div style="padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;min-width:0">
+          <i data-lucide="file-text" style="width:17px;height:17px;flex-shrink:0"></i>
+          <span id="doc-modal-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Document</span>
+        </div>
+        <div style="display:flex;gap:10px;flex-shrink:0">
+          <button class="btn btn-primary btn-sm" onclick="downloadDocPdf()"><i data-lucide="download" style="width:14px;height:14px"></i> Download</button>
+          <button class="btn btn-outline btn-sm" onclick="closeDocPdf()">Close</button>
+        </div>
+      </div>
+      <div style="padding:12px">
+        <div id="doc-modal-loading" style="padding:40px;text-align:center;color:var(--muted);font-size:13px">
+          <div class="spinner" style="margin:0 auto 10px"></div> Rendering PDF…
+        </div>
+        <iframe id="doc-preview-frame" style="width:100%;min-height:72vh;border:none;border-radius:8px;background:#fff;display:none"></iframe>
+      </div>
+    </div>
+  </div>
+
   <!-- Purchase Order PDF preview -->
   <div id="po-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto">
     <div style="background:#1a1d35;border:1px solid rgba(255,255,255,.08);border-radius:16px;width:100%;max-width:1100px;overflow:hidden">
@@ -4599,6 +4621,65 @@ function ldGeneratePo() {
   closeLeadProfile();
   navigate('purchaseorders');
   openPoForm(null, cid);
+}
+
+// ── Shared document viewer (lead profile → view an attached file as PDF) ────────
+// Every attached document type re-renders server-side from its stored record, so
+// what you see here is exactly what Download produces.
+// esc() leaves ' alone, which would break a single-quoted onclick argument.
+function escJs(s) {
+  return String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    .replace(/</g, '&lt;').replace(/"/g, '&quot;');
+}
+const DOC_ENDPOINTS = {
+  quotation: id => `/api/dashboard/quotations/${id}/pdf`,
+  contract:  id => `/api/dashboard/contracts/${id}/pdf`,
+  po:        id => `/api/dashboard/purchase-orders/${id}/pdf`,
+};
+let _docName = 'document';
+
+async function viewDocPdf(kind, id, label) {
+  const build = DOC_ENDPOINTS[kind];
+  if (!build) return;
+  const modal = document.getElementById('doc-modal');
+  const frame = document.getElementById('doc-preview-frame');
+  const load  = document.getElementById('doc-modal-loading');
+  document.getElementById('doc-modal-title').textContent = label || 'Document';
+  _docName = (label || 'document').replace(/[^\w.-]+/g, '_');
+  frame.removeAttribute('src');
+  frame.style.display = 'none';
+  load.style.display = 'block';
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => lucide.createIcons());
+  try {
+    const r = await apiFetch(build(id), { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed to render');
+    if (d.name) _docName = String(d.name).replace(/[^\w.-]+/g, '_');
+    const bytes = Uint8Array.from(atob(d.pdf), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    if (frame._blobUrl) URL.revokeObjectURL(frame._blobUrl);
+    frame._blobUrl = URL.createObjectURL(blob);
+    frame.src = frame._blobUrl;
+    load.style.display = 'none';
+    frame.style.display = 'block';
+  } catch (e) {
+    load.innerHTML = `<div class="error-msg">Could not render this document: ${esc(e.message)}</div>`;
+  }
+}
+function downloadDocPdf() {
+  const frame = document.getElementById('doc-preview-frame');
+  if (!frame || !frame._blobUrl) return;
+  const a = document.createElement('a');
+  a.href = frame._blobUrl;
+  a.download = `${_docName}.pdf`;
+  a.click();
+}
+function closeDocPdf() {
+  const frame = document.getElementById('doc-preview-frame');
+  if (frame && frame._blobUrl) { URL.revokeObjectURL(frame._blobUrl); frame._blobUrl = null; }
+  if (frame) frame.removeAttribute('src');
+  document.getElementById('doc-modal').style.display = 'none';
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -7862,7 +7943,10 @@ function renderLeadDrawer() {
         <div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(q.title)}</div>
         <div style="font-size:10.5px;color:var(--muted);margin-top:2px"><code>${esc(q.quote_id)}</code> · ${new Date(q.created_at).toLocaleDateString()} · ${esc(q.created_by)}</div>
       </div>
-      <button class="btn btn-sm btn-outline" style="flex-shrink:0" onclick="closeLeadProfile();navigate('quotation');duplicateQuotation(${q.id})">Open in draft</button>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-sm btn-outline" onclick="viewDocPdf('quotation',${q.id},'${escJs(q.quote_id || 'Quotation')}')"><i data-lucide="file-text" style="width:12px;height:12px"></i> PDF</button>
+        <button class="btn btn-sm btn-outline" onclick="closeLeadProfile();navigate('quotation');duplicateQuotation(${q.id})">Open in draft</button>
+      </div>
     </div>`).join('') : '<div style="color:var(--muted);font-size:12px">No quotations yet — use "Generate Quotation" above.</div>';
 
   // Contracts attached to this lead
@@ -7873,7 +7957,10 @@ function renderLeadDrawer() {
         <div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ct.title || ct.contract_no)}</div>
         <div style="font-size:10.5px;color:var(--muted);margin-top:2px"><code>${esc(ct.contract_no)}</code> · ${esc(CT_STATUS[ct.status] || ct.status)} · ${new Date(ct.created_at).toLocaleDateString()}${ct.created_by === 'auto_won' ? ' · auto' : ''}</div>
       </div>
-      <button class="btn btn-sm btn-outline" style="flex-shrink:0" onclick="closeLeadProfile();navigate('contracts');openContractForm(${ct.id})">Open</button>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-sm btn-outline" onclick="viewDocPdf('contract',${ct.id},'${escJs(ct.contract_no || 'Contract')}')"><i data-lucide="file-text" style="width:12px;height:12px"></i> PDF</button>
+        <button class="btn btn-sm btn-outline" onclick="closeLeadProfile();navigate('contracts');openContractForm(${ct.id})">Open</button>
+      </div>
     </div>`).join('') : '<div style="color:var(--muted);font-size:12px">No contracts yet — one is drafted automatically when a deal is Won.</div>';
 
   // Purchase orders attached to this lead
@@ -7885,7 +7972,10 @@ function renderLeadDrawer() {
         <div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.supplier || p.title || p.po_number)}</div>
         <div style="font-size:10.5px;color:var(--muted);margin-top:2px"><code>${esc(p.po_number)}</code> · ${items.length} line(s) · ${esc(PO_STATUS[p.status] || p.status)} · ${new Date(p.created_at).toLocaleDateString()}</div>
       </div>
-      <button class="btn btn-sm btn-outline" style="flex-shrink:0" onclick="closeLeadProfile();navigate('purchaseorders');openPoForm(${p.id})">Open</button>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-sm btn-outline" onclick="viewDocPdf('po',${p.id},'${escJs(p.po_number || 'Purchase order')}')"><i data-lucide="file-text" style="width:12px;height:12px"></i> PDF</button>
+        <button class="btn btn-sm btn-outline" onclick="closeLeadProfile();navigate('purchaseorders');openPoForm(${p.id})">Open</button>
+      </div>
     </div>`;
   }).join('') : '<div style="color:var(--muted);font-size:12px">No purchase orders yet.</div>';
 
