@@ -1458,6 +1458,13 @@
             <label class="form-label">Vehicle Model</label>
             <input class="form-input" id="qt-vehicle" placeholder="e.g. Deepal S05 620 Plus">
           </div>
+          <div>
+            <label class="form-label">Design <span style="color:var(--muted);font-weight:400">(PDF look)</span></label>
+            <select class="form-input" id="qt-template">
+              <option value="classic">Classic — navy &amp; gold</option>
+              <option value="brand">Brand — charcoal &amp; gold</option>
+            </select>
+          </div>
         </div>
         <div style="padding:0 20px 20px">
           <label class="form-label">Vehicle Images <span style="color:var(--muted);font-weight:400">(max 5)</span></label>
@@ -2198,6 +2205,7 @@
       <a id="ld-wa" class="btn btn-sm btn-outline" href="#" target="_blank" rel="noopener" style="text-decoration:none"><i data-lucide="message-circle" style="width:13px;height:13px"></i> WhatsApp</a>
       <button class="btn btn-sm btn-outline" onclick="ldEdit()"><i data-lucide="edit-2" style="width:13px;height:13px"></i> Edit</button>
       <button class="btn btn-sm btn-primary" onclick="ldGenerateQuote()"><i data-lucide="file-badge" style="width:13px;height:13px"></i> Generate Quotation</button>
+      <button class="btn btn-sm btn-outline" onclick="ldGenerateContract()"><i data-lucide="file-signature" style="width:13px;height:13px"></i> Generate Contract</button>
     </div>
     <div class="lead-drawer-body" id="lead-drawer-body">
       <div class="loading"><div class="spinner"></div></div>
@@ -4060,14 +4068,16 @@ function ctSet(obj, path, val) {
   o[keys[keys.length - 1]] = val;
 }
 
-async function openContractForm(id) {
+async function openContractForm(id, seedCustomerId) {
   let rec = null, data = null, contractNo = '';
   if (id) {
     rec = await apiFetch(`/api/dashboard/contracts/${id}`).then(r => r.json());
     data = rec.data || {}; contractNo = rec.contract_no;
   } else {
-    const d = await apiFetch('/api/dashboard/contracts/new/defaults').then(r => r.json());
+    const qs = seedCustomerId ? `?customer_id=${encodeURIComponent(seedCustomerId)}` : '';
+    const d = await apiFetch('/api/dashboard/contracts/new/defaults' + qs).then(r => r.json());
     data = d.data || {}; contractNo = d.contract_no;
+    if (seedCustomerId) rec = { customer_id: seedCustomerId, status: 'draft' };
   }
   _ctEditing = { id, contract_no: contractNo, data };
   const cd = data.contractDate || {}, co = data.company || {}, rp = data.rep || {}, by = data.buyer || {}, ve = data.vehicle || {};
@@ -4141,17 +4151,59 @@ async function openContractForm(id) {
           </div>`).join('')}
         </div>
       </div>
-      <div>
-        <label class="form-label">Status</label>
-        <select id="ct-status" class="form-input">
-          ${Object.entries(CT_STATUS).map(([k, l]) => `<option value="${k}" ${(rec?.status || 'draft') === k ? 'selected' : ''}>${l}</option>`).join('')}
-        </select>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label class="form-label">Lead <span style="color:var(--muted);font-weight:400">(attach to profile)</span></label>
+          <select id="ct-customer-id" class="form-input"><option value="">— No lead —</option></select>
+        </div>
+        <div>
+          <label class="form-label">Status</label>
+          <select id="ct-status" class="form-input">
+            ${Object.entries(CT_STATUS).map(([k, l]) => `<option value="${k}" ${(rec?.status || 'draft') === k ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </div>
       </div>
       <div id="ct-err" class="error-msg" style="display:none"></div>
     </div>`,
     `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
      <button class="btn btn-outline" onclick="saveContract(true)">Save &amp; preview PDF</button>
      <button class="btn btn-primary" onclick="saveContract(false)">Save</button>`);
+  await ctPopulateLeadPicker(rec ? rec.customer_id : null);
+}
+
+// Lead picker — mirrors the quotation's "attach to profile" dropdown.
+async function ctPopulateLeadPicker(selectedId) {
+  const pick = document.getElementById('ct-customer-id');
+  if (!pick) return;
+  try {
+    const leads = _allCustomers.length ? _allCustomers : await apiFetch('/api/dashboard/customers').then(r => r.json());
+    if (!Array.isArray(leads)) return;
+    if (!_allCustomers.length) _allCustomers = leads;
+    pick.innerHTML = '<option value="">— No lead —</option>' +
+      [...leads].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(l => `<option value="${l.id}">${esc(l.name)}${l.phone ? ' · ' + esc(l.phone) : ''}</option>`).join('');
+    if (selectedId) pick.value = String(selectedId);
+  } catch (_) {}
+  // Picking a lead fills the buyer block (and vehicle, when still blank)
+  pick.onchange = () => {
+    const lead = _allCustomers.find(l => String(l.id) === pick.value);
+    if (!lead) return;
+    const cf = lead.custom_fields || {};
+    const setF = (path, val) => {
+      const el = document.querySelector(`.ct-f[data-path="${path}"]`);
+      if (el && val && !el.value.trim()) el.value = val;
+    };
+    const nameEl = document.querySelector('.ct-f[data-path="buyer.name"]');
+    if (nameEl) nameEl.value = lead.name || '';
+    setF('buyer.nationalId', cf.cf_national_id);
+    setF('buyer.address', lead.address || cf.cf_address);
+    const car = String(cf.cf_vehicle_requested || lead.car_in_question || '').trim();
+    if (car) {
+      const bits = car.split(/\s+/);
+      setF('vehicle.make', bits[0]);
+      setF('vehicle.model', bits.slice(1).join(' '));
+    }
+  };
 }
 let _ctEditing = null;
 
@@ -4176,7 +4228,8 @@ async function saveContract(thenPreview) {
   if (!(data.buyer && data.buyer.name)) { err.textContent = 'Buyer name is required.'; err.style.display = 'block'; return; }
   const title = `عقد — ${data.buyer.name}`;
   const status = document.getElementById('ct-status').value;
-  const body = JSON.stringify({ contract_no: _ctEditing.contract_no, title, data, status });
+  const customer_id = document.getElementById('ct-customer-id')?.value || null;
+  const body = JSON.stringify({ contract_no: _ctEditing.contract_no, title, data, status, customer_id });
   const url = _ctEditing.id ? `/api/dashboard/contracts/${_ctEditing.id}` : '/api/dashboard/contracts';
   const r = await apiFetch(url, { method: _ctEditing.id ? 'PUT' : 'POST', body });
   const d = await r.json();
@@ -4221,6 +4274,15 @@ function downloadContractPdf() {
   a.href = url;
   a.download = `Contract_${(_ctEditing && _ctEditing.contract_no) || 'motolinkers'}.pdf`;
   a.click();
+}
+
+// Lead drawer → draft a contract already attached to (and prefilled from) this lead.
+function ldGenerateContract() {
+  if (!_ldProfile) return;
+  const cid = _ldProfile.customer.id;
+  closeLeadProfile();
+  navigate('contracts');
+  openContractForm(null, cid);
 }
 
 async function deleteContract(id) {
@@ -6151,6 +6213,7 @@ async function generateQuotation() {
     formData.append('customSpecs', JSON.stringify(customSpecs));
     const qtLeadId = document.getElementById('qt-customer-id')?.value || '';
     if (qtLeadId) formData.append('customer_id', qtLeadId);
+    formData.append('template', document.getElementById('qt-template')?.value || 'classic');
     formData.append('existingImages', JSON.stringify(qtExistingImages));
     if (qtEditingPk) formData.append('quotation_pk', String(qtEditingPk));
     qtImages.forEach(f => formData.append('images', f));
@@ -6569,6 +6632,7 @@ async function populateQuoteDraft(q, editing) {
   set('qt-currency', d.currency); set('qt-exchange', d.exchange);
   const iss = document.getElementById('qt-issuer'); if (iss && d.issuer) iss.value = d.issuer;
   const pick = document.getElementById('qt-customer-id'); if (pick) pick.value = q.customer_id ? String(q.customer_id) : '';
+  const tpl = document.getElementById('qt-template'); if (tpl) tpl.value = d.template === 'brand' ? 'brand' : 'classic';
   // Items
   document.getElementById('qt-items').innerHTML = '';
   (d.items || []).forEach(it => addPricingRow(it.name, it.unit, it.priceUsd === 'Free' ? 'Free' : it.priceUsd, it.priceUsd === 'Free'));
@@ -7490,6 +7554,17 @@ function renderLeadDrawer() {
       <button class="btn btn-sm btn-outline" style="flex-shrink:0" onclick="closeLeadProfile();navigate('quotation');duplicateQuotation(${q.id})">Open in draft</button>
     </div>`).join('') : '<div style="color:var(--muted);font-size:12px">No quotations yet — use "Generate Quotation" above.</div>';
 
+  // Contracts attached to this lead
+  const contracts = _ldProfile.contracts || [];
+  const contractsHtml = contracts.length ? contracts.map(ct => `
+    <div class="ld-quote-row">
+      <div style="min-width:0">
+        <div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ct.title || ct.contract_no)}</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px"><code>${esc(ct.contract_no)}</code> · ${esc(CT_STATUS[ct.status] || ct.status)} · ${new Date(ct.created_at).toLocaleDateString()}${ct.created_by === 'auto_won' ? ' · auto' : ''}</div>
+      </div>
+      <button class="btn btn-sm btn-outline" style="flex-shrink:0" onclick="closeLeadProfile();navigate('contracts');openContractForm(${ct.id})">Open</button>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:12px">No contracts yet — one is drafted automatically when a deal is Won.</div>';
+
   // Deals
   const deals = _ldProfile.deals || [];
   const dealsHtml = deals.length ? deals.map(d => `
@@ -7518,6 +7593,10 @@ function renderLeadDrawer() {
     <div class="ld-section">
       <div class="ld-section-title">Quotations <span style="font-weight:400;text-transform:none;letter-spacing:0">${quotes.length || ''}</span></div>
       ${quotesHtml}
+    </div>
+    <div class="ld-section">
+      <div class="ld-section-title">Contracts <span style="font-weight:400;text-transform:none;letter-spacing:0">${contracts.length || ''}</span></div>
+      ${contractsHtml}
     </div>
     <div class="ld-section">
       <div class="ld-section-title">Deals ${deals.length ? `<button class="btn btn-sm btn-outline" style="font-size:10px;padding:3px 8px" onclick="closeLeadProfile();navigate('deals');filterDealsByCustomer(${c.id})">View in pipeline</button>` : ''}</div>

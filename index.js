@@ -2501,11 +2501,12 @@ receiver.router.get('/api/dashboard/customers/:id/profile', requireAuth, async (
   const id = parseInt(req.params.id);
   const { data: customer, error } = await supabase.from('customers').select('*').eq('id', id).single();
   if (error || !customer) return res.status(404).json({ error: 'Lead not found' });
-  const [activities, followups, quotations, deals] = await Promise.all([
+  const [activities, followups, quotations, deals, contracts] = await Promise.all([
     supabase.from('lead_activities').select('*').eq('customer_id', id).order('created_at', { ascending: false }).limit(200),
     supabase.from('lead_followups').select('*').eq('customer_id', id).order('due_at', { ascending: true }),
     supabase.from('quotations').select('id,quote_id,title,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
     supabase.from('deals').select('id,title,stage,budget_egp,created_at').eq('customer_id', id).order('created_at', { ascending: false }),
+    supabase.from('contracts').select('id,contract_no,title,status,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
   ]);
   res.json({
     customer,
@@ -2513,6 +2514,7 @@ receiver.router.get('/api/dashboard/customers/:id/profile', requireAuth, async (
     followups: followups.data || [],
     quotations: quotations.data || [],
     deals: deals.data || [],
+    contracts: contracts.data || [],
   });
 });
 
@@ -3807,11 +3809,12 @@ receiver.router.get('/api/employee/customers/:id/profile', requireEmployeeAuth, 
   const { data: customer, error } = await supabase.from('customers').select('*').eq('id', id).single();
   if (error || !customer) return res.status(404).json({ error: 'Lead not found' });
   if (empHasScope(req.employee) && !customerInScope(customer, req.employee, await scopedQuotedIds(req.employee))) return res.status(403).json({ error: 'Not permitted' });
-  const [activities, followups, quotations, deals] = await Promise.all([
+  const [activities, followups, quotations, deals, contracts] = await Promise.all([
     supabase.from('lead_activities').select('*').eq('customer_id', id).order('created_at', { ascending: false }).limit(200),
     supabase.from('lead_followups').select('*').eq('customer_id', id).order('due_at', { ascending: true }),
     supabase.from('quotations').select('id,quote_id,title,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
     supabase.from('deals').select('id,title,stage,budget_egp,created_at').eq('customer_id', id).order('created_at', { ascending: false }),
+    supabase.from('contracts').select('id,contract_no,title,status,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
   ]);
   res.json({
     customer,
@@ -3819,6 +3822,7 @@ receiver.router.get('/api/employee/customers/:id/profile', requireEmployeeAuth, 
     followups: followups.data || [],
     quotations: quotations.data || [],
     deals: deals.data || [],
+    contracts: contracts.data || [],
   });
 });
 
@@ -4083,14 +4087,18 @@ function buildContractHtml(data) {
 
   const FOOT = `
     <div class="foot">
-      <div>info@motolinkers.com &nbsp; www.motolinkers.com &nbsp; Tax ID: ${escHtml(co.taxId || '773934006')}</div>
-      <div>${escHtml(co.address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo')}</div>
-      <div>+2 010 000 78104 &nbsp; REGISTRATION No: ${escHtml(co.commercialReg || '282378')}</div>
+      <img class="foot-logo" src="${BRAND_LOGO_URL}">
+      <div class="foot-lines">
+        <div>info@motolinkers.com &nbsp; www.motolinkers.com &nbsp; Tax ID: ${escHtml(co.taxId || '773934006')}</div>
+        <div>${escHtml(co.address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo')}</div>
+        <div>+2 010 000 78104 &nbsp; REGISTRATION No: ${escHtml(co.commercialReg || '282378')}</div>
+      </div>
     </div>`;
 
   const page = inner => `<section class="page"><div class="content">${inner}</div>${FOOT}</section>`;
 
   const p1 = `
+    <div class="brandbar"><img src="${BRAND_LOGO_URL}"></div>
     <h1>عقد شراء وإستيراد سيارة لحساب الغير</h1>
     <p>إنه في يوم ${f(cd.day, 10)} الموافق ${f(cd.d, 5)} / ${f(cd.m, 5)} / ${f(cd.y, 6)} ، حرر بين كلا من -:</p>
     <p><b>أولا -:</b> شركة / ${f(co.name, 44)} ، ( ش . م . م ) ، سجل تجاري رقم ${f(co.commercialReg, 30)} ،
@@ -4192,7 +4200,9 @@ function buildContractHtml(data) {
   .page { width:210mm; height:297mm; padding:18mm 16mm 24mm; position:relative; page-break-after:always; overflow:hidden; }
   .page:last-child { page-break-after:auto; }
   .content { font-size:12.5pt; line-height:2.0; text-align:justify; }
-  h1 { font-size:17pt; text-align:center; margin:0 0 14mm; text-decoration:underline; }
+  .brandbar { text-align:center; margin:0 0 8mm; }
+  .brandbar img { max-height:20mm; width:auto; display:inline-block; }
+  h1 { font-size:17pt; text-align:center; margin:0 0 12mm; text-decoration:underline; }
   h2 { font-size:13.5pt; margin:6mm 0 2mm; text-decoration:underline; }
   p  { margin:0 0 3.5mm; }
   .ref { text-align:center; font-weight:700; }
@@ -4207,8 +4217,11 @@ function buildContractHtml(data) {
   .sign td { width:50%; vertical-align:top; padding:4mm; line-height:2.2; }
   .sig-h { font-weight:700; text-decoration:underline; margin-bottom:3mm; }
   .foot { position:absolute; left:16mm; right:16mm; bottom:8mm; border-top:1px solid #c9922a;
-          padding-top:2mm; font-family:Arial,Helvetica,sans-serif; direction:ltr; text-align:center;
-          font-size:7.6pt; color:#555; line-height:1.5; }
+          padding-top:2mm; font-family:Arial,Helvetica,sans-serif; direction:ltr;
+          font-size:7.6pt; color:#555; line-height:1.5;
+          display:flex; align-items:center; gap:4mm; }
+  .foot-logo { height:10mm; width:auto; flex-shrink:0; }
+  .foot-lines { flex:1; text-align:center; }
 </style></head><body>
 ${page(p1)}${page(p2)}${page(p3)}${page(p4)}${page(p5)}${page(p6)}
 </body></html>`;
@@ -4259,6 +4272,14 @@ receiver.router.post('/api/dashboard/contracts', requireAuth, express.json({ lim
   const { data, error } = await supabase.from('contracts').insert(row).select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
+  // Timeline: show the contract on the attached lead's 360° profile
+  if (data.customer_id) {
+    logLeadActivity(data.customer_id, {
+      type: 'note', body: `Contract generated — ${data.contract_no}`,
+      meta: { contract_id: data.id, contract_no: data.contract_no },
+      authorKey: 'admin', authorName: 'Admin',
+    });
+  }
 });
 
 receiver.router.put('/api/dashboard/contracts/:id', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
@@ -4354,10 +4375,33 @@ async function renderQuotationPdf(html) {
   }
 }
 
+// Company logo used on every generated document (quotation + contract).
+const BRAND_LOGO_URL = 'https://images.motolinkers.com/avatar-11-max-reev/motolinkers-logo-black-text-preview.png';
+
+// Selectable quotation looks. Both render the SAME structure — only the palette
+// and typography differ — so switching a quote between them never moves content.
+const QUOTE_THEMES = {
+  classic: {
+    key: 'classic', label: 'Classic — navy & gold',
+    accent: '#c9922a', ink: '#1B2D6B', soft: '#f5e9c8',
+    zebra: '#fdfaf3', meta: '#cc3300',
+    titleFont: 'Arial, sans-serif', titleSpacing: '2px', fontLink: '',
+  },
+  brand: {
+    key: 'brand', label: 'Brand — charcoal & gold',
+    accent: '#c9a35e', ink: '#1b1b1f', soft: '#f7efdf',
+    zebra: '#faf7f0', meta: '#a07e3f',
+    titleFont: "'Cormorant Garamond', Georgia, serif", titleSpacing: '4px',
+    fontLink: '<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&display=swap" rel="stylesheet">',
+  },
+};
+function quoteTheme(key) { return QUOTE_THEMES[key] || QUOTE_THEMES.classic; }
+
 function buildQuotationHtml(data) {
   const { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings } = data;
   const s = settings || {};
   const exRate = parseFloat(exchange) || 1;
+  const T = quoteTheme(data.template);
 
   // Calculate totals
   let grandTotal = 0;
@@ -4374,9 +4418,9 @@ function buildQuotationHtml(data) {
     return { ...row, egp };
   });
 
-  const GOLD   = '#c9922a';
-  const NAVY   = '#1B2D6B';
-  const LGOLD  = '#f5e9c8';
+  const GOLD   = T.accent;   // accent / hairlines
+  const NAVY   = T.ink;      // primary ink + header fills
+  const LGOLD  = T.soft;     // soft fill behind labels & totals
 
   const imgSection = imageDataUrls && imageDataUrls.length
     ? `<tr><td colspan="4" style="padding:10px 0;border:1px solid ${GOLD};border-top:none">
@@ -4387,12 +4431,12 @@ function buildQuotationHtml(data) {
     : '';
 
   const vehicleRow = vehicleModel
-    ? `<tr><td colspan="4" style="text-align:center;font-size:17px;font-weight:700;color:#cc3300;padding:10px 8px;border:1px solid ${GOLD};border-bottom:none">${escHtml(vehicleModel)}</td></tr>`
+    ? `<tr><td colspan="4" style="text-align:center;font-size:17px;font-weight:700;color:${T.meta};padding:10px 8px;border:1px solid ${GOLD};border-bottom:none">${escHtml(vehicleModel)}</td></tr>`
     : '';
 
   const itemRowsHtml = itemRows.map((item, i) => {
     const isFree = item.egp === null;
-    const bg = i % 2 === 1 ? `background:#fdfaf3` : '';
+    const bg = i % 2 === 1 ? `background:${T.zebra}` : '';
     return `<tr style="${bg}">
       <td style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${escHtml(item.name || '')}</td>
       <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${escHtml(item.unit || 1)}</td>
@@ -4402,7 +4446,7 @@ function buildQuotationHtml(data) {
   }).join('');
 
   const logRowsHtml = logisticsRows.map((row, i) => {
-    const bg = i % 2 === 1 ? `background:#fdfaf3` : '';
+    const bg = i % 2 === 1 ? `background:${T.zebra}` : '';
     return `<tr style="${bg}">
       <td colspan="2" style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${escHtml(row.label)}</td>
       <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${fmtNum(row.priceUsd)}</td>
@@ -4411,7 +4455,7 @@ function buildQuotationHtml(data) {
   }).join('');
 
   return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
+<html><head><meta charset="UTF-8">${T.fontLink}
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; font-size: 11px; color: ${NAVY}; background: #fff; padding: 0; }
@@ -4421,12 +4465,14 @@ function buildQuotationHtml(data) {
   .logo-link { color: ${GOLD}; }
 
   .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-  .quotation-title { font-size: 24px; font-weight: 900; letter-spacing: 2px; color: ${NAVY}; text-align: center; }
+  .quotation-title { font-family: ${T.titleFont}; font-size: 24px; font-weight: 900;
+    letter-spacing: ${T.titleSpacing}; color: ${NAVY}; text-align: center; }
+  .section-label, .col-header, .total-row td, .ks-label, .meta-label { font-family: ${T.titleFont}; }
 
   .meta-table { border-collapse: collapse; width: 100%; }
   .meta-table td { padding: 3px 8px; border: 1px solid ${GOLD}; font-size: 10px; }
   .meta-label { font-weight: 700; color: ${NAVY}; background: ${LGOLD}; white-space: nowrap; }
-  .meta-val   { font-weight: 700; color: #cc3300; min-width: 120px; }
+  .meta-val   { font-weight: 700; color: ${T.meta}; min-width: 120px; }
 
   .section-label { font-weight: 700; font-size: 11px; color: ${NAVY}; padding: 6px 10px;
     border: 1px solid ${GOLD}; background: #fff; margin-top: 10px; }
@@ -4459,7 +4505,7 @@ function buildQuotationHtml(data) {
   <table class="header-table">
     <tr>
       <td style="width:35%;vertical-align:middle">
-        <img src="https://images.motolinkers.com/avatar-11-max-reev/motolinkers-logo-black-text-preview.png" style="max-height:60px;width:auto;display:block">
+        <img src="${BRAND_LOGO_URL}" style="max-height:60px;width:auto;display:block">
       </td>
       <td style="width:30%;text-align:center;vertical-align:middle">
         <div class="quotation-title">QUOTATION</div>
@@ -4555,7 +4601,7 @@ function buildQuotationHtml(data) {
       ${s.company_tax_id ? `<div><strong>TAX ID:</strong> ${escHtml(s.company_tax_id)} &nbsp;|&nbsp; <strong>Registration No:</strong> ${escHtml(s.company_reg_no || '')}</div>` : `<div><strong>TAX ID:</strong> 773934006 &nbsp;|&nbsp; <strong>Registration No:</strong> 282378</div>`}
     </div>
     <div style="margin-left:20px;flex-shrink:0">
-      <img src="https://images.motolinkers.com/avatar-11-max-reev/motolinkers-logo-black-text-preview.png" style="max-height:45px;width:auto;display:block">
+      <img src="${BRAND_LOGO_URL}" style="max-height:45px;width:auto;display:block">
     </div>
   </div>
 
@@ -4582,7 +4628,8 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       const settings = {};
       for (const row of settingsRows || []) settings[row.key] = row.value;
 
-      const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings });
+      const template = quoteTheme(req.body.template).key;
+      const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings, template });
 
       const pdfBuffer = await renderQuotationPdf(html);
 
@@ -4592,7 +4639,7 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       const pk = req.body.quotation_pk ? parseInt(req.body.quotation_pk) : null;
       const record = {
         title: `${vehicleModel || 'Quotation'} — ${name || ''}`.trim(),
-        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs, imageDataUrls },
+        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs, imageDataUrls, template },
         customer_id: custId,
       };
       if (pk) {
@@ -4648,7 +4695,8 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
       const settings = {};
       for (const row of settingsRows || []) settings[row.key] = row.value;
 
-      const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings });
+      const template = quoteTheme(req.body.template).key;
+      const html = buildQuotationHtml({ id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings, template });
 
       const pdfBuffer = await renderQuotationPdf(html);
 
@@ -4664,7 +4712,7 @@ receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
       const pk = req.body.quotation_pk ? parseInt(req.body.quotation_pk) : null;
       const record = {
         title: `${vehicleModel || 'Quotation'} — ${name || ''}`.trim(),
-        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs, imageDataUrls },
+        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs, imageDataUrls, template },
         customer_id: custId,
       };
       if (pk) {
