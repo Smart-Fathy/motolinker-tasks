@@ -235,6 +235,13 @@
     .sidebar-collapse-btn { display:none; }
     .page { padding:20px 16px; }
 
+    /* Chat pages: lift the Help agent clear of the composer's send button */
+    body.has-chat-composer .hb-fab { bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important; }
+    @media (max-width:768px) {
+      /* mobile also has the fixed bottom nav under the composer */
+      body.has-chat-composer .hb-fab { bottom: calc(var(--bottomnav-h) + 84px + env(safe-area-inset-bottom, 0px)) !important; }
+    }
+
     /* Bottom navigation bar */
     .bottom-nav {
       display:flex; position:fixed; bottom:0; left:0; right:0; height:var(--bottomnav-h);
@@ -2164,6 +2171,8 @@ let _currentEmpPage = 'log';
 function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
   _currentEmpPage = page;
+  // Pages with a bottom composer need the Help agent lifted above the send button
+  document.body.classList.toggle('has-chat-composer', page === 'chat');
   // Block navigation to sections the employee doesn't have permission for
   const pageEl = document.getElementById('page-' + page);
   if (pageEl && pageEl.dataset.permitted === '0') return navigate('log');

@@ -1,4 +1,4 @@
-const CACHE = 'motolinker-dash-v46';
+const CACHE = 'motolinker-dash-v47';
 const SHELL = ['/dashboard', '/manifest-dashboard.json'];
 const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com', 'cdn.jsdelivr.net'];
 
