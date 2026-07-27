@@ -4823,6 +4823,7 @@ const EMP_CRM_ACTIONS = {
   leads:     [['view','View'],['create','Add'],['edit','Edit'],['delete','Delete (needs approval)'],['import','Import'],['export','Export']],
   deals:     [['view','View'],['create','Add'],['edit','Edit'],['move','Move stage'],['delete','Delete (needs approval)']],
   quotation: [['draft','Draft & generate'],['history','History'],['settings','Settings'],['delete','Delete'],['attachLead','Attach to a lead']],
+  reports:   [['leads','Custom Leads Report'],['sales','Sales & Revenue'],['export','Export CSV']],
 };
 const EMP_DEAL_STAGES = ['lead','contacted','quoted','negotiating','won','lost'];
 function empScopeStatusOpts() {
@@ -4855,7 +4856,7 @@ function empToggleSection(section) {
 }
 function openEmpModal(id) {
   const e = id ? allEmployees.find(x => x.id === id) : null;
-  const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, ...(e?.permissions||{}) };
+  const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, reports:false, ...(e?.permissions||{}) };
   const scope = (p.scope && typeof p.scope === 'object') ? p.scope : { assignedOnly:false, dealStages:[], leadStatuses:[] };
   const scopeStatuses = (scope.leadStatuses || []).map(empCnorm);
   showModal(e ? 'Edit Employee' : 'Create Employee', `
@@ -4886,6 +4887,7 @@ function openEmpModal(id) {
         ${empCrmBlock('leads', 'Leads', p)}
         ${empCrmBlock('deals', 'Deals', p)}
         ${empCrmBlock('quotation', 'Quotation', p)}
+        ${empCrmBlock('reports', 'Reports', p)}
       </div>
     </div>
     <div class="form-group" style="margin-top:8px">
@@ -4915,7 +4917,7 @@ function openEmpModal(id) {
 function empBuildPerms() {
   const perms = {};
   ['requests', 'viewAllRequests', 'drive', 'sheets', 'email'].forEach(k => { perms[k] = document.getElementById('perm-' + k)?.checked || false; });
-  ['leads', 'deals', 'quotation'].forEach(sec => {
+  ['leads', 'deals', 'quotation', 'reports'].forEach(sec => {
     perms[sec] = document.getElementById('perm-' + sec)?.checked || false;
     const acts = {};
     document.querySelectorAll(`.perm-act[data-section="${sec}"]`).forEach(cb => { acts[cb.dataset.action] = cb.checked; });

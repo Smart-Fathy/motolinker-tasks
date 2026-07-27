@@ -287,8 +287,10 @@ async function buildSalesReport(q) {
   } catch (_) {}
   // Deals joined to their lead's source (for by-source conversion)
   const { data: deals } = await supabase.from('deals').select('id,stage,budget_egp,assigned_to,closed_at,created_at,customer_id,customers(source)');
+  // Same scoping contract as buildLeadsReport: employees only aggregate their own.
+  const scopedDeals = typeof q.scopeDeals === 'function' ? (deals || []).filter(q.scopeDeals) : (deals || []);
   const inRange = (iso) => iso && iso >= fromISO && iso <= toISO;
-  const rows = (deals || []).filter(d => {
+  const rows = scopedDeals.filter(d => {
     if (sourceFilter && (d.customers?.source || '') !== sourceFilter) return false;
     // A deal counts for the window if it was created in it, or closed in it.
     return inRange(d.created_at) || inRange(d.closed_at);
@@ -431,8 +433,11 @@ async function buildLeadsReport(q) {
   const { data: all } = await supabase.from('customers')
     .select('id,lead_status,source,budget_lead,budget_max,next_action,been_contacted,assigned_to,car_in_question,lead_date,created_at,custom_fields')
     .limit(50000);
+  // Employee reports pass a predicate so totals never include leads outside the
+  // caller's data scope. Admin reports pass nothing and see everything.
+  const scoped = typeof q.scopeLeads === 'function' ? (all || []).filter(q.scopeLeads) : (all || []);
   const effDay = c => c.lead_date || (c.created_at || '').slice(0, 10);
-  let leads = (all || []).filter(c => {
+  let leads = scoped.filter(c => {
     if (!fromDay && !toDay) return true;               // no range → every lead (incl. dateless)
     const d = effDay(c); if (!d) return false;
     if (fromDay && d < fromDay) return false;
@@ -1685,7 +1690,7 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json
 });
 
 // Employee auth
-const DEFAULT_PERMISSIONS = { requests: true, drive: true, sheets: true, pdfscraper: false, email: false, viewAllRequests: false, quotation: false, leads: false, deals: false };
+const DEFAULT_PERMISSIONS = { requests: true, drive: true, sheets: true, pdfscraper: false, email: false, viewAllRequests: false, quotation: false, leads: false, deals: false, reports: false };
 
 // ── Advanced permissions: per-action + data scope for CRM sections ────────────
 // Backward compatible: legacy flat booleans (e.g. leads:true) normalize to full
@@ -1694,6 +1699,10 @@ const PERM_ACTIONS = {
   leads: ['view', 'create', 'edit', 'delete', 'import', 'export'],
   deals: ['view', 'create', 'edit', 'delete', 'move'],
   quotation: ['draft', 'history', 'settings', 'delete', 'attachLead'],
+  // Each report is granted individually, so an employee can be given the leads
+  // report without the revenue figures (or vice-versa). Reports always obey the
+  // employee's data scope — they aggregate only rows that employee may see.
+  reports: ['leads', 'sales', 'export'],
 };
 function normEmpPerms(raw) {
   const p = { ...DEFAULT_PERMISSIONS, ...(raw || {}) };
@@ -4999,6 +5008,48 @@ receiver.router.get('/api/employee/lead-options', requireEmployeeAuth, async (re
   if (error) return res.status(500).json({ error: error.message });
   const stageIdSet = await scopedQuotedIds(emp);
   res.json((data || []).filter(c => customerInScope(c, emp, stageIdSet)).map(c => ({ id: c.id, name: c.name, phone: c.phone })));
+});
+
+// ── Employee reports ──────────────────────────────────────────────────────────
+// Granted per report (leads / sales / export). Every figure is restricted to the
+// employee's data scope, so a rep limited to their own leads sees only their own
+// totals — never company-wide numbers.
+async function empReportScope(emp) {
+  const stageIdSet = await scopedQuotedIds(emp);
+  return {
+    scopeLeads: c => customerInScope(c, emp, stageIdSet),
+    scopeDeals: d => dealInScope(d, emp),
+  };
+}
+
+receiver.router.get('/api/employee/reports/leads', requireEmployeeAuth, async (req, res) => {
+  if (!empCan(req.employee, 'reports', 'leads')) return res.status(403).json({ error: 'Not permitted' });
+  try {
+    const scope = await empReportScope(req.employee);
+    res.json(await buildLeadsReport({ ...req.query, ...scope }));
+  } catch (e) { console.error('[emp-reports-leads]', e); res.status(500).json({ error: e.message }); }
+});
+
+receiver.router.get('/api/employee/reports/summary', requireEmployeeAuth, async (req, res) => {
+  if (!empCan(req.employee, 'reports', 'sales')) return res.status(403).json({ error: 'Not permitted' });
+  try {
+    const scope = await empReportScope(req.employee);
+    res.json(await buildSalesReport({ ...req.query, ...scope }));
+  } catch (e) { console.error('[emp-reports-summary]', e); res.status(500).json({ error: e.message }); }
+});
+
+// CSV export of the leads report — needs both the report itself and export rights.
+receiver.router.get('/api/employee/reports/leads-export.csv', requireEmployeeAuth, async (req, res) => {
+  const emp = req.employee;
+  if (!(empCan(emp, 'reports', 'leads') && empCan(emp, 'reports', 'export'))) return res.status(403).json({ error: 'Not permitted' });
+  try {
+    const scope = await empReportScope(emp);
+    const rep = await buildLeadsReport({ ...req.query, ...scope });
+    const rows = (rep.rows || []).map(r => ({ label: r.label, leads: r.count, value: r.value }));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="leads-report-${rep.groupBy}.csv"`);
+    res.send('﻿' + csvSerialize(rows, ['label', 'leads', 'value']));
+  } catch (e) { console.error('[emp-reports-csv]', e); res.status(500).json({ error: e.message }); }
 });
 
 receiver.router.post('/api/employee/quotation/generate', requireEmployeeAuth,
