@@ -725,6 +725,11 @@
   .chat-room-item.active { background:rgba(99,102,241,.14); }
   .chat-room-avatar { width:38px; height:38px; border-radius:50%; background:var(--primary); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#fff; flex-shrink:0; }
   .chat-room-avatar.grp { border-radius:10px; }
+  .chat-room-avatar img { width:100%; height:100%; border-radius:inherit; object-fit:cover; display:block; }
+  /* Sender profile picture shown above each incoming bubble */
+  .chat-msg-avatar { width:18px; height:18px; border-radius:50%; object-fit:cover; flex-shrink:0;
+                     border:1px solid var(--hair-gold, rgba(255,255,255,.15)); }
+  .chat-msg-sender { display:flex; align-items:center; gap:5px; }
   .chat-room-info { flex:1; min-width:0; }
   .chat-room-name { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .chat-room-preview { font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; }
@@ -980,7 +985,19 @@
   .color-chip b{ color:var(--primary); }
   .color-dot{ width:11px; height:11px; border-radius:50%; border:1px solid rgba(255,255,255,.25); flex-shrink:0; }
   .stock-notes{ margin-top:11px; font-size:12px; color:var(--muted); }
+  .stock-units{ width:100%; border-collapse:collapse; font-size:11px; }
+  .stock-units th{ text-align:left; color:var(--muted); font-weight:700; font-size:9.5px;
+                   text-transform:uppercase; letter-spacing:.3px; padding:4px 6px; white-space:nowrap;
+                   border-bottom:1px solid var(--border); }
+  .stock-units td{ padding:5px 6px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  .pill-sm{ display:inline-block; padding:1px 7px; border-radius:9px; font-size:10px; font-weight:700; }
   .stock-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+  /* ── Deals tabs ── */
+  .deal-tabs { display:flex; gap:4px; margin-bottom:18px; border-bottom:1px solid var(--border); }
+  .deal-tab { background:none; border:none; border-bottom:2px solid transparent; color:var(--muted);
+              font:inherit; font-size:13px; font-weight:600; padding:8px 14px; cursor:pointer; }
+  .deal-tab:hover { color:var(--text); }
+  .deal-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
   /* ── Purchase Order line-item grid ── */
   /* The 15-column vehicle sheet needs far more room than the default modal */
   .modal.modal-wide { max-width: min(1500px, 96vw); }
@@ -1113,10 +1130,16 @@
         <div class="nav-group-items">
           <div class="nav-item"        onclick="navigate('customers')"  id="nav-customers">    <span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads</div>
           <div class="nav-item"        onclick="navigate('deals')"      id="nav-deals">        <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals</div>
-          <div class="nav-item"        onclick="navigate('stock')"      id="nav-stock">        <span class="nav-icon"><i data-lucide="car-front"></i></span> Car Stock</div>
           <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><i data-lucide="mail"></i></span> Submissions</div>
           <div class="nav-item"        onclick="navigate('reports')"    id="nav-reports">      <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span> Reports</div>
           <div class="nav-item"        onclick="navigate('automations')" id="nav-automations"> <span class="nav-icon"><i data-lucide="workflow"></i></span> Automations</div>
+        </div>
+      </div>
+      <div class="nav-group" data-group="logistics">
+        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Logistics &amp; Shipping</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <div class="nav-item"        onclick="navigate('stock')"      id="nav-stock">        <span class="nav-icon"><i data-lucide="car-front"></i></span> Inventory &amp; Logistics</div>
+          <div class="nav-item"        onclick="navigate('suppliers')"  id="nav-suppliers">    <span class="nav-icon"><i data-lucide="factory"></i></span> Suppliers</div>
         </div>
       </div>
       <div class="nav-group" data-group="integrations">
@@ -1124,6 +1147,7 @@
         <div class="nav-group-items">
           <div class="nav-item"        onclick="navigate('quotation')"  id="nav-quotation">    <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation</div>
           <div class="nav-item"        onclick="navigate('contracts')"  id="nav-contracts">    <span class="nav-icon"><i data-lucide="file-signature"></i></span> Contract</div>
+          <div class="nav-item"        onclick="navigate('rfqs')"       id="nav-rfqs">         <span class="nav-icon"><i data-lucide="file-search"></i></span> RFQ</div>
           <div class="nav-item"        onclick="navigate('purchaseorders')" id="nav-purchaseorders"><span class="nav-icon"><i data-lucide="shopping-cart"></i></span> Purchase Orders</div>
         </div>
       </div>
@@ -1751,16 +1775,56 @@
           <i data-lucide="plus" style="width:15px;height:15px"></i> Add Deal
         </button>
       </div>
-      <div id="deals-kanban" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:start;overflow-x:auto;min-width:900px">
-        <!-- Columns rendered by JS -->
+      <div class="deal-tabs">
+        <button class="deal-tab active" data-tab="pipeline" onclick="dealsTab('pipeline')">Pipeline</button>
+        <button class="deal-tab" data-tab="inquiry" onclick="dealsTab('inquiry')">Inquiry</button>
+        <button class="deal-tab" data-tab="sales" onclick="dealsTab('sales')">Sales</button>
       </div>
+      <div id="deals-pane-pipeline">
+        <div id="deals-kanban" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:start;overflow-x:auto;min-width:900px">
+          <!-- Columns rendered by JS -->
+        </div>
+      </div>
+      <div id="deals-pane-inquiry" style="display:none">
+        <div id="deals-inquiry-table"></div>
+      </div>
+      <div id="deals-pane-sales" style="display:none">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+          <button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="openSaleForm(null)">+ Add sale</button>
+        </div>
+        <div id="deals-sales-table"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SUPPLIERS (Logistics & Shipping) ────────────────────────────── -->
+  <div id="page-suppliers" class="page">
+    <div class="page-header">
+      <span class="page-title">Suppliers</span>
+      <button class="btn btn-primary" onclick="openSupplierForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add supplier</button>
+    </div>
+    <div style="padding:0 28px 28px">
+      <div style="font-size:12.5px;color:var(--muted);margin-top:14px">Suppliers you order from. Used by RFQs, purchase orders and stock units.</div>
+      <div id="suppliers-list" style="margin-top:14px"><div class="loading"><div class="spinner"></div> Loading suppliers…</div></div>
+    </div>
+  </div>
+
+  <!-- ── RFQ (Request for Quotation) ─────────────────────────────────── -->
+  <div id="page-rfqs" class="page">
+    <div class="page-header">
+      <span class="page-title">RFQ</span>
+      <button class="btn btn-primary" onclick="openRfqForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> New RFQ</button>
+    </div>
+    <div style="padding:0 28px 28px">
+      <div style="font-size:12.5px;color:var(--muted);margin-top:14px">Request for Quotation sent to a supplier. Prefills from a lead, like the quotation.</div>
+      <div id="rfqs-list" style="margin-top:14px"><div class="loading"><div class="spinner"></div> Loading RFQs…</div></div>
     </div>
   </div>
 
   <!-- ── CAR STOCK PAGE (immediate-delivery inventory) ──────────────── -->
   <div id="page-stock" class="page">
     <div class="page-header">
-      <span class="page-title">Car Stock</span>
+      <span class="page-title">Inventory &amp; Logistics</span>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="openStockCsvModal()"><i data-lucide="upload" style="width:14px;height:14px"></i> Bulk upload CSV</button>
         <button class="btn btn-primary" onclick="openStockForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add vehicle</button>
@@ -2272,6 +2336,7 @@
       <button class="btn btn-sm btn-outline" onclick="ldEdit()"><i data-lucide="edit-2" style="width:13px;height:13px"></i> Edit</button>
       <button class="btn btn-sm btn-primary" onclick="ldGenerateQuote()"><i data-lucide="file-badge" style="width:13px;height:13px"></i> Generate Quotation</button>
       <button class="btn btn-sm btn-outline" onclick="ldGenerateContract()"><i data-lucide="file-signature" style="width:13px;height:13px"></i> Generate Contract</button>
+      <button class="btn btn-sm btn-outline" onclick="ldGenerateRfq()"><i data-lucide="file-search" style="width:13px;height:13px"></i> RFQ</button>
       <button class="btn btn-sm btn-outline" onclick="ldGeneratePo()"><i data-lucide="shopping-cart" style="width:13px;height:13px"></i> Purchase Order</button>
     </div>
     <div class="lead-drawer-body" id="lead-drawer-body">
@@ -2357,7 +2422,7 @@
             <label class="form-label">Stage</label>
             <select class="form-input" id="dm-stage">
               <option value="lead">Lead</option>
-              <option value="contacted">Contacted</option>
+              <option value="inquiry">Contacted</option>
               <option value="quoted">Quoted</option>
               <option value="negotiating">Negotiating</option>
               <option value="won">Won</option>
@@ -3064,7 +3129,7 @@ const AM_LEAD_STATUSES = [['cold','Cold'],['warm','Warm'],['hot','Hot'],['immedi
 function amActionLabel(t){ const f = AM_ACTIONS.find(a => a[0] === t); return f ? f[1] : t; }
 function amEmpOptions(sel){ return '<option value="">— select rep —</option>' + (employeesForTasks || []).map(e => `<option value="${e.id}"${String(sel) === String(e.id) ? ' selected' : ''}>${esc(e.name)}</option>`).join(''); }
 // Enum option sets so the condition VALUE is picked (saving the canonical key) instead of free-typed.
-const AM_DEAL_STAGES  = [['lead','Lead'],['contacted','Contacted'],['quoted','Quoted'],['negotiating','Negotiating'],['won','Won'],['lost','Lost']];
+const AM_DEAL_STAGES  = [['lead','Lead'],['inquiry','Inquiry'],['quoted','Quoted'],['negotiating','Negotiating'],['won','Won'],['lost','Lost']];
 const AM_ORIGINS      = [['fb_ad','FB Ad.'],['whatsapp','Whatsapp'],['messenger','Messenger'],['direct_call','Direct Call'],['ig_ads','IG ads'],['website','Website'],['walk_in','Walk-in'],['marketplace','Marketplace']];
 const AM_NEXT_ACTIONS = [['followed_by_sales','Followed By Sales'],['need_follow_up','Need Follow Up'],['closed','Closed'],['no_answer','No Answer']];
 const AM_BOOLS        = [['true','Yes'],['false','No']];
@@ -3233,7 +3298,7 @@ function amActionParams(a, i) {
     <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].assignee_id=this.value">${amEmpOptions(a.assignee_id)}</select>`;
   if (a.type === 'create_deal') return `
     <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].stage=this.value">
-      ${['lead','contacted','quoted','negotiating'].map(s => `<option value="${s}"${(a.stage || 'lead') === s ? ' selected' : ''}>${s}</option>`).join('')}
+      ${['lead','inquiry','quoted','negotiating'].map(s => `<option value="${s}"${(a.stage || 'lead') === s ? ' selected' : ''}>${s}</option>`).join('')}
     </select>`;
   if (a.type === 'set_lead_status') return `
     <select class="form-input" style="padding:6px 8px;font-size:12px" onchange="_autoDraft.actions[${i}].status=this.value">
@@ -3903,6 +3968,12 @@ const STOCK_SPEC_FIELDS = [
   ['top_speed', 'Top Speed'], ['fast_charge', 'Fast Charge'], ['seats', 'Seats'],
   ['body', 'Body'], ['year', 'Year'],
 ];
+// Per-unit columns (screenshot 4): what we track for each physical car.
+const STOCK_UNIT_COLS = [
+  ['consignee', 'Consignee'], ['colour', 'Colour EXT / INT'], ['vin', 'VIN'],
+  ['status', 'Status'], ['price_list', 'Price List'], ['discounted', 'Discounted'],
+  ['logistics', 'Logistics'], ['supplier', 'Supplier'],
+];
 let _stockCache = [];
 async function loadStock() {
   const body = document.getElementById('stock-table-container');
@@ -3943,6 +4014,23 @@ function stockCardHtml(v) {
   const colorChips = colors.length
     ? colors.map(c => `<span class="color-chip"><span class="color-dot" style="background:${stockColorSwatch(c.name)}"></span>${esc(c.name)}<b>${Number(c.qty) || 0}</b></span>`).join('')
     : '<span style="color:var(--muted);font-size:12px">No colours recorded</span>';
+  // Individual cars held against this model (VIN, tracking status, supplier…).
+  const units = Array.isArray(v.units) ? v.units : [];
+  const unitsHtml = units.length ? `
+    <div class="stock-colors">
+      <div class="stock-sec-label">Units (${units.length})</div>
+      <div style="overflow-x:auto"><table class="stock-units">
+        <thead><tr>${STOCK_UNIT_COLS.map(([, l]) => `<th>${esc(l)}</th>`).join('')}</tr></thead>
+        <tbody>${units.map(u => {
+          const st = poLineStatus(u.status);
+          return `<tr>${STOCK_UNIT_COLS.map(([k]) => {
+            if (k === 'status') return `<td><span class="pill-sm" style="background:${st.bg};color:${st.fg}">${esc(st.label)}</span></td>`;
+            if (k === 'price_list' || k === 'discounted') return `<td style="text-align:right">${Number(u[k]) ? Number(u[k]).toLocaleString() : '—'}</td>`;
+            return `<td>${esc(u[k] || '—')}</td>`;
+          }).join('')}</tr>`;
+        }).join('')}</tbody>
+      </table></div>
+    </div>` : '';
   return `
     <div class="stock-card">
       <div class="stock-card-head">
@@ -3958,6 +4046,7 @@ function stockCardHtml(v) {
         <div class="stock-sec-label">Available colours</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">${colorChips}</div>
       </div>
+      ${unitsHtml}
       ${v.notes ? `<div class="stock-notes">${esc(v.notes)}</div>` : ''}
       <div class="stock-actions">
         <button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="openStockForm(${v.id})"><i data-lucide="pencil" style="width:13px;height:13px"></i> Edit</button>
@@ -3999,14 +4088,32 @@ function openStockForm(id) {
         <div style="font-size:11px;color:var(--muted);margin-top:6px">Total quantity in stock is the sum of these colours. Leave empty to set the total manually below.</div>
       </div>
 
-      <div><label class="form-label">Total quantity (used only when no colours are listed)</label><input id="stk-qty" class="form-input" type="number" min="0" step="1" value="${v?.quantity ?? ''}" placeholder="e.g. 4"></div>
+      <div>
+        <label class="form-label">Units in stock <span style="color:var(--muted);font-weight:400">(one row per physical car)</span></label>
+        <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:10px">
+          <table style="border-collapse:collapse;font-size:12px;min-width:1080px">
+            <thead><tr>
+              <th class="po-th" style="width:34px">#</th>
+              ${STOCK_UNIT_COLS.map(([, l]) => `<th class="po-th" style="min-width:120px">${esc(l)}</th>`).join('')}
+              <th class="po-th" style="width:38px"></th>
+            </tr></thead>
+            <tbody id="stk-units"></tbody>
+          </table>
+        </div>
+        <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="stkAddUnitRow()">+ Add unit</button>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">When units are listed they set the total quantity; otherwise the colour counts do, and failing that the number below.</div>
+      </div>
+
+      <div><label class="form-label">Total quantity (used only when no units or colours are listed)</label><input id="stk-qty" class="form-input" type="number" min="0" step="1" value="${v?.quantity ?? ''}" placeholder="e.g. 4"></div>
       <div><label class="form-label">Notes</label><input id="stk-notes" class="form-input" value="${esc(v?.notes || '')}" placeholder="Options, delivery notes…"></div>
       <div id="stk-err" class="error-msg" style="display:none"></div>
     </div>`,
     `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
-     <button class="btn btn-primary" onclick="saveStock(${id || 'null'})">${v ? 'Save changes' : 'Add vehicle'}</button>`);
+     <button class="btn btn-primary" onclick="saveStock(${id || 'null'})">${v ? 'Save changes' : 'Add vehicle'}</button>`,
+    { wide: true });
   const existing = Array.isArray(v?.colors) ? v.colors : [];
   (existing.length ? existing : [{ name: '', qty: '' }]).forEach(c => stkAddColorRow(c.name, c.qty));
+  (Array.isArray(v?.units) ? v.units : []).forEach(stkAddUnitRow);
 }
 function stkAddColorRow(name, qty) {
   const wrap = document.getElementById('stk-colors');
@@ -4021,6 +4128,34 @@ function stkAddColorRow(name, qty) {
   row.querySelector('button').onclick = () => row.remove();
   wrap.appendChild(row);
 }
+function stkAddUnitRow(u) {
+  const tbody = document.getElementById('stk-units');
+  if (!tbody) return;
+  const v = u || {};
+  const tr = document.createElement('tr');
+  tr.className = 'stk-unit-row';
+  const cell = k => {
+    if (k === 'status') {
+      return `<td class="po-td"><select class="form-input stk-u" data-k="status" style="font-size:12px;padding:5px 6px">
+        ${PO_LINE_STATUSES.map(o => `<option value="${o.key}" ${(v.status || 'send_to_supplier') === o.key ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+      </select></td>`;
+    }
+    const num = (k === 'price_list' || k === 'discounted') ? 'type="number" min="0"' : '';
+    return `<td class="po-td"><input class="form-input stk-u" data-k="${k}" ${num} value="${esc(v[k] == null ? '' : String(v[k]))}" style="font-size:12px;padding:5px 6px"></td>`;
+  };
+  tr.innerHTML = `<td class="po-td stk-u-no" style="text-align:center;color:var(--muted)"></td>` +
+    STOCK_UNIT_COLS.map(([k]) => cell(k)).join('') +
+    `<td class="po-td" style="text-align:center"><button class="btn btn-outline" style="padding:2px 7px;font-size:14px;color:var(--danger);border-color:var(--danger)" title="Remove">×</button></td>`;
+  tr.querySelector('button').onclick = () => { tr.remove(); stkRenumberUnits(); };
+  tbody.appendChild(tr);
+  stkRenumberUnits();
+}
+function stkRenumberUnits() {
+  [...document.querySelectorAll('.stk-unit-row')].forEach((r, i) => {
+    const c = r.querySelector('.stk-u-no'); if (c) c.textContent = i + 1;
+  });
+}
+
 async function saveStock(id) {
   const specs = {};
   STOCK_SPEC_FIELDS.forEach(([k]) => { specs[k] = (document.getElementById('stk-spec-' + k)?.value || '').trim(); });
@@ -4028,6 +4163,9 @@ async function saveStock(id) {
     name: r.querySelector('.stk-color-name').value.trim(),
     qty: r.querySelector('.stk-color-qty').value,
   })).filter(c => c.name);
+  const units = [...document.querySelectorAll('.stk-unit-row')].map(r => {
+    const o = {}; r.querySelectorAll('.stk-u').forEach(el => { o[el.dataset.k] = el.value; }); return o;
+  }).filter(u => u.vin || u.consignee || u.colour || u.supplier);
   const payload = {
     make: document.getElementById('stk-make').value.trim(),
     model: document.getElementById('stk-model').value.trim(),
@@ -4035,7 +4173,7 @@ async function saveStock(id) {
     price: document.getElementById('stk-price').value,
     quantity: document.getElementById('stk-qty').value,
     notes: document.getElementById('stk-notes').value.trim(),
-    specs, colors,
+    specs, colors, units,
   };
   const err = document.getElementById('stk-err');
   if (!payload.make || !payload.model) { err.textContent = 'Make and Model are required.'; err.style.display = 'block'; return; }
@@ -4264,7 +4402,7 @@ async function ctPopulateLeadPicker(selectedId) {
     if (nameEl) nameEl.value = lead.name || '';
     setF('buyer.nationalId', cf.cf_national_id);
     setF('buyer.address', lead.address || cf.cf_address);
-    const car = String(cf.cf_vehicle_requested || lead.car_in_question || '').trim();
+    const car = String(cf.cf_vehicle_offered || cf.cf_vehicle_requested || lead.car_in_question || '').trim();
     if (car) {
       const bits = car.split(/\s+/);
       setF('vehicle.make', bits[0]);
@@ -4469,6 +4607,27 @@ async function openPoForm(id, seedCustomerId) {
         </div>
       </div>
 
+      <div>
+        <div class="po-lbl" style="margin-bottom:6px">Supplier details (printed on the PO)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;min-width:0">
+          <div><div class="po-lbl">From register</div><select id="po-supplier-id" class="form-input" onchange="poSupplierPicked(this.value)"></select></div>
+          <div><div class="po-lbl">Contact</div><input id="po-supplier-contact" class="form-input" value="${esc(rec.supplier_contact || '')}"></div>
+          <div><div class="po-lbl">Address</div><input id="po-supplier-address" class="form-input" value="${esc(rec.supplier_address || '')}"></div>
+          <div><div class="po-lbl">Country of origin</div><input id="po-supplier-country" class="form-input" value="${esc(rec.supplier_country || '')}"></div>
+          <div><div class="po-lbl">Issuer</div><input id="po-issuer" class="form-input" value="${esc(rec.issuer || '')}"></div>
+          <div><div class="po-lbl">Quote / RFQ ID</div><input id="po-quote-id" class="form-input" value="${esc(rec.quote_id || '')}"></div>
+        </div>
+      </div>
+
+      <div><div class="po-lbl">Payment Terms</div><textarea id="po-payment" class="form-input" rows="2" placeholder="Leave blank for the standard 30% / 70% terms">${esc(rec.payment_terms || '')}</textarea></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;min-width:0">
+        <div><div class="po-lbl">Incoterm</div><input id="po-incoterm" class="form-input" value="${esc(rec.incoterm || 'FOB')}"></div>
+        <div><div class="po-lbl">Delivery Location</div><input id="po-delivery" class="form-input" value="${esc(rec.delivery_location || '')}"></div>
+        <div><div class="po-lbl">Service Provider</div><input id="po-service" class="form-input" value="${esc(rec.service_provider || '')}"></div>
+        <div><div class="po-lbl">Contact</div><input id="po-contact" class="form-input" value="${esc(rec.contact || '')}"></div>
+      </div>
+      <div><div class="po-lbl">Documents Required</div><textarea id="po-docs" class="form-input" rows="2" placeholder="Leave blank for the standard document list">${esc(rec.documents_required || '')}</textarea></div>
+
       <div><div class="po-lbl">Notes</div><textarea id="po-notes" class="form-input" rows="2" placeholder="Shipping instructions, remarks…">${esc(rec.notes || '')}</textarea></div>
       <div id="po-err" class="error-msg" style="display:none"></div>
     </div>`,
@@ -4479,6 +4638,7 @@ async function openPoForm(id, seedCustomerId) {
 
   const items = Array.isArray(rec.items) && rec.items.length ? rec.items : [{}];
   items.forEach(it => poAddRow(it));
+  document.getElementById('po-supplier-id').innerHTML = await supplierOptionsHtml(rec.supplier_id);
   await poPopulateLeadPicker(rec.customer_id || seedCustomerId || null);
 }
 
@@ -4542,6 +4702,15 @@ async function poPopulateLeadPicker(selectedId) {
   } catch (_) {}
 }
 
+// Choosing a registered supplier fills the printed supplier block.
+function poSupplierPicked(id) {
+  const x = _suppliersCache.find(v => String(v.id) === String(id));
+  if (!x) return;
+  const set = (el, val) => { const e = document.getElementById(el); if (e) e.value = val || ''; };
+  set('po-supplier', x.name); set('po-supplier-contact', x.contact);
+  set('po-supplier-address', x.address); set('po-supplier-country', x.country);
+}
+
 function poCollect() {
   return {
     po_number: document.getElementById('po-number').value.trim(),
@@ -4552,6 +4721,18 @@ function poCollect() {
     customer_id: document.getElementById('po-customer-id')?.value || null,
     notes: document.getElementById('po-notes').value.trim(),
     items: poCollectItems(),
+    supplier_id:        document.getElementById('po-supplier-id')?.value || null,
+    supplier_contact:   (document.getElementById('po-supplier-contact')?.value || '').trim(),
+    supplier_address:   (document.getElementById('po-supplier-address')?.value || '').trim(),
+    supplier_country:   (document.getElementById('po-supplier-country')?.value || '').trim(),
+    issuer:             (document.getElementById('po-issuer')?.value || '').trim(),
+    quote_id:           (document.getElementById('po-quote-id')?.value || '').trim(),
+    payment_terms:      (document.getElementById('po-payment')?.value || '').trim(),
+    incoterm:           (document.getElementById('po-incoterm')?.value || '').trim(),
+    delivery_location:  (document.getElementById('po-delivery')?.value || '').trim(),
+    service_provider:   (document.getElementById('po-service')?.value || '').trim(),
+    contact:            (document.getElementById('po-contact')?.value || '').trim(),
+    documents_required: (document.getElementById('po-docs')?.value || '').trim(),
   };
 }
 
@@ -4635,6 +4816,7 @@ const DOC_ENDPOINTS = {
   quotation: id => `/api/dashboard/quotations/${id}/pdf`,
   contract:  id => `/api/dashboard/contracts/${id}/pdf`,
   po:        id => `/api/dashboard/purchase-orders/${id}/pdf`,
+  rfq:       id => `/api/dashboard/rfqs/${id}/pdf`,
 };
 let _docName = 'document';
 
@@ -4667,6 +4849,31 @@ async function viewDocPdf(kind, id, label) {
     load.innerHTML = `<div class="error-msg">Could not render this document: ${esc(e.message)}</div>`;
   }
 }
+// Preview an unsaved payload (used by the "Save & preview" buttons).
+async function viewDocPdfPayload(url, payload, label) {
+  const modal = document.getElementById('doc-modal');
+  const frame = document.getElementById('doc-preview-frame');
+  const load  = document.getElementById('doc-modal-loading');
+  document.getElementById('doc-modal-title').textContent = label || 'Document';
+  _docName = (label || 'document').replace(/[^\w.-]+/g, '_');
+  frame.removeAttribute('src'); frame.style.display = 'none';
+  load.style.display = 'block'; load.innerHTML = '<div class="spinner" style="margin:0 auto 10px"></div> Rendering PDF…';
+  modal.style.display = 'flex';
+  try {
+    const r = await apiFetch(url, { method: 'POST', body: JSON.stringify(payload) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed to render');
+    const bytes = Uint8Array.from(atob(d.pdf), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    if (frame._blobUrl) URL.revokeObjectURL(frame._blobUrl);
+    frame._blobUrl = URL.createObjectURL(blob);
+    frame.src = frame._blobUrl;
+    load.style.display = 'none'; frame.style.display = 'block';
+  } catch (e) {
+    load.innerHTML = `<div class="error-msg">Could not render this document: ${esc(e.message)}</div>`;
+  }
+}
+
 function downloadDocPdf() {
   const frame = document.getElementById('doc-preview-frame');
   if (!frame || !frame._blobUrl) return;
@@ -4682,9 +4889,437 @@ function closeDocPdf() {
   document.getElementById('doc-modal').style.display = 'none';
 }
 
+// ── Deals tabs: Pipeline · Inquiry · Sales ──────────────────────────────────────
+let _dealsTab = 'pipeline';
+let _salesCache = [];
+const SALE_STATUS_OPTS = PO_LINE_STATUSES;
+
+function dealsTab(tab) {
+  _dealsTab = tab;
+  document.querySelectorAll('.deal-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  ['pipeline', 'inquiry', 'sales'].forEach(t => {
+    const el = document.getElementById('deals-pane-' + t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+  if (tab === 'inquiry') renderInquiryTable();
+  if (tab === 'sales') loadSales();
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+// Inquiry is a view over deals sitting in the Inquiry stage.
+function renderInquiryTable() {
+  const box = document.getElementById('deals-inquiry-table');
+  if (!box) return;
+  const rows = (_allDeals || []).filter(d => d.stage === 'inquiry');
+  if (!rows.length) {
+    box.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No deals in the Inquiry stage.</div>';
+    return;
+  }
+  const cust = id => (_allCustomers || []).find(c => c.id === id);
+  box.innerHTML = `
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+        <th style="padding:8px 10px;width:40px">No</th>
+        <th style="padding:8px 10px;min-width:280px">Full Inquiry Details<div style="font-weight:400;font-size:10.5px">Brands / Models / Trims / Colours / Accessories</div></th>
+        <th style="padding:8px 10px">Name</th><th style="padding:8px 10px">Number</th>
+        <th style="padding:8px 10px;text-align:right">Est. value</th><th style="padding:8px 10px">Date</th>
+        <th style="padding:8px 10px">Notes</th><th style="padding:8px 10px;text-align:right"></th></tr></thead>
+      <tbody>${rows.map((d, i) => {
+        const c = cust(d.customer_id) || {};
+        const details = d.inquiry_details || d.car_model || d.title || '';
+        const val = Number(d.est_value ?? d.budget_egp) || 0;
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px;color:var(--muted)">${i + 1}</td>
+          <td style="padding:8px 10px;white-space:pre-wrap;line-height:1.55">${esc(details)}</td>
+          <td style="padding:8px 10px">${esc(c.name || '—')}</td>
+          <td style="padding:8px 10px;font-family:monospace">${esc(c.phone || '')}</td>
+          <td style="padding:8px 10px;text-align:right;font-weight:600">${val ? val.toLocaleString() : '—'}</td>
+          <td style="padding:8px 10px;color:var(--muted)">${d.created_at ? new Date(d.created_at).toLocaleDateString() : ''}</td>
+          <td style="padding:8px 10px;color:var(--muted)">${esc(d.notes || '')}</td>
+          <td style="padding:8px 10px;text-align:right"><button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openDealModal(${d.id})">Edit</button></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
+// Sales is its own table — a row per sold car, opened when a deal is Won.
+const SALE_COLS = [
+  ['client', 'Client', 130], ['consignee', 'Consignee', 130], ['brand', 'Brand', 80],
+  ['model', 'Model', 90], ['trim', 'Trim', 90], ['colour', 'Colour EXT / INT', 130],
+  ['vin', 'VIN', 140], ['status', 'Status', 150], ['sales_name', 'Sales Name', 110],
+  ['price_list', 'Price List', 100], ['down_payment', 'D payment', 100],
+  ['discounted', 'Discounted', 100], ['remaining', 'Remaining', 100],
+  ['remaining_due', 'Remaining due', 130], ['reservation_date', 'Reservation Date', 140],
+  ['payment_type', 'Payment type', 120], ['delivery_date', 'Delivery Date', 130],
+  ['client_file', 'Client File', 110],
+];
+const SALE_DATE_KEYS = ['remaining_due', 'reservation_date', 'delivery_date'];
+const SALE_NUM_KEYS  = ['price_list', 'down_payment', 'discounted', 'remaining'];
+
+async function loadSales() {
+  const box = document.getElementById('deals-sales-table');
+  if (box) box.innerHTML = '<div class="loading"><div class="spinner"></div> Loading sales…</div>';
+  let list = [];
+  try { list = await apiFetch('/api/dashboard/sales').then(r => r.json()); }
+  catch (_) { box.innerHTML = '<div class="error-msg">Failed to load sales.</div>'; return; }
+  if (list && list.error) {
+    box.innerHTML = `<div class="error-msg">${esc(list.error)}<br><span style="font-size:12px">If this mentions a missing <code>sales</code> table, run <code>migrations/003_logistics_deals_docs.sql</code>.</span></div>`;
+    return;
+  }
+  _salesCache = Array.isArray(list) ? list : [];
+  if (!_salesCache.length) {
+    box.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No sales yet — a row opens automatically when a deal is Won.</div>';
+    return;
+  }
+  box.innerHTML = `
+    <div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12.5px;min-width:1900px">
+      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+        <th style="padding:8px 10px;width:40px">No</th>
+        ${SALE_COLS.map(([, l, w]) => `<th style="padding:8px 10px;min-width:${w}px">${esc(l)}</th>`).join('')}
+        <th style="padding:8px 10px;text-align:right"></th></tr></thead>
+      <tbody>${_salesCache.map((x, i) => {
+        const st = SALE_STATUS_OPTS.find(o => o.key === x.status) || SALE_STATUS_OPTS[0];
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px;color:var(--muted)">${i + 1}</td>
+          ${SALE_COLS.map(([k]) => {
+            if (k === 'status') return `<td style="padding:8px 10px"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${st.bg};color:${st.fg}">${esc(st.label)}</span></td>`;
+            if (SALE_NUM_KEYS.includes(k)) return `<td style="padding:8px 10px;text-align:right">${Number(x[k]) ? Number(x[k]).toLocaleString() : '—'}</td>`;
+            if (k === 'client_file' && x[k]) return `<td style="padding:8px 10px"><a href="${esc(x[k])}" target="_blank" rel="noopener" style="color:var(--primary)">file</a></td>`;
+            return `<td style="padding:8px 10px">${esc(x[k] || '')}</td>`;
+          }).join('')}
+          <td style="padding:8px 10px;text-align:right;white-space:nowrap">
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openSaleForm(${x.id})">Edit</button>
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteSale(${x.id})">Delete</button>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
+function openSaleForm(id) {
+  const x = id ? _salesCache.find(v => v.id === id) : null;
+  const field = ([k, label]) => {
+    if (k === 'status') {
+      return `<div><div class="po-lbl">${esc(label)}</div><select id="sale-${k}" class="form-input">
+        ${SALE_STATUS_OPTS.map(o => `<option value="${o.key}" ${(x?.status || 'send_to_supplier') === o.key ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+      </select></div>`;
+    }
+    const type = SALE_DATE_KEYS.includes(k) ? 'date' : SALE_NUM_KEYS.includes(k) ? 'number' : 'text';
+    return `<div><div class="po-lbl">${esc(label)}</div><input id="sale-${k}" class="form-input" type="${type}" value="${esc(x?.[k] == null ? '' : String(x[k]))}"></div>`;
+  };
+  showModal(id ? 'Edit sale' : 'Add sale', `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;max-height:66vh;overflow-y:auto;padding-right:4px">
+      ${SALE_COLS.map(field).join('')}
+      <div id="sale-err" class="error-msg" style="display:none;grid-column:1/-1"></div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+     <button class="btn btn-primary" onclick="saveSale(${id || 'null'})">Save</button>`,
+    { wide: true });
+}
+async function saveSale(id) {
+  const payload = {};
+  SALE_COLS.forEach(([k]) => { payload[k] = document.getElementById('sale-' + k).value; });
+  const err = document.getElementById('sale-err');
+  if (!payload.client && !payload.vin && !payload.model) {
+    err.textContent = 'Enter at least a client, model or VIN.'; err.style.display = 'block'; return;
+  }
+  const r = await apiFetch(id ? `/api/dashboard/sales/${id}` : '/api/dashboard/sales',
+    { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+  const d = await r.json();
+  if (!r.ok) { err.textContent = d.error || 'Failed to save.'; err.style.display = 'block'; return; }
+  hideModal(); loadSales();
+}
+async function deleteSale(id) {
+  if (!confirm('Delete this sale record?')) return;
+  await apiFetch(`/api/dashboard/sales/${id}`, { method: 'DELETE' });
+  loadSales();
+}
+
+// ── RFQ — Request for Quotation ─────────────────────────────────────────────────
+const RFQ_STATUS = { draft: 'Draft', sent: 'Sent', answered: 'Answered', closed: 'Closed' };
+const RFQ_COLS = [
+  ['brand', 'BRAND', 90], ['model', 'MODEL', 96], ['trim', 'TRIM', 90],
+  ['colour', 'COLOR EXT / INT', 130], ['year', 'YEAR', 60],
+  ['accessories', 'ACCESSORIES / REMARKS', 190], ['lead_time', 'LEAD TIME', 90],
+  ['fob_price', 'FOB PRICE', 90], ['cif_price', 'CIF PRICE (RoRo)', 100],
+];
+let _rfqCache = [], _rfqEditing = null;
+
+async function loadRfqs() {
+  const body = document.getElementById('rfqs-list');
+  if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div> Loading RFQs…</div>';
+  let list = [];
+  try { list = await apiFetch('/api/dashboard/rfqs').then(r => r.json()); }
+  catch (_) { body.innerHTML = '<div class="error-msg">Failed to load RFQs.</div>'; return; }
+  if (list && list.error) {
+    body.innerHTML = `<div class="error-msg">${esc(list.error)}<br><span style="font-size:12px">If this mentions a missing <code>rfqs</code> table, run <code>migrations/003_logistics_deals_docs.sql</code>.</span></div>`;
+    return;
+  }
+  _rfqCache = Array.isArray(list) ? list : [];
+  if (!_rfqCache.length) {
+    body.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No RFQs yet.</div>';
+    return;
+  }
+  body.innerHTML = `
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+        <th style="padding:8px 10px">ID</th><th style="padding:8px 10px">Supplier</th>
+        <th style="padding:8px 10px;text-align:right">Lines</th><th style="padding:8px 10px">Status</th>
+        <th style="padding:8px 10px">Date</th><th style="padding:8px 10px;text-align:right">Actions</th></tr></thead>
+      <tbody>${_rfqCache.map(r => `
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px;font-family:monospace;font-weight:600">${esc(r.rfq_no)}</td>
+          <td style="padding:8px 10px">${esc(r.supplier_name || '—')}</td>
+          <td style="padding:8px 10px;text-align:right">${(Array.isArray(r.items) ? r.items : []).length}</td>
+          <td style="padding:8px 10px">${esc(RFQ_STATUS[r.status] || r.status)}</td>
+          <td style="padding:8px 10px;color:var(--muted)">${esc(r.rfq_date || (r.created_at ? new Date(r.created_at).toLocaleDateString() : ''))}</td>
+          <td style="padding:8px 10px;text-align:right;white-space:nowrap">
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openRfqForm(${r.id})">Edit</button>
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="viewDocPdf('rfq',${r.id},'${escJs(r.rfq_no)}')">PDF</button>
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteRfq(${r.id})">Delete</button>
+          </td>
+        </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+async function openRfqForm(id, seedCustomerId) {
+  let rec;
+  if (id) rec = await apiFetch(`/api/dashboard/rfqs/${id}`).then(r => r.json());
+  else {
+    const qs = seedCustomerId ? `?customer_id=${encodeURIComponent(seedCustomerId)}` : '';
+    rec = await apiFetch('/api/dashboard/rfqs/new/defaults' + qs).then(r => r.json());
+  }
+  _rfqEditing = { id, rfq_no: rec.rfq_no };
+  const g = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;min-width:0';
+  showModal(id ? `RFQ ${rec.rfq_no}` : 'New RFQ', `
+    <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:14px;max-height:66vh;overflow-y:auto;padding-right:4px">
+      <div style="${g}">
+        <div><div class="po-lbl">ID</div><input id="rfq-no" class="form-input" value="${esc(rec.rfq_no || '')}" ${id ? 'readonly' : ''}></div>
+        <div><div class="po-lbl">Date</div><input id="rfq-date" class="form-input" type="date" value="${esc(rec.rfq_date || '')}"></div>
+        <div><div class="po-lbl">Issuer</div><input id="rfq-issuer" class="form-input" value="${esc(rec.issuer || '')}"></div>
+        <div><div class="po-lbl">Status</div><select id="rfq-status" class="form-input">
+          ${Object.entries(RFQ_STATUS).map(([k, l]) => `<option value="${k}" ${(rec.status || 'draft') === k ? 'selected' : ''}>${l}</option>`).join('')}
+        </select></div>
+        <div><div class="po-lbl">Lead <span style="color:var(--muted);font-weight:400">(attach)</span></div>
+          <select id="rfq-customer-id" class="form-input"><option value="">— No lead —</option></select></div>
+      </div>
+
+      <div>
+        <div class="po-lbl" style="margin-bottom:6px">Supplier</div>
+        <div style="${g}">
+          <div><div class="po-lbl">From register</div><select id="rfq-supplier-id" class="form-input" onchange="supplierFillFields(this.value,'rfq-')"></select></div>
+          <div><div class="po-lbl">Name</div><input id="rfq-supplier-name" class="form-input" value="${esc(rec.supplier_name || '')}"></div>
+          <div><div class="po-lbl">Contact</div><input id="rfq-supplier-contact" class="form-input" value="${esc(rec.supplier_contact || '')}"></div>
+          <div><div class="po-lbl">Address</div><input id="rfq-supplier-address" class="form-input" value="${esc(rec.supplier_address || '')}"></div>
+          <div><div class="po-lbl">Country of origin</div><input id="rfq-supplier-country" class="form-input" value="${esc(rec.supplier_country || '')}"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="po-lbl" style="margin-bottom:6px">Requested vehicles</div>
+        <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:10px">
+          <table style="border-collapse:collapse;font-size:12px;min-width:1080px">
+            <thead><tr>
+              <th class="po-th" style="width:34px">#</th>
+              ${RFQ_COLS.map(([, l, w]) => `<th class="po-th" style="min-width:${w}px">${esc(l)}</th>`).join('')}
+              <th class="po-th" style="width:38px"></th>
+            </tr></thead>
+            <tbody id="rfq-rows"></tbody>
+          </table>
+        </div>
+        <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="rfqAddRow()">+ Add line</button>
+      </div>
+
+      <div><div class="po-lbl">Payment Terms</div><textarea id="rfq-payment" class="form-input" rows="2">${esc(rec.payment_terms || '')}</textarea></div>
+      <div style="${g}">
+        <div><div class="po-lbl">Delivery Location</div><input id="rfq-delivery" class="form-input" value="${esc(rec.delivery_location || '')}"></div>
+        <div><div class="po-lbl">Service Provider</div><input id="rfq-service" class="form-input" value="${esc(rec.service_provider || '')}"></div>
+        <div><div class="po-lbl">Contact</div><input id="rfq-contact" class="form-input" value="${esc(rec.contact || '')}"></div>
+      </div>
+      <div><div class="po-lbl">Documents Required</div><textarea id="rfq-docs" class="form-input" rows="2">${esc(rec.documents_required || '')}</textarea></div>
+      <div id="rfq-err" class="error-msg" style="display:none"></div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+     <button class="btn btn-outline" onclick="saveRfq(true)">Save &amp; preview PDF</button>
+     <button class="btn btn-primary" onclick="saveRfq(false)">Save</button>`,
+    { wide: true });
+
+  (Array.isArray(rec.items) && rec.items.length ? rec.items : [{}]).forEach(rfqAddRow);
+  document.getElementById('rfq-supplier-id').innerHTML = await supplierOptionsHtml(rec.supplier_id);
+  await ctxPopulateLeadPicker('rfq-customer-id', rec.customer_id || seedCustomerId || null);
+}
+
+function rfqAddRow(it) {
+  const tbody = document.getElementById('rfq-rows');
+  if (!tbody) return;
+  const v = it || {};
+  const tr = document.createElement('tr');
+  tr.className = 'rfq-row';
+  const cell = (k) => k === 'accessories'
+    ? `<td class="po-td"><textarea class="form-input rfq-f" data-k="accessories" rows="2" style="font-size:11.5px;padding:5px 6px;resize:vertical">${esc(v.accessories || '')}</textarea></td>`
+    : `<td class="po-td"><input class="form-input rfq-f" data-k="${k}" ${k.endsWith('_price') ? 'type="number" min="0"' : ''} value="${esc(v[k] == null ? '' : String(v[k]))}" style="font-size:12px;padding:5px 6px"></td>`;
+  tr.innerHTML = `<td class="po-td rfq-no-cell" style="text-align:center;color:var(--muted)"></td>` +
+    RFQ_COLS.map(([k]) => cell(k)).join('') +
+    `<td class="po-td" style="text-align:center"><button class="btn btn-outline" style="padding:2px 7px;font-size:14px;color:var(--danger);border-color:var(--danger)" title="Remove">×</button></td>`;
+  tr.querySelector('button').onclick = () => { tr.remove(); rfqRenumber(); };
+  tbody.appendChild(tr);
+  rfqRenumber();
+}
+function rfqRenumber() {
+  [...document.querySelectorAll('.rfq-row')].forEach((r, i) => {
+    const c = r.querySelector('.rfq-no-cell'); if (c) c.textContent = i + 1;
+  });
+}
+function rfqCollect() {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  return {
+    rfq_no: val('rfq-no'), rfq_date: val('rfq-date') || null, issuer: val('rfq-issuer'),
+    status: val('rfq-status'), customer_id: val('rfq-customer-id') || null,
+    supplier_id: val('rfq-supplier-id') || null,
+    supplier_name: val('rfq-supplier-name'), supplier_contact: val('rfq-supplier-contact'),
+    supplier_address: val('rfq-supplier-address'), supplier_country: val('rfq-supplier-country'),
+    payment_terms: val('rfq-payment'), delivery_location: val('rfq-delivery'),
+    service_provider: val('rfq-service'), contact: val('rfq-contact'),
+    documents_required: val('rfq-docs'),
+    items: [...document.querySelectorAll('.rfq-row')].map(r => {
+      const o = {}; r.querySelectorAll('.rfq-f').forEach(el => { o[el.dataset.k] = el.value; }); return o;
+    }),
+  };
+}
+async function saveRfq(thenPreview) {
+  const payload = rfqCollect();
+  const err = document.getElementById('rfq-err');
+  const filled = payload.items.filter(it => it.brand || it.model || it.trim);
+  if (!filled.length) { err.textContent = 'Add at least one vehicle line (brand, model or trim).'; err.style.display = 'block'; return; }
+  payload.title = `${payload.supplier_name || 'RFQ'} — ${filled.length} vehicle(s)`;
+  const r = await apiFetch(_rfqEditing.id ? `/api/dashboard/rfqs/${_rfqEditing.id}` : '/api/dashboard/rfqs',
+    { method: _rfqEditing.id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+  const d = await r.json();
+  if (!r.ok) { err.textContent = d.error || 'Failed to save.'; err.style.display = 'block'; return; }
+  hideModal(); loadRfqs();
+  if (thenPreview) viewDocPdfPayload('/api/dashboard/rfqs/pdf', payload, payload.rfq_no);
+}
+async function deleteRfq(id) {
+  const r = _rfqCache.find(x => x.id === id);
+  if (!confirm(`Delete RFQ ${r ? r.rfq_no : ''}?`)) return;
+  await apiFetch(`/api/dashboard/rfqs/${id}`, { method: 'DELETE' });
+  loadRfqs();
+}
+// Lead drawer → RFQ prefilled from this lead.
+function ldGenerateRfq() {
+  if (!_ldProfile) return;
+  const cid = _ldProfile.customer.id;
+  closeLeadProfile(); navigate('rfqs'); openRfqForm(null, cid);
+}
+
+// Shared lead picker for document forms (contract / PO / RFQ all use the same list).
+async function ctxPopulateLeadPicker(selectId, selectedId) {
+  const pick = document.getElementById(selectId);
+  if (!pick) return;
+  try {
+    const leads = _allCustomers.length ? _allCustomers : await apiFetch('/api/dashboard/customers').then(r => r.json());
+    if (!Array.isArray(leads)) return;
+    if (!_allCustomers.length) _allCustomers = leads;
+    pick.innerHTML = '<option value="">— No lead —</option>' +
+      [...leads].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(l => `<option value="${l.id}">${esc(l.name)}${l.phone ? ' · ' + esc(l.phone) : ''}</option>`).join('');
+    if (selectedId) pick.value = String(selectedId);
+  } catch (_) {}
+}
+
+// ── Suppliers (Logistics & Shipping) ────────────────────────────────────────────
+let _suppliersCache = [];
+async function loadSuppliers() {
+  const body = document.getElementById('suppliers-list');
+  if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div> Loading suppliers…</div>';
+  let list = [];
+  try { list = await apiFetch('/api/dashboard/suppliers').then(r => r.json()); }
+  catch (_) { body.innerHTML = '<div class="error-msg">Failed to load suppliers.</div>'; return; }
+  if (list && list.error) {
+    body.innerHTML = `<div class="error-msg">${esc(list.error)}<br><span style="font-size:12px">If this mentions a missing <code>suppliers</code> table, run <code>migrations/003_logistics_deals_docs.sql</code>.</span></div>`;
+    return;
+  }
+  _suppliersCache = Array.isArray(list) ? list : [];
+  if (!_suppliersCache.length) {
+    body.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No suppliers yet.</div>';
+    return;
+  }
+  body.innerHTML = `
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+        <th style="padding:8px 10px">Name</th><th style="padding:8px 10px">Contact</th>
+        <th style="padding:8px 10px">Country</th><th style="padding:8px 10px">Address</th>
+        <th style="padding:8px 10px;text-align:right">Actions</th></tr></thead>
+      <tbody>${_suppliersCache.map(x => `
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px;font-weight:600">${esc(x.name)}</td>
+          <td style="padding:8px 10px">${esc(x.contact || '—')}</td>
+          <td style="padding:8px 10px">${esc(x.country || '—')}</td>
+          <td style="padding:8px 10px;color:var(--muted)">${esc(x.address || '')}</td>
+          <td style="padding:8px 10px;text-align:right;white-space:nowrap">
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openSupplierForm(${x.id})">Edit</button>
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteSupplier(${x.id})">Delete</button>
+          </td>
+        </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+function openSupplierForm(id) {
+  const x = id ? _suppliersCache.find(v => v.id === id) : null;
+  showModal(x ? 'Edit supplier' : 'Add supplier', `
+    <div style="display:grid;gap:12px">
+      <div><label class="form-label">Name *</label><input id="sup-name" class="form-input" value="${esc(x?.name || '')}"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label class="form-label">Contact</label><input id="sup-contact" class="form-input" value="${esc(x?.contact || '')}"></div>
+        <div><label class="form-label">Country of origin</label><input id="sup-country" class="form-input" value="${esc(x?.country || '')}"></div>
+      </div>
+      <div><label class="form-label">Address</label><input id="sup-address" class="form-input" value="${esc(x?.address || '')}"></div>
+      <div><label class="form-label">Notes</label><input id="sup-notes" class="form-input" value="${esc(x?.notes || '')}"></div>
+      <div id="sup-err" class="error-msg" style="display:none"></div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+     <button class="btn btn-primary" onclick="saveSupplier(${id || 'null'})">Save</button>`);
+}
+async function saveSupplier(id) {
+  const payload = {
+    name: document.getElementById('sup-name').value.trim(),
+    contact: document.getElementById('sup-contact').value.trim(),
+    country: document.getElementById('sup-country').value.trim(),
+    address: document.getElementById('sup-address').value.trim(),
+    notes: document.getElementById('sup-notes').value.trim(),
+  };
+  const err = document.getElementById('sup-err');
+  if (!payload.name) { err.textContent = 'Supplier name is required.'; err.style.display = 'block'; return; }
+  const r = await apiFetch(id ? `/api/dashboard/suppliers/${id}` : '/api/dashboard/suppliers',
+    { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+  const d = await r.json();
+  if (!r.ok) { err.textContent = d.error || 'Failed to save.'; err.style.display = 'block'; return; }
+  hideModal(); loadSuppliers();
+}
+async function deleteSupplier(id) {
+  const x = _suppliersCache.find(v => v.id === id);
+  if (!confirm(`Delete supplier ${x ? x.name : ''}?`)) return;
+  await apiFetch(`/api/dashboard/suppliers/${id}`, { method: 'DELETE' });
+  loadSuppliers();
+}
+// Shared <select> of suppliers; picking one fills the document's supplier block.
+async function supplierOptionsHtml(selectedId) {
+  if (!_suppliersCache.length) {
+    try { const l = await apiFetch('/api/dashboard/suppliers').then(r => r.json()); if (Array.isArray(l)) _suppliersCache = l; } catch (_) {}
+  }
+  return '<option value="">— None —</option>' + _suppliersCache
+    .map(x => `<option value="${x.id}" ${String(selectedId) === String(x.id) ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+}
+function supplierFillFields(selId, prefix) {
+  const x = _suppliersCache.find(v => String(v.id) === String(selId));
+  if (!x) return;
+  const set = (id, val) => { const el = document.getElementById(prefix + id); if (el) el.value = val || ''; };
+  set('supplier-name', x.name); set('supplier-contact', x.contact);
+  set('supplier-address', x.address); set('supplier-country', x.country);
+}
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
@@ -4825,7 +5460,7 @@ const EMP_CRM_ACTIONS = {
   quotation: [['draft','Draft & generate'],['history','History'],['settings','Settings'],['delete','Delete'],['attachLead','Attach to a lead']],
   reports:   [['leads','Custom Leads Report'],['sales','Sales & Revenue'],['export','Export CSV']],
 };
-const EMP_DEAL_STAGES = ['lead','contacted','quoted','negotiating','won','lost'];
+const EMP_DEAL_STAGES = ['lead','inquiry','quoted','negotiating','won','lost'];
 function empScopeStatusOpts() {
   try { const o = leadCol('lead_status')?.options; if (Array.isArray(o) && o.length) return o.map(x => [x.key, x.label]); } catch (_) {}
   return (typeof AM_LEAD_STATUSES !== 'undefined') ? AM_LEAD_STATUSES : [['cold','Cold'],['warm','Warm'],['hot','Hot']];
@@ -5748,7 +6383,7 @@ function adminChatRenderRoomList() {
     const unread = adminChatUnread.has(room.id) ? '<div class="chat-unread-dot"></div>' : '';
     return `<div class="chat-room-item${adminActiveChatRoom === room.id ? ' active' : ''}" onclick="adminChatOpenRoom(${room.id})" data-room="${room.id}">
       <div class="chat-room-avatar-wrap">
-        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${esc(init)}</div>
+        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${other?.member_avatar ? `<img src="${esc(other.member_avatar)}" alt="">` : esc(init)}</div>
         ${room.type === 'direct' ? `<div class="presence-dot" id="presence-dot-${room.id}"></div>` : ''}
       </div>
       <div class="chat-room-info">
@@ -5872,7 +6507,7 @@ function adminChatMsgHTML(msg) {
   ) : '';
   return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}" onclick="adminChatToggleActions(event)">
     ${actions}
-    ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
+    ${!mine ? `<div class="chat-msg-sender">${msg.sender_avatar ? `<img class="chat-msg-avatar" src="${esc(msg.sender_avatar)}" alt="">` : ''}${esc(msg.sender_name)}</div>` : ''}
     ${replyHTML}
     ${msg.body ? `<div class="chat-msg-bubble">${esc(msg.body)}${msg.edited_at ? '<span class="chat-edited">(edited)</span>' : ''}</div>` : ''}
     ${fileHTML}
@@ -7700,6 +8335,15 @@ function normKey(v, labels) {
 // A comparable value per column type: numbers/budget numeric, dates as epoch,
 // checkbox boolean, selects by their human label, everything else as text.
 // Empty values return null and always sort last (in both directions).
+// Buying-intent ranking for the Status column. Higher = hotter, so sorting
+// descending lists the most promising leads first. Closed/negative statuses are
+// pinned below everything, and any status not listed here lands in between.
+const LEAD_STATUS_RANK = {
+  hot: 100, immediate_delivery: 95, warm: 70, cold: 40,
+  awaiting_reply: 20, no_response: 15, not_interested: 10, blacklist: 0,
+};
+const LEAD_STATUS_UNRANKED = 30; // custom statuses: below cold, above the dead ones
+
 function leadSortValue(c, col) {
   const key = col.key;
   if (key === 'next_followup') { const d = _pendingFollowups[c.id]; return d ? new Date(d).getTime() : null; }
@@ -7709,9 +8353,17 @@ function leadSortValue(c, col) {
   if (key === 'lead_date' || col.type === 'date') { if (!raw) return null; const t = new Date(raw).getTime(); return isNaN(t) ? null : t; }
   if (col.type === 'checkbox') return isChecked(raw) ? 1 : 0;
   if (col.type === 'select' || col.type === 'radio') {
-    // Sort by the option's position in the column config (Cold→Warm→Hot…), not alphabetically.
     if (raw == null || raw === '') return null;
     const k = normKey(raw, colOptMap(col));
+    // Status sorts by buying intent, so "descending" puts the hottest leads on top
+    // rather than whichever option happens to sit last in the column config.
+    if (key === 'lead_status') {
+      const r = LEAD_STATUS_RANK[k];
+      if (r != null) return r;
+      const i = (col.options || []).findIndex(o => o.key === k);
+      return i >= 0 ? LEAD_STATUS_UNRANKED : null; // custom statuses sit between active and dead
+    }
+    // Every other select keeps its configured order (Cold→Warm→Hot…), not alphabetical.
     const idx = (col.options || []).findIndex(o => o.key === k);
     return idx >= 0 ? idx : null; // unknown/orphan values (e.g. pending_contact) sort last
   }
@@ -8112,7 +8764,9 @@ function ldGenerateQuote() {
     const vehEl = document.getElementById('qt-vehicle');
     if (nameEl && !nameEl.value) nameEl.value = c.name || '';
     if (nameEl && c.name) nameEl.value = c.name;
-    const vehName = c.car_in_question || (c.custom_fields && c.custom_fields.cf_vehicle_requested) || '';
+    // Quote the vehicle we OFFER; fall back to what the customer asked for.
+    const cfq = c.custom_fields || {};
+    const vehName = cfq.cf_vehicle_offered || c.car_in_question || cfq.cf_vehicle_requested || '';
     if (vehEl && vehName) vehEl.value = vehName;
     // Prefill the quotation's images from the attached inventory vehicle.
     const vehImgs = (c.custom_fields && Array.isArray(c.custom_fields.cf_vehicle_images)) ? c.custom_fields.cf_vehicle_images : [];
@@ -8123,7 +8777,7 @@ function ldGenerateQuote() {
     const vp = Number(c.custom_fields?.cf_vehicle_price) || 0;
     if (vp > 0 && typeof addPricingRow === 'function') {
       const ex = (typeof getExchange === 'function' ? getExchange() : 0);
-      addPricingRow(c.car_in_question || 'Vehicle', 1, ex > 0 ? Math.round(vp / ex) : vp);
+      addPricingRow(vehName || 'Vehicle', 1, ex > 0 ? Math.round(vp / ex) : vp);
     }
   }, 350);
 }
@@ -8174,14 +8828,14 @@ function fillLeadSelect(id, colKey, emptyLabel, rawValue) {
   sel.value = [...sel.options].some(o => o.value === k) ? k : (emptyLabel != null ? '' : (col.options?.[0]?.key || ''));
 }
 
-// Is this lead column the "vehicle requested" field? (built-in car_in_question, the
-// custom cf_vehicle_requested, or a column labelled Car / Vehicle / Vehicle Requested).
-// Deliberately excludes "Vehicle Offered".
+// Is this lead column the "vehicle offered" field — the one wired to the inventory
+// search? "Vehicle Requested" is what the customer asked for and stays free text;
+// "Vehicle Offered" is the car we actually propose, so it picks from our inventory.
 function isVehicleField(col) {
   const key = col?.key || '';
-  if (key === 'car_in_question' || key === 'cf_vehicle_requested') return true;
+  if (key === 'cf_vehicle_offered') return true;
   const lbl = (col?.label || '').trim().toLowerCase();
-  return lbl === 'vehicle requested' || lbl === 'car in question' || lbl === 'car' || lbl === 'vehicle';
+  return lbl === 'vehicle offered' || lbl === 'car offered' || lbl === 'offered vehicle';
 }
 // ── Vehicle inventory combobox (search the website inventory, attach to a lead) ──
 // Reusable across admin + employee lead modals. Fills the car text field and stashes
@@ -8246,7 +8900,8 @@ function openCustomerModal(id) {
   document.getElementById('cm-car').value = c?.car_in_question || '';
   document.getElementById('cm-car-price').value = (c?.custom_fields && c.custom_fields.cf_vehicle_price) || '';
   document.getElementById('cm-car-images').value = (c?.custom_fields && Array.isArray(c.custom_fields.cf_vehicle_images)) ? JSON.stringify(c.custom_fields.cf_vehicle_images) : '';
-  attachVehicleSearch('cm-car', 'cm-car-price', 'cm-car-results', '/api/dashboard/inventory/search', 'cm-car-hint', 'cm-car-images');
+  // 'Vehicle Requested' (car_in_question) is free text — the inventory picker now
+  // lives on the 'Vehicle Offered' column, attached below with the custom fields.
   document.getElementById('cm-budget').value = (c?.budget_max != null && c?.budget_max !== '') ? `${c.budget_lead}-${c.budget_max}` : (c?.budget_lead || '');
   document.getElementById('cm-been-contacted').checked = c?.been_contacted || false;
   // Owner (sales rep) picker
@@ -8448,9 +9103,9 @@ async function confirmDedupe() {
 }
 
 // ── Deals ─────────────────────────────────────────────────────────────────
-const DEAL_STAGES = ['lead','contacted','quoted','negotiating','won','lost'];
-const DEAL_STAGE_LABELS = { lead:'Lead', contacted:'Contacted', quoted:'Quoted', negotiating:'Negotiating', won:'Won', lost:'Lost' };
-const DEAL_STAGE_COLORS = { lead:'rgba(201,163,94,.15)', contacted:'rgba(124,106,255,.15)', quoted:'rgba(90,120,200,.15)', negotiating:'rgba(230,150,80,.15)', won:'rgba(100,180,120,.15)', lost:'rgba(239,68,68,.1)' };
+const DEAL_STAGES = ['lead','inquiry','quoted','negotiating','won','lost'];
+const DEAL_STAGE_LABELS = { lead:'Lead', inquiry:'Inquiry', quoted:'Quoted', negotiating:'Negotiating', won:'Won', lost:'Lost' };
+const DEAL_STAGE_COLORS = { lead:'rgba(201,163,94,.15)', inquiry:'rgba(124,106,255,.15)', quoted:'rgba(90,120,200,.15)', negotiating:'rgba(230,150,80,.15)', won:'rgba(100,180,120,.15)', lost:'rgba(239,68,68,.1)' };
 let _allDeals = [];
 let _dealsCustomerFilter = null;
 
@@ -8460,6 +9115,8 @@ async function loadDeals() {
     renderDealsKanban();
     await populateDealModalCustomers();
     await populateDealModalAssignees();
+    // Keep the active tab in sync (Inquiry reads the deals we just loaded)
+    dealsTab(_dealsTab);
   } catch (e) { document.getElementById('deals-kanban').innerHTML = `<div style="color:var(--danger);padding:24px">${esc(e.message)}</div>`; }
 }
 

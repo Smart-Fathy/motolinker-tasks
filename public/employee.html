@@ -303,6 +303,11 @@
   .chat-room-item.active { background:rgba(99,102,241,.14); }
   .chat-room-avatar { width:38px; height:38px; border-radius:50%; background:var(--primary); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#fff; flex-shrink:0; }
   .chat-room-avatar.grp { border-radius:10px; }
+  .chat-room-avatar img { width:100%; height:100%; border-radius:inherit; object-fit:cover; display:block; }
+  /* Sender profile picture shown above each incoming bubble */
+  .chat-msg-avatar { width:18px; height:18px; border-radius:50%; object-fit:cover; flex-shrink:0;
+                     border:1px solid rgba(255,255,255,.15); }
+  .chat-msg-sender { display:flex; align-items:center; gap:5px; }
   .chat-room-info { flex:1; min-width:0; }
   .chat-room-name { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .chat-room-preview { font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; }
@@ -1185,7 +1190,7 @@
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
             <div><label class="form-label">Stage</label>
               <select class="form-control" id="emd-stage">
-                <option value="lead">Lead</option><option value="contacted">Contacted</option><option value="quoted">Quoted</option>
+                <option value="lead">Lead</option><option value="inquiry">Contacted</option><option value="quoted">Quoted</option>
                 <option value="negotiating">Negotiating</option><option value="won">Won</option><option value="lost">Lost</option>
               </select>
             </div>
@@ -3486,24 +3491,27 @@ function ldGenerateQuote() {
     const nameEl = document.getElementById('emp-qt-name');
     const vehEl = document.getElementById('emp-qt-vehicle');
     if (nameEl) nameEl.value = c.name || '';
-    const vehName = c.car_in_question || (c.custom_fields && c.custom_fields.cf_vehicle_requested) || '';
+    // Quote the vehicle we OFFER; fall back to what the customer asked for.
+    const cfq = c.custom_fields || {};
+    const vehName = cfq.cf_vehicle_offered || c.car_in_question || cfq.cf_vehicle_requested || '';
     if (vehEl && vehName) vehEl.value = vehName;
     const vehImgs = (c.custom_fields && Array.isArray(c.custom_fields.cf_vehicle_images)) ? c.custom_fields.cf_vehicle_images : [];
     if (vehImgs.length && typeof empRenderImgPreviews === 'function') { empQtExistingImages = vehImgs.slice(0, 5); empRenderImgPreviews(); }
     const vp = Number(c.custom_fields?.cf_vehicle_price) || 0;
     if (vp > 0 && typeof empAddPricingRow === 'function') {
       const ex = (typeof empGetExchange === 'function' ? empGetExchange() : 0);
-      empAddPricingRow(c.car_in_question || 'Vehicle', 1, ex > 0 ? Math.round(vp / ex) : vp);
+      empAddPricingRow(vehName || 'Vehicle', 1, ex > 0 ? Math.round(vp / ex) : vp);
     }
   }, 150);
 }
 
-// Is this lead column the "vehicle requested" field? (excludes "Vehicle Offered")
+// Is this lead column the "vehicle offered" field — the one wired to the inventory
+// search? "Vehicle Requested" is what the customer asked for and stays free text.
 function isVehicleField(col) {
   const key = col?.key || '';
-  if (key === 'car_in_question' || key === 'cf_vehicle_requested') return true;
+  if (key === 'cf_vehicle_offered') return true;
   const lbl = (col?.label || '').trim().toLowerCase();
-  return lbl === 'vehicle requested' || lbl === 'car in question' || lbl === 'car' || lbl === 'vehicle';
+  return lbl === 'vehicle offered' || lbl === 'car offered' || lbl === 'offered vehicle';
 }
 // Vehicle inventory combobox for the employee lead modal (uses ef()).
 function empAttachVehicleSearch(inputId = 'eml-car', priceId = 'eml-car-price', resultsId = 'eml-car-results', hintId = 'eml-car-hint', imagesId = 'eml-car-images') {
@@ -3595,7 +3603,7 @@ function openEmpLeadModal(id) {
   }).join('');
   document.getElementById('eml-car-price').value = (c?.custom_fields && c.custom_fields.cf_vehicle_price) || '';
   document.getElementById('eml-car-images').value = (c?.custom_fields && Array.isArray(c.custom_fields.cf_vehicle_images)) ? JSON.stringify(c.custom_fields.cf_vehicle_images) : '';
-  empAttachVehicleSearch(); // static eml-car
+  // 'Vehicle Requested' (eml-car) is free text — the picker lives on 'Vehicle Offered'.
   custom.filter(isVehicleField).forEach(col => {
     const pe = document.getElementById('eml-cf-' + col.key + '-price'); if (pe) pe.value = (c?.custom_fields && c.custom_fields.cf_vehicle_price) || '';
     const ie = document.getElementById('eml-cf-' + col.key + '-images'); if (ie) ie.value = (c?.custom_fields && Array.isArray(c.custom_fields.cf_vehicle_images)) ? JSON.stringify(c.custom_fields.cf_vehicle_images) : '';
@@ -3660,8 +3668,8 @@ async function empRequestDeleteLead(id) {
 }
 
 /* ── CRM: Deals (actionable kanban) ── */
-const EMP_DEAL_STAGES = ['lead','contacted','quoted','negotiating','won','lost'];
-const EMP_DEAL_STAGE_LABELS = { lead:'Lead', contacted:'Contacted', quoted:'Quoted', negotiating:'Negotiating', won:'Won', lost:'Lost' };
+const EMP_DEAL_STAGES = ['lead','inquiry','quoted','negotiating','won','lost'];
+const EMP_DEAL_STAGE_LABELS = { lead:'Lead', inquiry:'Inquiry', quoted:'Quoted', negotiating:'Negotiating', won:'Won', lost:'Lost' };
 let _empDeals = [];
 let _empDragDealId = null;
 
@@ -4968,7 +4976,7 @@ function chatRenderRoomList() {
     const unread = chatUnread.has(room.id) ? '<div class="chat-unread-dot"></div>' : '';
     return `<div class="chat-room-item${activeChatRoomId === room.id ? ' active' : ''}" onclick="chatOpenRoom(${room.id})" data-room="${room.id}">
       <div class="chat-room-avatar-wrap">
-        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${esc(init)}</div>
+        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${other?.member_avatar ? `<img src="${esc(other.member_avatar)}" alt="">` : esc(init)}</div>
         ${room.type === 'direct' ? `<div class="presence-dot" id="presence-dot-${room.id}"></div>` : ''}
       </div>
       <div class="chat-room-info">
@@ -5091,7 +5099,7 @@ function chatMsgHTML(msg, myKey) {
   ) : '';
   return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}" onclick="chatToggleActions(event)">
     ${actions}
-    ${!mine ? `<div class="chat-msg-sender">${esc(msg.sender_name)}</div>` : ''}
+    ${!mine ? `<div class="chat-msg-sender">${msg.sender_avatar ? `<img class="chat-msg-avatar" src="${esc(msg.sender_avatar)}" alt="">` : ''}${esc(msg.sender_name)}</div>` : ''}
     ${replyHTML}
     ${msg.body ? `<div class="chat-msg-bubble">${esc(msg.body)}${msg.edited_at ? '<span class="chat-edited">(edited)</span>' : ''}</div>` : ''}
     ${fileHTML}

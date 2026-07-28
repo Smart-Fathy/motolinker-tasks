@@ -266,8 +266,8 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
 });
 
 // ─── Sales & revenue analytics (read-only aggregation over deals/quotations/hours) ───
-const DEFAULT_STAGE_PROB = { lead: 10, contacted: 25, quoted: 50, negotiating: 75, won: 100, lost: 0 };
-const DEAL_STAGES = ['lead', 'contacted', 'quoted', 'negotiating', 'won', 'lost'];
+const DEFAULT_STAGE_PROB = { lead: 10, inquiry: 25, quoted: 50, negotiating: 75, won: 100, lost: 0 };
+const DEAL_STAGES = ['lead', 'inquiry', 'quoted', 'negotiating', 'won', 'lost'];
 
 // Parse ?from&to (YYYY-MM-DD) into an inclusive [startISO, endISO] window; defaults to last 90 days.
 function reportRange(q) {
@@ -300,7 +300,7 @@ async function buildSalesReport(q) {
     const ds = rows.filter(d => d.stage === stage);
     return { stage, count: ds.length, value: ds.reduce((s, d) => s + num(d.budget_egp), 0) };
   });
-  const openStages = ['lead', 'contacted', 'quoted', 'negotiating'];
+  const openStages = ['lead', 'inquiry', 'quoted', 'negotiating'];
   const totalPipeline = pipelineByStage.filter(p => openStages.includes(p.stage)).reduce((s, p) => s + p.value, 0);
   const weightedPipeline = rows.filter(d => openStages.includes(d.stage))
     .reduce((s, d) => s + num(d.budget_egp) * (num(prob[d.stage]) / 100), 0);
@@ -309,7 +309,7 @@ async function buildSalesReport(q) {
   const revenueWon = wonRows.reduce((s, d) => s + num(d.budget_egp), 0);
   const winRate = (wonRows.length + lostCount) ? Math.round((wonRows.length / (wonRows.length + lostCount)) * 100) : 0;
   // Funnel: cumulative reach of each stage (a won deal also passed through lead/contacted/…)
-  const order = ['lead', 'contacted', 'quoted', 'negotiating', 'won'];
+  const order = ['lead', 'inquiry', 'quoted', 'negotiating', 'won'];
   const idx = (st) => order.indexOf(st);
   const funnel = order.map(stage => ({
     stage,
@@ -805,7 +805,7 @@ const STOCK_SPEC_FIELDS = [
   ['year',         'Year'],
 ];
 const STOCK_SPEC_KEYS = STOCK_SPEC_FIELDS.map(([k]) => k);
-const STOCK_CSV_HEADERS = ['make', 'model', 'trim', 'price', ...STOCK_SPEC_KEYS, 'colors', 'quantity', 'notes'];
+const STOCK_CSV_HEADERS = ['make', 'model', 'trim', 'price', ...STOCK_SPEC_KEYS, 'colors', 'units', 'quantity', 'notes'];
 
 // "White:3 | Black:2" (or "White:3,Black:2") → [{name:'White',qty:3},…]
 function parseStockColors(val) {
@@ -821,6 +821,30 @@ function parseStockColors(val) {
     const [name, qty] = part.split(':');
     return { name: String(name || '').trim(), qty: Math.max(0, parseInt(String(qty || '0').replace(/[^\d]/g, ''), 10) || 0) };
   }).filter(c => c.name);
+}
+
+// Individual physical cars held against a model row. Accepts the UI's array form
+// or a CSV cell like "VIN123:White:in_logistics | VIN124:Black:delivered".
+function parseStockUnits(val) {
+  const one = u => ({
+    consignee:  String(u.consignee  ?? '').trim(),
+    colour:     String(u.colour     ?? u.color ?? '').trim(),
+    vin:        String(u.vin        ?? '').trim().toUpperCase(),
+    status:     PO_LINE_STATUS_KEYS.includes(u.status) ? u.status : 'send_to_supplier',
+    price_list: Number(String(u.price_list ?? '').replace(/[^\d.]/g, '')) || 0,
+    discounted: Number(String(u.discounted ?? '').replace(/[^\d.]/g, '')) || 0,
+    logistics:  String(u.logistics  ?? '').trim(),
+    supplier:   String(u.supplier   ?? '').trim(),
+  });
+  if (Array.isArray(val)) {
+    return val.map(one).filter(u => u.vin || u.consignee || u.colour || u.supplier);
+  }
+  const s = String(val || '').trim();
+  if (!s) return [];
+  return s.split(/\s*\|\s*/).map(part => {
+    const [vin, colour, status] = part.split(':');
+    return one({ vin, colour, status: String(status || '').trim() });
+  }).filter(u => u.vin || u.colour);
 }
 
 function stockBuildRow(body) {
@@ -840,10 +864,12 @@ function stockBuildRow(body) {
   }
 
   const colors = parseStockColors(b.colors);
-  // Colours are authoritative for the total when present, otherwise use `quantity`.
+  const units = parseStockUnits(b.units);
+  // Quantity is derived, most specific source first: individual units → colour
+  // counts → the manually entered total.
   const qtyNum = parseInt(String(b.quantity ?? '').replace(/[^\d-]/g, ''), 10);
-  const quantity = colors.length
-    ? colors.reduce((s, c) => s + c.qty, 0)
+  const quantity = units.length ? units.length
+    : colors.length ? colors.reduce((s, c) => s + c.qty, 0)
     : ((isFinite(qtyNum) && qtyNum > 0) ? qtyNum : 0);
 
   return { row: {
@@ -851,7 +877,7 @@ function stockBuildRow(body) {
     trim: String(b.trim || '').trim(),
     price: (isFinite(priceNum) && priceNum > 0) ? priceNum : 0,
     quantity,
-    specs, colors,
+    specs, colors, units,
     notes: String(b.notes || '').trim(),
   } };
 }
@@ -860,8 +886,8 @@ function stockBuildRow(body) {
 // Detect that specific failure and retry without them so Car Stock keeps working.
 function isMissingColumnErr(err) {
   const m = String((err && (err.message || err.details)) || '');
-  return /column .*(specs|colors).* does not exist/i.test(m)
-      || /could not find the '(specs|colors)' column/i.test(m)
+  return /column .*(specs|colors|units).* does not exist/i.test(m)
+      || /could not find the '(specs|colors|units)' column/i.test(m)
       || err?.code === '42703' || err?.code === 'PGRST204';
 }
 async function stockWrite(row, id) {
@@ -871,7 +897,7 @@ async function stockWrite(row, id) {
   let res = await run(row);
   if (res.error && isMissingColumnErr(res.error)) {
     console.warn('[stock] specs/colors columns missing — apply migrations/001. Saving without them.');
-    const { specs, colors, ...rest } = row;
+    const { specs, colors, units, ...rest } = row;
     res = await run(rest);
   }
   return res;
@@ -909,12 +935,13 @@ receiver.router.delete('/api/dashboard/stock/:id', requireAuth, async (req, res)
 
 // Downloadable sample CSV template for bulk upload.
 receiver.router.get('/api/dashboard/stock/template.csv', requireAuth, (_req, res) => {
-  // colors = "Name:Qty | Name:Qty" — the total quantity is their sum.
+  // colors = "Name:Qty | Name:Qty"  ·  units = "VIN:Colour:Status | VIN:Colour:Status"
+  // Units win over colours for the total quantity; both may be left blank.
   const sample = [
     STOCK_CSV_HEADERS.join(','),
-    'BYD,Seal,Design,1950000,570,530,EV,RWD,Single-speed,82.5 kWh,180 km/h,150 kW,5,Sedan,2025,White:2 | Black:1,3,Immediate delivery',
-    'BYD,Seal,Excellence AWD,2250000,520,530,EV,AWD,Single-speed,82.5 kWh,180 km/h,150 kW,5,Sedan,2025,Grey:1,1,',
-    'Toyota,Corolla,GLI 1.6,1150000,,,Petrol,FWD,CVT,,180 km/h,,5,Sedan,2024,White:2 | Silver:2,4,',
+    '"BYD","Seal","Design",1950000,570,530,"EV","RWD","Single-speed","82.5 kWh","180 km/h","150 kW",5,"Sedan",2025,"White:2 | Black:1","LGXC76C41P0123456:White:in_logistics | LGXC76C41P0123457:White:delivered",,"Immediate delivery"',
+    '"BYD","Seal","Excellence AWD",2250000,520,530,"EV","AWD","Single-speed","82.5 kWh","180 km/h","150 kW",5,"Sedan",2025,"Grey:1",,1,',
+    '"Toyota","Corolla","GLI 1.6",1150000,,,"Petrol","FWD","CVT",,"180 km/h",,5,"Sedan",2024,"White:2 | Silver:2",,4,',
   ].join('\n');
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="car-stock-template.csv"');
@@ -938,11 +965,133 @@ receiver.router.post('/api/dashboard/stock/bulk', requireAuth, upload.single('fi
   if (error && isMissingColumnErr(error)) {
     console.warn('[stock] specs/colors columns missing — apply migrations/001. Importing without them.');
     ({ data, error } = await supabase.from('stock_vehicles')
-      .insert(inserts.map(({ specs, colors, ...rest }) => rest)).select());
+      .insert(inserts.map(({ specs, colors, units, ...rest }) => rest)).select());
   }
   if (error) return res.status(500).json({ error: error.message });
   res.json({ inserted: data.length, errors });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Suppliers (Logistics & Shipping) ──────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// The register behind the supplier pickers on RFQs, purchase orders and stock units.
+function supplierBuildRow(body) {
+  const b = body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return { error: 'Supplier name is required' };
+  return { row: {
+    name,
+    contact: String(b.contact || '').trim(),
+    address: String(b.address || '').trim(),
+    country: String(b.country || '').trim(),
+    notes:   String(b.notes || '').trim(),
+  } };
+}
+
+receiver.router.get('/api/dashboard/suppliers', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('suppliers').select('*').order('name', { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.post('/api/dashboard/suppliers', requireAuth, express.json(), async (req, res) => {
+  const { row, error: verr } = supplierBuildRow(req.body);
+  if (verr) return res.status(400).json({ error: verr });
+  row.created_by = 'dashboard';
+  const { data, error } = await supabase.from('suppliers').insert(row).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.put('/api/dashboard/suppliers/:id', requireAuth, express.json(), async (req, res) => {
+  const { row, error: verr } = supplierBuildRow(req.body);
+  if (verr) return res.status(400).json({ error: verr });
+  row.updated_at = new Date().toISOString();
+  const { data, error } = await supabase.from('suppliers').update(row).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.delete('/api/dashboard/suppliers/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('suppliers').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Sales (one sold car; the Deals → Sales tab) ───────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+const SALE_FIELDS = ['client', 'consignee', 'brand', 'model', 'trim', 'colour', 'vin', 'sales_name', 'payment_type', 'client_file'];
+const SALE_MONEY  = ['price_list', 'down_payment', 'discounted', 'remaining'];
+const SALE_DATES  = ['remaining_due', 'reservation_date', 'delivery_date'];
+
+function saleBuildRow(body) {
+  const b = body || {};
+  const row = {};
+  for (const k of SALE_FIELDS) row[k] = String(b[k] ?? '').trim();
+  for (const k of SALE_MONEY) row[k] = Number(String(b[k] ?? '').replace(/[^\d.]/g, '')) || 0;
+  for (const k of SALE_DATES) row[k] = String(b[k] ?? '').trim() || null;
+  row.status = PO_LINE_STATUS_KEYS.includes(b.status) ? b.status : 'send_to_supplier';
+  row.customer_id = b.customer_id ? parseInt(b.customer_id) : null;
+  if (b.deal_id !== undefined) row.deal_id = b.deal_id ? parseInt(b.deal_id) : null;
+  // Remaining defaults to what's actually left when the user hasn't typed one.
+  if (!row.remaining) row.remaining = Math.max(0, (row.discounted || row.price_list) - row.down_payment);
+  return { row };
+}
+
+receiver.router.get('/api/dashboard/sales', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('sales').select('*').order('created_at', { ascending: false }).limit(500);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+receiver.router.post('/api/dashboard/sales', requireAuth, express.json(), async (req, res) => {
+  const { row } = saleBuildRow(req.body);
+  row.created_by = 'dashboard';
+  const { data, error } = await supabase.from('sales').insert(row).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.put('/api/dashboard/sales/:id', requireAuth, express.json(), async (req, res) => {
+  const { row } = saleBuildRow(req.body);
+  row.updated_at = new Date().toISOString();
+  const { data, error } = await supabase.from('sales').update(row).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.delete('/api/dashboard/sales/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('sales').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// Won deal → open a sales record. Idempotent: one row per deal.
+async function autoCreateSaleForWonDeal(deal) {
+  if (!deal || deal.stage !== 'won') return null;
+  try {
+    const { data: existing } = await supabase.from('sales').select('id').eq('deal_id', deal.id).maybeSingle();
+    if (existing) return null;
+    const cust = deal.customer_id
+      ? await supabase.from('customers').select('*').eq('id', deal.customer_id).single().then(r => r.data)
+      : null;
+    const cf = (cust && cust.custom_fields) || {};
+    const car = String(cf.cf_vehicle_offered || deal.car_model || cf.cf_vehicle_requested || (cust && cust.car_in_question) || '').trim();
+    const bits = car.split(/\s+/).filter(Boolean);
+    const { row } = saleBuildRow({
+      deal_id: deal.id, customer_id: deal.customer_id || null,
+      client: (cust && cust.name) || '', consignee: (cust && cust.name) || '',
+      brand: bits[0] || '', model: bits.slice(1).join(' ') || '',
+      colour: cf.cf_color || '', price_list: deal.budget_egp || 0,
+    });
+    row.created_by = 'auto_won';
+    const { data, error } = await supabase.from('sales').insert(row).select().single();
+    if (error) { console.warn('[sales] auto-create failed:', error.message); return null; }
+    console.log('[sales] opened sale', data.id, 'for won deal', deal.id);
+    return data;
+  } catch (e) { console.warn('[sales] auto-create error:', e.message); return null; }
+}
 
 // ── CSV Bulk Upload ───────────────────────────────────────────────────────────
 function normalizeDate(str) {
@@ -2128,7 +2277,7 @@ const CSV_HEADER_ALIASES = {
   car: ['car','car_in_question','vehicle','car_model','model','interested_in','car_of_interest','vehicle_requested','requested_vehicle','vehicle_request','car_requested','requested_car','vehicle_of_interest','vehicle_needed','vehicle_model','vehicle_type','السيارة','العربية','الموديل','السياره','المركبة'],
   budget: ['budget','budget_lead','budget_egp','price','amount','value','الميزانية','السعر'],
   next_action: ['next_action','next_step','action','followup_action','الاجراء'],
-  been_contacted: ['been_contacted','contacted','is_contacted','has_been_contacted','تم_التواصل'],
+  been_contacted: ['been_contacted','inquiry','is_contacted','has_been_contacted','تم_التواصل'],
   sales_feedback: ['sales_feedback','feedback','sales_notes'],
   inquiry: ['inquiry','enquiry','question','الاستفسار'],
   assigned_to: ['assigned_to','owner','assignee','rep','sales_rep','salesperson','agent','sales','المسؤول','الموظف'],
@@ -2620,8 +2769,8 @@ receiver.router.put('/api/dashboard/deals/:id', requireAuth, express.json(), asy
   const { data, error } = await supabase.from('deals')
     .update(updates).eq('id', req.params.id).select('*, customers(name,phone,email,car_in_question,budget_lead)').single();
   if (error) return res.status(500).json({ error: error.message });
-  // Notify configured employee when deal moves to 'contacted'
-  if (updates.stage === 'contacted' && prev?.stage !== 'contacted') {
+  // Notify configured employee when deal moves to 'inquiry'
+  if (updates.stage === 'inquiry' && prev?.stage !== 'inquiry') {
     try {
       const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
       const settings = {};
@@ -2636,12 +2785,15 @@ receiver.router.put('/api/dashboard/deals/:id', requireAuth, express.json(), asy
   }
   // Timeline: log the stage move on the linked lead
   if (updates.stage && prev?.stage !== updates.stage && data.customer_id) {
-    const stageLabels = { lead: 'Lead', contacted: 'Contacted', quoted: 'Quoted', negotiating: 'Negotiating', won: 'Won', lost: 'Lost' };
+    const stageLabels = { lead: 'Lead', inquiry: 'Inquiry', quoted: 'Quoted', negotiating: 'Negotiating', won: 'Won', lost: 'Lost' };
     logLeadActivity(data.customer_id, { type: 'deal', body: `Deal moved to ${stageLabels[updates.stage] || updates.stage} — ${data.title}`, meta: { from: prev?.stage, to: updates.stage }, authorKey: 'admin', authorName: 'Admin' });
   }
   if (updates.stage && prev?.stage !== updates.stage) runAutomations('deal.stage_changed', { ...dealCtx(data), from: prev?.stage, to: updates.stage });
   // Won → draft the Arabic import contract (best-effort, never blocks the move)
-  if (updates.stage === 'won' && prev?.stage !== 'won') autoCreateContractForWonDeal(data);
+  if (updates.stage === 'won' && prev?.stage !== 'won') {
+    autoCreateContractForWonDeal(data);
+    autoCreateSaleForWonDeal(data);
+  }
   res.json(data);
 });
 
@@ -3121,7 +3273,13 @@ async function chatListRooms(callerKey) {
   });
   const lastMsgByRoom = {};
   (recentMsgs || []).forEach(m => { if (!lastMsgByRoom[m.room_id]) lastMsgByRoom[m.room_id] = m; });
-  return (rooms || []).map(r => ({ ...r, members: membersByRoom[r.id] || [], lastMessage: lastMsgByRoom[r.id] || null }));
+  // Attach profile pictures so the room list can show the peer's avatar
+  const avatars = await chatAvatarMap();
+  return (rooms || []).map(r => ({
+    ...r,
+    members: (membersByRoom[r.id] || []).map(m => ({ ...m, member_avatar: avatars[m.member_key] || null })),
+    lastMessage: lastMsgByRoom[r.id] || null,
+  }));
 }
 
 async function chatCreateOrGetDirect(callerKey, callerName, targetKey, targetName) {
@@ -3145,6 +3303,25 @@ async function chatCreateOrGetDirect(callerKey, callerName, targetKey, targetNam
   return room;
 }
 
+// ── Chat avatars ──────────────────────────────────────────────────────────────
+// Messages only store sender_key/sender_name, so resolve the profile picture from
+// the employee roster ("employee_<id>" keys; the admin account has none). Cached
+// for a minute — chat is polled/streamed constantly and the roster rarely changes.
+let _chatAvatars = { at: 0, map: {} };
+async function chatAvatarMap() {
+  if (Date.now() - _chatAvatars.at < 60000) return _chatAvatars.map;
+  const map = {};
+  try {
+    const { data } = await supabase.from('employees').select('id,avatar_url');
+    for (const e of data || []) if (e.avatar_url) map['employee_' + e.id] = e.avatar_url;
+  } catch (e) { console.warn('[chat] avatar map failed:', e.message); }
+  _chatAvatars = { at: Date.now(), map };
+  return map;
+}
+function withSenderAvatars(rows, map) {
+  return (rows || []).map(m => ({ ...m, sender_avatar: map[m.sender_key] || null }));
+}
+
 async function chatGetMessages(req, res, callerKey) {
   const roomId = parseInt(req.params.roomId);
   const { data: member } = await supabase.from('chat_room_members').select('room_id').eq('room_id', roomId).eq('member_key', callerKey).single();
@@ -3154,7 +3331,7 @@ async function chatGetMessages(req, res, callerKey) {
   if (before) query = query.lt('created_at', before);
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
-  res.json((data || []).reverse());
+  res.json(withSenderAvatars((data || []).reverse(), await chatAvatarMap()));
 }
 
 async function chatSendMessage(req, res, callerKey, callerName) {
@@ -3167,8 +3344,9 @@ async function chatSendMessage(req, res, callerKey, callerName) {
   if (file_url)  { insert.file_url = file_url; insert.file_name = file_name || ''; insert.file_size = file_size || null; insert.file_type = file_type || ''; }
   if (reply_to_id) { insert.reply_to_id = reply_to_id; insert.reply_to_sender = reply_to_sender || ''; insert.reply_to_body = (reply_to_body || '').slice(0, 200); }
   if (voice_duration) insert.voice_duration = parseInt(voice_duration);
-  const { data: msg, error } = await supabase.from('chat_messages').insert(insert).select().single();
+  const { data: inserted, error } = await supabase.from('chat_messages').insert(insert).select().single();
   if (error) return res.status(500).json({ error: error.message });
+  const msg = { ...inserted, sender_avatar: (await chatAvatarMap())[callerKey] || null };
   const { data: members } = await supabase.from('chat_room_members').select('member_key').eq('room_id', roomId);
   const recipientKeys = (members || []).map(m => m.member_key).filter(k => k !== callerKey);
   // Exclude sender from broadcast — sender already has the message from the HTTP response
@@ -3760,7 +3938,7 @@ receiver.router.put('/api/employee/deals/:id', requireEmployeeAuth, express.json
   const { data, error } = await supabase.from('deals')
     .update(updates).eq('id', req.params.id).select('*, customers(name,phone,email,car_in_question,budget_lead)').single();
   if (error) return res.status(500).json({ error: error.message });
-  if (updates.stage === 'contacted' && prev?.stage !== 'contacted') {
+  if (updates.stage === 'inquiry' && prev?.stage !== 'inquiry') {
     try {
       const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
       const settings = {}; for (const row of settingsRows || []) settings[row.key] = row.value;
@@ -3773,12 +3951,15 @@ receiver.router.put('/api/employee/deals/:id', requireEmployeeAuth, express.json
     } catch (e) { console.warn('[emp-deals] notify-contacted failed:', e.message); }
   }
   if (updates.stage && prev?.stage !== updates.stage && data.customer_id) {
-    const stageLabels = { lead: 'Lead', contacted: 'Contacted', quoted: 'Quoted', negotiating: 'Negotiating', won: 'Won', lost: 'Lost' };
+    const stageLabels = { lead: 'Lead', inquiry: 'Inquiry', quoted: 'Quoted', negotiating: 'Negotiating', won: 'Won', lost: 'Lost' };
     logLeadActivity(data.customer_id, { type: 'deal', body: `Deal moved to ${stageLabels[updates.stage] || updates.stage} — ${data.title}`, meta: { from: prev?.stage, to: updates.stage }, authorKey: `employee_${req.employee.id}`, authorName: req.employee.name });
   }
   if (updates.stage && prev?.stage !== updates.stage) runAutomations('deal.stage_changed', { ...dealCtx(data), from: prev?.stage, to: updates.stage });
   // Won → draft the Arabic import contract (best-effort, never blocks the move)
-  if (updates.stage === 'won' && prev?.stage !== 'won') autoCreateContractForWonDeal(data);
+  if (updates.stage === 'won' && prev?.stage !== 'won') {
+    autoCreateContractForWonDeal(data);
+    autoCreateSaleForWonDeal(data);
+  }
   res.json(data);
 });
 
@@ -4071,7 +4252,7 @@ function contractDefaults({ customer, deal, settings, vehicle }) {
   const amount = d.budget_egp || cf.cf_vehicle_price || '';
   // The lead's requested vehicle is free text ("BYD Seal Design") — split it so
   // make/model land in their own rows, exactly like the paper form.
-  const carText = String(vehicle || cf.cf_vehicle_requested || c.car_in_question || '').trim();
+  const carText = String(vehicle || cf.cf_vehicle_offered || cf.cf_vehicle_requested || c.car_in_question || '').trim();
   const carBits = carText.split(/\s+/).filter(Boolean);
   return {
     contractDate: { day: AR_WEEKDAYS[now.getDay()], d: String(now.getDate()).padStart(2, '0'), m: String(now.getMonth() + 1).padStart(2, '0'), y: String(now.getFullYear()) },
@@ -4459,6 +4640,19 @@ function poBuildRow(body) {
     items,
     customer_id: b.customer_id ? parseInt(b.customer_id) : null,
     status:    PO_STATUSES.includes(b.status) ? b.status : 'draft',
+    // Letterhead fields (supplier block + delivery terms) — see buildPurchaseOrderHtml
+    supplier_id:        b.supplier_id ? parseInt(b.supplier_id) : null,
+    supplier_contact:   String(b.supplier_contact || '').trim(),
+    supplier_address:   String(b.supplier_address || '').trim(),
+    supplier_country:   String(b.supplier_country || '').trim(),
+    issuer:             String(b.issuer || '').trim(),
+    quote_id:           String(b.quote_id || '').trim(),
+    incoterm:           String(b.incoterm || 'FOB').trim(),
+    delivery_location:  String(b.delivery_location || '').trim(),
+    service_provider:   String(b.service_provider || '').trim(),
+    contact:            String(b.contact || '').trim(),
+    documents_required: String(b.documents_required || '').trim(),
+    payment_terms:      String(b.payment_terms || '').trim(),
   };
 }
 function poTotal(items) {
@@ -4483,7 +4677,7 @@ receiver.router.get('/api/dashboard/purchase-orders/new/defaults', requireAuth, 
     const item = poBuildItem({});
     if (cust) {
       const cf = cust.custom_fields || {};
-      const car = String(cf.cf_vehicle_requested || cust.car_in_question || '').trim();
+      const car = String(cf.cf_vehicle_offered || cf.cf_vehicle_requested || cust.car_in_question || '').trim();
       const bits = car.split(/\s+/).filter(Boolean);
       item.client = cust.name || '';
       item.consignee = cust.name || '';
@@ -4543,8 +4737,8 @@ receiver.router.post('/api/dashboard/purchase-orders/pdf', requireAuth, express.
     const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
     const settings = {};
     for (const r of settingsRows || []) settings[r.key] = r.value;
-    const html = buildPurchaseOrderHtml({ ...poBuildRow(req.body), settings });
-    const pdf = await renderQuotationPdf(html, { landscape: true });
+    const html = buildPurchaseOrderHtml({ ...req.body, ...poBuildRow(req.body), settings });
+    const pdf = await renderQuotationPdf(html);   // portrait A4, like the paper form
     res.json({ pdf: Buffer.from(pdf).toString('base64') });
   } catch (e) {
     console.error('[po-pdf]', e);
@@ -4560,7 +4754,7 @@ receiver.router.post('/api/dashboard/purchase-orders/:id/pdf', requireAuth, asyn
     const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
     const settings = {};
     for (const s of settingsRows || []) settings[s.key] = s.value;
-    const pdf = await renderQuotationPdf(buildPurchaseOrderHtml({ ...row, settings }), { landscape: true });
+    const pdf = await renderQuotationPdf(buildPurchaseOrderHtml({ ...row, settings }));
     res.json({ pdf: Buffer.from(pdf).toString('base64'), name: row.po_number || 'purchase-order' });
   } catch (e) {
     console.error('[po-pdf-id]', e);
@@ -4568,116 +4762,369 @@ receiver.router.post('/api/dashboard/purchase-orders/:id/pdf', requireAuth, asyn
   }
 });
 
-// Landscape A4 sheet reproducing the ordering table, on company letterhead.
+// ── Shared letterhead chrome for supplier-facing documents (RFQ + PO) ─────────
+// Both reproduce the company's real forms: logo, title, ID/Date/Issuer box, a
+// Supplier Details block, the item grid, then Payment and Delivery Terms.
+function docChromeCss(T) {
+  const GOLD = T.accent, INK = T.ink, SOFT = T.soft;
+  return `
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:Arial,Helvetica,sans-serif; font-size:9.5px; color:${INK}; background:#fff; }
+  .page { width:794px; min-height:1123px; padding:22px 26px 96px; position:relative; }
+  .head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:10px; }
+  .head img { max-height:44px; width:auto; display:block; }
+  .title { font-family:${T.titleFont}; font-size:20px; font-weight:900; letter-spacing:${T.titleSpacing};
+           color:${INK}; text-align:center; flex:1; padding-top:8px; }
+  table.meta { border-collapse:collapse; }
+  table.meta td { border:1px solid ${GOLD}; padding:3px 9px; font-size:9px; }
+  table.meta .k { background:${SOFT}; font-weight:700; white-space:nowrap; }
+  table.meta .v { font-weight:700; color:#c00; min-width:108px; }
+  .sec { margin-top:12px; border:1px solid ${GOLD}; }
+  .sec-h { background:${SOFT}; font-family:${T.titleFont}; font-weight:800; font-size:11px;
+           padding:5px 10px; border-bottom:1px solid ${GOLD}; }
+  .sec-b { padding:8px 10px; line-height:1.9; }
+  table.kv { width:100%; border-collapse:collapse; }
+  table.kv td { border:1px solid ${GOLD}; padding:4px 9px; font-size:9.5px; }
+  table.kv td:first-child { width:26%; font-weight:700; background:#fafafa; }
+  table.grid { width:100%; border-collapse:collapse; table-layout:fixed; margin-top:12px; }
+  table.grid th { background:${INK}; color:#fff; font-family:${T.titleFont}; font-size:8.5px;
+                  padding:6px 4px; border:1px solid ${GOLD}; text-align:center; }
+  table.grid td { border:1px solid ${GOLD}; padding:6px 5px; vertical-align:middle; word-wrap:break-word; min-height:26px; }
+  td.c { text-align:center; } td.r { text-align:right; }
+  td.acc { font-size:8px; line-height:1.5; text-align:center; font-weight:700; color:${INK}; }
+  .tot td { background:${SOFT}; font-weight:800; font-size:10.5px; }
+  .red { color:#c00; font-weight:700; }
+  .foot { position:absolute; left:26px; right:26px; bottom:14px; display:flex; align-items:flex-end;
+          justify-content:space-between; gap:12px; font-size:7.6px; color:#333; line-height:1.65;
+          border-top:2px solid ${GOLD}; padding-top:7px; }
+  .foot img { max-height:30px; width:auto; }`;
+}
+function docFooterHtml(s) {
+  return `<div class="foot">
+    <div>
+      <div><b>Address:</b> ${escHtml(s.company_address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo')}</div>
+      <div><b>Email:</b> ${escHtml(s.company_email || 'info@motolinkers.com')}</div>
+      <div><b>Website:</b> ${escHtml(s.company_website || 'Motolinkers.com')}</div>
+      <div><b>Phone:</b> ${escHtml(s.company_phone || '+2 010 000 78104')}</div>
+      <div><b>TAX ID:</b> ${escHtml(s.company_tax_id || '773934006')}</div>
+      <div><b>Registration No:</b> ${escHtml(s.company_reg_no || '282378')}</div>
+    </div>
+    <img src="${BRAND_LOGO_URL}">
+  </div>`;
+}
+function docSupplierBlock(d) {
+  return `<div class="sec">
+    <div class="sec-h">Supplier Details</div>
+    <table class="kv">
+      <tr><td>Name</td><td>${escHtml(d.supplier_name || d.supplier || '')}</td></tr>
+      <tr><td>Contact</td><td>${escHtml(d.supplier_contact || '')}</td></tr>
+      <tr><td>Address</td><td>${escHtml(d.supplier_address || '')}</td></tr>
+      <tr><td>Country of Origin</td><td>${escHtml(d.supplier_country || '')}</td></tr>
+    </table>
+  </div>`;
+}
+const DOC_DEFAULT_PAYMENT_TERMS =
+  '30% deposit to confirm the order\n70% balance due after the vehicle arrives in XXXXX (VIN code and PDI vehicle video and document to be provided for confirmation)';
+const DOC_DEFAULT_DOCUMENTS =
+  'MSDS / UN3.8 / Commercial Invoice / Shipping order / Packing List / Temporary Licence and Plate / Sales contract / Export Licence / SGS PDI or Certificate of Conformity (CoC) / CIF ONLY ( B/L / Telex Release / Insurance Policy)';
+const DOC_DEFAULT_ACCESSORIES =
+  'English system , wall mount charging cable , floor mats, tires repairing kit , electric pump';
+
+// Highlight the placeholder tokens the team fills in by hand, like the paper form.
+function docRedify(text) {
+  return escHtml(text).replace(/\n/g, '<br>')
+    .replace(/(X{3,}\s*(?:Port)?|CIF ONLY[^<]*)/gi, m => `<span class="red">${m}</span>`);
+}
+function docTermsHtml(d, opts) {
+  const o = opts || {};
+  return `
+  <div class="sec">
+    <div class="sec-h">Payment Terms</div>
+    <div class="sec-b">${docRedify(d.payment_terms || DOC_DEFAULT_PAYMENT_TERMS)}</div>
+  </div>
+  <div class="sec">
+    <div class="sec-h">Delivery Terms</div>
+    <table class="kv">
+      ${o.incoterm ? `<tr><td>Incoterm</td><td class="red">${escHtml(d.incoterm || 'FOB')}</td></tr>` : ''}
+      <tr><td>Delivery Location</td><td class="red">${escHtml(d.delivery_location || '')}</td></tr>
+      <tr><td>Service Provider</td><td class="red">${escHtml(d.service_provider || '')}</td></tr>
+      <tr><td>Contact</td><td class="red">${escHtml(d.contact || '')}</td></tr>
+      <tr><td>Documents Required</td><td>${docRedify(d.documents_required || DOC_DEFAULT_DOCUMENTS)}</td></tr>
+    </table>
+  </div>`;
+}
+
+// A4 portrait Purchase Order on company letterhead (matches the printed form).
 function buildPurchaseOrderHtml(po) {
   const s = po.settings || {};
   const T = quoteTheme(po.template);
-  const GOLD = T.accent, INK = T.ink, SOFT = T.soft;
-  const cur = escHtml(po.currency || 'USD');
   const money = n => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   const items = po.items || [];
-  const totalUnits = items.reduce((a, it) => a + (Number(it.units) || 1), 0);
-
-  const rows = items.map((it, i) => {
-    const st = poLineStatus(it.status);
-    return `<tr style="${i % 2 ? `background:${T.zebra}` : ''}">
+  const cur = escHtml(po.currency || 'USD');
+  // Always print at least 5 rows so the form looks like the paper original.
+  const padded = items.concat(Array.from({ length: Math.max(0, 5 - items.length) }, () => null));
+  const rows = padded.map((it, i) => {
+    if (!it) return `<tr><td class="c">&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+    const qty = Number(it.units) || 1;
+    const price = Number(it.pi_price) || 0;
+    return `<tr>
       <td class="c">${i + 1}</td>
       <td>${escHtml(it.client)}</td>
-      <td>${escHtml(it.consignee)}</td>
-      <td class="c">${Number(it.units) || 1}</td>
       <td class="c">${escHtml(it.brand)}</td>
       <td>${escHtml(it.model)}</td>
       <td>${escHtml(it.trim)}</td>
       <td>${escHtml(it.color)}</td>
       <td class="c">${escHtml(it.year)}</td>
-      <td class="acc">${escHtml(it.accessories).replace(/\n/g, '<br>')}</td>
-      <td>${escHtml(it.payment_term)}</td>
-      <td class="r">${it.pi_price ? cur + ' ' + money(it.pi_price) : ''}</td>
-      <td class="c"><span class="pill" style="background:${st.bg};color:${st.fg}">${escHtml(st.label)}</span></td>
-      <td class="c mono">${escHtml(it.vin)}</td>
-      <td class="c">${it.file_link ? `<a href="${escHtml(it.file_link)}">link</a>` : ''}</td>
+      <td class="acc">${escHtml(it.accessories || DOC_DEFAULT_ACCESSORIES).replace(/\n/g, '<br>')}</td>
+      <td class="c">${qty}</td>
+      <td class="r">${price ? cur + ' ' + money(price) : ''}</td>
+      <td class="r">${price ? cur + ' ' + money(price * qty) : ''}</td>
     </tr>`;
   }).join('');
 
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8">${T.fontLink}
-<style>
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:Arial,Helvetica,sans-serif; font-size:9px; color:${INK}; background:#fff; }
-  .page { width:1123px; min-height:794px; padding:20px 24px 70px; position:relative; }
-  .head { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-  .head img { max-height:52px; width:auto; display:block; }
-  .title { font-family:${T.titleFont}; font-size:22px; font-weight:900; letter-spacing:${T.titleSpacing}; color:${INK}; }
-  .meta { border-collapse:collapse; }
-  .meta td { border:1px solid ${GOLD}; padding:3px 8px; font-size:9px; }
-  .meta .k { background:${SOFT}; font-weight:700; white-space:nowrap; }
-  .meta .v { font-weight:700; color:${T.meta}; min-width:96px; }
-  .rule { border-top:2px solid ${GOLD}; margin:10px 0; }
-  table.grid { width:100%; border-collapse:collapse; table-layout:fixed; }
-  table.grid th { background:${INK}; color:#fff; font-family:${T.titleFont}; font-size:8.5px;
-    padding:6px 4px; border:1px solid ${GOLD}; text-align:center; }
-  table.grid td { border:1px solid ${GOLD}; padding:5px 5px; vertical-align:middle; word-wrap:break-word; }
-  td.c { text-align:center; } td.r { text-align:right; }
-  td.mono { font-family:'Courier New',monospace; font-size:7.5px; letter-spacing:-.2px; }
-  td.acc { font-size:8px; line-height:1.45; }
-  .pill { display:inline-block; padding:2px 7px; border-radius:9px; font-size:8px; font-weight:700;
-    line-height:1.5; max-width:100%; }
-  .tot td { background:${SOFT}; font-weight:700; border:1px solid ${GOLD}; padding:6px 5px; font-size:10px; }
-  .notes { margin-top:10px; border:1px solid ${GOLD}; padding:8px 12px; font-size:9px; line-height:1.7; }
-  .sign { margin-top:16px; display:flex; gap:40px; }
-  .sign div { flex:1; border-top:1px solid ${INK}; padding-top:5px; font-size:9px; }
-  .foot { position:absolute; left:24px; right:24px; bottom:16px; border-top:2px solid ${GOLD};
-    padding-top:7px; display:flex; justify-content:space-between; align-items:center; font-size:8px; color:#777; }
-</style></head><body>
+<style>${docChromeCss(T)}</style></head><body>
 <div class="page">
   <div class="head">
     <img src="${BRAND_LOGO_URL}">
-    <div class="title">PURCHASE ORDER</div>
+    <div class="title">Purchase Order</div>
     <table class="meta">
-      <tr><td class="k">PO No.</td><td class="v">${escHtml(po.po_number || '')}</td></tr>
-      <tr><td class="k">DATE</td><td class="v">${escHtml(po.po_date || '')}</td></tr>
-      <tr><td class="k">SUPPLIER</td><td class="v">${escHtml(po.supplier || '')}</td></tr>
-      <tr><td class="k">CURRENCY</td><td class="v">${cur}</td></tr>
+      <tr><td class="k">ID</td><td class="v">${escHtml(po.quote_id || po.po_number || '')}</td></tr>
+      <tr><td class="k">Date</td><td class="v">${escHtml(po.po_date || '')}</td></tr>
+      <tr><td class="k">Issuer</td><td class="v">${escHtml(po.issuer || '')}</td></tr>
     </table>
   </div>
-  <div class="rule"></div>
+
+  ${docSupplierBlock(po)}
 
   <table class="grid">
-    <!-- widths sum to 1072px = the 1123px page minus its 24px side padding -->
     <colgroup>
-      <col style="width:24px"><col style="width:100px"><col style="width:100px"><col style="width:32px">
-      <col style="width:44px"><col style="width:58px"><col style="width:68px"><col style="width:94px">
-      <col style="width:34px"><col style="width:134px"><col style="width:74px"><col style="width:62px">
-      <col style="width:102px"><col style="width:90px"><col style="width:56px">
+      <col style="width:26px"><col style="width:86px"><col style="width:52px"><col style="width:62px">
+      <col style="width:52px"><col style="width:86px"><col style="width:34px"><col style="width:132px">
+      <col style="width:30px"><col style="width:72px"><col style="width:78px">
     </colgroup>
     <thead><tr>
-      <th>No</th><th>CLIENT</th><th>CONSIGNEE</th><th>UNITS</th><th>BRAND</th><th>MODEL</th><th>TRIM</th>
-      <th>COLOR EXT / INT</th><th>YEAR</th><th>ACCESSORIES / REMARKS</th><th>PAYMENT TERM</th>
-      <th>PI PRICE</th><th>STATUS</th><th>VIN</th><th>Client file Link</th>
+      <th>No</th><th>CLIENT</th><th>BRAND</th><th>MODEL</th><th>TRIM</th><th>COLOR EXT / INT</th>
+      <th>YEAR</th><th>ACCESSORIES / REMARKS</th><th>QTY</th><th>PRICE</th><th>TOTAL</th>
     </tr></thead>
     <tbody>
-      ${rows || `<tr><td colspan="15" class="c" style="padding:16px;color:#999">No vehicle lines</td></tr>`}
-      <tr class="tot">
-        <td colspan="3" style="text-align:right">TOTAL</td>
-        <td class="c">${totalUnits}</td>
-        <td colspan="7"></td>
-        <td class="r">${cur} ${money(poTotal(items))}</td>
-        <td colspan="3"></td>
-      </tr>
+      ${rows}
+      <tr class="tot"><td colspan="10" class="r">TOTAL</td><td class="r">${cur} ${money(poTotal(items))}</td></tr>
     </tbody>
   </table>
 
-  ${po.notes ? `<div class="notes"><strong>Notes:</strong> ${escHtml(po.notes).replace(/\n/g, '<br>')}</div>` : ''}
+  ${po.notes ? `<div class="sec"><div class="sec-h">Notes</div><div class="sec-b">${escHtml(po.notes).replace(/\n/g, '<br>')}</div></div>` : ''}
+  ${docTermsHtml(po, { incoterm: true })}
 
-  <div class="sign">
-    <div>Prepared by — ${escHtml(s.company_name || 'MOTOLINKERS')}</div>
-    <div>Supplier confirmation / stamp</div>
+  ${docFooterHtml(s)}
+</div>
+</body></html>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── RFQ — Request for Quotation (sent to suppliers) ───────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+const RFQ_STATUSES = ['draft', 'sent', 'answered', 'closed'];
+
+function generateRfqNo() {
+  const now = new Date();
+  const week = String(getIsoWeek(now)).padStart(2, '0');
+  const rand = String(Math.floor(Math.random() * 900) + 100);
+  return `MT${week}W${rand}Y${String(now.getFullYear()).slice(-2)}`;
+}
+
+function rfqBuildItem(raw) {
+  const r = raw || {};
+  const money = v => Number(String(v ?? '').replace(/[^\d.]/g, '')) || 0;
+  return {
+    brand:       String(r.brand || '').trim(),
+    model:       String(r.model || '').trim(),
+    trim:        String(r.trim || '').trim(),
+    colour:      String(r.colour || r.color || '').trim(),
+    year:        String(r.year || '').trim(),
+    accessories: String(r.accessories || '').trim() || DOC_DEFAULT_ACCESSORIES,
+    lead_time:   String(r.lead_time || '').trim(),
+    fob_price:   money(r.fob_price),
+    cif_price:   money(r.cif_price),
+  };
+}
+
+function rfqBuildRow(body) {
+  const b = body || {};
+  const items = (Array.isArray(b.items) ? b.items : []).map(rfqBuildItem)
+    .filter(it => it.brand || it.model || it.trim || it.fob_price || it.cif_price);
+  return {
+    rfq_no:  String(b.rfq_no || '').trim() || generateRfqNo(),
+    title:   String(b.title || '').trim(),
+    supplier_id:      b.supplier_id ? parseInt(b.supplier_id) : null,
+    supplier_name:    String(b.supplier_name || '').trim(),
+    supplier_contact: String(b.supplier_contact || '').trim(),
+    supplier_address: String(b.supplier_address || '').trim(),
+    supplier_country: String(b.supplier_country || '').trim(),
+    issuer:   String(b.issuer || '').trim(),
+    rfq_date: String(b.rfq_date || '').trim() || null,
+    items,
+    payment_terms:      String(b.payment_terms || '').trim(),
+    delivery_location:  String(b.delivery_location || '').trim(),
+    service_provider:   String(b.service_provider || '').trim(),
+    contact:            String(b.contact || '').trim(),
+    documents_required: String(b.documents_required || '').trim(),
+    customer_id: b.customer_id ? parseInt(b.customer_id) : null,
+    status: RFQ_STATUSES.includes(b.status) ? b.status : 'draft',
+  };
+}
+
+receiver.router.get('/api/dashboard/rfqs', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('rfqs')
+    .select('id,rfq_no,title,supplier_name,issuer,rfq_date,status,customer_id,items,created_by,created_at')
+    .order('created_at', { ascending: false }).limit(200);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// Prefill a new RFQ from a lead — same contract as the contract/PO defaults.
+receiver.router.get('/api/dashboard/rfqs/new/defaults', requireAuth, async (req, res) => {
+  try {
+    const customerId = req.query.customer_id ? parseInt(req.query.customer_id) : null;
+    const cust = customerId
+      ? await supabase.from('customers').select('*').eq('id', customerId).single().then(r => r.data)
+      : null;
+    const item = rfqBuildItem({});
+    if (cust) {
+      const cf = cust.custom_fields || {};
+      const car = String(cf.cf_vehicle_offered || cf.cf_vehicle_requested || cust.car_in_question || '').trim();
+      const bits = car.split(/\s+/).filter(Boolean);
+      item.brand = bits[0] || '';
+      item.model = bits.slice(1).join(' ') || '';
+      item.colour = cf.cf_color || '';
+      item.year = cf.cf_year || '';
+    }
+    // Eight blank lines, matching the printed form.
+    const items = [item, ...Array.from({ length: 7 }, () => rfqBuildItem({}))];
+    res.json({
+      rfq_no: generateRfqNo(),
+      rfq_date: new Date().toISOString().slice(0, 10),
+      items,
+      payment_terms: DOC_DEFAULT_PAYMENT_TERMS,
+      documents_required: DOC_DEFAULT_DOCUMENTS,
+      customer_id: customerId || null,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+receiver.router.get('/api/dashboard/rfqs/:id', requireAuth, async (req, res) => {
+  const { data, error } = await supabase.from('rfqs').select('*').eq('id', req.params.id).single();
+  if (error) return res.status(404).json({ error: 'RFQ not found' });
+  res.json(data);
+});
+
+receiver.router.post('/api/dashboard/rfqs', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
+  const row = rfqBuildRow(req.body);
+  row.created_by = 'dashboard';
+  const { data, error } = await supabase.from('rfqs').insert(row).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+  if (data.customer_id) {
+    logLeadActivity(data.customer_id, {
+      type: 'note', body: `RFQ created — ${data.rfq_no}`,
+      meta: { rfq_id: data.id, rfq_no: data.rfq_no }, authorKey: 'admin', authorName: 'Admin',
+    });
+  }
+});
+
+receiver.router.put('/api/dashboard/rfqs/:id', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
+  const row = rfqBuildRow(req.body);
+  row.updated_at = new Date().toISOString();
+  delete row.rfq_no;   // immutable once issued
+  const { data, error } = await supabase.from('rfqs').update(row).eq('id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+receiver.router.delete('/api/dashboard/rfqs/:id', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('rfqs').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+async function rfqSettings() {
+  const { data } = await supabase.from('quotation_settings').select('key,value');
+  const settings = {};
+  for (const r of data || []) settings[r.key] = r.value;
+  return settings;
+}
+
+receiver.router.post('/api/dashboard/rfqs/pdf', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    const html = buildRfqHtml({ ...rfqBuildRow(req.body), settings: await rfqSettings() });
+    res.json({ pdf: Buffer.from(await renderQuotationPdf(html)).toString('base64') });
+  } catch (e) { console.error('[rfq-pdf]', e); res.status(500).json({ error: e.message }); }
+});
+
+receiver.router.post('/api/dashboard/rfqs/:id/pdf', requireAuth, async (req, res) => {
+  try {
+    const { data: row, error } = await supabase.from('rfqs').select('*').eq('id', req.params.id).single();
+    if (error || !row) return res.status(404).json({ error: 'RFQ not found' });
+    const html = buildRfqHtml({ ...row, settings: await rfqSettings() });
+    res.json({ pdf: Buffer.from(await renderQuotationPdf(html)).toString('base64'), name: row.rfq_no || 'rfq' });
+  } catch (e) { console.error('[rfq-pdf-id]', e); res.status(500).json({ error: e.message }); }
+});
+
+// A4 portrait Request for Quotation on company letterhead.
+function buildRfqHtml(r) {
+  const s = r.settings || {};
+  const T = quoteTheme(r.template);
+  const money = n => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const items = Array.isArray(r.items) ? r.items : [];
+  const padded = items.concat(Array.from({ length: Math.max(0, 8 - items.length) }, () => null));
+  const rows = padded.map(it => {
+    const v = it || {};
+    return `<tr>
+      <td>${escHtml(v.brand || '')}</td>
+      <td>${escHtml(v.model || '')}</td>
+      <td>${escHtml(v.trim || '')}</td>
+      <td>${escHtml(v.colour || '')}</td>
+      <td class="c">${escHtml(v.year || '')}</td>
+      <td class="acc">${escHtml(v.accessories || DOC_DEFAULT_ACCESSORIES).replace(/\n/g, '<br>')}</td>
+      <td class="c">${escHtml(v.lead_time || '')}</td>
+      <td class="r">${v.fob_price ? money(v.fob_price) : ''}</td>
+      <td class="r">${v.cif_price ? money(v.cif_price) : ''}</td>
+    </tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">${T.fontLink}
+<style>${docChromeCss(T)}</style></head><body>
+<div class="page">
+  <div class="head">
+    <img src="${BRAND_LOGO_URL}">
+    <div class="title">Request for Quotation</div>
+    <table class="meta">
+      <tr><td class="k">ID</td><td class="v">${escHtml(r.rfq_no || '')}</td></tr>
+      <tr><td class="k">Date</td><td class="v">${escHtml(r.rfq_date || '')}</td></tr>
+      <tr><td class="k">Issuer</td><td class="v">${escHtml(r.issuer || '')}</td></tr>
+    </table>
   </div>
 
-  <div class="foot">
-    <div><strong style="color:${INK}">${escHtml(s.company_name || 'MOTOLINKERS')}</strong> &nbsp; ${escHtml(s.company_address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo')}</div>
-    <div>${escHtml(s.company_email || 'info@motolinkers.com')} &nbsp;|&nbsp; ${escHtml(s.company_phone || '+2 010 000 78104')} &nbsp;|&nbsp; ${escHtml(po.po_number || '')}</div>
-  </div>
+  ${docSupplierBlock(r)}
+
+  <table class="grid">
+    <colgroup>
+      <col style="width:66px"><col style="width:62px"><col style="width:44px"><col style="width:76px">
+      <col style="width:34px"><col style="width:150px"><col style="width:60px"><col style="width:62px">
+      <col style="width:88px">
+    </colgroup>
+    <thead><tr>
+      <th>BRAND</th><th>MODEL</th><th>TRIM</th><th>COLOR EXT / INT</th><th>YEAR</th>
+      <th>ACCESSORIES / REMARKS</th><th>LEAD TIME</th><th>FOB PRICE</th><th>CIF PRICE (RoRo)</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+
+  ${docTermsHtml(r, { incoterm: false })}
+
+  ${docFooterHtml(s)}
 </div>
 </body></html>`;
 }
