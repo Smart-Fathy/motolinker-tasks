@@ -973,11 +973,6 @@
   .stock-qty.in{ background:rgba(201,163,94,.15); color:var(--primary); }
   .stock-qty.out{ background:rgba(220,38,38,.14); color:#f87171; }
   .stock-price{ font-size:17px; font-weight:700; color:var(--primary); margin:8px 0 12px; }
-  .spec-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:8px;
-              border-top:1px solid var(--border); border-bottom:1px solid var(--border); padding:11px 0; }
-  .spec-cell{ min-width:0; }
-  .spec-k{ font-size:10px; letter-spacing:.4px; text-transform:uppercase; color:var(--muted); }
-  .spec-v{ font-size:12.5px; font-weight:600; margin-top:1px; word-break:break-word; }
   .stock-colors{ margin-top:12px; }
   .stock-sec-label{ font-size:10px; letter-spacing:.4px; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
   .color-chip{ display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:3px 9px;
@@ -992,6 +987,13 @@
   .stock-units td{ padding:5px 6px; border-bottom:1px solid var(--border); white-space:nowrap; }
   .pill-sm{ display:inline-block; padding:1px 7px; border-radius:9px; font-size:10px; font-weight:700; }
   .stock-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+  /* ── Sidebar arrange mode ── */
+  .sidebar.arranging .nav-item, .sidebar.arranging .nav-group-head { cursor:grab; }
+  .sidebar.arranging .nav-group { outline:1px dashed rgba(201,163,94,.35); outline-offset:2px; border-radius:8px; }
+  .sidebar.arranging .nav-group-items { max-height:none !important; }
+  .nav-drag-over { box-shadow:inset 0 2px 0 var(--primary); }
+  .nav-dragging { opacity:.4; }
+  .sidebar.arranging .nav-label-edit { outline:1px solid rgba(201,163,94,.5); border-radius:4px; padding:0 3px; }
   /* ── Deals tabs ── */
   .deal-tabs { display:flex; gap:4px; margin-bottom:18px; border-bottom:1px solid var(--border); }
   .deal-tab { background:none; border:none; border-bottom:2px solid transparent; color:var(--muted);
@@ -1177,6 +1179,14 @@
       </div>
     </nav>
     <div class="sidebar-footer">
+      <div class="logout-btn" id="nav-arrange-btn" onclick="navArrangeToggle()">
+        <span><i data-lucide="layout-list" style="width:16px;height:16px"></i></span> <span id="nav-arrange-label">Arrange sections</span>
+      </div>
+      <div id="nav-arrange-actions" style="display:none;gap:6px;padding:0 12px 8px">
+        <button class="btn btn-primary btn-sm" style="flex:1" onclick="navArrangeSave()">Save</button>
+        <button class="btn btn-outline btn-sm" style="flex:1" onclick="navArrangeCancel()">Cancel</button>
+        <button class="btn btn-outline btn-sm" title="Restore the default layout" onclick="navArrangeReset()">Reset</button>
+      </div>
       <div class="logout-btn" onclick="logout()">
         <span><i data-lucide="log-out" style="width:16px;height:16px"></i></span> Sign Out
       </div>
@@ -1391,11 +1401,15 @@
     <div style="padding:20px 28px 12px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
       <div>
         <div style="font-size:18px;font-weight:700;margin-bottom:4px">Google Calendar</div>
-        <div style="font-size:12px;color:var(--muted)">Your calendar — make sure you're signed into Google in this browser.</div>
+        <div style="font-size:12px;color:var(--muted)">Your calendar — make sure you're signed into Google in this browser.<br>Connect an account below to push every new task to its assignee's calendar.</div>
       </div>
-      <a href="https://calendar.google.com/calendar/r/eventedit" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="text-decoration:none;flex-shrink:0">
-        <i data-lucide="plus" style="width:13px;height:13px"></i> New Event
-      </a>
+      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+        <span id="cal-sync-status" style="font-size:12px;color:var(--muted)"></span>
+        <button id="cal-sync-btn" class="btn btn-outline btn-sm" onclick="calendarSyncToggle()"></button>
+        <a href="https://calendar.google.com/calendar/r/eventedit" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="text-decoration:none">
+          <i data-lucide="plus" style="width:13px;height:13px"></i> New Event
+        </a>
+      </div>
     </div>
     <div style="flex:1;min-height:0;padding:16px">
       <iframe src="https://calendar.google.com/calendar/embed?showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&showTz=1&mode=WEEK"
@@ -3961,13 +3975,6 @@ async function uploadCSV() {
 }
 
 // ── Car Stock (immediate-delivery inventory) ────────────────────────────────────
-// Spec sheet shown on every car card — keys mirror STOCK_SPEC_FIELDS on the server.
-const STOCK_SPEC_FIELDS = [
-  ['range_km', 'Range (KM)'], ['motor_ps', 'Motor (PS)'], ['power_train', 'Power Train'],
-  ['drive_train', 'Drive Train'], ['transmission', 'Transmission'], ['battery', 'Battery'],
-  ['top_speed', 'Top Speed'], ['fast_charge', 'Fast Charge'], ['seats', 'Seats'],
-  ['body', 'Body'], ['year', 'Year'],
-];
 // Per-unit columns (screenshot 4): what we track for each physical car.
 const STOCK_UNIT_COLS = [
   ['consignee', 'Consignee'], ['colour', 'Colour EXT / INT'], ['vin', 'VIN'],
@@ -4006,11 +4013,8 @@ function renderStock() {
 }
 // One card per car: title, price, spec sheet and per-colour stock counts.
 function stockCardHtml(v) {
-  const specs = v.specs || {};
   const colors = Array.isArray(v.colors) ? v.colors : [];
   const qty = Number(v.quantity) || 0;
-  const specCells = STOCK_SPEC_FIELDS.filter(([k]) => String(specs[k] ?? '').trim())
-    .map(([k, label]) => `<div class="spec-cell"><div class="spec-k">${esc(label)}</div><div class="spec-v">${esc(specs[k])}</div></div>`).join('');
   const colorChips = colors.length
     ? colors.map(c => `<span class="color-chip"><span class="color-dot" style="background:${stockColorSwatch(c.name)}"></span>${esc(c.name)}<b>${Number(c.qty) || 0}</b></span>`).join('')
     : '<span style="color:var(--muted);font-size:12px">No colours recorded</span>';
@@ -4041,7 +4045,6 @@ function stockCardHtml(v) {
         <span class="stock-qty ${qty > 0 ? 'in' : 'out'}">${qty} in stock</span>
       </div>
       <div class="stock-price">${v.price ? egp(v.price) : 'Price not set'}</div>
-      ${specCells ? `<div class="spec-grid">${specCells}</div>` : '<div style="color:var(--muted);font-size:12px;margin:10px 0">No specs recorded yet.</div>'}
       <div class="stock-colors">
         <div class="stock-sec-label">Available colours</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">${colorChips}</div>
@@ -4073,13 +4076,6 @@ function openStockForm(id) {
       </div>
       <div><label class="form-label">Trim</label><input id="stk-trim" class="form-input" value="${esc(v?.trim || '')}" placeholder="e.g. GLI 1.6 (leave blank if none)"></div>
       <div><label class="form-label">Price (EGP)</label><input id="stk-price" class="form-input" type="number" min="0" step="any" value="${v?.price ?? ''}" placeholder="e.g. 1150000"></div>
-
-      <div>
-        <label class="form-label">Specifications</label>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
-          ${STOCK_SPEC_FIELDS.map(([k, label]) => `<div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">${esc(label)}</div><input id="stk-spec-${k}" class="form-input" value="${esc((v?.specs || {})[k] || '')}"></div>`).join('')}
-        </div>
-      </div>
 
       <div>
         <label class="form-label">Colours &amp; stock per colour</label>
@@ -4157,8 +4153,6 @@ function stkRenumberUnits() {
 }
 
 async function saveStock(id) {
-  const specs = {};
-  STOCK_SPEC_FIELDS.forEach(([k]) => { specs[k] = (document.getElementById('stk-spec-' + k)?.value || '').trim(); });
   const colors = [...document.querySelectorAll('.stk-color-row')].map(r => ({
     name: r.querySelector('.stk-color-name').value.trim(),
     qty: r.querySelector('.stk-color-qty').value,
@@ -4173,7 +4167,7 @@ async function saveStock(id) {
     price: document.getElementById('stk-price').value,
     quantity: document.getElementById('stk-qty').value,
     notes: document.getElementById('stk-notes').value.trim(),
-    specs, colors, units,
+    colors, units,
   };
   const err = document.getElementById('stk-err');
   if (!payload.make || !payload.model) { err.textContent = 'Make and Model are required.'; err.style.display = 'block'; return; }
@@ -5227,6 +5221,216 @@ async function ctxPopulateLeadPicker(selectId, selectedId) {
   } catch (_) {}
 }
 
+// ── Sidebar layout: admin drag-and-drop ordering + renaming ─────────────────────
+// The nav stays static HTML. A saved config (quotation_settings → nav_config)
+// reorders and relabels it on load; unknown keys keep their HTML position, so a
+// section added later needs no config migration.
+let _navArranging = false;
+
+function navGroupEls() { return [...document.querySelectorAll('#sidebar .nav-group')]; }
+function navGroupLabelEl(g) { return g.querySelector('.nav-group-label'); }
+function navItemLabelText(el) {
+  // The label is the text after the icon span
+  return [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim();
+}
+function navSetItemLabel(el, text) {
+  const t = [...el.childNodes].filter(n => n.nodeType === 3 && n.textContent.trim());
+  if (t.length) { t[0].textContent = ' ' + text; t.slice(1).forEach(n => { n.textContent = ''; }); }
+  else el.appendChild(document.createTextNode(' ' + text));
+}
+
+async function loadNavConfig() {
+  let cfg = null;
+  try { cfg = await apiFetch('/api/dashboard/nav-config').then(r => r.json()); } catch (_) { return; }
+  applyNavConfig(cfg);
+}
+
+function applyNavConfig(cfg) {
+  const groups = (cfg && Array.isArray(cfg.groups)) ? cfg.groups : [];
+  if (!groups.length) return;
+  const nav = document.querySelector('#sidebar .sidebar-nav') || document.querySelector('#sidebar');
+  const byKey = new Map(navGroupEls().map(g => [g.dataset.group, g]));
+  groups.forEach(g => {
+    const el = byKey.get(g.key);
+    if (!el) return;                       // config references a section that no longer exists
+    if (g.label) { const l = navGroupLabelEl(el); if (l) l.textContent = g.label; }
+    el.style.display = g.hidden ? 'none' : '';
+    nav.appendChild(el);                   // moving in config order re-sorts the list
+    const wrap = el.querySelector('.nav-group-items');
+    if (wrap) {
+      const items = new Map([...wrap.querySelectorAll('.nav-item')].map(i => [i.id, i]));
+      (g.items || []).forEach(it => {
+        const iel = items.get(it.id);
+        if (!iel) return;
+        if (it.label) navSetItemLabel(iel, it.label);
+        iel.style.display = it.hidden ? 'none' : '';
+        wrap.appendChild(iel);
+      });
+    }
+  });
+}
+
+function readNavConfig() {
+  return { groups: navGroupEls().map(g => ({
+    key: g.dataset.group,
+    label: (navGroupLabelEl(g)?.textContent || '').trim(),
+    hidden: g.style.display === 'none',
+    items: [...g.querySelectorAll('.nav-item')].map(i => ({
+      id: i.id, label: navItemLabelText(i), hidden: i.style.display === 'none',
+    })),
+  })) };
+}
+
+let _navSnapshot = null;
+function navArrangeToggle() {
+  _navArranging ? navArrangeCancel() : navArrangeStart();
+}
+function navArrangeStart() {
+  _navArranging = true;
+  _navSnapshot = readNavConfig();
+  document.getElementById('sidebar').classList.add('arranging');
+  document.getElementById('nav-arrange-label').textContent = 'Arranging…';
+  document.getElementById('nav-arrange-actions').style.display = 'flex';
+  document.querySelectorAll('.nav-group.nav-group').forEach(g => g.classList.add('open'));
+  navBindDrag();
+}
+function navArrangeCancel() {
+  _navArranging = false;
+  document.getElementById('sidebar').classList.remove('arranging');
+  document.getElementById('nav-arrange-label').textContent = 'Arrange sections';
+  document.getElementById('nav-arrange-actions').style.display = 'none';
+  navUnbindDrag();
+  if (_navSnapshot) applyNavConfig(_navSnapshot);   // undo unsaved moves/renames
+}
+async function navArrangeSave() {
+  const cfg = readNavConfig();
+  const r = await apiFetch('/api/dashboard/nav-config', { method: 'PUT', body: JSON.stringify(cfg) });
+  if (!r.ok) { alert('Could not save the layout.'); return; }
+  _navSnapshot = cfg;
+  navArrangeCancel();
+}
+async function navArrangeReset() {
+  if (!confirm('Restore the default section order and names?')) return;
+  await apiFetch('/api/dashboard/nav-config', { method: 'DELETE' });
+  location.reload();
+}
+
+// Drag-and-drop: groups reorder among themselves, items within their own group.
+function navBindDrag() {
+  navGroupEls().forEach(g => {
+    const head = g.querySelector('.nav-group-head');
+    if (head) {
+      head.draggable = true;
+      head.addEventListener('dragstart', navDragStart);
+      head.addEventListener('dragover', navDragOver);
+      head.addEventListener('drop', navDrop);
+      head.addEventListener('dragend', navDragEnd);
+      const lbl = navGroupLabelEl(g);
+      if (lbl) { lbl.contentEditable = 'true'; lbl.classList.add('nav-label-edit'); lbl.addEventListener('keydown', navLabelKey); }
+    }
+    g.querySelectorAll('.nav-item').forEach(i => {
+      i.draggable = true;
+      i.addEventListener('dragstart', navDragStart);
+      i.addEventListener('dragover', navDragOver);
+      i.addEventListener('drop', navDrop);
+      i.addEventListener('dragend', navDragEnd);
+    });
+  });
+}
+function navUnbindDrag() {
+  navGroupEls().forEach(g => {
+    const head = g.querySelector('.nav-group-head');
+    if (head) {
+      head.draggable = false;
+      head.removeEventListener('dragstart', navDragStart);
+      head.removeEventListener('dragover', navDragOver);
+      head.removeEventListener('drop', navDrop);
+      head.removeEventListener('dragend', navDragEnd);
+      const lbl = navGroupLabelEl(g);
+      if (lbl) { lbl.contentEditable = 'false'; lbl.classList.remove('nav-label-edit'); lbl.removeEventListener('keydown', navLabelKey); }
+    }
+    g.querySelectorAll('.nav-item').forEach(i => {
+      i.draggable = false;
+      i.removeEventListener('dragstart', navDragStart);
+      i.removeEventListener('dragover', navDragOver);
+      i.removeEventListener('drop', navDrop);
+      i.removeEventListener('dragend', navDragEnd);
+    });
+  });
+}
+function navLabelKey(e) { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } }
+
+let _navDragEl = null;
+function navDragStart(e) {
+  e.stopPropagation();
+  // A group is dragged by its head, but it's the whole group that moves
+  _navDragEl = e.currentTarget.classList.contains('nav-group-head')
+    ? e.currentTarget.closest('.nav-group') : e.currentTarget;
+  _navDragEl.classList.add('nav-dragging');
+  try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); } catch (_) {}
+}
+function navDragOver(e) {
+  if (!_navDragEl) return;
+  const target = e.currentTarget.classList.contains('nav-group-head')
+    ? e.currentTarget.closest('.nav-group') : e.currentTarget;
+  const sameKind = target.classList.contains('nav-group') === _navDragEl.classList.contains('nav-group');
+  if (!sameKind || target === _navDragEl) return;
+  e.preventDefault(); e.stopPropagation();
+  target.classList.add('nav-drag-over');
+}
+function navDrop(e) {
+  if (!_navDragEl) return;
+  const target = e.currentTarget.classList.contains('nav-group-head')
+    ? e.currentTarget.closest('.nav-group') : e.currentTarget;
+  const sameKind = target.classList.contains('nav-group') === _navDragEl.classList.contains('nav-group');
+  if (!sameKind || target === _navDragEl) return;
+  e.preventDefault(); e.stopPropagation();
+  target.classList.remove('nav-drag-over');
+  // Items may only move within their own group
+  if (!_navDragEl.classList.contains('nav-group') && target.parentElement !== _navDragEl.parentElement) return;
+  const rect = target.getBoundingClientRect();
+  const after = (e.clientY - rect.top) > rect.height / 2;
+  target.parentElement.insertBefore(_navDragEl, after ? target.nextSibling : target);
+}
+function navDragEnd() {
+  document.querySelectorAll('.nav-drag-over').forEach(el => el.classList.remove('nav-drag-over'));
+  if (_navDragEl) _navDragEl.classList.remove('nav-dragging');
+  _navDragEl = null;
+}
+
+// ── Google Calendar sync (new tasks land on the assignee's calendar) ────────────
+let _calSync = { configured: false, connected: false };
+async function loadCalendarSync() {
+  const badge = document.getElementById('cal-sync-status');
+  const btn = document.getElementById('cal-sync-btn');
+  if (!badge || !btn) return;
+  try { _calSync = await apiFetch('/api/calendar/status').then(r => r.json()); }
+  catch (_) { _calSync = { configured: false, connected: false }; }
+  if (!_calSync.configured) {
+    badge.textContent = 'Google not configured';
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = '';
+  if (_calSync.connected) {
+    badge.textContent = `Task sync on · ${_calSync.email || ''}`;
+    btn.textContent = 'Disconnect';
+  } else {
+    badge.textContent = 'Task sync off';
+    btn.textContent = 'Connect for task sync';
+  }
+}
+async function calendarSyncToggle() {
+  if (_calSync.connected) {
+    if (!confirm('Stop adding new tasks to Google Calendar? Existing events stay put.')) return;
+    await apiFetch('/api/calendar/disconnect', { method: 'POST' });
+    loadCalendarSync();
+    return;
+  }
+  // OAuth redirect — the token query param keeps the session through the round trip
+  window.location.href = '/api/calendar/connect' + (authToken ? '?_t=' + encodeURIComponent(authToken) : '');
+}
+
 // ── Suppliers (Logistics & Shipping) ────────────────────────────────────────────
 let _suppliersCache = [];
 async function loadSuppliers() {
@@ -5319,7 +5523,7 @@ function supplierFillFields(selId, prefix) {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
+const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, calendar: loadCalendarSync, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
@@ -6102,8 +6306,9 @@ let notifUnread = 0;
   loadNotifs();
   openNotifStream();
   initSidebarState();
+  await loadNavConfig();   // apply the admin's saved section order + names
   const hash = location.hash.replace('#', '');
-  const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','chat','calendar','meet','quotation','customers','deals','whatsapp','notif'];
+  const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','chat','calendar','meet','quotation','customers','deals','stock','suppliers','rfqs','contracts','purchaseorders','reports','automations','deletions','whatsapp','notif'];
   if (hash && validPages.includes(hash)) navigate(hash);
   else loadDashboard();
 })();

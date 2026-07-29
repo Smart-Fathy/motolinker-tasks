@@ -118,6 +118,7 @@ const sessions         = new Map(); // admin sessions
 const employeeSessions = new Map(); // employee portal sessions
 let gmailTokens = null;
 let driveTokens = null;
+let calendarTokens = null;   // company Google Calendar (task events)
 const employeeDriveTokens  = new Map();
 const employeeEmailTokens  = new Map();
 const pendingDriveAuth     = new Map();
@@ -130,6 +131,7 @@ async function loadGoogleTokens() {
     for (const row of data) {
       const t = row.tokens;
       if (row.user_key === 'admin_gmail') gmailTokens = t;
+      else if (row.user_key === 'admin_calendar') calendarTokens = t;
       else if (row.user_key === 'admin_drive') driveTokens = t;
       else if (row.user_key.endsWith('_drive')) {
         const id = parseInt(row.user_key);
@@ -603,6 +605,7 @@ receiver.router.post('/api/dashboard/tasks', requireAuth, express.json(), async 
   if (error) return res.status(500).json({ error: error.message });
   // Notify every assignee via SSE (if portal is open) and push (always)
   notifyEmployeeTaskAssigned(task);
+  syncTaskToCalendar(task);   // best-effort Google Calendar event for the assignees
   runAutomations('task.created', taskCtx(task));
   res.json(task);
 });
@@ -624,6 +627,8 @@ receiver.router.put('/api/dashboard/tasks/:id', requireAuth, express.json(), asy
   const before = new Set(taskAssigneeList(prev));
   const added = taskAssigneeList(data).filter(id => !before.has(id));
   if (added.length) notifyEmployeeTaskAssigned({ ...data, assignee_ids: added });
+  // Keep the calendar event in step with due-date / assignee edits
+  if (added.length || updates.due_date !== undefined || updates.title !== undefined) syncTaskToCalendar(data);
   if (data.status === 'done' && prev?.status !== 'done') runAutomations('task.completed', taskCtx(data));
   res.json(data);
 });
@@ -761,6 +766,7 @@ async function generateRecurringInstance(rt, runDate, force) {
   }).select().single();
   if (error) { console.warn('[recurring] task insert failed:', error.message); return null; }
   notifyEmployeeTaskAssigned(task);
+  syncTaskToCalendar(task);   // best-effort Google Calendar event for the assignees
   await supabase.from('recurring_tasks').update({
     last_run_date: runDate,
     next_run_date: rtComputeNextAfterRun(rt, runDate),
@@ -791,21 +797,7 @@ function scheduleRecurringTasks() {
 // per make+model+trim (a model may carry several trims); `quantity` = units on hand,
 // `price` = price per car. Separate from the read-only website inventory picker.
 // Spec sheet shown on each car card. Keys are stable; labels drive the UI/CSV.
-const STOCK_SPEC_FIELDS = [
-  ['range_km',     'Range (KM)'],
-  ['motor_ps',     'Motor (PS)'],
-  ['power_train',  'Power Train'],
-  ['drive_train',  'Drive Train'],
-  ['transmission', 'Transmission'],
-  ['battery',      'Battery'],
-  ['top_speed',    'Top Speed'],
-  ['fast_charge',  'Fast Charge'],
-  ['seats',        'Seats'],
-  ['body',         'Body'],
-  ['year',         'Year'],
-];
-const STOCK_SPEC_KEYS = STOCK_SPEC_FIELDS.map(([k]) => k);
-const STOCK_CSV_HEADERS = ['make', 'model', 'trim', 'price', ...STOCK_SPEC_KEYS, 'colors', 'units', 'quantity', 'notes'];
+const STOCK_CSV_HEADERS = ['make', 'model', 'trim', 'price', 'colors', 'units', 'quantity', 'notes'];
 
 // "White:3 | Black:2" (or "White:3,Black:2") → [{name:'White',qty:3},…]
 function parseStockColors(val) {
@@ -855,14 +847,6 @@ function stockBuildRow(body) {
   if (!model) return { error: 'Model is required' };
   const priceNum = Number(String(b.price ?? '').replace(/[^\d.]/g, ''));
 
-  // Specs may arrive nested (`specs:{…}` from the UI) or flat (CSV columns).
-  const srcSpecs = (b.specs && typeof b.specs === 'object') ? b.specs : b;
-  const specs = {};
-  for (const k of STOCK_SPEC_KEYS) {
-    const v = String(srcSpecs[k] ?? '').trim();
-    if (v) specs[k] = v;
-  }
-
   const colors = parseStockColors(b.colors);
   const units = parseStockUnits(b.units);
   // Quantity is derived, most specific source first: individual units → colour
@@ -877,7 +861,7 @@ function stockBuildRow(body) {
     trim: String(b.trim || '').trim(),
     price: (isFinite(priceNum) && priceNum > 0) ? priceNum : 0,
     quantity,
-    specs, colors, units,
+    colors, units,
     notes: String(b.notes || '').trim(),
   } };
 }
@@ -886,8 +870,8 @@ function stockBuildRow(body) {
 // Detect that specific failure and retry without them so Car Stock keeps working.
 function isMissingColumnErr(err) {
   const m = String((err && (err.message || err.details)) || '');
-  return /column .*(specs|colors|units).* does not exist/i.test(m)
-      || /could not find the '(specs|colors|units)' column/i.test(m)
+  return /column .*(colors|units).* does not exist/i.test(m)
+      || /could not find the '(colors|units)' column/i.test(m)
       || err?.code === '42703' || err?.code === 'PGRST204';
 }
 async function stockWrite(row, id) {
@@ -896,8 +880,8 @@ async function stockWrite(row, id) {
     : supabase.from('stock_vehicles').insert(payload).select().single();
   let res = await run(row);
   if (res.error && isMissingColumnErr(res.error)) {
-    console.warn('[stock] specs/colors columns missing — apply migrations/001. Saving without them.');
-    const { specs, colors, units, ...rest } = row;
+    console.warn('[stock] colors/units columns missing — apply migrations/001 and /003. Saving without them.');
+    const { colors, units, ...rest } = row;
     res = await run(rest);
   }
   return res;
@@ -939,9 +923,9 @@ receiver.router.get('/api/dashboard/stock/template.csv', requireAuth, (_req, res
   // Units win over colours for the total quantity; both may be left blank.
   const sample = [
     STOCK_CSV_HEADERS.join(','),
-    '"BYD","Seal","Design",1950000,570,530,"EV","RWD","Single-speed","82.5 kWh","180 km/h","150 kW",5,"Sedan",2025,"White:2 | Black:1","LGXC76C41P0123456:White:in_logistics | LGXC76C41P0123457:White:delivered",,"Immediate delivery"',
-    '"BYD","Seal","Excellence AWD",2250000,520,530,"EV","AWD","Single-speed","82.5 kWh","180 km/h","150 kW",5,"Sedan",2025,"Grey:1",,1,',
-    '"Toyota","Corolla","GLI 1.6",1150000,,,"Petrol","FWD","CVT",,"180 km/h",,5,"Sedan",2024,"White:2 | Silver:2",,4,',
+    '"BYD","Seal","Design",1950000,"White:2 | Black:1","LGXC76C41P0123456:White:in_logistics | LGXC76C41P0123457:White:delivered",,"Immediate delivery"',
+    '"BYD","Seal","Excellence AWD",2250000,"Grey:1",,1,',
+    '"Toyota","Corolla","GLI 1.6",1150000,"White:2 | Silver:2",,4,',
   ].join('\n');
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="car-stock-template.csv"');
@@ -963,9 +947,9 @@ receiver.router.post('/api/dashboard/stock/bulk', requireAuth, upload.single('fi
   if (!inserts.length) return res.json({ inserted: 0, errors });
   let { data, error } = await supabase.from('stock_vehicles').insert(inserts).select();
   if (error && isMissingColumnErr(error)) {
-    console.warn('[stock] specs/colors columns missing — apply migrations/001. Importing without them.');
+    console.warn('[stock] colors/units columns missing — apply migrations/001 and /003. Importing without them.');
     ({ data, error } = await supabase.from('stock_vehicles')
-      .insert(inserts.map(({ specs, colors, units, ...rest }) => rest)).select());
+      .insert(inserts.map(({ colors, units, ...rest }) => rest)).select());
   }
   if (error) return res.status(500).json({ error: error.message });
   res.json({ inserted: data.length, errors });
@@ -1520,6 +1504,11 @@ receiver.router.get('/api/email/callback', async (req, res) => {
         saveGoogleToken(`${pending.employeeId}_gmail`, full);
         return res.redirect('/employee#email');
       }
+      if (pending.type === 'admin-calendar') {
+        calendarTokens = full;
+        saveGoogleToken('admin_calendar', full);
+        return res.redirect('/dashboard#calendar');
+      }
       driveTokens = full;
       saveGoogleToken('admin_drive', full);
       return res.redirect('/dashboard#drive');
@@ -1681,6 +1670,126 @@ receiver.router.post('/api/drive/disconnect', requireAuth, (_req, res) => { driv
 
 receiver.router.get('/api/drive/files',  requireAuth, async (_req, res) => { try { res.json(await listDriveFiles(driveTokens)); } catch (e) { res.status(500).json({ error: e.message }); } });
 receiver.router.get('/api/drive/sheets', requireAuth, async (_req, res) => { try { res.json(await listDriveFiles(driveTokens, 'application/vnd.google-apps.spreadsheet')); } catch (e) { res.status(500).json({ error: e.message }); } });
+
+// ─── Sidebar layout (admin-arranged nav) ──────────────────────────────────────
+// Order + custom labels for the dashboard sidebar, stored as JSON in the existing
+// quotation_settings KV table (same pattern as leads_columns_config). The nav
+// itself stays static HTML; the client just reorders/relabels it on load, so an
+// empty or stale config always falls back to the shipped layout.
+receiver.router.get('/api/dashboard/nav-config', requireAuth, async (_req, res) => {
+  try {
+    const { data } = await supabase.from('quotation_settings').select('value').eq('key', 'nav_config').single();
+    res.json(data?.value ? JSON.parse(data.value) : { groups: [] });
+  } catch (_) { res.json({ groups: [] }); }
+});
+
+receiver.router.put('/api/dashboard/nav-config', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
+  const groups = Array.isArray(req.body?.groups) ? req.body.groups : [];
+  const clean = groups.map(g => ({
+    key: String(g?.key || '').trim(),
+    label: String(g?.label || '').trim().slice(0, 40),
+    hidden: g?.hidden === true,
+    items: (Array.isArray(g?.items) ? g.items : []).map(it => ({
+      id: String(it?.id || '').trim(),
+      label: String(it?.label || '').trim().slice(0, 40),
+      hidden: it?.hidden === true,
+    })).filter(it => it.id),
+  })).filter(g => g.key);
+  const { error } = await supabase.from('quotation_settings')
+    .upsert({ key: 'nav_config', value: JSON.stringify({ groups: clean }) }, { onConflict: 'key' });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, groups: clean });
+});
+
+receiver.router.delete('/api/dashboard/nav-config', requireAuth, async (_req, res) => {
+  const { error } = await supabase.from('quotation_settings').delete().eq('key', 'nav_config');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// ─── Google Calendar (task events) ────────────────────────────────────────────
+// One company account creates task events and invites the assignee, so nothing
+// has to be set up per employee. Everything here is best-effort: a Calendar
+// outage must never stop a task from being created.
+const CALENDAR_SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
+
+receiver.router.get('/api/calendar/status', requireAuth, (_req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.json({ configured: false });
+  if (!calendarTokens) return res.json({ configured: true, connected: false });
+  res.json({ configured: true, connected: true, email: calendarTokens.email, name: calendarTokens.name });
+});
+
+receiver.router.get('/api/calendar/connect', requireAuth, (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.status(400).send('GOOGLE_CLIENT_ID not configured');
+  const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  const state = crypto.randomBytes(16).toString('hex');
+  pendingDriveAuth.set(state, { type: 'admin-calendar' });
+  const params = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: `${base}/api/email/callback`, response_type: 'code', scope: CALENDAR_SCOPES, access_type: 'offline', prompt: 'consent', state });
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+receiver.router.post('/api/calendar/disconnect', requireAuth, (_req, res) => {
+  calendarTokens = null;
+  saveGoogleToken('admin_calendar', null);
+  res.json({ ok: true });
+});
+
+async function getCalendarToken() {
+  if (!calendarTokens) return null;
+  if (calendarTokens.refresh_token && Date.now() > (calendarTokens.expiry_date || 0) - 60_000) {
+    const r = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: calendarTokens.refresh_token, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, grant_type: 'refresh_token' }),
+    });
+    const refreshed = await r.json();
+    if (refreshed.access_token) {
+      calendarTokens = { ...calendarTokens, ...refreshed, expiry_date: Date.now() + ((refreshed.expires_in || 3600) * 1000) };
+      saveGoogleToken('admin_calendar', calendarTokens);
+    }
+  }
+  return calendarTokens.access_token;
+}
+
+// All-day event on the due date, with the assignees invited by email.
+async function syncTaskToCalendar(task) {
+  try {
+    if (!task || !task.due_date) return;
+    const token = await getCalendarToken();
+    if (!token) return;   // not connected — silently skip
+    const ids = taskAssigneeList(task);
+    if (!ids.length) return;
+    const { data: emps } = await supabase.from('employees').select('id,name,email').in('id', ids.map(Number).filter(n => !isNaN(n)));
+    const attendees = (emps || []).filter(e => e.email).map(e => ({ email: e.email }));
+    if (!attendees.length) return;   // nobody to invite
+
+    const end = new Date(task.due_date + 'T00:00:00Z');
+    end.setUTCDate(end.getUTCDate() + 1);           // Google's all-day end is exclusive
+    const body = {
+      summary: `[Task] ${task.title || 'Task'}`,
+      description: [task.description || '', task.milestone ? `Milestone: ${task.milestone}` : '', `Priority: ${task.priority || 'medium'}`]
+        .filter(Boolean).join('\n'),
+      start: { date: task.due_date },
+      end: { date: end.toISOString().slice(0, 10) },
+      attendees,
+    };
+
+    const existing = task.calendar_event_id;
+    const url = existing
+      ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(existing)}?sendUpdates=all`
+      : 'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all';
+    const r = await fetch(url, {
+      method: existing ? 'PATCH' : 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const ev = await r.json();
+    if (!r.ok) { console.warn('[calendar] event sync failed:', ev.error?.message || r.status); return; }
+    if (!existing && ev.id) {
+      await supabase.from('tasks').update({ calendar_event_id: ev.id }).eq('id', task.id);
+    }
+    console.log('[calendar] synced task', task.id, '→ event', ev.id);
+  } catch (e) { console.warn('[calendar] sync error:', e.message); }
+}
 
 // Employee drive connect
 receiver.router.get('/api/employee/drive/status', requireEmployeeAuth, (req, res) => {
