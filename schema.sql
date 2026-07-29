@@ -838,3 +838,8 @@ ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS service_provider   TEXT DEF
 ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS contact            TEXT DEFAULT '';
 ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS documents_required TEXT DEFAULT '';
 ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS payment_terms      TEXT DEFAULT '';
+
+-- ═══ From migrations/004_task_calendar_nav.sql ══════════════════════════════
+-- Google Calendar event created for a task, so edits patch the same event.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS calendar_event_id TEXT DEFAULT NULL;
+-- Sidebar layout (order + custom labels) lives in quotation_settings under 'nav_config'.
