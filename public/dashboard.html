@@ -5258,10 +5258,11 @@ function applyNavConfig(cfg) {
     nav.appendChild(el);                   // moving in config order re-sorts the list
     const wrap = el.querySelector('.nav-group-items');
     if (wrap) {
-      const items = new Map([...wrap.querySelectorAll('.nav-item')].map(i => [i.id, i]));
       (g.items || []).forEach(it => {
-        const iel = items.get(it.id);
-        if (!iel) return;
+        // Look the item up document-wide: it may have been moved to this group
+        // from another one, so it won't be inside `wrap` yet.
+        const iel = document.getElementById(it.id);
+        if (!iel || !iel.classList.contains('nav-item')) return;
         if (it.label) navSetItemLabel(iel, it.label);
         iel.style.display = it.hidden ? 'none' : '';
         wrap.appendChild(iel);
@@ -5291,7 +5292,7 @@ function navArrangeStart() {
   document.getElementById('sidebar').classList.add('arranging');
   document.getElementById('nav-arrange-label').textContent = 'Arranging…';
   document.getElementById('nav-arrange-actions').style.display = 'flex';
-  document.querySelectorAll('.nav-group.nav-group').forEach(g => g.classList.add('open'));
+  navGroupEls().forEach(g => g.classList.add('open'));   // every group open so items can be dragged between them
   navBindDrag();
 }
 function navArrangeCancel() {
@@ -5369,28 +5370,51 @@ function navDragStart(e) {
   _navDragEl.classList.add('nav-dragging');
   try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); } catch (_) {}
 }
+// What a drop on this element would do, or null when it isn't a legal target.
+// Groups reorder among themselves; an item can be dropped next to any other item
+// (in any group) or onto a group head to move it into that group.
+function navDropPlan(currentTarget) {
+  if (!_navDragEl) return null;
+  const overHead = currentTarget.classList.contains('nav-group-head');
+  const group = overHead ? currentTarget.closest('.nav-group') : null;
+  const draggingGroup = _navDragEl.classList.contains('nav-group');
+
+  if (draggingGroup) {
+    // group → group: reorder, using the head as the handle
+    if (!overHead || group === _navDragEl) return null;
+    return { kind: 'group', ref: group, highlight: group };
+  }
+  if (overHead) {
+    // item → group head: move it into that group
+    const wrap = group && group.querySelector('.nav-group-items');
+    if (!wrap) return null;
+    return { kind: 'into', wrap, highlight: currentTarget };
+  }
+  // item → item: insert beside it, even across groups
+  if (currentTarget === _navDragEl || !currentTarget.classList.contains('nav-item')) return null;
+  return { kind: 'item', ref: currentTarget, highlight: currentTarget };
+}
+
 function navDragOver(e) {
-  if (!_navDragEl) return;
-  const target = e.currentTarget.classList.contains('nav-group-head')
-    ? e.currentTarget.closest('.nav-group') : e.currentTarget;
-  const sameKind = target.classList.contains('nav-group') === _navDragEl.classList.contains('nav-group');
-  if (!sameKind || target === _navDragEl) return;
+  const plan = navDropPlan(e.currentTarget);
+  if (!plan) return;
   e.preventDefault(); e.stopPropagation();
-  target.classList.add('nav-drag-over');
+  plan.highlight.classList.add('nav-drag-over');
 }
 function navDrop(e) {
-  if (!_navDragEl) return;
-  const target = e.currentTarget.classList.contains('nav-group-head')
-    ? e.currentTarget.closest('.nav-group') : e.currentTarget;
-  const sameKind = target.classList.contains('nav-group') === _navDragEl.classList.contains('nav-group');
-  if (!sameKind || target === _navDragEl) return;
+  const plan = navDropPlan(e.currentTarget);
+  if (!plan) return;
   e.preventDefault(); e.stopPropagation();
-  target.classList.remove('nav-drag-over');
-  // Items may only move within their own group
-  if (!_navDragEl.classList.contains('nav-group') && target.parentElement !== _navDragEl.parentElement) return;
-  const rect = target.getBoundingClientRect();
+  plan.highlight.classList.remove('nav-drag-over');
+  if (plan.kind === 'into') {
+    plan.wrap.appendChild(_navDragEl);          // dropped on the header → end of that group
+    plan.wrap.closest('.nav-group')?.classList.add('open');
+    return;
+  }
+  const rect = plan.ref.getBoundingClientRect();
   const after = (e.clientY - rect.top) > rect.height / 2;
-  target.parentElement.insertBefore(_navDragEl, after ? target.nextSibling : target);
+  plan.ref.parentElement.insertBefore(_navDragEl, after ? plan.ref.nextSibling : plan.ref);
+  if (plan.kind === 'item') plan.ref.closest('.nav-group')?.classList.add('open');
 }
 function navDragEnd() {
   document.querySelectorAll('.nav-drag-over').forEach(el => el.classList.remove('nav-drag-over'));
