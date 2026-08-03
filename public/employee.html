@@ -819,6 +819,9 @@
       <div class="nav-group" data-group="google">
         <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Google</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
         <div class="nav-group-items">
+          <button class="nav-item"        id="nav-gchat"  onclick="navigate('gchat')" style="display:none">
+            <span class="nav-icon"><i data-lucide="message-square"></i></span> Google Chat
+          </button>
           <button class="nav-item"        id="nav-drive"  onclick="navigate('drive')">
             <span class="nav-icon"><i data-lucide="hard-drive"></i></span> My Drive
           </button>
@@ -980,9 +983,13 @@
 
     <!-- ── My Tasks Page ── -->
     <div class="page" id="page-tasks">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
         <div style="font-size:20px;font-weight:700">My Tasks</div>
-        <button class="btn btn-primary" onclick="openNewTaskModal()">+ New Task</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span id="emp-cal-status" style="font-size:12px;color:var(--muted)"></span>
+          <button id="emp-cal-btn" class="btn btn-outline btn-sm" style="display:none" onclick="empCalendarToggle()"></button>
+          <button class="btn btn-primary" onclick="openNewTaskModal()">+ New Task</button>
+        </div>
       </div>
       <div id="tasks-stats" class="stats-row"></div>
       <div class="tabs">
@@ -1697,6 +1704,30 @@
     </div>
 
     <!-- ── Chat Page ── -->
+
+  <!-- ── GOOGLE CHAT (real spaces + messages) ────────────────────────── -->
+    <div class="page" id="page-gchat" style="padding:0">
+    <div class="chat-layout">
+      <div class="chat-rooms-panel">
+        <div class="chat-rooms-header">
+          <span class="chat-rooms-title">Google Chat</span>
+          <button class="btn btn-sm btn-outline" onclick="gchatLoadSpaces()" title="Refresh" style="padding:5px 8px">
+            <i data-lucide="refresh-cw" style="width:13px;height:13px"></i>
+          </button>
+        </div>
+        <div class="chat-room-list" id="gchat-space-list">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+      <div class="chat-main" id="gchat-main">
+        <div class="chat-empty-state">
+          <i data-lucide="message-square" style="width:44px;height:44px;opacity:.25"></i>
+          <div>Select a space</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
     <div class="page" id="page-chat" style="padding:0">
       <div class="chat-layout" id="chat-layout">
         <div class="chat-rooms-panel" id="chat-rooms-panel">
@@ -1894,6 +1925,7 @@ function applyPermissions(permissions) {
   const crmLabel = document.getElementById('nav-label-crm');
   if (crmLabel) { const on = p.leads || p.deals || p.reports; crmLabel.style.display = on ? '' : 'none'; if (on) crmLabel.closest('.nav-group')?.classList.add('open'); }
   // Reports is only reachable if at least one individual report is granted
+  gchatInitNav();   // Google Chat nav appears only when it's configured server-side
   const anyReport = empCan('reports', 'leads') || empCan('reports', 'sales');
   const repNav = document.getElementById('nav-reports');
   const repPage = document.getElementById('page-reports');
@@ -2224,14 +2256,15 @@ async function logout() {
 }
 
 /* ── Navigation ── */
-const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', notif: 'Notifications', issues: 'Issues' };
-const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation, leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, notif: loadNotifPage, issues: loadIssues };
+const pageTitles = { log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', gchat: 'Google Chat', notif: 'Notifications', issues: 'Issues' };
+const pageLoaders = { requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation, leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, gchat: loadGChat, notif: loadNotifPage, issues: loadIssues };
 let _currentEmpPage = 'log';
 function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
+  if (_currentEmpPage === 'gchat' && page !== 'gchat') gchatStopPoll();
   _currentEmpPage = page;
   // Pages with a bottom composer need the Help agent lifted above the send button
-  document.body.classList.toggle('has-chat-composer', page === 'chat');
+  document.body.classList.toggle('has-chat-composer', page === 'chat' || page === 'gchat');
   // Block navigation to sections the employee doesn't have permission for
   const pageEl = document.getElementById('page-' + page);
   if (pageEl && pageEl.dataset.permitted === '0') return navigate('log');
@@ -2333,6 +2366,7 @@ async function loadMyTasks() {
   } catch (e) {
     document.getElementById('tasks-container').innerHTML = `<div class="empty">Error: ${e.message}</div>`;
   }
+  loadEmpCalendar();   // shows the 'add tasks to my calendar' control
 }
 
 function renderTasksStats() {
@@ -3672,6 +3706,217 @@ const EMP_DEAL_STAGES = ['lead','inquiry','quoted','negotiating','won','lost'];
 const EMP_DEAL_STAGE_LABELS = { lead:'Lead', inquiry:'Inquiry', quoted:'Quoted', negotiating:'Negotiating', won:'Won', lost:'Lost' };
 let _empDeals = [];
 let _empDragDealId = null;
+
+// ── Google Chat panel (real spaces + messages) ──────────────────────────────────
+// Capability comes from the scopes Google actually granted, so a partial consent
+// renders a read-only or send-only panel instead of failing. Every failure paints
+// a state inside this panel and never touches the rest of the page.
+let _gchat = { status: null, space: null, spaces: [], timer: null };
+const GCHAT_BASE = '/api/employee/gchat';
+
+function gchatFetch(path, opts) { return ef(GCHAT_BASE + path, opts); }
+
+function gchatStateCard(icon, title, body, btn) {
+  return `<div class="chat-empty-state" style="text-align:center;padding:32px">
+    <i data-lucide="${icon}" style="width:40px;height:40px;opacity:.3"></i>
+    <div style="font-weight:600;margin-top:4px">${esc(title)}</div>
+    <div style="font-size:12.5px;color:var(--muted);max-width:320px;line-height:1.6">${body}</div>
+    ${btn || ''}</div>`;
+}
+function gchatConnectBtn(label) {
+  return `<button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="gchatConnect()">${esc(label)}</button>`;
+}
+function gchatConnect() {
+  window.location.href = GCHAT_BASE + '/connect' + (empToken ? '?_t=' + encodeURIComponent(empToken) : '');
+}
+async function gchatDisconnect() {
+  if (!confirm('Disconnect Google Chat?')) return;
+  await gchatFetch('/disconnect', { method: 'POST' });
+  loadGChat();
+}
+
+async function loadGChat() {
+  const list = document.getElementById('gchat-space-list');
+  const main = document.getElementById('gchat-main');
+  if (!list || !main) return;
+  try { _gchat.status = await gchatFetch('/status').then(r => r.json()); }
+  catch (_) { _gchat.status = { configured: false }; }
+  const st = _gchat.status;
+
+  if (!st.configured) {
+    list.innerHTML = '';
+    main.innerHTML = gchatStateCard('plug', 'Google Chat is not set up',
+      'Ask an administrator to enable it (<code>GOOGLE_CHAT_ENABLED=1</code>). Google Chat requires a Google&nbsp;Workspace account.');
+  } else if (st.reconnect) {
+    list.innerHTML = '';
+    main.innerHTML = gchatStateCard('rotate-ccw', 'Reconnect Google Chat',
+      'Your Google session expired. Unverified apps in testing mode lose access every 7 days.', gchatConnectBtn('Reconnect'));
+  } else if (!st.connected) {
+    list.innerHTML = '';
+    main.innerHTML = gchatStateCard('message-square', 'Connect Google Chat',
+      'See your spaces and messages here, and reply without leaving the app.', gchatConnectBtn('Connect Google Chat'));
+  } else {
+    await gchatLoadSpaces();
+  }
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+async function gchatLoadSpaces() {
+  const list = document.getElementById('gchat-space-list');
+  const main = document.getElementById('gchat-main');
+  if (!list) return;
+  list.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  let d;
+  try { d = await gchatFetch('/spaces').then(r => r.json()); } catch (_) { d = { spaces: [], error: 'failed' }; }
+  if (d.error) {
+    list.innerHTML = '';
+    const msg = d.error === 'forbidden'
+      ? 'Google Chat isn\'t available for your organization. A Workspace admin needs to allow this app.'
+      : d.error === 'reconnect' ? 'Your Google session expired.'
+      : 'Could not reach Google Chat.';
+    main.innerHTML = gchatStateCard('alert-circle', 'Google Chat unavailable', esc(msg),
+      d.error === 'reconnect' ? gchatConnectBtn('Reconnect') : '');
+    requestAnimationFrame(() => lucide.createIcons());
+    return;
+  }
+  _gchat.spaces = d.spaces || [];
+  if (!_gchat.spaces.length) {
+    list.innerHTML = '<div style="padding:18px;color:var(--muted);font-size:12.5px;line-height:1.6">No spaces yet.<br>Group chats and DMs only appear here once they have at least one message.</div>';
+    return;
+  }
+  list.innerHTML = _gchat.spaces.map(sp => {
+    const init = (sp.title || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    return `<div class="chat-room-item${_gchat.space === sp.name ? ' active' : ''}" onclick="gchatOpen('${sp.name}')">
+      <div class="chat-room-avatar-wrap"><div class="chat-room-avatar${sp.type === 'SPACE' ? ' grp' : ''}">${esc(init)}</div></div>
+      <div class="chat-room-info"><div class="chat-room-name">${esc(sp.title)}</div>
+        <div class="chat-room-preview">${esc(sp.type === 'DIRECT_MESSAGE' ? 'Direct message' : 'Space')}</div></div>
+    </div>`;
+  }).join('');
+  if (_gchat.space) gchatOpen(_gchat.space, true);
+}
+
+async function gchatOpen(space, keepPoll) {
+  _gchat.space = space;
+  document.querySelectorAll('#gchat-space-list .chat-room-item').forEach(el => el.classList.remove('active'));
+  const caps = (_gchat.status && _gchat.status.caps) || {};
+  const sp = _gchat.spaces.find(x => x.name === space);
+  const main = document.getElementById('gchat-main');
+  main.innerHTML = `
+    <div class="chat-header"><div class="chat-header-name">${esc(sp ? sp.title : 'Space')}</div></div>
+    <div class="chat-messages" id="gchat-messages"><div class="loading"><div class="spinner"></div></div></div>
+    ${caps.send ? `<div class="chat-composer">
+        <textarea class="chat-input" id="gchat-input" rows="1" placeholder="Message ${esc(sp ? sp.title : '')}… (sent as you)" onkeydown="gchatKey(event)"></textarea>
+        <button class="chat-send-btn" id="gchat-send" onclick="gchatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
+      </div>`
+      : `<div class="chat-composer" style="justify-content:center;color:var(--muted);font-size:12px">
+          Read-only — you didn't grant permission to send. <a href="#" onclick="gchatConnect();return false" style="color:var(--primary);margin-left:4px">Reconnect</a>
+        </div>`}`;
+  await gchatLoadMessages();
+  if (!keepPoll) gchatStartPoll();
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+async function gchatLoadMessages() {
+  const box = document.getElementById('gchat-messages');
+  if (!box || !_gchat.space) return;
+  const caps = (_gchat.status && _gchat.status.caps) || {};
+  if (!caps.read) {
+    box.innerHTML = gchatStateCard('eye-off', 'Message history not shared',
+      'You didn\'t grant permission to read messages. You can still send.', gchatConnectBtn('Grant read access'));
+    requestAnimationFrame(() => lucide.createIcons());
+    return;
+  }
+  let d;
+  try { d = await gchatFetch('/messages?space=' + encodeURIComponent(_gchat.space)).then(r => r.json()); }
+  catch (_) { d = { messages: [], error: 'failed' }; }
+  if (d.error) {
+    box.innerHTML = gchatStateCard('alert-circle', 'Could not load messages', esc(d.detail || d.error),
+      d.error === 'reconnect' ? gchatConnectBtn('Reconnect') : '');
+    requestAnimationFrame(() => lucide.createIcons());
+    return;
+  }
+  const msgs = d.messages || [];
+  if (!msgs.length) { box.innerHTML = '<div class="chat-empty-state" style="padding:28px"><div>No messages in this space yet.</div></div>'; return; }
+  const me = (_gchat.status && _gchat.status.email) || '';
+  box.innerHTML = msgs.map(m => {
+    const mine = me && m.senderName && _gchat.status.name === m.senderName;
+    const t = m.createTime ? new Date(m.createTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+    return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}">
+      ${!mine ? `<div class="chat-msg-sender">${esc(m.senderName || 'Unknown')}</div>` : ''}
+      <div class="chat-msg-bubble">${esc(m.text)}</div>
+      <div class="chat-msg-time">${t}</div>
+    </div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+function gchatKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); gchatSend(); } }
+async function gchatSend() {
+  const input = document.getElementById('gchat-input');
+  const btn = document.getElementById('gchat-send');
+  if (!input || !_gchat.space) return;
+  const text = input.value.trim();
+  if (!text) return;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await gchatFetch('/messages', { method: 'POST', body: JSON.stringify({ space: _gchat.space, text }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.detail || d.error || 'Send failed');
+    input.value = '';            // only clear once Google accepted it
+    await gchatLoadMessages();
+  } catch (e) {
+    alert('Could not send: ' + e.message);
+  } finally { if (btn) btn.disabled = false; }
+}
+
+// Chat has no realtime push without extra Workspace infrastructure, so poll —
+// only the open space, and never while the tab is hidden.
+function gchatStartPoll() {
+  gchatStopPoll();
+  _gchat.timer = setInterval(() => {
+    if (document.hidden || !_gchat.space) return;
+    gchatLoadMessages().catch(() => {});
+  }, 20000);
+}
+function gchatStopPoll() { if (_gchat.timer) { clearInterval(_gchat.timer); _gchat.timer = null; } }
+
+// Hide the nav entry entirely until Chat is configured — never show a dead page.
+async function gchatInitNav() {
+  const nav = document.getElementById('nav-gchat');
+  if (!nav) return;
+  try {
+    const st = await gchatFetch('/status').then(r => r.json());
+    nav.style.display = st.configured ? '' : 'none';
+  } catch (_) { nav.style.display = 'none'; }
+}
+
+/* ── My Google Calendar (tasks assigned to me land on it directly) ── */
+let _empCal = { configured: false, connected: false };
+async function loadEmpCalendar() {
+  const badge = document.getElementById('emp-cal-status');
+  const btn = document.getElementById('emp-cal-btn');
+  if (!badge || !btn) return;
+  try { _empCal = await ef('/api/employee/calendar/status').then(r => r.json()); }
+  catch (_) { _empCal = { configured: false, connected: false }; }
+  if (!_empCal.configured) { badge.textContent = ''; btn.style.display = 'none'; return; }
+  btn.style.display = '';
+  if (_empCal.connected) {
+    badge.textContent = `Tasks sync to ${_empCal.email || 'your calendar'}`;
+    btn.textContent = 'Disconnect calendar';
+  } else {
+    badge.textContent = 'Tasks are not on your calendar yet';
+    btn.textContent = 'Add tasks to my Google Calendar';
+  }
+}
+async function empCalendarToggle() {
+  if (_empCal.connected) {
+    if (!confirm('Stop adding your tasks to Google Calendar? Events already created stay put.')) return;
+    await ef('/api/employee/calendar/disconnect', { method: 'POST' });
+    loadEmpCalendar();
+    return;
+  }
+  window.location.href = '/api/employee/calendar/connect' + (empToken ? '?_t=' + encodeURIComponent(empToken) : '');
+}
 
 /* ── Reports (only the ones this employee is granted) ── */
 function empRepEgp(n) { return (Number(n) || 0).toLocaleString() + ' EGP'; }

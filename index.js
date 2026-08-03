@@ -121,6 +121,13 @@ let driveTokens = null;
 let calendarTokens = null;   // company Google Calendar (task events)
 const employeeDriveTokens  = new Map();
 const employeeEmailTokens  = new Map();
+const employeeCalendarTokens = new Map();   // employee's own Google Calendar
+const employeeChatTokens     = new Map();   // employee's Google Chat (spaces/messages)
+let adminChatGoogleTokens = null;           // admin's own Google Chat connection
+// tasks.calendar_events (migrations/004) stores one event id per target. Without
+// it personal event ids can't be remembered, so we fall back to company-invites
+// only rather than creating a duplicate event on every sync.
+let taskCalendarEventsOk = true;
 const pendingDriveAuth     = new Map();
 
 // ─── Google Token Persistence ─────────────────────────────────────────────────
@@ -139,6 +146,13 @@ async function loadGoogleTokens() {
       } else if (row.user_key.endsWith('_gmail')) {
         const id = parseInt(row.user_key);
         if (!isNaN(id)) employeeEmailTokens.set(id, t);
+      } else if (row.user_key === 'admin_gchat') adminChatGoogleTokens = t;
+      else if (row.user_key.endsWith('_calendar')) {
+        const id = parseInt(row.user_key);
+        if (!isNaN(id)) employeeCalendarTokens.set(id, t);
+      } else if (row.user_key.endsWith('_gchat')) {
+        const id = parseInt(row.user_key);
+        if (!isNaN(id)) employeeChatTokens.set(id, t);
       }
     }
     if (data.length) console.log(`[tokens] Loaded ${data.length} Google token(s) from DB`);
@@ -627,17 +641,37 @@ receiver.router.put('/api/dashboard/tasks/:id', requireAuth, express.json(), asy
   const before = new Set(taskAssigneeList(prev));
   const added = taskAssigneeList(data).filter(id => !before.has(id));
   if (added.length) notifyEmployeeTaskAssigned({ ...data, assignee_ids: added });
-  // Keep the calendar event in step with due-date / assignee edits
-  if (added.length || updates.due_date !== undefined || updates.title !== undefined) syncTaskToCalendar(data);
+  // Keep calendars in step with due-date / title / assignee edits. Removals matter
+  // too — the event has to come off the ex-assignee's calendar.
+  const removed = taskAssigneeList(prev).filter(id => !taskAssigneeList(data).includes(id));
+  if (added.length || removed.length || updates.due_date !== undefined || updates.title !== undefined) syncTaskToCalendar(data);
   if (data.status === 'done' && prev?.status !== 'done') runAutomations('task.completed', taskCtx(data));
   res.json(data);
 });
 
 receiver.router.delete('/api/dashboard/tasks/:id', requireAuth, async (req, res) => {
+  // Grab the event ids before the row goes, so the calendars can be cleaned up.
+  const { data: doomed } = await supabase.from('tasks').select('id,calendar_events,calendar_event_id').eq('id', req.params.id).single();
   const { error } = await supabase.from('tasks').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
+  deleteTaskCalendarEvents(doomed);
 });
+
+// Remove every calendar event a task created (personal + the company invite).
+async function deleteTaskCalendarEvents(task) {
+  if (!task) return;
+  const map = (task.calendar_events && typeof task.calendar_events === 'object') ? { ...task.calendar_events } : {};
+  if (task.calendar_event_id && !map.company) map.company = task.calendar_event_id;
+  for (const [key, eventId] of Object.entries(map)) {
+    try {
+      const token = key === 'company' ? await getCalendarToken() : await getEmployeeCalendarToken(Number(key));
+      if (!token) continue;
+      await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}${key === 'company' ? '?sendUpdates=all' : ''}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+    } catch (e) { console.warn('[calendar] delete failed for', key, e.message); }
+  }
+}
 
 // ── Recurring Tasks (templates that auto-generate tasks) ──────────────────────
 // Date helpers work on YYYY-MM-DD strings in UTC, matching how the rest of the
@@ -1477,7 +1511,11 @@ receiver.router.get('/api/email/callback', async (req, res) => {
     pendingDriveAuth.delete(state);
     try {
       const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-      const tokenRes = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, redirect_uri: `${base}/api/email/callback`, grant_type: 'authorization_code' }) });
+      // Chat may use its own OAuth client, so the grant doesn't drag the existing
+      // Gmail/Drive scopes into a fresh Google review.
+      const cid = pending.type === 'gchat' ? CHAT_CLIENT_ID : GOOGLE_CLIENT_ID;
+      const csec = pending.type === 'gchat' ? CHAT_CLIENT_SECRET : GOOGLE_CLIENT_SECRET;
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, client_id: cid, client_secret: csec, redirect_uri: `${base}/api/email/callback`, grant_type: 'authorization_code' }) });
       const tokens = await tokenRes.json();
       if (!tokens.access_token) throw new Error(tokens.error_description || 'No access token');
       const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
@@ -1503,6 +1541,20 @@ receiver.router.get('/api/email/callback', async (req, res) => {
         employeeEmailTokens.set(pending.employeeId, full);
         saveGoogleToken(`${pending.employeeId}_gmail`, full);
         return res.redirect('/employee#email');
+      }
+      if (pending.type === 'gchat') {
+        const store = chatStore(pending.kind);
+        // `tokens.scope` is what Google ACTUALLY granted — granular consent means
+        // it can be narrower than what we asked for.
+        store.set({ ...full, scope: tokens.scope || '' });
+        saveGoogleToken(store.key, store.get());
+        return res.redirect(pending.redirect || '/dashboard#gchat');
+      }
+      if (pending.type === 'employee-calendar' && pending.employeeId) {
+        employeeCalendarTokens.set(pending.employeeId, full);
+        saveGoogleToken(`${pending.employeeId}_calendar`, full);
+        backfillEmployeeCalendar(pending.employeeId);   // best-effort, don't block the redirect
+        return res.redirect('/employee#tasks');
       }
       if (pending.type === 'admin-calendar') {
         calendarTokens = full;
@@ -1671,6 +1723,166 @@ receiver.router.post('/api/drive/disconnect', requireAuth, (_req, res) => { driv
 receiver.router.get('/api/drive/files',  requireAuth, async (_req, res) => { try { res.json(await listDriveFiles(driveTokens)); } catch (e) { res.status(500).json({ error: e.message }); } });
 receiver.router.get('/api/drive/sheets', requireAuth, async (_req, res) => { try { res.json(await listDriveFiles(driveTokens, 'application/vnd.google-apps.spreadsheet')); } catch (e) { res.status(500).json({ error: e.message }); } });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Google Chat (real spaces + messages, in-app) ──────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// Reads and sends as the signed-in USER (not a bot), so messages are attributed to
+// them. Three hard facts shape this integration:
+//   • The Chat API is Google Workspace only — consumer @gmail.com accounts cannot
+//     use it at all.
+//   • Reading messages needs chat.messages.readonly, which Google classes as a
+//     RESTRICTED scope (verification + an annual CASA security assessment) unless
+//     the OAuth consent screen is Internal to the Workspace org.
+//   • Sending (chat.messages.create) and listing spaces (chat.spaces.readonly) are
+//     only "sensitive" — far cheaper to ship.
+// So capability is decided at RUNTIME from the scopes Google actually granted,
+// never at build time: a partial consent degrades to a read-only or send-only
+// panel instead of erroring.
+const GOOGLE_CHAT_ENABLED = process.env.GOOGLE_CHAT_ENABLED === '1';
+const GOOGLE_CHAT_WANT_READ = process.env.GOOGLE_CHAT_READ !== '0';   // ask for message history
+const CHAT_CLIENT_ID     = process.env.GOOGLE_CHAT_CLIENT_ID     || GOOGLE_CLIENT_ID;
+const CHAT_CLIENT_SECRET = process.env.GOOGLE_CHAT_CLIENT_SECRET || GOOGLE_CLIENT_SECRET;
+
+const CHAT_SCOPE_SPACES = 'https://www.googleapis.com/auth/chat.spaces.readonly';
+const CHAT_SCOPE_SEND   = 'https://www.googleapis.com/auth/chat.messages.create';
+const CHAT_SCOPE_READ   = 'https://www.googleapis.com/auth/chat.messages.readonly';
+function chatScopes() {
+  return [CHAT_SCOPE_SPACES, CHAT_SCOPE_SEND, ...(GOOGLE_CHAT_WANT_READ ? [CHAT_SCOPE_READ] : []),
+    'https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile'].join(' ');
+}
+// Granular consent means the user can tick some boxes and not others.
+function chatCaps(t) {
+  const granted = String((t && (t.scope || t.granted_scopes)) || '');
+  return {
+    spaces: granted.includes('chat.spaces'),
+    read:   granted.includes('chat.messages.readonly') || /chat\.messages(\s|$)/.test(granted),
+    send:   granted.includes('chat.messages.create') || /chat\.messages(\s|$)/.test(granted),
+  };
+}
+
+function chatStore(kind) {   // kind: 'admin' | employee id
+  return kind === 'admin'
+    ? { get: () => adminChatGoogleTokens, set: v => { adminChatGoogleTokens = v; }, key: 'admin_gchat' }
+    : { get: () => employeeChatTokens.get(kind), set: v => { v ? employeeChatTokens.set(kind, v) : employeeChatTokens.delete(kind); }, key: `${kind}_gchat` };
+}
+
+async function getChatToken(kind) {
+  const store = chatStore(kind);
+  const t = store.get();
+  if (!t) return null;
+  if (t.refresh_token && Date.now() > (t.expiry_date || 0) - 60_000) {
+    const r = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: t.refresh_token, client_id: CHAT_CLIENT_ID, client_secret: CHAT_CLIENT_SECRET, grant_type: 'refresh_token' }),
+    });
+    const refreshed = await r.json();
+    if (refreshed.access_token) {
+      const updated = { ...t, ...refreshed, expiry_date: Date.now() + ((refreshed.expires_in || 3600) * 1000) };
+      store.set(updated); saveGoogleToken(store.key, updated);
+    } else if (refreshed.error === 'invalid_grant') {
+      // Unverified apps in "testing" lose refresh tokens after 7 days — surface it
+      // as "reconnect" rather than a dead panel.
+      store.set({ ...t, dead: true });
+      return null;
+    }
+  }
+  return (store.get() || {}).access_token || null;
+}
+
+// Every Chat call funnels through here: never throws, always returns a shape the
+// UI can render as a state.
+async function chatApi(kind, path, opts) {
+  if (!GOOGLE_CHAT_ENABLED || !CHAT_CLIENT_ID) return { error: 'not_configured' };
+  const t = chatStore(kind).get();
+  if (!t) return { error: 'not_connected' };
+  if (t.dead) return { error: 'reconnect' };
+  const token = await getChatToken(kind);
+  if (!token) return { error: 'reconnect' };
+  try {
+    const r = await fetch(`https://chat.googleapis.com/v1/${path}`, {
+      ...(opts || {}),
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...((opts || {}).headers || {}) },
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const msg = body.error?.message || `HTTP ${r.status}`;
+      if (r.status === 403) return { error: 'forbidden', detail: msg };
+      if (r.status === 401) return { error: 'reconnect', detail: msg };
+      return { error: 'failed', detail: msg };
+    }
+    return { data: body };
+  } catch (e) { return { error: 'failed', detail: e.message }; }
+}
+
+function chatStatusPayload(kind) {
+  const t = chatStore(kind).get();
+  if (!GOOGLE_CHAT_ENABLED || !CHAT_CLIENT_ID) return { configured: false };
+  if (!t) return { configured: true, connected: false };
+  if (t.dead) return { configured: true, connected: false, reconnect: true, email: t.email };
+  return { configured: true, connected: true, email: t.email, name: t.name, caps: chatCaps(t) };
+}
+
+// Register the six Chat routes for one audience (admin or employee).
+function mountChatRoutes(base, guard, kindOf, redirect) {
+  receiver.router.get(`${base}/status`, guard, (req, res) => res.json(chatStatusPayload(kindOf(req))));
+
+  receiver.router.get(`${base}/connect`, guard, (req, res) => {
+    if (!GOOGLE_CHAT_ENABLED) return res.status(400).send('Google Chat is not enabled (set GOOGLE_CHAT_ENABLED=1)');
+    if (!CHAT_CLIENT_ID) return res.status(400).send('GOOGLE_CLIENT_ID not configured');
+    const b = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+    const state = crypto.randomBytes(16).toString('hex');
+    pendingDriveAuth.set(state, { type: 'gchat', kind: kindOf(req), redirect });
+    const params = new URLSearchParams({ client_id: CHAT_CLIENT_ID, redirect_uri: `${b}/api/email/callback`, response_type: 'code', scope: chatScopes(), access_type: 'offline', prompt: 'consent', state });
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  });
+
+  receiver.router.post(`${base}/disconnect`, guard, (req, res) => {
+    const store = chatStore(kindOf(req));
+    store.set(null); saveGoogleToken(store.key, null);
+    res.json({ ok: true });
+  });
+
+  receiver.router.get(`${base}/spaces`, guard, async (req, res) => {
+    const r = await chatApi(kindOf(req), 'spaces?pageSize=100');
+    if (r.error) return res.json({ spaces: [], error: r.error, detail: r.detail });
+    // Chat returns nothing at all for an empty list
+    const spaces = (r.data.spaces || []).map(sp => ({
+      name: sp.name,
+      title: sp.displayName || (sp.spaceType === 'DIRECT_MESSAGE' ? 'Direct message' : 'Untitled space'),
+      type: sp.spaceType || sp.type || '',
+    }));
+    res.json({ spaces });
+  });
+
+  receiver.router.get(`${base}/messages`, guard, async (req, res) => {
+    const space = String(req.query.space || '');
+    if (!/^spaces\/[A-Za-z0-9_-]+$/.test(space)) return res.json({ messages: [], error: 'bad_space' });
+    const r = await chatApi(kindOf(req), `${space}/messages?pageSize=50&orderBy=${encodeURIComponent('createTime desc')}`);
+    if (r.error) return res.json({ messages: [], error: r.error, detail: r.detail });
+    const messages = (r.data.messages || []).map(m => ({
+      id: m.name,
+      text: m.text || '',
+      senderName: m.sender?.displayName || '',
+      senderId: m.sender?.name || '',
+      createTime: m.createTime || '',
+    })).reverse();   // oldest first, like the in-app chat
+    res.json({ messages });
+  });
+
+  receiver.router.post(`${base}/messages`, guard, express.json(), async (req, res) => {
+    const space = String(req.body?.space || '');
+    const text = String(req.body?.text || '').trim().slice(0, 4000);
+    if (!/^spaces\/[A-Za-z0-9_-]+$/.test(space)) return res.status(400).json({ error: 'bad_space' });
+    if (!text) return res.status(400).json({ error: 'empty' });
+    const r = await chatApi(kindOf(req), `${space}/messages`, { method: 'POST', body: JSON.stringify({ text }) });
+    if (r.error) return res.json({ ok: false, error: r.error, detail: r.detail });
+    res.json({ ok: true, id: r.data.name });
+  });
+}
+
+mountChatRoutes('/api/dashboard/gchat', requireAuth, () => 'admin', '/dashboard#gchat');
+mountChatRoutes('/api/employee/gchat', requireEmployeeAuth, req => req.employee.id, '/employee#gchat');
+
 // ─── Sidebar layout (admin-arranged nav) ──────────────────────────────────────
 // Order + custom labels for the dashboard sidebar, stored as JSON in the existing
 // quotation_settings KV table (same pattern as leads_columns_config). The nav
@@ -1751,43 +1963,200 @@ async function getCalendarToken() {
 }
 
 // All-day event on the due date, with the assignees invited by email.
+// Employees can connect their own calendar so task events land directly on it
+// instead of arriving as an invitation from the company account.
+receiver.router.get('/api/employee/calendar/status', requireEmployeeAuth, (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.json({ configured: false });
+  const t = employeeCalendarTokens.get(req.employee.id);
+  if (!t) return res.json({ configured: true, connected: false });
+  res.json({ configured: true, connected: true, email: t.email, name: t.name });
+});
+
+receiver.router.get('/api/employee/calendar/connect', requireEmployeeAuth, (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.status(400).send('GOOGLE_CLIENT_ID not configured');
+  const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  const state = crypto.randomBytes(16).toString('hex');
+  pendingDriveAuth.set(state, { type: 'employee-calendar', employeeId: req.employee.id });
+  const params = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: `${base}/api/email/callback`, response_type: 'code', scope: CALENDAR_SCOPES, access_type: 'offline', prompt: 'consent', state });
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+receiver.router.post('/api/employee/calendar/disconnect', requireEmployeeAuth, async (req, res) => {
+  const id = req.employee.id;
+  res.json({ ok: true });
+  // Remove the events we put there while the token is still valid, otherwise they
+  // linger forever and the employee also starts getting company invites (R3).
+  try {
+    const token = await getEmployeeCalendarToken(id);
+    if (token) {
+      const { data: rows } = await supabase.from('tasks').select('id,calendar_events').not('calendar_events', 'is', null);
+      for (const t of rows || []) {
+        const ev = t.calendar_events && t.calendar_events[String(id)];
+        if (!ev) continue;
+        await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(ev)}`,
+          { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+        const rest = { ...t.calendar_events }; delete rest[String(id)];
+        await supabase.from('tasks').update({ calendar_events: rest }).eq('id', t.id);
+      }
+    }
+  } catch (e) { console.warn('[calendar] disconnect cleanup failed:', e.message); }
+  employeeCalendarTokens.delete(id);
+  saveGoogleToken(`${id}_calendar`, null);
+});
+
+// R2: when someone connects, put their existing open tasks on the new calendar
+// straight away instead of waiting for the next edit. Routed through
+// syncTaskToCalendar so it PATCHes known events rather than duplicating them.
+async function backfillEmployeeCalendar(employeeId) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: tasks } = await supabase.from('tasks')
+      .select('*').neq('status', 'done').gte('due_date', today).limit(200);
+    const mine = (tasks || []).filter(t => taskAssigneeList(t).map(String).includes(String(employeeId)));
+    console.log('[calendar] backfilling', mine.length, 'task(s) for employee', employeeId);
+    for (const t of mine) await syncTaskToCalendar(t);
+  } catch (e) { console.warn('[calendar] backfill failed:', e.message); }
+}
+
+async function getEmployeeCalendarToken(employeeId) {
+  const t = employeeCalendarTokens.get(employeeId);
+  if (!t) return null;
+  if (t.refresh_token && Date.now() > (t.expiry_date || 0) - 60_000) {
+    const r = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: t.refresh_token, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, grant_type: 'refresh_token' }),
+    });
+    const refreshed = await r.json();
+    if (refreshed.access_token) {
+      const updated = { ...t, ...refreshed, expiry_date: Date.now() + ((refreshed.expires_in || 3600) * 1000) };
+      employeeCalendarTokens.set(employeeId, updated);
+      saveGoogleToken(`${employeeId}_calendar`, updated);
+    }
+  }
+  return (employeeCalendarTokens.get(employeeId) || {}).access_token || null;
+}
+
+// Shared event body for a task.
+function taskEventBody(task, attendees) {
+  const day = String(task.due_date).slice(0, 10);      // tolerate a timestamp
+  const end = new Date(day + 'T00:00:00Z');
+  end.setUTCDate(end.getUTCDate() + 1);            // Google's all-day end is exclusive
+  const body = {
+    summary: `[Task] ${task.title || 'Task'}`,
+    description: [task.description || '', task.milestone ? `Milestone: ${task.milestone}` : '', `Priority: ${task.priority || 'medium'}`]
+      .filter(Boolean).join('\n'),
+    start: { date: day },
+    end: { date: end.toISOString().slice(0, 10) },
+  };
+  if (attendees && attendees.length) body.attendees = attendees;
+  return body;
+}
+
+// Create or patch one event on a given calendar. Returns the event id, or null.
+async function upsertCalendarEvent(token, body, existingId, invite) {
+  const q = invite ? '?sendUpdates=all' : '';
+  const url = existingId
+    ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(existingId)}${q}`
+    : `https://www.googleapis.com/calendar/v3/calendars/primary/events${q}`;
+  const r = await fetch(url, {
+    method: existingId ? 'PATCH' : 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const ev = await r.json();
+  if (!r.ok) {
+    // A 404/410 means the event was deleted in Google — drop the stale id so the
+    // next sync recreates it instead of failing forever.
+    if (existingId && (r.status === 404 || r.status === 410)) return { gone: true };
+    console.warn('[calendar] event write failed:', ev.error?.message || r.status);
+    return null;
+  }
+  return { id: ev.id };
+}
+
+// Put a task on each assignee's calendar.
+//  • Assignees who connected their own Google Calendar get the event written
+//    straight into it (no invitation to accept).
+//  • Anyone left over is invited from the company account, if one is connected.
+// Event ids are tracked per target in tasks.calendar_events so re-syncing patches
+// the same events rather than creating duplicates.
 async function syncTaskToCalendar(task) {
   try {
     if (!task || !task.due_date) return;
-    const token = await getCalendarToken();
-    if (!token) return;   // not connected — silently skip
     const ids = taskAssigneeList(task);
     if (!ids.length) return;
-    const { data: emps } = await supabase.from('employees').select('id,name,email').in('id', ids.map(Number).filter(n => !isNaN(n)));
-    const attendees = (emps || []).filter(e => e.email).map(e => ({ email: e.email }));
-    if (!attendees.length) return;   // nobody to invite
+    const numIds = ids.map(Number).filter(n => !isNaN(n));
+    const { data: emps } = await supabase.from('employees').select('id,name,email').in('id', numIds);
 
-    const end = new Date(task.due_date + 'T00:00:00Z');
-    end.setUTCDate(end.getUTCDate() + 1);           // Google's all-day end is exclusive
-    const body = {
-      summary: `[Task] ${task.title || 'Task'}`,
-      description: [task.description || '', task.milestone ? `Milestone: ${task.milestone}` : '', `Priority: ${task.priority || 'medium'}`]
-        .filter(Boolean).join('\n'),
-      start: { date: task.due_date },
-      end: { date: end.toISOString().slice(0, 10) },
-      attendees,
-    };
+    // Existing ids: { "<employeeId>": eventId, company: eventId }. Older rows may
+    // only have the flat calendar_event_id (always a company event).
+    const prior = (task.calendar_events && typeof task.calendar_events === 'object') ? { ...task.calendar_events } : {};
+    if (task.calendar_event_id && !prior.company) prior.company = task.calendar_event_id;
+    const next = { ...prior };
+    let changed = false;
 
-    const existing = task.calendar_event_id;
-    const url = existing
-      ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(existing)}?sendUpdates=all`
-      : 'https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all';
-    const r = await fetch(url, {
-      method: existing ? 'PATCH' : 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const ev = await r.json();
-    if (!r.ok) { console.warn('[calendar] event sync failed:', ev.error?.message || r.status); return; }
-    if (!existing && ev.id) {
-      await supabase.from('tasks').update({ calendar_event_id: ev.id }).eq('id', task.id);
+    const personal = new Set();
+    for (const emp of emps || []) {
+      // One employee's failure must never stop the others, nor the company fallback.
+      try {
+        if (!taskCalendarEventsOk) break;
+        const token = await getEmployeeCalendarToken(emp.id);
+        if (!token) continue;
+        const key = String(emp.id);
+        const r = await upsertCalendarEvent(token, taskEventBody(task, null), next[key], false);
+        if (r && r.gone) { delete next[key]; changed = true; continue; }
+        if (!r) continue;
+        personal.add(emp.id);
+        if (next[key] !== r.id) { next[key] = r.id; changed = true; }
+        console.log('[calendar] task', task.id, '→ own calendar of employee', emp.id);
+      } catch (e) { console.warn('[calendar] employee', emp.id, 'sync failed:', e.message); }
     }
-    console.log('[calendar] synced task', task.id, '→ event', ev.id);
+
+    // Retire events for people who are no longer assignees (R4) — otherwise the
+    // event lingers on a calendar for a task they've been taken off.
+    const stillAssigned = new Set((emps || []).map(e => String(e.id)));
+    for (const key of Object.keys(next)) {
+      if (key === 'company' || stillAssigned.has(key)) continue;
+      try {
+        const token = await getEmployeeCalendarToken(Number(key));
+        if (token) await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(next[key])}`,
+          { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+      } catch (_) {}
+      delete next[key]; changed = true;
+    }
+
+    // Whoever hasn't connected gets invited from the company account instead.
+    const invitees = (emps || []).filter(e => e.email && !personal.has(e.id)).map(e => ({ email: e.email }));
+    if (invitees.length) {
+      const token = await getCalendarToken();
+      if (token) {
+        const r = await upsertCalendarEvent(token, taskEventBody(task, invitees), next.company, true);
+        if (r && r.gone) { delete next.company; changed = true; }
+        else if (r) {
+          if (next.company !== r.id) { next.company = r.id; changed = true; }
+          console.log('[calendar] task', task.id, '→ company invite to', invitees.length, 'assignee(s)');
+        }
+      }
+    } else if (next.company) {
+      // Everyone now has their own calendar — retire the shared invite.
+      const token = await getCalendarToken();
+      if (token) {
+        await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(next.company)}?sendUpdates=all`,
+          { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+      }
+      delete next.company; changed = true;
+    }
+
+    if (changed) {
+      const patch = { calendar_events: next, calendar_event_id: next.company || null };
+      const { error } = await supabase.from('tasks').update(patch).eq('id', task.id);
+      // Older databases without calendar_events still get the company id stored.
+      if (error && /calendar_events/i.test(error.message || '')) {
+        taskCalendarEventsOk = false;   // degrade to company-invites only (see migrations/004)
+        console.warn('[calendar] tasks.calendar_events missing — apply migrations/004. Falling back to company invites.');
+        await supabase.from('tasks').update({ calendar_event_id: next.company || null }).eq('id', task.id);
+      }
+    }
   } catch (e) { console.warn('[calendar] sync error:', e.message); }
 }
 
