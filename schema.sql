@@ -843,3 +843,5 @@ ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS payment_terms      TEXT DEF
 -- Google Calendar event created for a task, so edits patch the same event.
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS calendar_event_id TEXT DEFAULT NULL;
 -- Sidebar layout (order + custom labels) lives in quotation_settings under 'nav_config'.
+-- Per-target calendar event ids: { "<employeeId>": eventId, "company": eventId }.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS calendar_events JSONB DEFAULT '{}'::jsonb;
