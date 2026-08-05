@@ -198,3 +198,71 @@ Channel Members (e.g. #marketing)
 | Bot can't post to channel | Add bot to the channel or enable `chat:write.public` scope |
 | Supabase error | Check `SUPABASE_SERVICE_KEY` — must be service_role, not anon key |
 | Status buttons don't work | Ensure Interactivity URL is set correctly in Slack App settings |
+
+---
+
+## 📅 Google Calendar — tasks on the assignee's calendar
+
+Two ways a task reaches a calendar, and they work together:
+
+1. **The employee's own calendar (preferred).** Each employee clicks
+   *"Add tasks to my Google Calendar"* on **My Tasks** in the employee portal.
+   Their task events are then written straight into their calendar — no
+   invitation to accept — and their existing open tasks are backfilled
+   immediately. Disconnecting removes the events again.
+2. **Company invite (fallback).** Anyone who hasn't connected is invited as an
+   attendee from a single company account, connected once from **Calendar →
+   "Connect for task sync"** in the admin dashboard.
+
+Event ids are tracked per calendar in `tasks.calendar_events`, so editing a
+task's title, due date or assignees patches the existing events instead of
+creating duplicates. With nothing connected, task creation is unaffected.
+
+Requires the `https://www.googleapis.com/auth/calendar.events` scope on the
+OAuth consent screen.
+
+---
+
+## 💬 Google Chat integration
+
+Reads your Chat spaces and messages, and sends as the signed-in user, inside the
+app (**Google → Google Chat** in both portals). It is **off by default**.
+
+### Turning it on
+
+**1. Railway environment variables**
+
+| Variable | Value | Notes |
+|---|---|---|
+| `GOOGLE_CHAT_ENABLED` | `1` | Required. Until set, the nav item stays hidden. |
+| `GOOGLE_CHAT_READ` | `1` (default) | `0` requests send-only scopes — avoids the restricted-scope tier. |
+| `GOOGLE_CHAT_CLIENT_ID` | *optional* | A separate OAuth client for Chat, so the Chat grant can't drag the existing Gmail/Drive scopes into a fresh Google review. Falls back to `GOOGLE_CLIENT_ID`. |
+| `GOOGLE_CHAT_CLIENT_SECRET` | *optional* | Pairs with the above. |
+
+**2. Google Cloud Console** (project behind the client id)
+
+- **Enable the Google Chat API.**
+- **Chat API → Configuration**: fill in App name, Avatar URL and Description.
+  Required for *sending* — reads work without it.
+- **OAuth consent screen**: add the scopes
+  `chat.spaces.readonly`, `chat.messages.create` and — only if `GOOGLE_CHAT_READ=1` —
+  `chat.messages.readonly`.
+- **Set the consent screen audience to Internal** if the Cloud project lives
+  inside your Workspace org. This is strongly recommended: it removes app
+  verification, the annual CASA security assessment, and the 7-day refresh-token
+  expiry that External+Testing imposes.
+
+### Things to know
+
+- **Workspace only.** The Chat API rejects consumer `@gmail.com` accounts outright.
+- `chat.messages.readonly` is a **restricted** scope. On an *External* consent
+  screen it needs verification plus an annual CASA assessment. *Internal* avoids
+  both. Sending (`chat.messages.create`) is only *sensitive*.
+- Messages sent from the panel are **text only**, and Chat stamps the app's name
+  next to the sender. Neither is changeable.
+- **No realtime** — the open space is polled every 20s, and never while the tab
+  is hidden. Nothing is cached server-side.
+- Spaces only appear once they contain at least one message; brand-new DMs are
+  invisible to the API.
+- Every failure renders as a state inside the panel (not connected, expired,
+  partial permissions, org-blocked, empty) and never breaks the page.
