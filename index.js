@@ -1564,7 +1564,19 @@ receiver.router.get('/api/email/callback', async (req, res) => {
       driveTokens = full;
       saveGoogleToken('admin_drive', full);
       return res.redirect('/dashboard#drive');
-    } catch (e) { return res.status(500).send(`OAuth error: ${e.message}`); }
+    } catch (e) {
+      // A misconfigured Cloud project (Chat API not enabled, scope not added to the
+      // consent screen) shows up here as invalid_scope. Send the user back to the
+      // panel with a readable reason instead of a raw 500 page.
+      if (pending.type === 'gchat') {
+        const why = /invalid_scope/i.test(e.message)
+          ? 'Google rejected the Chat permissions. Enable the Google Chat API and add the chat.* scopes to the OAuth consent screen.'
+          : e.message;
+        const back = (pending.redirect || '/dashboard#gchat').split('#')[0];
+        return res.redirect(`${back}?gchat_error=${encodeURIComponent(why)}#gchat`);
+      }
+      return res.status(500).send(`OAuth error: ${e.message}`);
+    }
   }
 
   // Otherwise handle as Gmail

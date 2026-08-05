@@ -3739,6 +3739,15 @@ async function loadGChat() {
   const list = document.getElementById('gchat-space-list');
   const main = document.getElementById('gchat-main');
   if (!list || !main) return;
+  // A failed connect redirects back with ?gchat_error=… — show it once.
+  const qErr = new URLSearchParams(location.search).get('gchat_error');
+  if (qErr) {
+    history.replaceState(null, '', location.pathname + '#gchat');
+    list.innerHTML = '';
+    main.innerHTML = gchatStateCard('alert-triangle', "Couldn't connect Google Chat", esc(qErr), gchatConnectBtn('Try again'));
+    requestAnimationFrame(() => lucide.createIcons());
+    return;
+  }
   try { _gchat.status = await gchatFetch('/status').then(r => r.json()); }
   catch (_) { _gchat.status = { configured: false }; }
   const st = _gchat.status;
