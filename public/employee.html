@@ -600,6 +600,20 @@
   .hd-video { width:132px; height:88px; object-fit:cover; display:block; background:#0e0e10; }
   .hd-avatar { width:132px; height:88px; display:flex; align-items:center; justify-content:center; font-size:26px; }
   .hd-controls { display:flex; gap:6px; justify-content:center; flex-wrap:wrap; }
+  .hd-full { position:absolute; top:4px; right:4px; z-index:3; align-items:center; justify-content:center;
+             width:22px; height:22px; padding:0; border:none; border-radius:6px; cursor:pointer;
+             background:rgba(0,0,0,.55); color:#f3efe7; font-size:12px; line-height:1; opacity:.75; }
+  .hd-full:hover { opacity:1; background:rgba(0,0,0,.8); }
+  /* Full screen: the tile is sized for a thumbnail, so the crop has to go or a
+     shared screen loses its edges — exactly the content someone opened this for. */
+  .hd-tile:fullscreen { width:100vw; height:100vh; border:none; border-radius:0; background:#000; }
+  .hd-tile:fullscreen .hd-video { width:100vw; height:100vh; object-fit:contain; }
+  .hd-tile:fullscreen .hd-tile-name { font-size:14px; padding:10px 16px; }
+  .hd-tile:fullscreen .hd-full { width:34px; height:34px; font-size:17px; top:14px; right:14px; }
+  .hd-tile:-webkit-full-screen { width:100vw; height:100vh; border:none; border-radius:0; background:#000; }
+  .hd-tile:-webkit-full-screen .hd-video { width:100vw; height:100vh; object-fit:contain; }
+  .hd-tile:-webkit-full-screen .hd-tile-name { font-size:14px; padding:10px 16px; }
+  .hd-tile:-webkit-full-screen .hd-full { width:34px; height:34px; font-size:17px; top:14px; right:14px; }
   .hd-btn { border:1px solid var(--border); background:var(--bg); color:var(--text); border-radius:9px;
             padding:7px 10px; font-size:14px; cursor:pointer; line-height:1; }
   .hd-btn:hover { border-color:var(--primary); }
@@ -6549,9 +6563,28 @@ function hdTileEl(tiles, id) {
   el.setAttribute('data-tile', id);
   el.innerHTML = '<div class="hd-tile-name"></div>'
     + '<video class="hd-video" autoplay playsinline></video>'
-    + '<div class="hd-avatar">🎙️</div>';
+    + '<div class="hd-avatar">🎙️</div>'
+    + '<button class="hd-full" style="display:none" title="Full screen">⛶</button>';
+  el.querySelector('.hd-full').addEventListener('click', () => hdFullscreen(el));
+  el.querySelector('.hd-video').addEventListener('dblclick', () => hdFullscreen(el));
   tiles.appendChild(el);
   return el;
+}
+
+// Full screen for a shared screen — a 132px tile is useless for reading someone's
+// code or spreadsheet. Goes full screen on the tile rather than the <video> so the
+// name label comes along, except on iOS Safari, which can only do it to a <video>.
+function hdFullscreen(tile) {
+  const d = document;
+  if (d.fullscreenElement || d.webkitFullscreenElement) {
+    (d.exitFullscreen || d.webkitExitFullscreen || function () {}).call(d);
+    return;
+  }
+  const v = tile.querySelector('.hd-video');
+  if (tile.requestFullscreen) { const r = tile.requestFullscreen(); if (r && r.catch) r.catch(() => {}); }
+  else if (tile.webkitRequestFullscreen) tile.webkitRequestFullscreen();
+  else if (v && v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+  else hdToast('This browser will not go full screen.');
 }
 
 // A remote stream is only audible once it is attached to a media element, so every
@@ -6570,6 +6603,8 @@ function hdPaintTile(el, label, stream, showVideo, mute) {
   }
   v.style.display = showVideo ? '' : 'none';
   el.querySelector('.hd-avatar').style.display = showVideo ? 'none' : '';
+  // Nothing to enlarge when there is no picture
+  el.querySelector('.hd-full').style.display = showVideo ? 'flex' : 'none';
 }
 
 // Browsers refuse to start audio without a user gesture. Joining a huddle is a
