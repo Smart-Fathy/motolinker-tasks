@@ -10670,37 +10670,87 @@ function hdDecline(from, roomId) {
   hdFetch('/huddle/signal', { method: 'POST', body: JSON.stringify({ roomId, type: 'decline', to: from }) }).catch(() => {});
 }
 
+function hdCssEsc(s) {
+  return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, '\\$&');
+}
+
+// Find-or-create a tile. Tiles are reused across renders because they hold live
+// media elements: rebuilding the bar's innerHTML would tear down every <video>
+// mid-call and restart playback, which is audible as a dropout.
+function hdTileEl(tiles, id) {
+  let el = tiles.querySelector('[data-tile="' + hdCssEsc(id) + '"]');
+  if (el) return el;
+  el = document.createElement('div');
+  el.className = 'hd-tile';
+  el.setAttribute('data-tile', id);
+  el.innerHTML = '<div class="hd-tile-name"></div>'
+    + '<video class="hd-video" autoplay playsinline></video>'
+    + '<div class="hd-avatar">🎙️</div>';
+  tiles.appendChild(el);
+  return el;
+}
+
+// A remote stream is only audible once it is attached to a media element, so every
+// participant keeps a <video> whether or not a camera is on — it is simply hidden
+// behind the avatar when there is no picture, and display:none does not stop audio.
+// Creating the element only once video arrived is what made audio-only huddles
+// silent: the audio was being received and decoded, but nothing was playing it.
+function hdPaintTile(el, label, stream, showVideo, mute) {
+  const nameEl = el.querySelector('.hd-tile-name');
+  if (nameEl.textContent !== label) nameEl.textContent = label;
+  const v = el.querySelector('.hd-video');
+  v.muted = !!mute;                        // only ever our own tile, or we echo
+  if (v.srcObject !== (stream || null)) {
+    v.srcObject = stream || null;
+    if (stream) { const r = v.play(); if (r && r.catch) r.catch(() => hdAudioBlocked()); }
+  }
+  v.style.display = showVideo ? '' : 'none';
+  el.querySelector('.hd-avatar').style.display = showVideo ? 'none' : '';
+}
+
+// Browsers refuse to start audio without a user gesture. Joining a huddle is a
+// click, so this should be rare — but when it does happen the call is silent with
+// no clue why, so say so and retry on the next click anywhere.
+let _hdGestureHooked = false;
+function hdAudioBlocked() {
+  hdToast('Your browser blocked the sound. Click anywhere to turn it on.');
+  if (_hdGestureHooked) return;
+  _hdGestureHooked = true;
+  const resume = () => {
+    document.querySelectorAll('#hd-bar video').forEach(v => { const r = v.play(); if (r && r.catch) r.catch(() => {}); });
+    document.removeEventListener('click', resume);
+    _hdGestureHooked = false;
+  };
+  document.addEventListener('click', resume);
+}
+
 function hdRenderBar() {
   const bar = document.getElementById('hd-bar');
   if (!bar) return;
   if (!_hd.roomId) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
-  const peers = [..._hd.peers.entries()];
-  const selfLabel = 'You' + (_hd.muted ? ' 🔇' : '') + (_hd.sharing ? ' · sharing' : '');
-  const tiles = [
-    `<div class="hd-tile"><div class="hd-tile-name">${esc(selfLabel)}</div>
-       ${_hd.cam || _hd.sharing ? '<video class="hd-video" autoplay muted playsinline id="hd-self"></video>' : '<div class="hd-avatar">🎙️</div>'}</div>`,
-    ...peers.map(([key, p]) => `<div class="hd-tile">
-        <div class="hd-tile-name">${esc(p.name || key)}${p.state !== 'connected' ? ' · ' + esc(p.state) : ''}</div>
-        ${p.video ? `<video class="hd-video" autoplay playsinline data-peer="${esc(key)}"></video>` : '<div class="hd-avatar">🎙️</div>'}
-      </div>`),
-  ].join('');
-  bar.innerHTML = `
-    <div class="hd-tiles">${tiles}</div>
-    <div class="hd-controls">
-      <button class="hd-btn ${_hd.muted ? 'off' : 'on'}" onclick="huddleToggleMute()" title="${_hd.muted ? 'Unmute' : 'Mute'}">${_hd.muted ? '🔇' : '🎙️'}</button>
-      <button class="hd-btn ${_hd.cam ? 'on' : ''}" onclick="huddleToggleCam()" title="Camera">📹</button>
-      <button class="hd-btn ${_hd.sharing ? 'on' : ''}" onclick="huddleToggleShare()" title="Share screen">🖥️</button>
-      <button class="hd-btn" onclick="hdOpenInvite()" title="Add someone">➕</button>
-      <button class="hd-btn leave" onclick="huddleLeave()" title="Leave huddle">Leave</button>
-    </div>`;
+  if (!bar.querySelector('.hd-tiles')) bar.innerHTML = '<div class="hd-tiles"></div><div class="hd-controls"></div>';
+  const tiles = bar.querySelector('.hd-tiles');
   bar.style.display = 'flex';
-  // Streams are attached after the nodes exist
-  const self = document.getElementById('hd-self');
-  if (self) { const want = _hd.sharing ? _hd.screen : _hd.local; if (self.srcObject !== want) self.srcObject = want; }
+
+  const selfLabel = 'You' + (_hd.muted ? ' 🔇' : '') + (_hd.sharing ? ' · sharing' : '');
+  hdPaintTile(hdTileEl(tiles, '__self'), selfLabel, _hd.sharing ? _hd.screen : _hd.local, !!(_hd.cam || _hd.sharing), true);
+
+  const peers = [..._hd.peers.entries()];
   peers.forEach(([key, p]) => {
-    const v = bar.querySelector('video[data-peer="' + (window.CSS && CSS.escape ? CSS.escape(key) : key) + '"]');
-    if (v && v.srcObject !== p.stream) v.srcObject = p.stream;
+    const label = (p.name || key) + (p.state !== 'connected' ? ' · ' + p.state : '');
+    hdPaintTile(hdTileEl(tiles, key), label, p.stream, !!p.video, false);
   });
+
+  const keep = new Set(['__self', ...peers.map(([k]) => k)]);
+  [...tiles.children].forEach(el => { if (!keep.has(el.getAttribute('data-tile'))) el.remove(); });
+
+  // No media lives in the controls, so replacing those wholesale is safe
+  bar.querySelector('.hd-controls').innerHTML = `
+    <button class="hd-btn ${_hd.muted ? 'off' : 'on'}" onclick="huddleToggleMute()" title="${_hd.muted ? 'Unmute' : 'Mute'}">${_hd.muted ? '🔇' : '🎙️'}</button>
+    <button class="hd-btn ${_hd.cam ? 'on' : ''}" onclick="huddleToggleCam()" title="Camera">📹</button>
+    <button class="hd-btn ${_hd.sharing ? 'on' : ''}" onclick="huddleToggleShare()" title="Share screen">🖥️</button>
+    <button class="hd-btn" onclick="hdOpenInvite()" title="Add someone">➕</button>
+    <button class="hd-btn leave" onclick="huddleLeave()" title="Leave huddle">Leave</button>`;
 }
 
 function hdOpenInvite() {
