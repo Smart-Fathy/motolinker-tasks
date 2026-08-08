@@ -1907,6 +1907,14 @@ receiver.router.get('/api/dashboard/nav-config', requireAuth, async (_req, res) 
   } catch (_) { res.json({ groups: [] }); }
 });
 
+// The team portal reads the same layout (read-only) so one arrangement drives both.
+receiver.router.get('/api/employee/nav-config', requireEmployeeAuth, async (_req, res) => {
+  try {
+    const { data } = await supabase.from('quotation_settings').select('value').eq('key', 'nav_config').single();
+    res.json(data?.value ? JSON.parse(data.value) : { groups: [] });
+  } catch (_) { res.json({ groups: [] }); }
+});
+
 receiver.router.put('/api/dashboard/nav-config', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
   const groups = Array.isArray(req.body?.groups) ? req.body.groups : [];
   const clean = groups.map(g => ({
@@ -3764,10 +3772,13 @@ async function chatListRooms(callerKey) {
   const lastMsgByRoom = {};
   (recentMsgs || []).forEach(m => { if (!lastMsgByRoom[m.room_id]) lastMsgByRoom[m.room_id] = m; });
   // Attach profile pictures so the room list can show the peer's avatar
-  const avatars = await chatAvatarMap();
+  const profiles = await chatProfileMap();
   return (rooms || []).map(r => ({
     ...r,
-    members: (membersByRoom[r.id] || []).map(m => ({ ...m, member_avatar: avatars[m.member_key] || null })),
+    members: (membersByRoom[r.id] || []).map(m => {
+      const p = profiles[m.member_key] || {};
+      return { ...m, member_avatar: p.avatar || null, member_status: p.statusText || '', member_status_emoji: p.statusEmoji || '' };
+    }),
     lastMessage: lastMsgByRoom[r.id] || null,
   }));
 }
@@ -3798,18 +3809,30 @@ async function chatCreateOrGetDirect(callerKey, callerName, targetKey, targetNam
 // the employee roster ("employee_<id>" keys; the admin account has none). Cached
 // for a minute — chat is polled/streamed constantly and the roster rarely changes.
 let _chatAvatars = { at: 0, map: {} };
-async function chatAvatarMap() {
+// Avatar + status per member key, so everyone sees everyone's status — not just
+// their own. Cached for a minute; chat polls constantly and this rarely changes.
+async function chatProfileMap() {
   if (Date.now() - _chatAvatars.at < 60000) return _chatAvatars.map;
   const map = {};
   try {
-    const { data } = await supabase.from('employees').select('id,avatar_url');
-    for (const e of data || []) if (e.avatar_url) map['employee_' + e.id] = e.avatar_url;
-  } catch (e) { console.warn('[chat] avatar map failed:', e.message); }
+    const { data } = await supabase.from('employees').select('id,avatar_url,status_text,status_emoji');
+    for (const e of data || []) {
+      map['employee_' + e.id] = {
+        avatar: e.avatar_url || null,
+        statusText: e.status_text || '',
+        statusEmoji: e.status_emoji || '',
+      };
+    }
+  } catch (e) { console.warn('[chat] profile map failed:', e.message); }
   _chatAvatars = { at: Date.now(), map };
   return map;
 }
+function chatAvatarMap() { return chatProfileMap(); }   // legacy name
 function withSenderAvatars(rows, map) {
-  return (rows || []).map(m => ({ ...m, sender_avatar: map[m.sender_key] || null }));
+  return (rows || []).map(m => {
+    const p = map[m.sender_key] || {};
+    return { ...m, sender_avatar: p.avatar || null, sender_status: p.statusText || '', sender_status_emoji: p.statusEmoji || '' };
+  });
 }
 
 async function chatGetMessages(req, res, callerKey) {
@@ -3836,7 +3859,8 @@ async function chatSendMessage(req, res, callerKey, callerName) {
   if (voice_duration) insert.voice_duration = parseInt(voice_duration);
   const { data: inserted, error } = await supabase.from('chat_messages').insert(insert).select().single();
   if (error) return res.status(500).json({ error: error.message });
-  const msg = { ...inserted, sender_avatar: (await chatAvatarMap())[callerKey] || null };
+  const prof = (await chatProfileMap())[callerKey] || {};
+  const msg = { ...inserted, sender_avatar: prof.avatar || null, sender_status: prof.statusText || '', sender_status_emoji: prof.statusEmoji || '' };
   const { data: members } = await supabase.from('chat_room_members').select('member_key').eq('room_id', roomId);
   const recipientKeys = (members || []).map(m => m.member_key).filter(k => k !== callerKey);
   // Exclude sender from broadcast — sender already has the message from the HTTP response
@@ -3985,6 +4009,146 @@ receiver.router.post('/api/employee/chat/rooms/direct', requireEmployeeAuth, exp
   try { res.json(await chatCreateOrGetDirect(key, name, targetKey, targetName)); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ─── Group administration + huddles ───────────────────────────────────────────
+// Admin may manage any group; an employee may manage groups they created.
+// Direct rooms are never manageable.
+async function chatCanManage(roomId, callerKey) {
+  const { data: room } = await supabase.from('chat_rooms').select('id,type,created_by').eq('id', roomId).single();
+  if (!room || room.type !== 'group') return null;
+  if (callerKey !== 'admin' && room.created_by !== callerKey) return null;
+  return room;
+}
+async function chatRoomMemberKeys(roomId) {
+  const { data } = await supabase.from('chat_room_members').select('member_key').eq('room_id', roomId);
+  return (data || []).map(m => m.member_key);
+}
+
+function mountChatAdminRoutes(base, guard) {
+  // Rename a group
+  receiver.router.put(`${base}/rooms/:id`, guard, express.json(), async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const roomId = parseInt(req.params.id);
+    if (!(await chatCanManage(roomId, key))) return res.status(403).json({ error: 'Not allowed' });
+    const name = String(req.body?.name || '').trim().slice(0, 80);
+    if (!name) return res.status(400).json({ error: 'Name required' });
+    const { data, error } = await supabase.from('chat_rooms').update({ name, updated_at: new Date().toISOString() }).eq('id', roomId).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    chatBroadcast(await chatRoomMemberKeys(roomId), 'room', { roomId, room: data });
+    res.json(data);
+  });
+
+  // Add members
+  receiver.router.post(`${base}/rooms/:id/members`, guard, express.json(), async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const roomId = parseInt(req.params.id);
+    if (!(await chatCanManage(roomId, key))) return res.status(403).json({ error: 'Not allowed' });
+    const keys = (Array.isArray(req.body?.memberKeys) ? req.body.memberKeys : []).map(String).filter(Boolean);
+    if (!keys.length) return res.status(400).json({ error: 'memberKeys[] required' });
+    const existing = new Set(await chatRoomMemberKeys(roomId));
+    const empIds = keys.filter(k => k.startsWith('employee_')).map(k => parseInt(k.slice(9))).filter(n => !isNaN(n));
+    const { data: emps } = await supabase.from('employees').select('id,name').in('id', empIds);
+    const nameOf = k => k === 'admin' ? 'Admin'
+      : ((emps || []).find(e => e.id === parseInt(k.slice(9))) || {}).name || k;
+    const rows = keys.filter(k => !existing.has(k)).map(k => ({ room_id: roomId, member_key: k, member_name: nameOf(k) }));
+    if (rows.length) {
+      const { error } = await supabase.from('chat_room_members').insert(rows);
+      if (error) return res.status(500).json({ error: error.message });
+    }
+    chatBroadcast(await chatRoomMemberKeys(roomId), 'room', { roomId });
+    res.json({ ok: true, added: rows.length });
+  });
+
+  // Remove a member
+  receiver.router.delete(`${base}/rooms/:id/members/:memberKey`, guard, async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const roomId = parseInt(req.params.id);
+    if (!(await chatCanManage(roomId, key))) return res.status(403).json({ error: 'Not allowed' });
+    const target = String(req.params.memberKey);
+    const before = await chatRoomMemberKeys(roomId);
+    if (before.length <= 1) return res.status(400).json({ error: 'A group needs at least one member' });
+    const { error } = await supabase.from('chat_room_members').delete().eq('room_id', roomId).eq('member_key', target);
+    if (error) return res.status(500).json({ error: error.message });
+    chatBroadcast(before, 'room', { roomId });   // tell the removed member too
+    res.json({ ok: true });
+  });
+
+  // Everything shared in this room
+  receiver.router.get(`${base}/rooms/:id/attachments`, guard, async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const roomId = parseInt(req.params.id);
+    const member = (await chatRoomMemberKeys(roomId)).includes(key);
+    if (!member) return res.status(403).json({ error: 'Not a member of this room' });
+    const { data, error } = await supabase.from('chat_messages')
+      .select('id,sender_name,file_url,file_name,file_size,file_type,created_at')
+      .eq('room_id', roomId).not('file_url', 'is', null)
+      .order('created_at', { ascending: false }).limit(200);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+
+  // ── Huddles ──────────────────────────────────────────────────────────────
+  // WebRTC signalling rides the existing chat SSE: each payload is relayed to one
+  // peer. Roster is in-memory and ephemeral — a restart simply ends the call.
+  receiver.router.get(`${base}/huddle/ice`, guard, (_req, res) => {
+    const iceServers = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+    if (process.env.TURN_URL) {
+      iceServers.push({
+        urls: process.env.TURN_URL.split(',').map(u => u.trim()).filter(Boolean),
+        username: process.env.TURN_USERNAME || undefined,
+        credential: process.env.TURN_CREDENTIAL || undefined,
+      });
+    }
+    res.json({ iceServers, hasTurn: !!process.env.TURN_URL, max: HUDDLE_MAX });
+  });
+
+  receiver.router.get(`${base}/huddle/:roomId`, guard, async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const roomId = parseInt(req.params.roomId);
+    if (!(await chatRoomMemberKeys(roomId)).includes(key)) return res.status(403).json({ error: 'Not a member' });
+    res.json({ participants: huddleRoster(roomId) });
+  });
+
+  receiver.router.post(`${base}/huddle/signal`, guard, express.json({ limit: '256kb' }), async (req, res) => {
+    const { key, name } = chatCallerIdentity(req);
+    const roomId = parseInt(req.body?.roomId);
+    const type = String(req.body?.type || '');
+    if (!roomId || !HUDDLE_TYPES.includes(type)) return res.status(400).json({ error: 'bad signal' });
+    const members = await chatRoomMemberKeys(roomId);
+    if (!members.includes(key)) return res.status(403).json({ error: 'Not a member' });
+
+    if (type === 'join') {
+      const set = huddles.get(roomId) || new Map();
+      if (set.size >= HUDDLE_MAX && !set.has(key)) return res.status(409).json({ error: 'Huddle is full', max: HUDDLE_MAX });
+      set.set(key, name);
+      huddles.set(roomId, set);
+      chatBroadcast(members, 'huddle', { type: 'roster', roomId, participants: huddleRoster(roomId), joined: key });
+      return res.json({ ok: true, participants: huddleRoster(roomId) });
+    }
+    if (type === 'leave') {
+      const set = huddles.get(roomId);
+      if (set) { set.delete(key); if (!set.size) huddles.delete(roomId); }
+      chatBroadcast(members, 'huddle', { type: 'roster', roomId, participants: huddleRoster(roomId), left: key });
+      return res.json({ ok: true });
+    }
+    // invite/offer/answer/ice/decline are point-to-point
+    const to = String(req.body?.to || '');
+    if (!members.includes(to)) return res.status(400).json({ error: 'target not in room' });
+    chatBroadcast([to], 'huddle', { type, roomId, from: key, fromName: name, data: req.body?.data ?? null });
+    res.json({ ok: true });
+  });
+}
+
+const HUDDLE_MAX = 6;   // mesh topology: every peer connects to every other
+const HUDDLE_TYPES = ['join', 'leave', 'invite', 'decline', 'offer', 'answer', 'ice'];
+const huddles = new Map();   // roomId -> Map<memberKey, name>
+function huddleRoster(roomId) {
+  const set = huddles.get(roomId);
+  return set ? [...set.entries()].map(([key, name]) => ({ key, name })) : [];
+}
+
+mountChatAdminRoutes('/api/dashboard/chat', requireAuth);
+mountChatAdminRoutes('/api/employee/chat', requireEmployeeAuth);
 
 // Rooms — group (admin only)
 receiver.router.post('/api/dashboard/chat/rooms/group', requireAuth, express.json(), async (req, res) => {

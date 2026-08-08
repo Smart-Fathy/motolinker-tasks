@@ -266,3 +266,43 @@ app (**Google → Google Chat** in both portals). It is **off by default**.
   invisible to the API.
 - Every failure renders as a state inside the panel (not connected, expired,
   partial permissions, org-blocked, empty) and never breaks the page.
+
+## 🎧 Huddles — in-app voice, video and screen share
+
+Every chat conversation has a huddle button. A huddle is a **mesh** call: each
+participant holds one `RTCPeerConnection` per peer, so it is capped at **6 people**
+(beyond that an SFU would be needed). Media never touches the server — only the
+signalling does, and it rides the chat SSE stream that messages already use, so
+there is no second socket to keep alive.
+
+Participants can turn the camera on, mute the mic, share a screen and pull other
+members of the conversation into the call. Turning the camera or a screen share on
+mid-call is a track swap on a slot reserved before the first offer, so it takes
+effect without renegotiating.
+
+### TURN (optional, but recommended)
+
+With no configuration, huddles use Google's public STUN servers and connect fine on
+ordinary networks. Corporate firewalls and symmetric NATs need a relay. Set these
+variables and the call falls back to it automatically:
+
+| Variable | Example |
+| --- | --- |
+| `TURN_URL` | `turn:relay.example.com:3478,turns:relay.example.com:5349` |
+| `TURN_USERNAME` | `motolinker` |
+| `TURN_CREDENTIAL` | *(your TURN secret)* |
+
+`TURN_URL` accepts a comma-separated list. The credentials are served per request
+from `GET /api/{portal}/chat/huddle/ice` rather than baked into the HTML, so they
+can be rotated without a redeploy. With no TURN configured, a call that cannot find
+a path says so ("this network needs a TURN relay") instead of hanging.
+
+### Things to know
+
+- **Roster is in-memory.** A server restart ends any call in progress; nothing about
+  a huddle is persisted.
+- **One SSE connection per user.** Opening the portal in a second tab moves
+  signalling to that tab — start the huddle where you intend to take it.
+- Group administration lives next to it: the admin can rename any group, add and
+  remove members and browse everything shared in the room. An employee gets the
+  same controls for groups they created. The server enforces this, not just the UI.
