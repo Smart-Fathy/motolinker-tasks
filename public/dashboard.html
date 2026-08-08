@@ -2651,6 +2651,9 @@
             <button class="btn btn-sm btn-outline" onclick="adminShowDmModal()" title="New DM" style="padding:5px 8px">
               <i data-lucide="edit" style="width:13px;height:13px"></i>
             </button>
+            <button class="btn btn-sm btn-outline" onclick="huddleRelayTest()" title="Test the huddle relay (TURN)" style="padding:5px 8px">
+              <i data-lucide="signal" style="width:13px;height:13px"></i>
+            </button>
           </div>
         </div>
         <div class="chat-room-list" id="admin-chat-room-list">
@@ -10401,6 +10404,49 @@ async function hdIce() {
     _hd.iceUntil = Date.now() + 60000;   // retry soon; this is a degraded fallback
   }
   return _hd.ice;
+}
+
+// Does the relay actually work? Credentials being issued proves nothing — a revoked
+// key, a blocked port or a typo'd token all still return a well-formed config, and
+// on a friendly network peer-to-peer succeeds so the relay is never exercised.
+// Gathering with iceTransportPolicy:'relay' discards host and reflexive candidates,
+// so any candidate at all means the relay answered, and none means it didn't.
+async function huddleRelayTest() {
+  hdToast('Testing the relay…');
+  _hd.ice = null; _hd.iceUntil = 0;          // always ask the server, never a stale cache
+  const cfg = await hdIce();
+  if (!cfg.hasTurn) {
+    hdToast(`No TURN configured — provider: ${cfg.provider || 'none'}. Huddles will use STUN only.`);
+    return { ok: false, reason: 'not-configured', provider: cfg.provider || 'none' };
+  }
+  let pc = null;
+  try {
+    pc = new RTCPeerConnection({ iceServers: cfg.iceServers || [], iceTransportPolicy: 'relay' });
+    const protos = new Set();
+    const done = new Promise(resolve => {
+      const finish = () => resolve();
+      const timer = setTimeout(finish, 8000);
+      pc.onicecandidate = e => {
+        if (!e.candidate) { clearTimeout(timer); return finish(); }   // gathering complete
+        const m = /(?:^| )(udp|tcp|tls)(?: |$)/i.exec(e.candidate.candidate || '');
+        protos.add(m ? m[1].toLowerCase() : (e.candidate.protocol || '?'));
+      };
+    });
+    pc.createDataChannel('relay-probe');
+    await pc.setLocalDescription(await pc.createOffer());
+    await done;
+    if (protos.size) {
+      hdToast(`Relay OK via ${cfg.provider} — ${[...protos].sort().join(', ')}.`);
+      return { ok: true, provider: cfg.provider, protocols: [...protos].sort() };
+    }
+    hdToast(`No relay reachable. ${cfg.provider} issued credentials but nothing came back — check the key is still active.`);
+    return { ok: false, reason: 'no-candidates', provider: cfg.provider };
+  } catch (e) {
+    hdToast('Relay test failed to run: ' + (e && e.message ? e.message : e));
+    return { ok: false, reason: 'error', error: String(e && e.message || e) };
+  } finally {
+    if (pc) { try { pc.close(); } catch (_) {} }
+  }
 }
 
 async function huddleStart(roomId, withVideo) {

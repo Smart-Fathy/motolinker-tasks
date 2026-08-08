@@ -314,8 +314,23 @@ silently dropping the call to STUN.
 Cloudflare is configured but unavailable and there is no cached credential.
 
 With neither configured, a call that cannot find a path says so ("this network needs a
-TURN relay") instead of hanging. The endpoint reports which provider is in effect in
-its `provider` field (`cloudflare`, `static` or `none`) — handy when checking a deploy.
+TURN relay") instead of hanging.
+
+### Checking the relay actually works
+
+Credentials being issued does not prove the relay is reachable — a revoked key, a
+blocked port or a typo'd token all still produce a well-formed config, and on a
+friendly network peer-to-peer succeeds so the relay is never exercised. The **signal
+icon in the chat panel header** (admin dashboard) settles it: it gathers ICE
+candidates with `iceTransportPolicy: 'relay'`, which discards host and reflexive
+candidates, so any candidate at all means the relay answered.
+
+- `Relay OK via cloudflare — udp, tcp` — working, and which transports got through
+- `No relay reachable…` — credentials were issued but nothing came back
+- `No TURN configured — provider: none` — the variables never reached the process
+
+Worth clicking once after setting the variables, and again if anyone reports a call
+that won't connect.
 
 ### Things to know
 
