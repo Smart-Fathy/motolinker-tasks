@@ -5297,6 +5297,20 @@ function navSetItemLabel(el, text) {
   else el.appendChild(document.createTextNode(' ' + text));
 }
 
+// Labels exactly as shipped, captured before any saved arrangement is applied.
+// readNavConfig used to snapshot every label whether or not the admin had typed
+// it, which permanently masked any later rename in the code (a config saved when
+// the item read "Deletion Requests" would keep showing that after the rename to
+// "Approvals"). Only a label that differs from the default is a real rename.
+const NAV_DEFAULT_LABELS = (() => {
+  const d = {};
+  navGroupEls().forEach(g => {
+    d['g:' + g.dataset.group] = (navGroupLabelEl(g)?.textContent || '').trim();
+    g.querySelectorAll('.nav-item').forEach(i => { d['i:' + i.id] = navItemLabelText(i); });
+  });
+  return d;
+})();
+
 async function loadNavConfig() {
   let cfg = null;
   try { cfg = await apiFetch('/api/dashboard/nav-config').then(r => r.json()); } catch (_) { return; }
@@ -5308,14 +5322,17 @@ function applyNavConfig(cfg) {
   if (!groups.length) return;
   const nav = document.querySelector('#sidebar .sidebar-nav') || document.querySelector('#sidebar');
   const byKey = new Map(navGroupEls().map(g => [g.dataset.group, g]));
+  const placedGroups = new Set();
   groups.forEach(g => {
     const el = byKey.get(g.key);
     if (!el) return;                       // config references a section that no longer exists
+    placedGroups.add(g.key);
     if (g.label) { const l = navGroupLabelEl(el); if (l) l.textContent = g.label; }
     el.style.display = g.hidden ? 'none' : '';
     nav.appendChild(el);                   // moving in config order re-sorts the list
     const wrap = el.querySelector('.nav-group-items');
     if (wrap) {
+      const placedItems = new Set();
       (g.items || []).forEach(it => {
         // Look the item up document-wide: it may have been moved to this group
         // from another one, so it won't be inside `wrap` yet.
@@ -5324,18 +5341,32 @@ function applyNavConfig(cfg) {
         if (it.label) navSetItemLabel(iel, it.label);
         iel.style.display = it.hidden ? 'none' : '';
         wrap.appendChild(iel);
+        placedItems.add(it.id);
       });
+      // An item that shipped after this arrangement was saved isn't in the config,
+      // so the appends above leave it sitting at the top of its group. Push it to
+      // the end instead — new entries join the list, they don't jump the queue.
+      if (placedItems.size) {
+        [...wrap.querySelectorAll('.nav-item')]
+          .filter(i => !placedItems.has(i.id))
+          .forEach(i => wrap.appendChild(i));
+      }
     }
   });
+  // Same for a whole section added since the save.
+  navGroupEls().forEach(g => { if (!placedGroups.has(g.dataset.group)) nav.appendChild(g); });
 }
 
 function readNavConfig() {
+  // Store a label only when it is a deliberate rename; '' means "use whatever the
+  // app ships", so a later rename in the code still reaches an arranged sidebar.
+  const rename = (key, text) => (text === NAV_DEFAULT_LABELS[key] ? '' : text);
   return { groups: navGroupEls().map(g => ({
     key: g.dataset.group,
-    label: (navGroupLabelEl(g)?.textContent || '').trim(),
+    label: rename('g:' + g.dataset.group, (navGroupLabelEl(g)?.textContent || '').trim()),
     hidden: g.style.display === 'none',
     items: [...g.querySelectorAll('.nav-item')].map(i => ({
-      id: i.id, label: navItemLabelText(i), hidden: i.style.display === 'none',
+      id: i.id, label: rename('i:' + i.id, navItemLabelText(i)), hidden: i.style.display === 'none',
     })),
   })) };
 }

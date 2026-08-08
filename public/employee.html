@@ -3998,23 +3998,38 @@ function applyNavConfig(cfg) {
   if (!groups.length) return;
   const nav = document.querySelector('#sidebar .sidebar-nav') || document.querySelector('#sidebar');
   if (!nav) return;
-  const byKey = new Map([...document.querySelectorAll('#sidebar .nav-group')].map(g => [g.dataset.group, g]));
+  const allGroups = () => [...document.querySelectorAll('#sidebar .nav-group')];
+  const byKey = new Map(allGroups().map(g => [g.dataset.group, g]));
+  const placedGroups = new Set();
   groups.forEach(g => {
     const el = byKey.get(g.key);
     if (!el) return;                       // section this portal doesn't have (e.g. logistics)
+    placedGroups.add(g.key);
     const lbl = el.querySelector('.nav-group-label');
     if (g.label && lbl) lbl.textContent = g.label;
     nav.appendChild(el);
     const wrap = el.querySelector('.nav-group-items');
     if (!wrap) return;
+    const placedItems = new Set();
     (g.items || []).forEach(it => {
       const iel = navItemEl(it.id);
       if (!iel || !iel.classList.contains('nav-item')) return;
       // Never override the permission gate — only reorder/rename what's visible.
       if (it.label) navSetItemLabel(iel, it.label);
       wrap.appendChild(iel);
+      placedItems.add(iel.id);
     });
+    // An item that shipped after this arrangement was saved isn't in the config,
+    // so the appends above leave it sitting at the top of its group. Push it to
+    // the end instead — new entries join the list, they don't jump the queue.
+    if (placedItems.size) {
+      [...wrap.querySelectorAll('.nav-item')]
+        .filter(i => !placedItems.has(i.id))
+        .forEach(i => wrap.appendChild(i));
+    }
   });
+  // Same for a whole section added since the save.
+  allGroups().forEach(g => { if (!placedGroups.has(g.dataset.group)) nav.appendChild(g); });
 }
 async function loadNavConfig() {
   try {
