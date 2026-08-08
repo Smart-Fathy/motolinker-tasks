@@ -4090,16 +4090,8 @@ function mountChatAdminRoutes(base, guard) {
   // ── Huddles ──────────────────────────────────────────────────────────────
   // WebRTC signalling rides the existing chat SSE: each payload is relayed to one
   // peer. Roster is in-memory and ephemeral — a restart simply ends the call.
-  receiver.router.get(`${base}/huddle/ice`, guard, (_req, res) => {
-    const iceServers = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
-    if (process.env.TURN_URL) {
-      iceServers.push({
-        urls: process.env.TURN_URL.split(',').map(u => u.trim()).filter(Boolean),
-        username: process.env.TURN_USERNAME || undefined,
-        credential: process.env.TURN_CREDENTIAL || undefined,
-      });
-    }
-    res.json({ iceServers, hasTurn: !!process.env.TURN_URL, max: HUDDLE_MAX });
+  receiver.router.get(`${base}/huddle/ice`, guard, async (_req, res) => {
+    res.json(await huddleIceConfig());
   });
 
   receiver.router.get(`${base}/huddle/:roomId`, guard, async (req, res) => {
@@ -4137,6 +4129,71 @@ function mountChatAdminRoutes(base, guard) {
     chatBroadcast([to], 'huddle', { type, roomId, from: key, fromName: name, data: req.body?.data ?? null });
     res.json({ ok: true });
   });
+}
+
+// ── ICE configuration ─────────────────────────────────────────────────────────
+// Served per request rather than baked into the HTML, so relay credentials never
+// reach a browser that isn't in a huddle and can rotate without a deploy.
+// Two providers, tried in this order:
+//   • Cloudflare — CLOUDFLARE_TURN_KEY_ID + CLOUDFLARE_TURN_TOKEN. Cloudflare
+//     refuses to mint long-lived credentials, so we ask for a short-lived pair
+//     and reuse it until shortly before it expires.
+//   • Static — TURN_URL / TURN_USERNAME / TURN_CREDENTIAL, for self-hosted coturn.
+// With neither configured huddles still work over STUN on ordinary networks, and
+// the client says a relay is needed when a call can't find a path.
+const TURN_TTL = 7200;          // 2h — the client refreshes well before this
+const TURN_RENEW_BEFORE = 900;  // re-mint with 15 min left so nothing expires mid-call
+let _cfTurn = { at: 0, servers: null };
+
+function iceHasRelay(servers) {
+  return (servers || []).some(s => [].concat(s.urls || []).some(u => /^turns?:/i.test(String(u))));
+}
+
+async function cloudflareIceServers() {
+  const keyId = process.env.CLOUDFLARE_TURN_KEY_ID;
+  const token = process.env.CLOUDFLARE_TURN_TOKEN;
+  if (!keyId || !token) return null;
+  if (_cfTurn.servers && Date.now() - _cfTurn.at < (TURN_TTL - TURN_RENEW_BEFORE) * 1000) return _cfTurn.servers;
+  try {
+    const r = await fetch(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`,
+      { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ttl: TURN_TTL }) });
+    if (!r.ok) throw new Error(`HTTP ${r.status} ${(await r.text()).slice(0, 140)}`);
+    const body = await r.json();
+    // Cloudflare returns an array of entries; tolerate a bare object just in case.
+    const servers = Array.isArray(body?.iceServers) ? body.iceServers : body?.iceServers ? [body.iceServers] : null;
+    if (!iceHasRelay(servers)) throw new Error('response carried no turn: entry');
+    _cfTurn = { at: Date.now(), servers };
+    return servers;
+  } catch (e) {
+    console.warn('[huddle] Cloudflare TURN credentials failed:', e.message);
+    // Keep serving the last good set rather than silently dropping to STUN
+    return _cfTurn.servers || null;
+  }
+}
+
+function staticIceServers() {
+  if (!process.env.TURN_URL) return null;
+  const urls = process.env.TURN_URL.split(',').map(u => u.trim()).filter(Boolean);
+  if (!urls.length) return null;
+  return [{
+    urls,
+    username: process.env.TURN_USERNAME || undefined,
+    credential: process.env.TURN_CREDENTIAL || undefined,
+  }];
+}
+
+async function huddleIceConfig() {
+  const iceServers = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+  let relay = await cloudflareIceServers();
+  let provider = relay ? 'cloudflare' : 'none';
+  if (!relay) {
+    relay = staticIceServers();
+    if (relay) provider = 'static';
+  }
+  if (relay) iceServers.push(...relay);
+  return { iceServers, hasTurn: iceHasRelay(relay), provider, ttl: TURN_TTL, max: HUDDLE_MAX };
 }
 
 const HUDDLE_MAX = 6;   // mesh topology: every peer connects to every other
