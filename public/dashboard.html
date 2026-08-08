@@ -1082,6 +1082,84 @@
   /* ── Hide scrollbars globally ── */
   *, *::before, *::after { scrollbar-width: none; -ms-overflow-style: none; }
   *::-webkit-scrollbar { display: none; }
+  /* ── Huddles, group panel & status chips ── */
+  /* Sits to the left of the help FAB's column so the two never overlap */
+  #hd-bar { display:none; position:fixed; right:86px; bottom:18px; z-index:1200; flex-direction:column; gap:10px;
+            background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:12px;
+            box-shadow:0 18px 48px rgba(0,0,0,.45); max-width:min(92vw,560px); }
+  .hd-tiles { display:flex; flex-wrap:wrap; gap:8px; }
+  .hd-tile { width:132px; border-radius:10px; overflow:hidden; background:#0e0e10; border:1px solid var(--border); position:relative; }
+  .hd-tile-name { position:absolute; left:0; right:0; bottom:0; z-index:2; font-size:10px; padding:3px 6px;
+                  background:linear-gradient(transparent,rgba(0,0,0,.78)); color:#f3efe7;
+                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .hd-video { width:132px; height:88px; object-fit:cover; display:block; background:#0e0e10; }
+  .hd-avatar { width:132px; height:88px; display:flex; align-items:center; justify-content:center; font-size:26px; }
+  .hd-controls { display:flex; gap:6px; justify-content:center; flex-wrap:wrap; }
+  .hd-btn { border:1px solid var(--border); background:var(--bg); color:var(--text); border-radius:9px;
+            padding:7px 10px; font-size:14px; cursor:pointer; line-height:1; }
+  .hd-btn:hover { border-color:var(--primary); }
+  .hd-btn.on { background:rgba(212,175,55,.16); border-color:var(--primary); }
+  .hd-btn.off { background:rgba(239,68,68,.16); border-color:var(--danger); }
+  .hd-btn.leave { background:var(--danger); border-color:var(--danger); color:#fff; font-size:12px; font-weight:700; padding:7px 14px; }
+  #hd-toast { display:none; position:fixed; left:50%; transform:translateX(-50%); bottom:96px; z-index:1300;
+              background:#141416; color:#f3efe7; border:1px solid var(--border); padding:10px 16px;
+              border-radius:9px; font-size:12.5px; max-width:90vw; box-shadow:0 8px 32px rgba(0,0,0,.5); }
+  #hd-join-chip { display:none; position:fixed; left:50%; transform:translateX(-50%); top:14px; z-index:1250;
+                  align-items:center; gap:10px; background:var(--surface); border:1px solid var(--primary);
+                  border-radius:999px; padding:7px 8px 7px 16px; font-size:12.5px; box-shadow:0 8px 28px rgba(0,0,0,.4); }
+  #hd-incoming { display:none; position:fixed; right:18px; top:18px; z-index:1300; background:var(--surface);
+                 border:1px solid var(--primary); border-radius:12px; padding:14px 16px; max-width:300px;
+                 box-shadow:0 14px 40px rgba(0,0,0,.5); }
+  .hd-ring-title { font-weight:700; font-size:13px; }
+  .hd-ring-actions { display:flex; gap:8px; margin-top:10px; }
+  .hd-chip-btn { background:var(--primary); color:#111; border:none; border-radius:999px; padding:5px 14px;
+                 font-size:12px; font-weight:700; cursor:pointer; }
+  .hd-chip-x { background:none; border:1px solid var(--border); color:var(--muted); border-radius:999px;
+               width:24px; height:24px; line-height:1; cursor:pointer; font-size:14px; }
+  .hd-chip-x.wide { width:auto; padding:5px 14px; font-size:12px; }
+  #hd-sheet { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:1400;
+              align-items:center; justify-content:center; padding:20px; }
+  .hd-sheet-box { background:var(--surface); border:1px solid var(--border); border-radius:14px;
+                  width:min(520px,100%); max-height:86vh; display:flex; flex-direction:column; }
+  .hd-sheet-head { display:flex; align-items:center; gap:10px; padding:14px 18px; border-bottom:1px solid var(--border); }
+  .hd-sheet-title { flex:1; font-size:15px; font-weight:700; }
+  .hd-sheet-x { background:none; border:none; color:var(--muted); font-size:19px; line-height:1; cursor:pointer; padding:0 4px; }
+  .hd-sheet-body { padding:16px 18px; overflow-y:auto; display:grid; gap:16px; }
+  .hd-sheet-foot { padding:12px 18px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; }
+  .hd-field > label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.5px;
+                      color:var(--muted); margin-bottom:7px; }
+  .hd-input { flex:1; min-width:0; background:var(--bg); border:1px solid var(--border); color:var(--text);
+              border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; }
+  .hd-list { display:grid; gap:2px; max-height:190px; overflow-y:auto; border:1px solid var(--border);
+             border-radius:9px; padding:6px; }
+  .hd-row { display:flex; align-items:center; gap:9px; font-size:13px; padding:5px 7px; border-radius:6px; cursor:pointer; }
+  .hd-row:hover { background:var(--bg); }
+  .hd-row input[type=checkbox] { accent-color:var(--primary); }
+  .hd-files { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px;
+              max-height:230px; overflow-y:auto; }
+  .hd-file { display:flex; flex-direction:column; gap:5px; border:1px solid var(--border); border-radius:9px;
+             padding:7px; text-decoration:none; color:var(--text); }
+  .hd-file:hover { border-color:var(--primary); }
+  .hd-file img { width:100%; height:74px; object-fit:cover; border-radius:6px; display:block; }
+  .hd-file-ic { height:74px; display:flex; align-items:center; justify-content:center; font-size:24px;
+                background:var(--bg); border-radius:6px; }
+  .hd-file-name { font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .hd-file-sub { font-size:10px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chat-head-actions { margin-left:auto; display:flex; gap:6px; }
+  .hd-head-btn { background:none; border:1px solid var(--border); color:var(--muted); border-radius:8px;
+                 width:31px; height:31px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .hd-head-btn:hover { color:var(--text); border-color:var(--primary); }
+  .hd-head-btn.live { color:#fff; background:var(--danger); border-color:var(--danger); }
+  .status-emo { font-size:11px; margin-left:3px; }
+  .status-chip { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:var(--muted); }
+  .status-chip-txt { max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  @media (max-width:640px) {
+    /* On a phone the composer and the FAB own the bottom, so dock to the top —
+       the join chip and the ringing prompt are both hidden while in a huddle. */
+    #hd-bar { left:10px; right:10px; top:10px; bottom:auto; max-width:none; }
+    .hd-tile, .hd-video, .hd-avatar { width:100%; }
+    .hd-tiles { display:grid; grid-template-columns:1fr 1fr; }
+  }
   </style>
 </head>
 <body>
@@ -6778,6 +6856,21 @@ function adminOpenChatSse() {
       adminChatTypingTimers[roomId] = setTimeout(() => { if (bar) bar.textContent = ''; }, 3500);
     } catch (_) {}
   });
+  // WebRTC signalling for huddles rides this same stream
+  adminChatSse.addEventListener('huddle', e => {
+    try { huddleOnSignal(JSON.parse(e.data)); } catch (_) {}
+  });
+  // Membership or name changed — refresh the list, and the header if it's open
+  adminChatSse.addEventListener('room', e => {
+    try {
+      const { roomId } = JSON.parse(e.data);
+      HDCFG.refreshRooms().then(() => {
+        if (adminActiveChatRoom !== roomId) return;
+        if (adminChatRooms.some(r => r.id === roomId)) adminChatOpenRoom(roomId);
+        else adminChatBackToRooms();   // we were removed from it
+      });
+    } catch (_) {}
+  });
 }
 
 function adminCloseChatSse() {
@@ -6824,7 +6917,7 @@ function adminChatRenderRoomList() {
         ${room.type === 'direct' ? `<div class="presence-dot" id="presence-dot-${room.id}"></div>` : ''}
       </div>
       <div class="chat-room-info">
-        <div class="chat-room-name">${esc(name)}</div>
+        <div class="chat-room-name">${esc(name)}${statusEmojiOnly(other?.member_status_emoji, other?.member_status)}</div>
         <div class="chat-room-preview">${esc(prev)}</div>
       </div>${unread}
     </div>`;
@@ -6851,10 +6944,11 @@ async function adminChatOpenRoom(roomId) {
     <div class="chat-header">
       <button class="chat-back-btn" onclick="adminChatBackToRooms()" title="Back"><i data-lucide="arrow-left" style="width:18px;height:18px"></i></button>
       <div class="chat-room-avatar${room?.type === 'group' ? ' grp' : ''}" style="width:32px;height:32px;font-size:12px">${esc(name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}</div>
-      <div>
-        <div class="chat-header-name">${esc(name)}</div>
+      <div style="min-width:0">
+        <div class="chat-header-name">${esc(name)} ${chatHeaderStatus(room)}</div>
         <div class="chat-header-meta" id="admin-chat-header-meta">${room?.type === 'group' ? `${(room.members||[]).length} members` : 'Direct message'}</div>
       </div>
+      ${chatHeaderActions(room)}
     </div>
     <div class="chat-messages" id="admin-chat-messages"><div class="loading"><div class="spinner"></div></div></div>
     <div class="chat-attach-preview" id="admin-attach-preview" style="display:none">
@@ -6944,7 +7038,7 @@ function adminChatMsgHTML(msg) {
   ) : '';
   return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}" onclick="adminChatToggleActions(event)">
     ${actions}
-    ${!mine ? `<div class="chat-msg-sender">${msg.sender_avatar ? `<img class="chat-msg-avatar" src="${esc(msg.sender_avatar)}" alt="">` : ''}${esc(msg.sender_name)}</div>` : ''}
+    ${!mine ? `<div class="chat-msg-sender">${msg.sender_avatar ? `<img class="chat-msg-avatar" src="${esc(msg.sender_avatar)}" alt="">` : ''}${esc(msg.sender_name)}${statusEmojiOnly(msg.sender_status_emoji, msg.sender_status)}</div>` : ''}
     ${replyHTML}
     ${msg.body ? `<div class="chat-msg-bubble">${esc(msg.body)}${msg.edited_at ? '<span class="chat-edited">(edited)</span>' : ''}</div>` : ''}
     ${fileHTML}
@@ -10222,6 +10316,473 @@ function dismissAdminIOSHint() {
     }
   }).observe(document.body, { childList: true, subtree: true });
 })();
+
+// Portal binding for the shared huddle / group-admin module below.
+const HDCFG = {
+  base: '/api/dashboard/chat',
+  me: () => 'admin',
+  fetch: (url, opts) => apiFetch(url, opts),
+  rooms: () => adminChatRooms,
+  activeRoom: () => adminActiveChatRoom,
+  openRoom: id => adminChatOpenRoom(id),
+  refreshRooms: async () => {
+    const r = await apiFetch('/api/dashboard/chat/rooms');
+    if (!r.ok) return;
+    adminChatRooms = await r.json();
+    adminChatRenderRoomList();
+  },
+};
+
+/* ── Huddles, group administration & status ───────────────────────────────────
+   Shared between the admin dashboard and the team portal. Everything portal
+   specific lives in HDCFG, which each portal defines just above this block. */
+
+// Mesh topology: every participant holds one RTCPeerConnection per peer, so the
+// server caps a huddle at HUDDLE_MAX. Signalling rides the chat SSE stream that
+// messages already use, so there is no second socket to keep alive.
+let _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: null, roster: [] };
+
+function hdMe() { return HDCFG.me(); }
+function hdFetch(path, opts) { return HDCFG.fetch(HDCFG.base + path, opts); }
+function hdRoom(id) { return (HDCFG.rooms() || []).find(r => r.id === id) || null; }
+function hdRoomMemberKeys(id) { return ((hdRoom(id) || {}).members || []).map(m => m.member_key); }
+function hdNameFor(key) {
+  for (const r of HDCFG.rooms() || []) {
+    const m = (r.members || []).find(x => x.member_key === key);
+    if (m) return m.member_name;
+  }
+  return key === 'admin' ? 'Admin' : key;
+}
+function hdSignal(type, to, data) {
+  return hdFetch('/huddle/signal', { method: 'POST', body: JSON.stringify({ roomId: _hd.roomId, type, to, data }) });
+}
+
+async function hdIce() {
+  if (_hd.ice) return _hd.ice;
+  try { _hd.ice = await hdFetch('/huddle/ice').then(r => r.json()); }
+  catch (_) { _hd.ice = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }], hasTurn: false }; }
+  return _hd.ice;
+}
+
+async function huddleStart(roomId, withVideo) {
+  if (_hd.roomId === roomId) { hdToast('You are already in this huddle.'); return; }
+  if (_hd.roomId) { hdToast('Leave your current huddle first.'); return; }
+  try {
+    _hd.local = await navigator.mediaDevices.getUserMedia({ audio: true, video: !!withVideo });
+  } catch (_) {
+    hdToast('Could not access your microphone. Check the browser permission.');
+    return;
+  }
+  _hd.roomId = roomId; _hd.cam = !!withVideo; _hd.muted = false; _hd.sharing = false;
+  await hdIce();
+  hdHideJoinChip();
+  hdRenderBar();
+  let r = null;
+  try { r = await hdFetch('/huddle/signal', { method: 'POST', body: JSON.stringify({ roomId, type: 'join' }) }).then(x => x.json()); }
+  catch (_) {}
+  if (!r || r.error) { hdToast((r && r.error) || 'Could not join the huddle.'); huddleLeave(); return; }
+  _hd.roster = r.participants || [];
+  // Ring everyone else in the conversation; they get an incoming-huddle prompt.
+  hdRoomMemberKeys(roomId).forEach(k => { if (k !== hdMe()) hdSignal('invite', k).catch(() => {}); });
+  hdRenderBar();
+}
+
+function huddleJoinExisting(roomId) { return huddleStart(roomId, false); }
+
+function huddleLeave() {
+  if (_hd.roomId) hdSignal('leave').catch(() => {});
+  _hd.peers.forEach(p => { try { p.pc.close(); } catch (_) {} });
+  _hd.peers.clear();
+  [_hd.local, _hd.screen].forEach(st => st && st.getTracks().forEach(t => t.stop()));
+  _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: _hd.ice, roster: [] };
+  hdRenderBar();
+}
+
+function hdPeer(key) {
+  if (_hd.peers.has(key)) return _hd.peers.get(key);
+  const pc = new RTCPeerConnection({ iceServers: (_hd.ice && _hd.ice.iceServers) || [] });
+  const entry = { pc, stream: new MediaStream(), name: hdNameFor(key), state: 'connecting' };
+  _hd.peers.set(key, entry);
+  if (_hd.local) _hd.local.getTracks().forEach(t => pc.addTrack(t, _hd.local));
+  // Reserve the video slot before the first offer. A mesh has no SFU to renegotiate
+  // through, so turning the camera or a screen share on later has to be a track
+  // swap on an m-line that already exists.
+  entry.videoSender = pc.getSenders().find(s => s.track && s.track.kind === 'video')
+    || pc.addTransceiver('video', { direction: 'sendrecv' }).sender;
+  pc.onicecandidate = e => { if (e.candidate) hdSignal('ice', key, e.candidate).catch(() => {}); };
+  pc.ontrack = e => {
+    (e.streams[0] ? e.streams[0].getTracks() : [e.track]).forEach(t => {
+      if (!entry.stream.getTracks().includes(t)) entry.stream.addTrack(t);
+      if (t.kind === 'video') {
+        // The reserved slot means a video track always arrives; it stays muted
+        // until the peer actually turns a camera or screen share on.
+        entry.video = !t.muted;
+        t.onmute = () => { entry.video = false; hdRenderBar(); };
+        t.onunmute = () => { entry.video = true; hdRenderBar(); };
+      }
+    });
+    hdRenderBar();
+  };
+  pc.onconnectionstatechange = () => {
+    entry.state = pc.connectionState;
+    // 'failed' nearly always means no relay path — say so rather than hanging
+    if (pc.connectionState === 'failed' && !(_hd.ice && _hd.ice.hasTurn)) {
+      hdToast("Couldn't reach " + entry.name + ". This network needs a TURN relay.");
+    }
+    hdRenderBar();
+  };
+  return entry;
+}
+
+async function hdCall(key) {
+  const { pc } = hdPeer(key);
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  hdSignal('offer', key, offer).catch(() => {});
+}
+
+// Every 'huddle' SSE frame lands here.
+async function huddleOnSignal(msg) {
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 'roster') {
+    if (msg.roomId !== _hd.roomId) { hdNoteRoster(msg); return; }
+    _hd.roster = msg.participants || [];
+    // Glare rule: only the lexicographically smaller key offers, so two peers
+    // never negotiate against each other.
+    _hd.roster.forEach(p => {
+      if (p.key !== hdMe() && !_hd.peers.has(p.key) && hdMe() < p.key) hdCall(p.key);
+    });
+    [..._hd.peers.keys()].forEach(k => {
+      if (!_hd.roster.some(p => p.key === k)) {
+        try { _hd.peers.get(k).pc.close(); } catch (_) {}
+        _hd.peers.delete(k);
+      }
+    });
+    hdRenderBar();
+    return;
+  }
+  if (msg.type === 'invite') { hdIncoming(msg); return; }
+  if (msg.type === 'decline') { hdToast(esc(msg.fromName || 'They') + ' declined the huddle.'); return; }
+  if (!_hd.roomId || msg.roomId !== _hd.roomId) return;   // signal for a call we're not in
+  const from = msg.from;
+  if (msg.type === 'offer') {
+    const { pc } = hdPeer(from);
+    await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    hdSignal('answer', from, answer).catch(() => {});
+  } else if (msg.type === 'answer') {
+    const p = _hd.peers.get(from);
+    if (p && p.pc.signalingState !== 'stable') await p.pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+  } else if (msg.type === 'ice') {
+    const p = _hd.peers.get(from);
+    if (p && msg.data) { try { await p.pc.addIceCandidate(new RTCIceCandidate(msg.data)); } catch (_) {} }
+  }
+}
+
+// ── Controls ──
+function huddleToggleMute() {
+  if (!_hd.local) return;
+  _hd.muted = !_hd.muted;
+  _hd.local.getAudioTracks().forEach(t => { t.enabled = !_hd.muted; });
+  hdRenderBar();
+}
+async function huddleToggleCam() {
+  if (!_hd.roomId) return;
+  if (_hd.cam) {
+    _hd.local.getVideoTracks().forEach(t => { t.stop(); _hd.local.removeTrack(t); });
+    if (!_hd.sharing) hdSwapVideo(null);
+    _hd.cam = false;
+  } else {
+    try {
+      const cam = await navigator.mediaDevices.getUserMedia({ video: true });
+      const track = cam.getVideoTracks()[0];
+      _hd.local.addTrack(track);
+      // While sharing a screen the screen track owns the video sender; the camera
+      // takes over again when sharing stops.
+      if (!_hd.sharing) hdSwapVideo(track);
+      _hd.cam = true;
+    } catch (_) { hdToast('Could not access your camera.'); }
+  }
+  hdRenderBar();
+}
+function hdSwapVideo(track) {
+  _hd.peers.forEach(p => { if (p.videoSender) p.videoSender.replaceTrack(track).catch(() => {}); });
+}
+async function huddleToggleShare() {
+  if (!_hd.roomId) return;
+  if (_hd.sharing) {
+    if (_hd.screen) _hd.screen.getTracks().forEach(t => t.stop());
+    _hd.screen = null; _hd.sharing = false;
+    hdSwapVideo(_hd.local.getVideoTracks()[0] || null);
+  } else {
+    try {
+      _hd.screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const track = _hd.screen.getVideoTracks()[0];
+      track.onended = () => { if (_hd.sharing) huddleToggleShare(); };   // browser's own "Stop sharing"
+      hdSwapVideo(track);
+      _hd.sharing = true;
+    } catch (_) { /* the picker was cancelled */ }
+  }
+  hdRenderBar();
+}
+function huddleInvite(key) { if (_hd.roomId) hdSignal('invite', key).catch(() => {}); }
+
+// ── Huddle UI ──
+function hdToast(msg) {
+  const el = document.getElementById('hd-toast');
+  if (!el) { console.warn('[huddle]', msg); return; }
+  el.textContent = msg; el.style.display = 'block';
+  clearTimeout(el._t); el._t = setTimeout(() => { el.style.display = 'none'; }, 6000);
+}
+function hdNoteRoster(msg) {
+  // A huddle is running in a room we are not in
+  if ((msg.participants || []).length) hdShowJoinChip(msg.roomId, msg.participants.length);
+  else hdHideJoinChip();
+}
+function hdShowJoinChip(roomId, n) {
+  const el = document.getElementById('hd-join-chip');
+  if (!el || _hd.roomId) return;
+  const room = hdRoom(roomId);
+  const where = room ? (room.type === 'group' ? room.name : hdNameFor((room.members || []).map(m => m.member_key).find(k => k !== hdMe()) || '')) : 'a conversation';
+  el.innerHTML = `<span>🎧 Huddle in ${esc(where)} · ${n} ${n === 1 ? 'person' : 'people'}</span>
+    <button class="hd-chip-btn" onclick="huddleJoinExisting(${roomId})">Join</button>
+    <button class="hd-chip-x" onclick="hdHideJoinChip()" title="Dismiss">×</button>`;
+  el.style.display = 'flex';
+}
+function hdHideJoinChip() { const el = document.getElementById('hd-join-chip'); if (el) el.style.display = 'none'; }
+
+function hdIncoming(msg) {
+  if (_hd.roomId === msg.roomId) return;              // already in it
+  const el = document.getElementById('hd-incoming');
+  if (!el) return;
+  el.innerHTML = `<div class="hd-ring-title">🎧 ${esc(msg.fromName || 'Someone')} started a huddle</div>
+    <div class="hd-ring-actions">
+      <button class="hd-chip-btn" onclick="hdAccept(${msg.roomId})">Join</button>
+      <button class="hd-chip-x wide" onclick="hdDecline(${JSON.stringify(String(msg.from || '')).replace(/"/g, '&quot;')},${msg.roomId})">Decline</button>
+    </div>`;
+  el.style.display = 'block';
+  clearTimeout(el._t); el._t = setTimeout(() => { el.style.display = 'none'; }, 45000);
+  try { hdRing(); } catch (_) {}
+}
+function hdRing() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  const ctx = new Ctx(), osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.frequency.value = 660; gain.gain.value = 0.06;
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.start(); osc.stop(ctx.currentTime + 0.5);
+  setTimeout(() => { try { ctx.close(); } catch (_) {} }, 900);
+}
+function hdAccept(roomId) {
+  const el = document.getElementById('hd-incoming');
+  if (el) el.style.display = 'none';
+  huddleJoinExisting(roomId);
+}
+function hdDecline(from, roomId) {
+  const el = document.getElementById('hd-incoming');
+  if (el) el.style.display = 'none';
+  hdFetch('/huddle/signal', { method: 'POST', body: JSON.stringify({ roomId, type: 'decline', to: from }) }).catch(() => {});
+}
+
+function hdRenderBar() {
+  const bar = document.getElementById('hd-bar');
+  if (!bar) return;
+  if (!_hd.roomId) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  const peers = [..._hd.peers.entries()];
+  const selfLabel = 'You' + (_hd.muted ? ' 🔇' : '') + (_hd.sharing ? ' · sharing' : '');
+  const tiles = [
+    `<div class="hd-tile"><div class="hd-tile-name">${esc(selfLabel)}</div>
+       ${_hd.cam || _hd.sharing ? '<video class="hd-video" autoplay muted playsinline id="hd-self"></video>' : '<div class="hd-avatar">🎙️</div>'}</div>`,
+    ...peers.map(([key, p]) => `<div class="hd-tile">
+        <div class="hd-tile-name">${esc(p.name || key)}${p.state !== 'connected' ? ' · ' + esc(p.state) : ''}</div>
+        ${p.video ? `<video class="hd-video" autoplay playsinline data-peer="${esc(key)}"></video>` : '<div class="hd-avatar">🎙️</div>'}
+      </div>`),
+  ].join('');
+  bar.innerHTML = `
+    <div class="hd-tiles">${tiles}</div>
+    <div class="hd-controls">
+      <button class="hd-btn ${_hd.muted ? 'off' : 'on'}" onclick="huddleToggleMute()" title="${_hd.muted ? 'Unmute' : 'Mute'}">${_hd.muted ? '🔇' : '🎙️'}</button>
+      <button class="hd-btn ${_hd.cam ? 'on' : ''}" onclick="huddleToggleCam()" title="Camera">📹</button>
+      <button class="hd-btn ${_hd.sharing ? 'on' : ''}" onclick="huddleToggleShare()" title="Share screen">🖥️</button>
+      <button class="hd-btn" onclick="hdOpenInvite()" title="Add someone">➕</button>
+      <button class="hd-btn leave" onclick="huddleLeave()" title="Leave huddle">Leave</button>
+    </div>`;
+  bar.style.display = 'flex';
+  // Streams are attached after the nodes exist
+  const self = document.getElementById('hd-self');
+  if (self) { const want = _hd.sharing ? _hd.screen : _hd.local; if (self.srcObject !== want) self.srcObject = want; }
+  peers.forEach(([key, p]) => {
+    const v = bar.querySelector('video[data-peer="' + (window.CSS && CSS.escape ? CSS.escape(key) : key) + '"]');
+    if (v && v.srcObject !== p.stream) v.srcObject = p.stream;
+  });
+}
+
+function hdOpenInvite() {
+  const inCall = new Set((_hd.roster || []).map(r => r.key));
+  const free = hdRoomMemberKeys(_hd.roomId).filter(k => k !== hdMe() && !inCall.has(k));
+  if (!free.length) { hdToast('Everyone in this conversation is already here.'); return; }
+  hdSheet('Add to huddle', `<div class="hd-list">
+      ${free.map(k => `<label class="hd-row"><input type="checkbox" class="hd-inv" value="${esc(k)}"> ${esc(hdNameFor(k))}</label>`).join('')}
+    </div>`,
+    `<button class="btn btn-outline btn-sm" onclick="hdSheetClose()">Cancel</button>
+     <button class="btn btn-primary btn-sm" onclick="hdSendInvites()">Invite</button>`);
+}
+function hdSendInvites() {
+  const picked = [...document.querySelectorAll('.hd-inv:checked')].map(cb => cb.value);
+  picked.forEach(k => huddleInvite(k));
+  hdSheetClose();
+  hdToast(picked.length ? 'Invite sent.' : 'Nobody selected.');
+}
+
+// ── A small overlay used by the huddle invite and the group panel ──
+function hdSheet(title, bodyHTML, footHTML) {
+  const el = document.getElementById('hd-sheet');
+  if (!el) return;
+  el.innerHTML = `<div class="hd-sheet-box">
+      <div class="hd-sheet-head"><div class="hd-sheet-title">${esc(title)}</div>
+        <button class="hd-sheet-x" onclick="hdSheetClose()" title="Close">×</button></div>
+      <div class="hd-sheet-body">${bodyHTML}</div>
+      ${footHTML ? `<div class="hd-sheet-foot">${footHTML}</div>` : ''}
+    </div>`;
+  el.style.display = 'flex';
+}
+function hdSheetClose() { const el = document.getElementById('hd-sheet'); if (el) { el.style.display = 'none'; el.innerHTML = ''; } }
+
+// ── Group administration ──────────────────────────────────────────────────────
+// The admin manages any group; an employee manages groups they created. The
+// server enforces the same rule — this only decides whether to draw the controls.
+function chatCanManageRoom(room) {
+  if (!room || room.type !== 'group') return false;
+  return hdMe() === 'admin' || room.created_by === hdMe();
+}
+
+async function chatGroupPanel(roomId) {
+  const room = hdRoom(roomId);
+  if (!room) return;
+  const can = chatCanManageRoom(room);
+  const members = room.members || [];
+  hdSheet(room.type === 'group' ? (room.name || 'Group') : 'Conversation', `
+    ${can ? `<div class="hd-field">
+      <label>Group name</label>
+      <div style="display:flex;gap:8px">
+        <input id="cg-name" class="hd-input" value="${esc(room.name || '')}" maxlength="80">
+        <button class="btn btn-primary btn-sm" onclick="chatRenameRoom(${roomId})">Save</button>
+      </div>
+    </div>` : ''}
+    <div class="hd-field">
+      <label>${members.length} member${members.length === 1 ? '' : 's'}</label>
+      <div class="hd-list" id="cg-members">
+        ${members.map(m => `<div class="hd-row">
+          <span style="flex:1">${esc(m.member_name)}${m.member_status_emoji ? ` <span title="${esc(m.member_status || '')}">${esc(m.member_status_emoji)}</span>` : ''}${m.member_key === hdMe() ? ' <span style="color:var(--muted)">(you)</span>' : ''}</span>
+          ${can && m.member_key !== hdMe() ? `<button class="hd-sheet-x" title="Remove" onclick="chatRemoveMember(${roomId},${JSON.stringify(m.member_key).replace(/"/g, '&quot;')})">×</button>` : ''}
+        </div>`).join('')}
+      </div>
+    </div>
+    ${can ? `<div class="hd-field">
+      <label>Add people</label>
+      <div class="hd-list" id="cg-add"><div style="font-size:12px;color:var(--muted);padding:6px">Loading…</div></div>
+    </div>` : ''}
+    <div class="hd-field">
+      <label>Shared files</label>
+      <div id="cg-files"><div style="font-size:12px;color:var(--muted);padding:6px">Loading…</div></div>
+    </div>`,
+    `<button class="btn btn-outline btn-sm" onclick="hdSheetClose()">Close</button>
+     ${can ? '<button class="btn btn-primary btn-sm" onclick="chatAddMembers(' + roomId + ')">Add selected</button>' : ''}`);
+  if (can) chatGroupLoadCandidates(roomId);
+  chatGroupLoadFiles(roomId);
+}
+
+async function chatGroupLoadCandidates(roomId) {
+  const box = document.getElementById('cg-add');
+  if (!box) return;
+  let people = [];
+  try { const r = await HDCFG.fetch(HDCFG.base + '/people'); people = r.ok ? await r.json() : []; } catch (_) {}
+  const have = new Set(hdRoomMemberKeys(roomId));
+  const free = people.filter(p => !have.has(p.key));
+  box.innerHTML = free.length
+    ? free.map(p => `<label class="hd-row"><input type="checkbox" class="cg-add-cb" value="${esc(p.key)}"> ${esc(p.name)}${p.role ? ` <span style="color:var(--muted)">· ${esc(p.role)}</span>` : ''}</label>`).join('')
+    : '<div style="font-size:12px;color:var(--muted);padding:6px">Everyone is already in this group.</div>';
+}
+
+async function chatGroupLoadFiles(roomId) {
+  const box = document.getElementById('cg-files');
+  if (!box) return;
+  let files = [];
+  try { const r = await HDCFG.fetch(HDCFG.base + '/rooms/' + roomId + '/attachments'); files = r.ok ? await r.json() : []; } catch (_) {}
+  if (!files.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px">Nothing shared yet.</div>'; return; }
+  box.innerHTML = '<div class="hd-files">' + files.map(f => {
+    const img = (f.file_type || '').startsWith('image/');
+    const kb = f.file_size ? Math.max(1, Math.round(f.file_size / 1024)) + ' KB' : '';
+    return `<a class="hd-file" href="${esc(f.file_url)}" target="_blank" rel="noopener" title="${esc(f.file_name || '')}">
+      ${img ? `<img src="${esc(f.file_url)}" alt="">` : '<div class="hd-file-ic">📄</div>'}
+      <div class="hd-file-meta"><div class="hd-file-name">${esc(f.file_name || 'file')}</div>
+        <div class="hd-file-sub">${esc(f.sender_name || '')}${kb ? ' · ' + kb : ''}</div></div></a>`;
+  }).join('') + '</div>';
+}
+
+async function chatRenameRoom(roomId) {
+  const name = (document.getElementById('cg-name') || {}).value || '';
+  if (!name.trim()) { hdToast('Give the group a name.'); return; }
+  const r = await HDCFG.fetch(HDCFG.base + '/rooms/' + roomId, { method: 'PUT', body: JSON.stringify({ name: name.trim() }) });
+  if (!r.ok) { hdToast(((await r.json().catch(() => ({}))).error) || 'Could not rename the group.'); return; }
+  await HDCFG.refreshRooms();
+  hdToast('Group renamed.');
+  if (HDCFG.activeRoom() === roomId) HDCFG.openRoom(roomId);
+  chatGroupPanel(roomId);
+}
+
+async function chatAddMembers(roomId) {
+  const keys = [...document.querySelectorAll('.cg-add-cb:checked')].map(cb => cb.value);
+  if (!keys.length) { hdToast('Pick at least one person.'); return; }
+  const r = await HDCFG.fetch(HDCFG.base + '/rooms/' + roomId + '/members', { method: 'POST', body: JSON.stringify({ memberKeys: keys }) });
+  if (!r.ok) { hdToast(((await r.json().catch(() => ({}))).error) || 'Could not add members.'); return; }
+  await HDCFG.refreshRooms();
+  hdToast(keys.length === 1 ? 'Member added.' : keys.length + ' members added.');
+  chatGroupPanel(roomId);
+}
+
+async function chatRemoveMember(roomId, key) {
+  if (!confirm('Remove ' + hdNameFor(key) + ' from this group?')) return;
+  const r = await HDCFG.fetch(HDCFG.base + '/rooms/' + roomId + '/members/' + encodeURIComponent(key), { method: 'DELETE' });
+  if (!r.ok) { hdToast(((await r.json().catch(() => ({}))).error) || 'Could not remove that member.'); return; }
+  await HDCFG.refreshRooms();
+  hdToast('Member removed.');
+  chatGroupPanel(roomId);
+}
+
+// ── Chat header extras ────────────────────────────────────────────────────────
+function chatHeaderActions(room) {
+  if (!room) return '';
+  const ic = (n) => `<i data-lucide="${n}" style="width:16px;height:16px"></i>`;
+  const inThis = _hd.roomId === room.id;
+  return `<div class="chat-head-actions">
+    ${inThis
+      ? `<button class="hd-head-btn live" onclick="huddleLeave()" title="Leave the huddle">${ic('phone-off')}</button>`
+      : `<button class="hd-head-btn" onclick="huddleStart(${room.id},false)" title="Start a huddle">${ic('headphones')}</button>
+         <button class="hd-head-btn" onclick="huddleStart(${room.id},true)" title="Start a huddle with video">${ic('video')}</button>`}
+    <button class="hd-head-btn" onclick="chatGroupPanel(${room.id})" title="${room.type === 'group' ? 'Group info, members and files' : 'Shared files'}">${ic(room.type === 'group' ? 'users' : 'paperclip')}</button>
+  </div>`;
+}
+function chatHeaderStatus(room) {
+  if (!room || room.type !== 'direct') return '';
+  const other = (room.members || []).find(m => m.member_key !== hdMe());
+  return other ? statusChip(other.member_status_emoji, other.member_status) : '';
+}
+
+// ── Status ────────────────────────────────────────────────────────────────────
+// Everyone's status is attached to room members and message senders by the API,
+// so any viewer sees it — not just the person who set it.
+function statusChip(emoji, text) {
+  if (!emoji && !text) return '';
+  const tip = text || '';
+  return `<span class="status-chip" title="${esc(tip)}">${esc(emoji || '💬')}${text ? '<span class="status-chip-txt">' + esc(text) + '</span>' : ''}</span>`;
+}
+function statusEmojiOnly(emoji, text) {
+  if (!emoji) return '';
+  return `<span class="status-emo" title="${esc(text || '')}">${esc(emoji)}</span>`;
+}
+
 </script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
@@ -10247,5 +10808,13 @@ function dismissAdminIOSHint() {
   </div>
   <button onclick="dismissAdminIOSHint()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;padding:4px 6px;flex-shrink:0;line-height:1">×</button>
 </div>
+
+<!-- Huddle & chat-panel overlays (shared by every page) -->
+<div id="hd-bar"></div>
+<div id="hd-toast"></div>
+<div id="hd-join-chip"></div>
+<div id="hd-incoming"></div>
+<div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
+
 </body>
 </html>
