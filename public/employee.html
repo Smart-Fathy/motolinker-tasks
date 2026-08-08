@@ -3998,23 +3998,38 @@ function applyNavConfig(cfg) {
   if (!groups.length) return;
   const nav = document.querySelector('#sidebar .sidebar-nav') || document.querySelector('#sidebar');
   if (!nav) return;
-  const byKey = new Map([...document.querySelectorAll('#sidebar .nav-group')].map(g => [g.dataset.group, g]));
+  const allGroups = () => [...document.querySelectorAll('#sidebar .nav-group')];
+  const byKey = new Map(allGroups().map(g => [g.dataset.group, g]));
+  const placedGroups = new Set();
   groups.forEach(g => {
     const el = byKey.get(g.key);
     if (!el) return;                       // section this portal doesn't have (e.g. logistics)
+    placedGroups.add(g.key);
     const lbl = el.querySelector('.nav-group-label');
     if (g.label && lbl) lbl.textContent = g.label;
     nav.appendChild(el);
     const wrap = el.querySelector('.nav-group-items');
     if (!wrap) return;
+    const placedItems = new Set();
     (g.items || []).forEach(it => {
       const iel = navItemEl(it.id);
       if (!iel || !iel.classList.contains('nav-item')) return;
       // Never override the permission gate — only reorder/rename what's visible.
       if (it.label) navSetItemLabel(iel, it.label);
       wrap.appendChild(iel);
+      placedItems.add(iel.id);
     });
+    // An item that shipped after this arrangement was saved isn't in the config,
+    // so the appends above leave it sitting at the top of its group. Push it to
+    // the end instead — new entries join the list, they don't jump the queue.
+    if (placedItems.size) {
+      [...wrap.querySelectorAll('.nav-item')]
+        .filter(i => !placedItems.has(i.id))
+        .forEach(i => wrap.appendChild(i));
+    }
   });
+  // Same for a whole section added since the save.
+  allGroups().forEach(g => { if (!placedGroups.has(g.dataset.group)) nav.appendChild(g); });
 }
 async function loadNavConfig() {
   try {
@@ -6266,7 +6281,7 @@ const HDCFG = {
 // Mesh topology: every participant holds one RTCPeerConnection per peer, so the
 // server caps a huddle at HUDDLE_MAX. Signalling rides the chat SSE stream that
 // messages already use, so there is no second socket to keep alive.
-let _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: null, roster: [] };
+let _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: null, iceUntil: 0, roster: [] };
 
 function hdMe() { return HDCFG.me(); }
 function hdFetch(path, opts) { return HDCFG.fetch(HDCFG.base + path, opts); }
@@ -6284,9 +6299,17 @@ function hdSignal(type, to, data) {
 }
 
 async function hdIce() {
-  if (_hd.ice) return _hd.ice;
-  try { _hd.ice = await hdFetch('/huddle/ice').then(r => r.json()); }
-  catch (_) { _hd.ice = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }], hasTurn: false }; }
+  // Relay credentials expire (Cloudflare mints short-lived ones), so this cache
+  // has to as well — a tab left open all day must not start a call with a dead
+  // username. Refresh a few minutes before the server's stated TTL.
+  if (_hd.ice && Date.now() < _hd.iceUntil) return _hd.ice;
+  try {
+    _hd.ice = await hdFetch('/huddle/ice').then(r => r.json());
+    _hd.iceUntil = Date.now() + Math.max(60, (_hd.ice.ttl || 3600) - 300) * 1000;
+  } catch (_) {
+    _hd.ice = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }], hasTurn: false };
+    _hd.iceUntil = Date.now() + 60000;   // retry soon; this is a degraded fallback
+  }
   return _hd.ice;
 }
 
@@ -6320,7 +6343,7 @@ function huddleLeave() {
   _hd.peers.forEach(p => { try { p.pc.close(); } catch (_) {} });
   _hd.peers.clear();
   [_hd.local, _hd.screen].forEach(st => st && st.getTracks().forEach(t => t.stop()));
-  _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: _hd.ice, roster: [] };
+  _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: _hd.ice, iceUntil: _hd.iceUntil, roster: [] };
   hdRenderBar();
 }
 

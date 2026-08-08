@@ -283,8 +283,26 @@ effect without renegotiating.
 ### TURN (optional, but recommended)
 
 With no configuration, huddles use Google's public STUN servers and connect fine on
-ordinary networks. Corporate firewalls and symmetric NATs need a relay. Set these
-variables and the call falls back to it automatically:
+ordinary networks. Corporate firewalls and symmetric NATs need a relay. Two providers
+are supported, and `GET /api/{portal}/chat/huddle/ice` picks whichever is configured —
+Cloudflare first, then static. Nothing reaches the browser until someone opens a
+huddle, so credentials are never sitting in the page source.
+
+**Option A — Cloudflare Realtime TURN (recommended).** 1,000 GB/month free, then
+$0.05/GB. In the Cloudflare dashboard go to **Realtime → TURN** and create a TURN key;
+you get a key ID and an API token.
+
+| Variable | Example |
+| --- | --- |
+| `CLOUDFLARE_TURN_KEY_ID` | `a1b2c3…` |
+| `CLOUDFLARE_TURN_TOKEN` | *(the API token for that key)* |
+
+Cloudflare deliberately refuses to issue long-lived credentials, so the server mints a
+2-hour pair on demand and reuses it until 15 minutes before it expires. If the
+Cloudflare API is unreachable the last good credential keeps being served rather than
+silently dropping the call to STUN.
+
+**Option B — self-hosted coturn, or any provider with static credentials.**
 
 | Variable | Example |
 | --- | --- |
@@ -292,10 +310,12 @@ variables and the call falls back to it automatically:
 | `TURN_USERNAME` | `motolinker` |
 | `TURN_CREDENTIAL` | *(your TURN secret)* |
 
-`TURN_URL` accepts a comma-separated list. The credentials are served per request
-from `GET /api/{portal}/chat/huddle/ice` rather than baked into the HTML, so they
-can be rotated without a redeploy. With no TURN configured, a call that cannot find
-a path says so ("this network needs a TURN relay") instead of hanging.
+`TURN_URL` accepts a comma-separated list. This also acts as the fallback if
+Cloudflare is configured but unavailable and there is no cached credential.
+
+With neither configured, a call that cannot find a path says so ("this network needs a
+TURN relay") instead of hanging. The endpoint reports which provider is in effect in
+its `provider` field (`cloudflare`, `static` or `none`) — handy when checking a deploy.
 
 ### Things to know
 
