@@ -1124,7 +1124,7 @@
           <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon"><i data-lucide="users"></i></span> Employees</div>
           <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon"><i data-lucide="inbox"></i></span> Requests</div>
           <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><i data-lucide="clock"></i></span> Hours Logs</div>
-          <div class="nav-item"        onclick="navigate('deletions')"   id="nav-deletions">   <span class="nav-icon"><i data-lucide="trash-2"></i></span> Deletion Requests <span id="nav-deletions-badge" style="display:none;margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;padding:0 5px;align-items:center;justify-content:center;line-height:1"></span></div>
+          <div class="nav-item"        onclick="navigate('deletions')"   id="nav-deletions">   <span class="nav-icon"><i data-lucide="trash-2"></i></span> Approvals <span id="nav-deletions-badge" style="display:none;margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;padding:0 5px;align-items:center;justify-content:center;line-height:1"></span></div>
         </div>
       </div>
       <div class="nav-group" data-group="crm">
@@ -1351,7 +1351,7 @@
   <!-- ── DELETION REQUESTS PAGE ────────────────────────── -->
   <div id="page-deletions" class="page">
     <div class="page-header">
-      <span class="page-title">Deletion Requests</span>
+      <span class="page-title">Approvals</span>
       <button class="btn btn-outline" onclick="loadDeletionRequests()" style="font-size:13px"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Refresh</button>
     </div>
     <div style="padding:0 28px 28px">
@@ -1744,27 +1744,12 @@
           <span style="color:var(--muted);font-size:12px">→</span>
           <input class="filter-input" id="lead-date-to" type="date" onchange="filterCustomers()" title="To date" style="max-width:150px">
         </div>
-        <select class="filter-input" id="lead-status-filter" onchange="filterCustomers()" style="max-width:170px">
-          <option value="">All Statuses</option>
-          <option value="cold">Cold</option>
-          <option value="warm">Warm</option>
-          <option value="hot">Hot</option>
-          <option value="immediate_delivery">Immediate Delivery</option>
-          <option value="not_interested">Not Interested</option>
-          <option value="blacklist">Blacklist</option>
-        </select>
-        <select class="filter-input" id="lead-origin-filter" onchange="filterCustomers()" style="max-width:150px">
-          <option value="">All Origins</option>
-          <option value="fb_ad">FB Ad.</option>
-          <option value="whatsapp">Whatsapp</option>
-          <option value="messenger">Messenger</option>
-          <option value="direct_call">Direct Call</option>
-          <option value="ig_ads">IG ads</option>
-        </select>
+        <button class="btn btn-sm btn-outline" id="lead-addfilter-btn" onclick="openLeadFilterPicker(event)"><i data-lucide="filter" style="width:13px;height:13px"></i> Add filter</button>
         <button class="btn btn-sm btn-outline" onclick="clearLeadFilters()">Clear</button>
         <button class="btn btn-sm btn-outline" id="lead-cols-btn" onclick="openLeadColsPicker(event)" title="Show / hide columns"><i data-lucide="columns-3" style="width:13px;height:13px"></i> Columns</button>
         <button class="btn btn-sm btn-outline" id="fu-chip" onclick="toggleFuFilter()" title="Show leads with follow-ups due" style="display:none"></button>
       </div>
+      <div id="lead-filter-chips" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
       <div class="table-card" style="overflow-x:auto">
         <table class="table" id="customers-table" style="min-width:1200px">
           <thead><tr id="leads-head-row">
@@ -1792,16 +1777,12 @@
       </div>
       <div class="deal-tabs">
         <button class="deal-tab active" data-tab="pipeline" onclick="dealsTab('pipeline')">Pipeline</button>
-        <button class="deal-tab" data-tab="inquiry" onclick="dealsTab('inquiry')">Inquiry</button>
         <button class="deal-tab" data-tab="sales" onclick="dealsTab('sales')">Sales</button>
       </div>
       <div id="deals-pane-pipeline">
         <div id="deals-kanban" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:start;overflow-x:auto;min-width:900px">
           <!-- Columns rendered by JS -->
         </div>
-      </div>
-      <div id="deals-pane-inquiry" style="display:none">
-        <div id="deals-inquiry-table"></div>
       </div>
       <div id="deals-pane-sales" style="display:none">
         <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
@@ -2460,6 +2441,14 @@
             <label class="form-label">Budget (EGP)</label>
             <input class="form-input" id="dm-budget" type="number" min="0" step="1000" placeholder="e.g. 1500000">
           </div>
+        </div>
+        <div>
+          <label class="form-label">Full Inquiry Details <span style="color:var(--muted);font-weight:400">(brands / models / trims / colours / accessories)</span></label>
+          <textarea class="form-input" id="dm-inquiry" rows="3" placeholder="What the customer asked for…" style="resize:vertical"></textarea>
+        </div>
+        <div>
+          <label class="form-label">Est. value (EGP)</label>
+          <input class="form-input" id="dm-est-value" type="number" min="0" step="1000" placeholder="e.g. 1600000">
         </div>
         <div>
           <label class="form-label">Notes</label>
@@ -4916,49 +4905,12 @@ const SALE_STATUS_OPTS = PO_LINE_STATUSES;
 function dealsTab(tab) {
   _dealsTab = tab;
   document.querySelectorAll('.deal-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  ['pipeline', 'inquiry', 'sales'].forEach(t => {
+  ['pipeline', 'sales'].forEach(t => {
     const el = document.getElementById('deals-pane-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
-  if (tab === 'inquiry') renderInquiryTable();
   if (tab === 'sales') loadSales();
   requestAnimationFrame(() => lucide.createIcons());
-}
-
-// Inquiry is a view over deals sitting in the Inquiry stage.
-function renderInquiryTable() {
-  const box = document.getElementById('deals-inquiry-table');
-  if (!box) return;
-  const rows = (_allDeals || []).filter(d => d.stage === 'inquiry');
-  if (!rows.length) {
-    box.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No deals in the Inquiry stage.</div>';
-    return;
-  }
-  const cust = id => (_allCustomers || []).find(c => c.id === id);
-  box.innerHTML = `
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
-        <th style="padding:8px 10px;width:40px">No</th>
-        <th style="padding:8px 10px;min-width:280px">Full Inquiry Details<div style="font-weight:400;font-size:10.5px">Brands / Models / Trims / Colours / Accessories</div></th>
-        <th style="padding:8px 10px">Name</th><th style="padding:8px 10px">Number</th>
-        <th style="padding:8px 10px;text-align:right">Est. value</th><th style="padding:8px 10px">Date</th>
-        <th style="padding:8px 10px">Notes</th><th style="padding:8px 10px;text-align:right"></th></tr></thead>
-      <tbody>${rows.map((d, i) => {
-        const c = cust(d.customer_id) || {};
-        const details = d.inquiry_details || d.car_model || d.title || '';
-        const val = Number(d.est_value ?? d.budget_egp) || 0;
-        return `<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:8px 10px;color:var(--muted)">${i + 1}</td>
-          <td style="padding:8px 10px;white-space:pre-wrap;line-height:1.55">${esc(details)}</td>
-          <td style="padding:8px 10px">${esc(c.name || '—')}</td>
-          <td style="padding:8px 10px;font-family:monospace">${esc(c.phone || '')}</td>
-          <td style="padding:8px 10px;text-align:right;font-weight:600">${val ? val.toLocaleString() : '—'}</td>
-          <td style="padding:8px 10px;color:var(--muted)">${d.created_at ? new Date(d.created_at).toLocaleDateString() : ''}</td>
-          <td style="padding:8px 10px;color:var(--muted)">${esc(d.notes || '')}</td>
-          <td style="padding:8px 10px;text-align:right"><button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openDealModal(${d.id})">Edit</button></td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table></div>`;
 }
 
 // Sales is its own table — a row per sold car, opened when a deal is Won.
@@ -5255,10 +5207,13 @@ let _navArranging = false;
 function navGroupEls() { return [...document.querySelectorAll('#sidebar .nav-group')]; }
 function navGroupLabelEl(g) { return g.querySelector('.nav-group-label'); }
 function navItemLabelText(el) {
-  // The label is the text after the icon span
+  const span = el.querySelector('.nav-item-label');
+  if (span) return span.textContent.trim();
   return [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim();
 }
 function navSetItemLabel(el, text) {
+  const span = el.querySelector('.nav-item-label');
+  if (span) { span.textContent = text; return; }
   const t = [...el.childNodes].filter(n => n.nodeType === 3 && n.textContent.trim());
   if (t.length) { t[0].textContent = ' ' + text; t.slice(1).forEach(n => { n.textContent = ''; }); }
   else el.appendChild(document.createTextNode(' ' + text));
@@ -5360,6 +5315,7 @@ function navBindDrag() {
       i.addEventListener('dragover', navDragOver);
       i.addEventListener('drop', navDrop);
       i.addEventListener('dragend', navDragEnd);
+      navMakeItemEditable(i, true);
     });
   });
 }
@@ -5381,10 +5337,43 @@ function navUnbindDrag() {
       i.removeEventListener('dragover', navDragOver);
       i.removeEventListener('drop', navDrop);
       i.removeEventListener('dragend', navDragEnd);
+      navMakeItemEditable(i, false);
     });
   });
 }
 function navLabelKey(e) { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } }
+
+// Item labels live as a loose text node beside the icon. Wrap it once in a span
+// so it can be edited in place without disturbing the icon or the unread badge.
+function navItemLabelSpan(el) {
+  let span = el.querySelector('.nav-item-label');
+  if (span) return span;
+  const node = [...el.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+  if (!node) return null;
+  span = document.createElement('span');
+  span.className = 'nav-item-label';
+  span.textContent = node.textContent.trim();
+  node.replaceWith(document.createTextNode(' '), span);
+  return span;
+}
+function navMakeItemEditable(el, on) {
+  const span = navItemLabelSpan(el);
+  if (!span) return;
+  span.contentEditable = on ? 'true' : 'false';
+  span.classList.toggle('nav-label-edit', on);
+  // Editing must not fire navigate() or start a drag
+  if (on) {
+    span.addEventListener('keydown', navLabelKey);
+    span.addEventListener('click', navSwallowClick);
+    span.addEventListener('mousedown', navSwallowDrag);
+  } else {
+    span.removeEventListener('keydown', navLabelKey);
+    span.removeEventListener('click', navSwallowClick);
+    span.removeEventListener('mousedown', navSwallowDrag);
+  }
+}
+function navSwallowClick(e) { e.stopPropagation(); e.preventDefault(); }
+function navSwallowDrag(e) { e.stopPropagation(); }
 
 let _navDragEl = null;
 function navDragStart(e) {
@@ -7345,7 +7334,7 @@ async function deleteSubmission(id) {
   else alert('Delete failed');
 }
 
-// ── Deletion Requests (employee-requested lead/deal deletions) ──────────────────
+// ── Approvals (employee-requested lead/deal deletions awaiting sign-off) ────────
 async function loadDeletionRequests() {
   const c = document.getElementById('deletions-container');
   c.innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
@@ -8859,29 +8848,192 @@ function leadSortArrow(key) {
   return `<span class="lead-sort-arrow" style="color:var(--primary);margin-left:3px;font-size:10px">${_leadSort.dir === 'desc' ? '▼' : '▲'}</span>`;
 }
 
+// ── Lead filters ────────────────────────────────────────────────────────────────
+// Filters work on ANY column — built-in or custom cf_* — with options read from
+// the saved column config, so renamed options keep matching. Each filter is
+// { key, op, a, b }; the operator set depends on the column's type.
+let _leadFilters = [];
+try { _leadFilters = JSON.parse(localStorage.getItem('ml_lead_filters') || '[]') || []; } catch (_) { _leadFilters = []; }
+
+function leadFilterableCols() {
+  return (_leadCols || LEAD_DEFAULT_COLS).filter(c => c && !c.deleted && c.key !== 'select');
+}
+function leadColType(col) {
+  if (!col) return 'text';
+  if (col.key === 'lead_date' || col.type === 'date') return 'date';
+  if (col.key === 'budget_lead' || col.type === 'number') return 'number';
+  if (col.type === 'checkbox') return 'checkbox';
+  if (col.type === 'select' || col.type === 'radio') return 'select';
+  if (col.key === 'owner') return 'owner';
+  return 'text';
+}
+function leadFilterOps(type) {
+  if (type === 'select' || type === 'owner') return [['is', 'is'], ['is_not', 'is not'], ['empty', 'is empty']];
+  if (type === 'checkbox') return [['yes', 'is yes'], ['no', 'is no']];
+  if (type === 'number' || type === 'date') return [['between', 'between'], ['empty', 'is empty']];
+  return [['contains', 'contains'], ['not_contains', "doesn't contain"], ['empty', 'is empty']];
+}
+
+// The comparable value for a lead in a given column.
+function leadFilterValue(c, col) {
+  const key = col.key;
+  if (key === 'owner') {
+    if (!c.assigned_to) return '';
+    const e = (employeesForTasks || []).find(x => String(x.id) === String(c.assigned_to));
+    return e ? e.name : ('#' + c.assigned_to);
+  }
+  return col.builtin ? c[key] : (c.custom_fields || {})[key];
+}
+
+function leadFilterMatch(c, f) {
+  const col = leadCol(f.key);
+  if (!col) return true;                       // column removed since the filter was saved
+  const type = leadColType(col);
+  const raw = leadFilterValue(c, col);
+  const isEmpty = raw == null || raw === '';
+  if (f.op === 'empty') return isEmpty;
+  if (type === 'checkbox') return isChecked(raw) === (f.op === 'yes');
+  if (type === 'select') {
+    if (isEmpty) return false;
+    const k = normKey(raw, colOptMap(col));
+    return f.op === 'is_not' ? k !== f.a : k === f.a;
+  }
+  if (type === 'owner') {
+    const v = String(raw || '').toLowerCase();
+    return f.op === 'is_not' ? v !== String(f.a || '').toLowerCase() : v === String(f.a || '').toLowerCase();
+  }
+  if (type === 'number') {
+    const n = Number(String(raw ?? '').replace(/[^\d.-]/g, ''));
+    if (!isFinite(n) || isEmpty) return false;
+    if (f.a !== '' && f.a != null && n < Number(f.a)) return false;
+    if (f.b !== '' && f.b != null && n > Number(f.b)) return false;
+    return true;
+  }
+  if (type === 'date') {
+    const d = String(raw || '').slice(0, 10);   // ISO strings compare correctly
+    if (!d) return false;
+    if (f.a && d < f.a) return false;
+    if (f.b && d > f.b) return false;
+    return true;
+  }
+  const v = String(raw ?? '').toLowerCase();
+  const needle = String(f.a || '').toLowerCase();
+  return f.op === 'not_contains' ? !v.includes(needle) : v.includes(needle);
+}
+
 function filterCustomers() {
   const q    = (document.getElementById('customer-search')?.value || '').toLowerCase();
   const from = document.getElementById('lead-date-from')?.value || '';
   const to   = document.getElementById('lead-date-to')?.value || '';
-  const sf   = document.getElementById('lead-status-filter')?.value || '';
-  const of   = document.getElementById('lead-origin-filter')?.value || '';
   let list = _allCustomers;
   if (q)  list = list.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.car_in_question||'').toLowerCase().includes(q));
   // ISO dates (YYYY-MM-DD) compare correctly as strings; either bound may be left empty
   if (from) list = list.filter(c => c.lead_date && c.lead_date >= from);
   if (to)   list = list.filter(c => c.lead_date && c.lead_date <= to);
-  if (sf) list = list.filter(c => normKey(c.lead_status || 'cold', colOptMap(leadCol('lead_status'))) === sf);
-  if (of) list = list.filter(c => normKey(c.source, colOptMap(leadCol('source'))) === of);
+  for (const f of _leadFilters) list = list.filter(c => leadFilterMatch(c, f));
   if (_fuFilterOn) {
     const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
     list = list.filter(c => _pendingFollowups[c.id] && new Date(_pendingFollowups[c.id]) <= endOfDay);
   }
+  renderLeadFilterChips();
   renderCustomers(applyLeadSort(list));
 }
 
+function leadFilterLabel(f) {
+  const col = leadCol(f.key);
+  const name = col ? (col.label || col.key) : f.key;
+  const opLabel = (leadFilterOps(leadColType(col)).find(o => o[0] === f.op) || [, f.op])[1];
+  let val = '';
+  if (f.op === 'between') val = `${f.a || '…'} – ${f.b || '…'}`;
+  else if (f.op !== 'empty' && f.op !== 'yes' && f.op !== 'no') {
+    const col2 = leadCol(f.key);
+    val = (leadColType(col2) === 'select' ? (colOptMap(col2)[f.a] || f.a) : f.a) || '';
+  }
+  return `${name} ${opLabel}${val ? ' ' + val : ''}`;
+}
+function renderLeadFilterChips() {
+  const box = document.getElementById('lead-filter-chips');
+  if (!box) return;
+  box.style.display = _leadFilters.length ? 'flex' : 'none';
+  box.innerHTML = _leadFilters.map((f, i) => `
+    <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border:1px solid var(--hair-gold);border-radius:14px;background:rgba(201,163,94,.08)">
+      ${esc(leadFilterLabel(f))}
+      <button onclick="removeLeadFilter(${i})" title="Remove" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0">×</button>
+    </span>`).join('');
+}
+function saveLeadFilters() {
+  try { localStorage.setItem('ml_lead_filters', JSON.stringify(_leadFilters)); } catch (_) {}
+}
+function removeLeadFilter(i) { _leadFilters.splice(i, 1); saveLeadFilters(); filterCustomers(); }
+
 function clearLeadFilters() {
-  const ids = ['customer-search', 'lead-date-from', 'lead-date-to', 'lead-status-filter', 'lead-origin-filter'];
-  ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['customer-search', 'lead-date-from', 'lead-date-to'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  _leadFilters = []; saveLeadFilters();
+  filterCustomers();
+}
+
+function openLeadFilterPicker() {
+  const cols = leadFilterableCols();
+  showModal('Add filter', `
+    <div style="display:grid;gap:12px">
+      <div><label class="form-label">Column</label>
+        <select id="lf-col" class="form-input" onchange="lfRenderOps()">
+          ${cols.map(c => `<option value="${esc(c.key)}">${esc(c.label || c.key)}</option>`).join('')}
+        </select></div>
+      <div id="lf-op-wrap"></div>
+      <div id="lf-val-wrap"></div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+     <button class="btn btn-primary" onclick="addLeadFilter()">Add filter</button>`);
+  lfRenderOps();
+}
+function lfRenderOps() {
+  const col = leadCol(document.getElementById('lf-col').value);
+  const type = leadColType(col);
+  document.getElementById('lf-op-wrap').innerHTML = `<label class="form-label">Condition</label>
+    <select id="lf-op" class="form-input" onchange="lfRenderVal()">
+      ${leadFilterOps(type).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}
+    </select>`;
+  lfRenderVal();
+}
+function lfRenderVal() {
+  const col = leadCol(document.getElementById('lf-col').value);
+  const type = leadColType(col);
+  const op = document.getElementById('lf-op').value;
+  const wrap = document.getElementById('lf-val-wrap');
+  if (op === 'empty' || op === 'yes' || op === 'no') { wrap.innerHTML = ''; return; }
+  if (type === 'select') {
+    const opts = (col.options || []);
+    wrap.innerHTML = `<label class="form-label">Value</label>
+      <select id="lf-a" class="form-input">${opts.map(o => `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join('')}</select>`;
+    return;
+  }
+  if (type === 'owner') {
+    const names = [...new Set((employeesForTasks || []).map(e => e.name).filter(Boolean))];
+    wrap.innerHTML = `<label class="form-label">Owner</label>
+      <select id="lf-a" class="form-input">${names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>`;
+    return;
+  }
+  if (op === 'between') {
+    const t = type === 'date' ? 'date' : 'number';
+    wrap.innerHTML = `<label class="form-label">Range</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input id="lf-a" class="form-input" type="${t}" placeholder="From">
+        <input id="lf-b" class="form-input" type="${t}" placeholder="To">
+      </div>`;
+    return;
+  }
+  wrap.innerHTML = `<label class="form-label">Value</label><input id="lf-a" class="form-input" placeholder="Text to match">`;
+}
+function addLeadFilter() {
+  const key = document.getElementById('lf-col').value;
+  const op = document.getElementById('lf-op').value;
+  const a = document.getElementById('lf-a')?.value ?? '';
+  const b = document.getElementById('lf-b')?.value ?? '';
+  if (op !== 'empty' && op !== 'yes' && op !== 'no' && a === '' && b === '') { alert('Enter a value to filter on.'); return; }
+  _leadFilters.push({ key, op, a, b });
+  saveLeadFilters();
+  hideModal();
   filterCustomers();
 }
 
@@ -9721,6 +9873,8 @@ function openDealModal(id) {
   document.getElementById('dm-stage').value        = d?.stage        || 'lead';
   document.getElementById('dm-car-model').value    = d?.car_model    || '';
   document.getElementById('dm-budget').value       = d?.budget_egp   || '';
+  document.getElementById('dm-inquiry').value      = d?.inquiry_details || '';
+  document.getElementById('dm-est-value').value   = d?.est_value    || '';
   document.getElementById('dm-notes').value        = d?.notes        || '';
   document.getElementById('dm-assigned-to').value  = d?.assigned_to  || '';
   document.getElementById('deal-modal').style.display = 'flex';
@@ -9736,6 +9890,8 @@ async function saveDeal() {
     stage:       document.getElementById('dm-stage').value,
     car_model:   document.getElementById('dm-car-model').value.trim(),
     budget_egp:  parseFloat(document.getElementById('dm-budget').value) || null,
+    inquiry_details: document.getElementById('dm-inquiry').value.trim(),
+    est_value:   parseFloat(document.getElementById('dm-est-value').value) || null,
     notes:       document.getElementById('dm-notes').value.trim(),
     assigned_to: document.getElementById('dm-assigned-to').value,
   };

@@ -1907,6 +1907,14 @@ receiver.router.get('/api/dashboard/nav-config', requireAuth, async (_req, res) 
   } catch (_) { res.json({ groups: [] }); }
 });
 
+// The team portal reads the same layout (read-only) so one arrangement drives both.
+receiver.router.get('/api/employee/nav-config', requireEmployeeAuth, async (_req, res) => {
+  try {
+    const { data } = await supabase.from('quotation_settings').select('value').eq('key', 'nav_config').single();
+    res.json(data?.value ? JSON.parse(data.value) : { groups: [] });
+  } catch (_) { res.json({ groups: [] }); }
+});
+
 receiver.router.put('/api/dashboard/nav-config', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
   const groups = Array.isArray(req.body?.groups) ? req.body.groups : [];
   const clean = groups.map(g => ({

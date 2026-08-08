@@ -799,7 +799,7 @@
       </div>
     </div>
     <nav class="sidebar-nav">
-      <div class="nav-group" data-group="work">
+      <div class="nav-group" data-group="management">
         <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Work</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
         <div class="nav-group-items">
           <button class="nav-item active" id="nav-log"      onclick="navigate('log')">
@@ -839,7 +839,7 @@
           </button>
         </div>
       </div>
-      <div class="nav-group" data-group="tools">
+      <div class="nav-group" data-group="integrations">
         <div class="nav-group-head" id="nav-label-tools" onclick="toggleNavGroup(this)" style="display:none"><span class="nav-group-label">Tools</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
         <div class="nav-group-items">
           <button class="nav-item"        id="nav-quotation" onclick="navigate('quotation')" style="display:none">
@@ -1926,6 +1926,7 @@ function applyPermissions(permissions) {
   if (crmLabel) { const on = p.leads || p.deals || p.reports; crmLabel.style.display = on ? '' : 'none'; if (on) crmLabel.closest('.nav-group')?.classList.add('open'); }
   // Reports is only reachable if at least one individual report is granted
   gchatInitNav();   // Google Chat nav appears only when it's configured server-side
+  loadNavConfig();  // apply the admin's shared section order + names
   const anyReport = empCan('reports', 'leads') || empCan('reports', 'sales');
   const repNav = document.getElementById('nav-reports');
   const repPage = document.getElementById('page-reports');
@@ -3897,6 +3898,51 @@ async function gchatInitNav() {
     const st = await gchatFetch('/status').then(r => r.json());
     nav.style.display = st.configured ? '' : 'none';
   } catch (_) { nav.style.display = 'none'; }
+}
+
+/* ── Shared sidebar layout (arranged by the admin in the dashboard) ── */
+// Read-only here: the admin arranges once and both portals follow. Items the
+// employee has no permission for stay hidden — this runs after applyPermissions.
+// The two portals name the Leads item differently, so alias it.
+const NAV_ID_ALIAS = { 'nav-customers': 'nav-leads', 'nav-leads': 'nav-customers' };
+function navItemEl(id) {
+  return document.getElementById(id) || document.getElementById(NAV_ID_ALIAS[id] || '');
+}
+function navSetItemLabel(el, text) {
+  const span = el.querySelector('.nav-item-label');
+  if (span) { span.textContent = text; return; }
+  const t = [...el.childNodes].filter(n => n.nodeType === 3 && n.textContent.trim());
+  if (t.length) { t[0].textContent = ' ' + text; t.slice(1).forEach(n => { n.textContent = ''; }); }
+  else el.appendChild(document.createTextNode(' ' + text));
+}
+function applyNavConfig(cfg) {
+  const groups = (cfg && Array.isArray(cfg.groups)) ? cfg.groups : [];
+  if (!groups.length) return;
+  const nav = document.querySelector('#sidebar .sidebar-nav') || document.querySelector('#sidebar');
+  if (!nav) return;
+  const byKey = new Map([...document.querySelectorAll('#sidebar .nav-group')].map(g => [g.dataset.group, g]));
+  groups.forEach(g => {
+    const el = byKey.get(g.key);
+    if (!el) return;                       // section this portal doesn't have (e.g. logistics)
+    const lbl = el.querySelector('.nav-group-label');
+    if (g.label && lbl) lbl.textContent = g.label;
+    nav.appendChild(el);
+    const wrap = el.querySelector('.nav-group-items');
+    if (!wrap) return;
+    (g.items || []).forEach(it => {
+      const iel = navItemEl(it.id);
+      if (!iel || !iel.classList.contains('nav-item')) return;
+      // Never override the permission gate — only reorder/rename what's visible.
+      if (it.label) navSetItemLabel(iel, it.label);
+      wrap.appendChild(iel);
+    });
+  });
+}
+async function loadNavConfig() {
+  try {
+    const cfg = await ef('/api/employee/nav-config').then(r => r.json());
+    applyNavConfig(cfg);
+  } catch (_) {}
 }
 
 /* ── My Google Calendar (tasks assigned to me land on it directly) ── */
