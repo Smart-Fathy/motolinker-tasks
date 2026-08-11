@@ -3971,6 +3971,12 @@ receiver.router.get('/api/dashboard/notifications', requireAuth, (req, res) =>
 receiver.router.post('/api/dashboard/notifications/read', requireAuth, express.json(), (req, res) =>
   markNotificationsRead('admin', req.body, res));
 
+// Everyone who can be reached in this workspace — used to validate a huddle guest
+async function chatPeopleKeys() {
+  const { data } = await supabase.from('employees').select('id');
+  return ['admin', ...(data || []).map(e => `employee_${e.id}`)];
+}
+
 // People lists
 receiver.router.get('/api/dashboard/chat/people', requireAuth, async (_req, res) => {
   const { data, error } = await supabase.from('employees').select('id, name').order('name');
@@ -4097,7 +4103,7 @@ function mountChatAdminRoutes(base, guard) {
   receiver.router.get(`${base}/huddle/:roomId`, guard, async (req, res) => {
     const { key } = chatCallerIdentity(req);
     const roomId = parseInt(req.params.roomId);
-    if (!(await chatRoomMemberKeys(roomId)).includes(key)) return res.status(403).json({ error: 'Not a member' });
+    if (!huddleMaySignal(roomId, key, await chatRoomMemberKeys(roomId))) return res.status(403).json({ error: 'Not a member' });
     res.json({ participants: huddleRoster(roomId) });
   });
 
@@ -4107,25 +4113,34 @@ function mountChatAdminRoutes(base, guard) {
     const type = String(req.body?.type || '');
     if (!roomId || !HUDDLE_TYPES.includes(type)) return res.status(400).json({ error: 'bad signal' });
     const members = await chatRoomMemberKeys(roomId);
-    if (!members.includes(key)) return res.status(403).json({ error: 'Not a member' });
+    if (!huddleMaySignal(roomId, key, members)) return res.status(403).json({ error: 'Not a member' });
 
     if (type === 'join') {
       const set = huddles.get(roomId) || new Map();
       if (set.size >= HUDDLE_MAX && !set.has(key)) return res.status(409).json({ error: 'Huddle is full', max: HUDDLE_MAX });
       set.set(key, name);
       huddles.set(roomId, set);
-      chatBroadcast(members, 'huddle', { type: 'roster', roomId, participants: huddleRoster(roomId), joined: key });
+      chatBroadcast(huddleAudience(roomId, members), 'huddle', { type: 'roster', roomId, participants: huddleRoster(roomId), joined: key });
       return res.json({ ok: true, participants: huddleRoster(roomId) });
     }
     if (type === 'leave') {
       const set = huddles.get(roomId);
-      if (set) { set.delete(key); if (!set.size) huddles.delete(roomId); }
-      chatBroadcast(members, 'huddle', { type: 'roster', roomId, participants: huddleRoster(roomId), left: key });
+      if (set) { set.delete(key); if (!set.size) { huddles.delete(roomId); huddleGuests.delete(roomId); } }
+      const g = huddleGuests.get(roomId); if (g) g.delete(key);
+      chatBroadcast(huddleAudience(roomId, members), 'huddle', { type: 'roster', roomId, participants: huddleRoster(roomId), left: key });
       return res.json({ ok: true });
     }
-    // invite/offer/answer/ice/decline are point-to-point
+    // invite/offer/answer/ice/decline/media are point-to-point
     const to = String(req.body?.to || '');
-    if (!members.includes(to)) return res.status(400).json({ error: 'target not in room' });
+    if (type === 'invite' && !members.includes(to)) {
+      // Pulling in someone from the wider workspace: grant them this huddle only
+      const people = await chatPeopleKeys();
+      if (!people.includes(to)) return res.status(400).json({ error: 'unknown person' });
+      if (!huddleGuests.has(roomId)) huddleGuests.set(roomId, new Set());
+      huddleGuests.get(roomId).add(to);
+    } else if (!huddleMaySignal(roomId, to, members)) {
+      return res.status(400).json({ error: 'target not in this huddle' });
+    }
     chatBroadcast([to], 'huddle', { type, roomId, from: key, fromName: name, data: req.body?.data ?? null });
     res.json({ ok: true });
   });
@@ -4197,8 +4212,18 @@ async function huddleIceConfig() {
 }
 
 const HUDDLE_MAX = 6;   // mesh topology: every peer connects to every other
-const HUDDLE_TYPES = ['join', 'leave', 'invite', 'decline', 'offer', 'answer', 'ice'];
+const HUDDLE_TYPES = ['join', 'leave', 'invite', 'decline', 'offer', 'answer', 'ice', 'media'];
 const huddles = new Map();   // roomId -> Map<memberKey, name>
+// Anyone in the workspace can be pulled into a call by someone already in it.
+// The grant lives only as long as the huddle and never touches chat_room_members,
+// so a guest joins the call without gaining the room's message history.
+const huddleGuests = new Map();   // roomId -> Set<memberKey>
+function huddleAudience(roomId, members) {
+  return [...new Set([...members, ...(huddleGuests.get(roomId) || [])])];
+}
+function huddleMaySignal(roomId, key, members) {
+  return members.includes(key) || (huddleGuests.get(roomId) || new Set()).has(key);
+}
 function huddleRoster(roomId) {
   const set = huddles.get(roomId);
   return set ? [...set.entries()].map(([key, name]) => ({ key, name })) : [];
