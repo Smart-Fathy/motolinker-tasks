@@ -5181,7 +5181,8 @@ function buildLogisticsRows() {
   LOGISTICS_LABELS.forEach((label, i) => {
     const row = document.createElement('div');
     row.id = `qt-log-${i}`;
-    row.style.cssText = 'display:grid;grid-template-columns:1fr 130px 130px;gap:8px;margin-bottom:8px;align-items:center';
+    row.className = 'qt-line-3';
+    row.style.cssText = 'margin-bottom:8px;align-items:center';
     row.innerHTML = `
       <div style="font-size:13px;color:var(--text);padding:0 4px">${esc(label)}</div>
       <input class="form-input" id="qt-log-usd-${i}" type="number" min="0" step="0.01" placeholder="0"
@@ -5196,8 +5197,8 @@ function addPricingRow(name='', unit=1, priceUsd='', isFree=false) {
   const container = document.getElementById('qt-items');
   const idx = container.children.length;
   const row = document.createElement('div');
-  row.className = 'qt-item-row';
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 80px 130px 130px 36px;gap:8px;margin-bottom:8px;align-items:center';
+  row.className = 'qt-item-row qt-line-5';
+  row.style.cssText = 'margin-bottom:8px;align-items:center';
   row.innerHTML = `
     <input class="form-input" placeholder="Item name…" value="${esc(name)}" oninput="recalcItem(this)">
     <input class="form-input" type="number" min="1" step="1" value="${unit}" placeholder="1"
@@ -5211,8 +5212,8 @@ function addPricingRow(name='', unit=1, priceUsd='', isFree=false) {
                color:${isFree?'#fff':'var(--muted)'}">FREE</span>
     </div>
     <input class="form-input" readonly placeholder="Auto" style="background:rgba(255,255,255,.03);text-align:center;font-weight:600">
-    <button onclick="this.closest('.qt-item-row').remove();recalcGrandTotal()"
-      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+    <button class="qt-remove" onclick="this.closest('.qt-item-row').remove();recalcGrandTotal()"
+      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
       <i data-lucide="x" style="width:13px;height:13px"></i>
     </button>`;
   container.appendChild(row);
@@ -5279,7 +5280,7 @@ function addCustomSpecRow(containerId) {
   row.innerHTML = `
     <input class="form-input" placeholder="e.g. Incoterms: CIF">
     <button onclick="this.closest('.qt-custom-spec-row').remove()"
-      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
       <i data-lucide="x" style="width:13px;height:13px"></i>
     </button>`;
   container.appendChild(row);

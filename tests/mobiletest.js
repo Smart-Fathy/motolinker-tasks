@@ -252,6 +252,66 @@ async function sweep(browser, o) {
     await sleep(200);
     t('tapping a field opens the record instead of editing it',
       tapped.editing === false, JSON.stringify(tapped));
+    // Close it again — the drawer is now full width on a phone, so leaving it open
+    // makes it the topmost overlay for anything that runs after this.
+    await page.keyboard.press('Escape');
+    await sleep(250);
+  }
+
+  // ── The quotation line-item row still works ──
+  // Its layout class was added alongside an existing one that the remove button finds
+  // with closest(); overwriting rather than appending it would have left the button
+  // silently doing nothing, which no layout assertion would have noticed.
+  if (o.quotePage) {
+    await page.evaluate(p => { try { navigate(p); } catch (_) {} }, o.quotePage);
+    await sleep(400);
+    const line = await page.evaluate(sel => {
+      const add = [...document.querySelectorAll('button')]
+        .find(b => /add item|\+ item/i.test(b.textContent));
+      if (add) { add.click(); add.click(); }
+      const before = document.querySelectorAll(sel).length;
+      const rm = document.querySelector(sel + ' button.qt-remove');
+      const reachable = !!(rm && rm.closest(sel));
+      if (rm) rm.click();
+      return { before, after: document.querySelectorAll(sel).length, reachable };
+    }, o.quoteRowSel);
+    t('a line-item row keeps the class its remove button looks for', line.reachable, JSON.stringify(line));
+    t('removing a line item actually removes it',
+      line.before > 0 && line.after === line.before - 1, JSON.stringify(line));
+  }
+
+  // ── Escape closes an open overlay ──
+  // Nothing in either portal bound Escape; the Create Employee form's only reachable
+  // control was the × at the top of a very long scroll.
+  if (o.openModal) {
+    await page.evaluate(p => { try { navigate(p); } catch (_) {} }, o.openModal.page);
+    await sleep(350);
+    const esc = await page.evaluate(fn => {
+      try { window[fn](); } catch (e) { return { err: String(e) }; }
+      return null;
+    }, o.openModal.fn);
+    await sleep(300);
+    const shown = await page.evaluate(sel => {
+      const el = document.querySelector(sel);
+      return !!(el && getComputedStyle(el).display !== 'none');
+    }, o.openModal.sel);
+    await page.keyboard.press('Escape');
+    await sleep(300);
+    const afterEsc = await page.evaluate(sel => {
+      const el = document.querySelector(sel);
+      return !!(el && getComputedStyle(el).display !== 'none');
+    }, o.openModal.sel);
+    t('a modal opens', shown && !esc, JSON.stringify({ shown, esc }));
+    t('Escape closes it', shown && !afterEsc, JSON.stringify({ shown, afterEsc }));
+
+    // And the modal is measured against the dynamic viewport, not the largest one.
+    const mh = await page.evaluate(sel => {
+      const wrap = document.querySelector(sel);
+      const box = (wrap && (wrap.querySelector('.modal') || wrap.firstElementChild))
+        || document.querySelector('.modal');
+      return box ? getComputedStyle(box).maxHeight : null;
+    }, o.openModal.sel);
+    t('the modal height resolves against the viewport', mh && mh !== 'none', String(mh));
   }
 
   t('no page errors while sweeping', !errs.length, errs.slice(0, 2).join(' | '));
@@ -269,10 +329,11 @@ async function sweep(browser, o) {
   await sweep(browser, {
     label: 'admin', port, route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token',
     bootstrap: () => {},
-    knownOverflow: ['reports'],   // the inline charts grid, phase 3
     tablePages: ['tasks', 'employees', 'requests', 'submissions', 'hours', 'customers',
                  'contracts', 'purchaseorders', 'rfqs', 'suppliers'],
     leadsPage: 'customers', leadsBody: '#customers-tbody',
+    quotePage: 'quotation', quoteRowSel: '.qt-item-row',
+    openModal: { page: 'employees', fn: 'openEmpModal', sel: '#modal-overlay' },
     pages: ['home', 'tasks', 'employees', 'requests', 'submissions', 'deletions', 'hours',
             'quotation', 'customers', 'deals', 'suppliers', 'rfqs', 'stock', 'contracts',
             'purchaseorders', 'reports', 'automations', 'chat', 'notif', 'calendar', 'meet',
@@ -287,9 +348,10 @@ async function sweep(browser, o) {
                          leads: true, deals: true, reports: true });
       document.getElementById('layout').style.display = 'flex';
     },
-    knownOverflow: ['quotation'],   // the quotation builder's fixed-track grids
     tablePages: ['tasks', 'hours', 'requests', 'leads'],
     leadsPage: 'leads', leadsBody: '#emp-leads-tbody',
+    quotePage: 'quotation', quoteRowSel: '.emp-qt-item-row',
+    openModal: { page: 'leads', fn: 'openEmpLeadModal', sel: '#emp-lead-modal' },
     pages: ['home', 'log', 'tasks', 'hours', 'requests', 'leads', 'deals', 'reports',
             'quotation', 'chat', 'notif', 'calendar', 'meet', 'email', 'drive', 'sheets'],
   });
