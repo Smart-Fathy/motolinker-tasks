@@ -1618,6 +1618,7 @@ Object.assign(ctx, require('./src/routes/notif-streams'));
 // Group administration + huddles  → src/routes/huddles.js
 Object.assign(ctx, { chatBroadcast, chatCallerIdentity, crypto, express, multer, path, receiver, requireAuth, requireEmployeeAuth, supabase, upload });
 require('./src/routes/huddles');
+Object.assign(ctx, require('./src/routes/link-preview'));
 // ─── Typing indicator ─────────────────────────────────────────────────────────
 async function handleTyping(req, res, callerKey, callerName, roomId) {
   const { data: member } = await supabase.from('chat_room_members').select('room_id').eq('room_id', roomId).eq('member_key', callerKey).single();

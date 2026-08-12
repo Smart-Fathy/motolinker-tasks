@@ -136,6 +136,31 @@ function mountChatAdminRoutes(base, guard) {
       return res.status(400).json({ error: 'target not in this huddle' });
     }
     chatBroadcast([to], 'huddle', { type, roomId, from: key, fromName: name, data: req.body?.data ?? null });
+
+    // An invite has to reach someone who is not sitting on the chat page. chatBroadcast
+    // writes to chatSseClients, and that stream is opened by the chat page loader and
+    // torn down on navigating away — so anywhere else in the app the invite was simply
+    // dropped, with no ring, no bell and no push. It now also goes out over the
+    // always-on notification stream, and createNotification persists it and pushes to
+    // anyone who is offline entirely.
+    //
+    // Only the invite. offer/answer/ice/media stay on the chat stream: duplicating
+    // signalling across two transports is a correctness hazard, not a feature.
+    if (type === 'invite') {
+      const sse = ctx.notifSseClients && ctx.notifSseClients.get(to);
+      if (sse) {
+        try {
+          sse.write(`event: huddle\ndata: ${JSON.stringify({ type, roomId, from: key, fromName: name, data: null })}\n\n`);
+        } catch (_) { /* a dead stream is cleaned up by its own close handler */ }
+      }
+      const portal = to === 'admin' ? '/dashboard' : '/employee';
+      ctx.createNotification(to, {
+        type: 'huddle',
+        title: `${name} started a huddle`,
+        body: 'Tap to join the call.',
+        url: `${portal}#chat`,
+      }, 'always').catch(e => console.warn('[huddle] invite notification failed:', e.message));
+    }
     res.json({ ok: true });
   });
 }
@@ -265,14 +290,31 @@ receiver.router.delete('/api/employee/chat/rooms/:roomId/messages/:msgId', requi
 // File upload
 const chatUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
+// A pasted screenshot arrives with no usable filename, so the extension cannot come
+// from originalname alone — that produced a key ending in a bare dot and an object
+// the browser then refused to render. The client names what it pastes; this is the
+// second line of defence for anything that reaches here without one.
+const MIME_EXT = {
+  'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp',
+  'image/svg+xml': 'svg', 'application/pdf': 'pdf', 'audio/webm': 'webm', 'audio/ogg': 'ogg',
+};
+function chatUploadExt(file) {
+  const m = /\.([A-Za-z0-9]{1,8})$/.exec(file.originalname || '');
+  if (m) return m[1].toLowerCase();
+  if (MIME_EXT[file.mimetype]) return MIME_EXT[file.mimetype];
+  const sub = String(file.mimetype || '').split('/')[1] || '';
+  return sub.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'bin';
+}
+
 async function handleChatUpload(req, res) {
   if (!req.file) return res.status(400).json({ error: 'No file provided' });
-  const ext  = req.file.originalname.split('.').pop().toLowerCase();
+  const ext  = chatUploadExt(req.file);
   const path = `chat/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
   const { data, error } = await supabase.storage.from('chat-files').upload(path, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
   if (error) return res.status(500).json({ error: error.message });
   const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(data.path);
-  res.json({ url: urlData.publicUrl, name: req.file.originalname, size: req.file.size, type: req.file.mimetype });
+  res.json({ url: urlData.publicUrl, name: req.file.originalname || `attachment.${ext}`,
+             size: req.file.size, type: req.file.mimetype });
 }
 
 receiver.router.post('/api/dashboard/chat/upload', requireAuth, chatUpload.single('file'), handleChatUpload);

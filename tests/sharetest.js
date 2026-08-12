@@ -1,7 +1,7 @@
 // Does a screen share started from a COLD audio-only call always reach the peer?
 // Runs the real module N times, alternating who shares, and reports the failures.
 const fs = require('fs'), http = require('http'), puppeteer = require('puppeteer');
-const html = fs.readFileSync('public/assets/dashboard.js', 'utf8');
+const html = fs.readFileSync('public/assets/huddle.js', 'utf8');
 const start = html.indexOf('// Mesh topology: every participant holds one RTCPeerConnection');
 const end = html.indexOf('\n}', html.indexOf('function statusEmojiOnly(emoji, text) {')) + 2;
 const MODULE = html.slice(start, end);

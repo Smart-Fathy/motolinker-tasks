@@ -4,7 +4,7 @@ const fs = require('fs');
 const puppeteer = require('puppeteer');
 const http = require('http');
 
-const html = fs.readFileSync('public/assets/dashboard.js', 'utf8');
+const html = fs.readFileSync('public/assets/huddle.js', 'utf8');
 const CSSSRC = fs.readFileSync('public/assets/dashboard.css', 'utf8');
 const start = html.indexOf('// Mesh topology: every participant holds one RTCPeerConnection');
 const endMark = 'function statusEmojiOnly(emoji, text) {';
@@ -41,12 +41,13 @@ function makeClient(HDCFG) {
 ${MODULE}
   return { huddleStart, huddleJoinExisting, huddleLeave, huddleOnSignal, huddleToggleMute,
            huddleToggleCam, huddleToggleShare, hdRenderBar, hdIncoming, hdIce, hdOpenInvite,
-           hdPollStats, hdQuality,
+           hdPollStats, hdQuality, hdCanShareScreen, hdAvatarFor, hdInitialsFor, hdRingOnce,
            state: () => _hd, peers: () => _hd.peers };
 }
 
 const ROOM = { id: 1, type: 'group', name: 'Test', created_by: 'A',
-  members: [{ member_key: 'A', member_name: 'Ann' }, { member_key: 'B', member_name: 'Bob' },
+  members: [{ member_key: 'A', member_name: 'Ann' },
+             { member_key: 'B', member_name: 'Bob Marley', member_avatar: '/icons/icon-192.png' },
              { member_key: 'C', member_name: 'Cid' }] };
 const bus = { inbox: {}, rosters: {} };
 
@@ -421,6 +422,180 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
   check('quality buckets read from loss and round-trip',
     q.good === 3 && q.fair === 2 && q.poorLoss === 1 && q.poorRtt === 1 && q.notConnected === 0, JSON.stringify(q));
+
+  // ── 14. Screen sharing where the browser cannot do it ──
+  // iOS has no getDisplayMedia at all, and the TypeError that produces used to be
+  // swallowed as "the picker was cancelled" — so the button did nothing, silently.
+  {
+    await page.evaluate(() => window.A.huddleStart(1));
+    await sleep(300);
+    const res = await page.evaluate(async () => {
+      const md = navigator.mediaDevices;
+      const real = md.getDisplayMedia;
+      // getDisplayMedia is on MediaDevices.prototype, so deleting the own property
+      // does nothing — shadow it to stand in for an iPhone.
+      Object.defineProperty(md, 'getDisplayMedia', { value: undefined, configurable: true });
+      const can = window.A.hdCanShareScreen();
+      document.getElementById('hd-toast').textContent = '';
+      await window.A.huddleToggleShare();
+      const toast = document.getElementById('hd-toast');
+      const out = { can, sharing: window.A.state().sharing, msg: toast.textContent,
+                    shown: toast.style.display };
+      Object.defineProperty(md, 'getDisplayMedia', { value: real, configurable: true });
+      return out;
+    });
+    check('an unsupported browser is detected rather than assumed', res.can === false, JSON.stringify(res));
+    check('and the user is told why nothing happened',
+      /cannot share a screen/i.test(res.msg) && res.shown === 'block', JSON.stringify(res));
+    check('sharing is not left half on', res.sharing === false, JSON.stringify(res));
+
+    // Cancelling the picker is not a failure and must stay silent.
+    const cancelled = await page.evaluate(async () => {
+      const md = navigator.mediaDevices;
+      const real = md.getDisplayMedia;
+      Object.defineProperty(md, 'getDisplayMedia', { configurable: true,
+        value: async () => { const e = new Error('denied'); e.name = 'NotAllowedError'; throw e; } });
+      document.getElementById('hd-toast').textContent = '';
+      document.getElementById('hd-toast').style.display = 'none';
+      await window.A.huddleToggleShare();
+      const t = document.getElementById('hd-toast');
+      const out = { msg: t.textContent, shown: t.style.display };
+      Object.defineProperty(md, 'getDisplayMedia', { value: real, configurable: true });
+      return out;
+    });
+    check('cancelling the picker raises no complaint about sharing',
+      !/screen|share/i.test(cancelled.msg), JSON.stringify(cancelled));
+
+    // A genuine failure is reported instead of vanishing.
+    const failed = await page.evaluate(async () => {
+      const md = navigator.mediaDevices;
+      const real = md.getDisplayMedia;
+      Object.defineProperty(md, 'getDisplayMedia', { configurable: true,
+        value: async () => { const e = new Error('capture device busy'); e.name = 'NotReadableError'; throw e; } });
+      document.getElementById('hd-toast').textContent = '';
+      await window.A.huddleToggleShare();
+      const out = document.getElementById('hd-toast').textContent;
+      Object.defineProperty(md, 'getDisplayMedia', { value: real, configurable: true });
+      return out;
+    });
+    check('a real failure surfaces its reason', /capture device busy/.test(failed), failed);
+    await page.evaluate(() => window.A.huddleLeave());
+    await sleep(150);
+  }
+
+  // ── 15. The frozen last frame ──
+  // Stopping a share leaves the peer's <video> holding its last decoded frame. It is
+  // hidden by the picture flag going false — so the flag must actually go false and
+  // stay false, which the one-way latch in the stats poll did not guarantee.
+  {
+    await page.evaluate(() => window.A.huddleStart(1, false));
+    await sleep(300);
+    await page.evaluate(() => window.B.huddleJoinExisting(1));
+    await page.waitForFunction(() => window.A.peers().get('B'), { timeout: 20000 }).catch(() => {});
+    const frozen = await page.evaluate(async () => {
+      const p = window.A.peers().get('B');
+      if (!p) return { err: 'no peer' };
+      // Only getStats is shadowed, so the frame counter can be moved deliberately while
+      // the connection itself stays real — replacing the whole RTCPeerConnection broke
+      // the signalling that arrives moments later.
+      let frames = 100;
+      const realGetStats = p.pc.getStats.bind(p.pc);
+      p.pc.getStats = async () => new Map([['v', { type: 'inbound-rtp', kind: 'video', framesDecoded: frames }]]);
+      p.stats = { lost: 0, recv: 0, frames: 0 };
+
+      // Bob announces a screen share, and frames arrive.
+      window.A.huddleOnSignal({ type: 'media', roomId: 1, from: 'B', data: { cam: false, sharing: true } });
+      await window.A.hdPollStats();
+      const whileSharing = p.video;
+
+      // Bob stops. The announcement says so, but the very next poll still sees the
+      // frames decoded a moment before the stop — the exact race that used to relatch.
+      window.A.huddleOnSignal({ type: 'media', roomId: 1, from: 'B', data: { cam: false, sharing: false } });
+      const rightAfterStop = p.video;
+      frames = 140;                       // frames decoded just before the stop landed
+      await window.A.hdPollStats();
+      const afterPoll = p.video;
+
+      p.pc.getStats = realGetStats;
+      const tile = document.querySelector('#hd-bar [data-tile="B"]');
+      return { whileSharing, rightAfterStop, afterPoll,
+               videoHidden: tile ? tile.querySelector('.hd-video').style.display === 'none' : null,
+               avatarShown: tile ? tile.querySelector('.hd-avatar').style.display !== 'none' : null };
+    });
+    check('a live screen share shows a picture', frozen.whileSharing === true, JSON.stringify(frozen));
+    check('stopping the share clears the picture immediately', frozen.rightAfterStop === false, JSON.stringify(frozen));
+    check('and the next stats poll does not bring the frozen frame back',
+      frozen.afterPoll === false, JSON.stringify(frozen));
+    check('the frozen frame is not on screen', frozen.videoHidden === true && frozen.avatarShown === true,
+      JSON.stringify(frozen));
+  }
+
+  // ── 16. Faces in the tiles ──
+  {
+    const faces = await page.evaluate(() => {
+      window.A.hdRenderBar();
+      const tile = document.querySelector('#hd-bar [data-tile="B"]');
+      const self = document.querySelector('#hd-bar [data-tile="__self"]');
+      // Null-safe on purpose: if the tile markup regresses this should report what is
+      // missing, not throw and take the whole run down with it.
+      const g = el => {
+        if (!el) return null;
+        const f = el.querySelector('.hd-face'), i = el.querySelector('.hd-initials');
+        return {
+          img: f ? f.getAttribute('src') : null,
+          imgShown: !!f && f.style.display !== 'none',
+          initials: i ? i.textContent : null,
+          initialsShown: !!i && i.style.display !== 'none',
+        };
+      };
+      return { peer: g(tile), self: g(self),
+               lookup: window.A.hdAvatarFor('B'), noPic: window.A.hdAvatarFor('C'),
+               ini: window.A.hdInitialsFor('B'), selfIni: window.A.hdInitialsFor('A') };
+    });
+    check('a member with a picture shows it in their tile',
+      faces.peer && faces.peer.imgShown && /icon-192/.test(faces.peer.img || ''), JSON.stringify(faces.peer));
+    check('the avatar is read from the room list already in memory',
+      faces.lookup === '/icons/icon-192.png' && faces.noPic === null, JSON.stringify(faces));
+    check('someone without a picture falls back to their initials',
+      faces.self && faces.self.initialsShown && faces.self.initials === 'A', JSON.stringify(faces.self));
+    check('initials come from the real name', faces.ini === 'BM', faces.ini);
+    check('nobody gets the old shared microphone glyph',
+      !(await page.evaluate(() => !!document.querySelector('#hd-bar .hd-avatar [data-lucide="mic"]'))));
+    await page.evaluate(() => window.A.huddleLeave());
+    await sleep(150);
+  }
+
+  // ── 17. One ring per invite ──
+  // The invite now arrives on both the chat stream and the always-on notification
+  // stream, so anyone sitting on the chat page receives it twice.
+  {
+    // Counting DOM mutations is unreliable — two synchronous changes arrive in one
+    // observer batch. So the evidence is wiped between the two deliveries: if the
+    // second one rings, it puts it back.
+    const ring = await page.evaluate(async () => {
+      const el = document.getElementById('hd-incoming');
+      const wipe = () => { el.innerHTML = ''; el.style.display = 'none'; };
+      const rang = () => el.style.display === 'block' && /Bob Marley/.test(el.textContent);
+
+      wipe();
+      const inv = { type: 'invite', roomId: 7, from: 'B', fromName: 'Bob Marley' };
+      window.A.hdRingOnce(inv);                       // chat stream
+      const first = rang();
+
+      wipe();
+      window.A.hdRingOnce(inv);                       // notification stream, moments later
+      const second = rang();
+
+      wipe();
+      window.A.hdRingOnce({ type: 'invite', roomId: 8, from: 'B', fromName: 'Bob Marley' });
+      const other = rang();
+      wipe();
+      return { first, second, other };
+    });
+    check('an invite rings', ring.first === true, JSON.stringify(ring));
+    check('the same invite arriving twice does not ring twice', ring.second === false, JSON.stringify(ring));
+    check('a different huddle still rings', ring.other === true, JSON.stringify(ring));
+  }
 
   check('no page errors', errs.length === 0, errs.slice(0, 4).join(' | '));
 

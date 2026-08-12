@@ -37,10 +37,20 @@ let floodTasks = false;
 const BIG = Array.from({ length: 2500 }, (_, i) =>
   ({ id: 1000 + i, title: 't' + i, status: 'todo', due_date: null, assignee_ids: [3], created_at: '2026-01-01' }));
 
-const rowsFor = table => {
+// Saved Home layouts, per owner key. The summary now computes only the widgets a
+// person has actually placed, so what is here decides what the endpoint answers.
+const LAYOUTS = {};
+const layoutRow = url => {
+  const key = decodeURIComponent((url.match(/key=eq\.([^&]+)/) || [])[1] || '');
+  const owner = key.replace('home_layout:', '');
+  return LAYOUTS[owner] ? [{ value: JSON.stringify({ widgets: LAYOUTS[owner] }) }] : [];
+};
+
+const rowsFor = (table, url) => {
   if (table === 'tasks')     return floodTasks ? BIG : TASKS;
   if (table === 'deals')     return DEALS;
   if (table === 'customers') return CUSTOMERS;
+  if (table === 'quotation_settings') return layoutRow(url);
   return [];
 };
 
@@ -54,12 +64,15 @@ global.fetch = async (input, init) => {
   calls[table] = (calls[table] || 0) + 1;
   // `.single()` asks for one object rather than an array; answering with the wrong
   // shape makes supabase-js throw and the route 500 for reasons unrelated to caching.
+  // supabase-js passes a Headers instance, not a plain object, so reading .Accept off
+  // it silently yields undefined — which made every .single() here answer with an
+  // array and quietly return nothing at all.
   const h = (init && init.headers) || {};
-  const accept = String(h.Accept || h.accept || '');
+  const accept = String(typeof h.get === 'function' ? (h.get('Accept') || '') : (h.Accept || h.accept || ''));
   const single = accept.includes('pgrst.object');
   // .limit() travels as a ?limit= query param, and PostgREST honours it. The stub must
   // too, or the cap assertion below would pass just as happily with no limit at all.
-  let rows = rowsFor(table);
+  let rows = rowsFor(table, url);
   const lim = Number(new URL(url).searchParams.get('limit'));
   if (lim > 0) rows = rows.slice(0, lim);
   const body = single ? JSON.stringify(rows[0] || {}) : JSON.stringify(rows);
@@ -87,6 +100,15 @@ setTimeout(async () => {
     id: 2, name: 'Sara', username: 'sara', job_title: '',
     permissions: { ...normEmpPerms(allOn), scope: { assignedOnly: true, dealStages: [], leadStatuses: [] } },
   });
+
+  // Both Homes carry the same widgets, so any difference in the answer is the
+  // per-user filtering rather than a difference in what was asked for.
+  const PLACED = [{ id: 'task_status', w: 4, h: 1 }, { id: 'my_tasks', w: 4, h: 2 },
+                  { id: 'won_month', w: 3, h: 1 }, { id: 'pipeline', w: 6, h: 2 },
+                  { id: 'leads_status', w: 4, h: 2 }];
+  LAYOUTS['admin'] = PLACED;
+  LAYOUTS['employee_2'] = PLACED;
+  LAYOUTS['employee_3'] = PLACED;
 
   // ── 1. Two loads inside the window are one round trip ───────────────────────
   const a1 = await get('/api/dashboard/home/summary', token);
@@ -120,6 +142,49 @@ setTimeout(async () => {
   check('employee cached payload is still their own', e2.won_month === 100000);
   const a3 = await get('/api/dashboard/home/summary', token);
   check('admin entry survives the employee load unchanged', a3.won_month === a1.won_month);
+
+  // ── 2b. Permission is enforced by the server, not by the client ─────────────
+  // A rep with neither section must not be able to read the company's numbers off
+  // the endpoint, whatever their saved layout says.
+  const lockedToken = 'home-cache-locked';
+  ctx.employeeSessions.set(lockedToken, {
+    id: 4, name: 'Locked', username: 'locked', job_title: '',
+    permissions: normEmpPerms({ leads: false, deals: false }),
+  });
+  LAYOUTS['employee_4'] = PLACED;
+  const locked = await get('/api/employee/home/summary', lockedToken);
+  check('a locked-out employee gets no pipeline in the payload', !('pipeline' in locked),
+    JSON.stringify(Object.keys(locked)));
+  check('a locked-out employee gets no lead counts in the payload', !('leads_status' in locked),
+    JSON.stringify(Object.keys(locked)));
+  check('a locked-out employee still gets the widgets they may see', Array.isArray(locked.task_status));
+  check('the server tells the client what it may add',
+    Array.isArray(locked.allowed) && !locked.allowed.includes('pipeline')
+      && locked.allowed.includes('my_tasks'), JSON.stringify(locked.allowed));
+
+  // A layout is not a way in either: a hand-written PUT naming a forbidden widget
+  // must not persist, because the Add-widget list is client-side and skippable.
+  const put = await (await fetch(base + '/api/employee/home/layout', {
+    method: 'PUT',
+    headers: { Authorization: 'Bearer ' + lockedToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ widgets: [{ id: 'pipeline', w: 12, h: 2 }, { id: 'my_tasks', w: 4, h: 2 }] }),
+  })).json();
+  check('a forbidden widget cannot be saved into a layout',
+    !(put.widgets || []).some(w => w.id === 'pipeline'), JSON.stringify(put.widgets));
+  check('the permitted widget in the same request still saves',
+    (put.widgets || []).some(w => w.id === 'my_tasks'), JSON.stringify(put.widgets));
+
+  // ── 2c. Only what is on the page is queried ─────────────────────────────────
+  const beforeNarrow = { customers: calls.customers || 0, deals: calls.deals || 0 };
+  const narrowToken = 'home-cache-narrow';
+  ctx.employeeSessions.set(narrowToken, {
+    id: 5, name: 'Narrow', username: 'narrow', job_title: '', permissions: normEmpPerms(allOn),
+  });
+  LAYOUTS['employee_5'] = [{ id: 'task_status', w: 4, h: 1 }];
+  await get('/api/employee/home/summary', narrowToken);
+  check('a Home with one task widget does not query leads or deals',
+    (calls.customers || 0) === beforeNarrow.customers && (calls.deals || 0) === beforeNarrow.deals,
+    `customers ${beforeNarrow.customers}->${calls.customers || 0}, deals ${beforeNarrow.deals}->${calls.deals || 0}`);
 
   // ── 3. Scan caps are applied and admitted to ────────────────────────────────
   check('a normal load reports nothing partial', Array.isArray(a1.partial) && a1.partial.length === 0,
