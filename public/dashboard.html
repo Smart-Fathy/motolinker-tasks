@@ -1638,6 +1638,10 @@
   </div>
 </div>
 
+<!-- Shared with the team portal. Loaded first so their function declarations exist
+     before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
+<script src="/assets/home.js"></script>
+<script src="/assets/huddle.js"></script>
 <script src="/assets/dashboard.js"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->

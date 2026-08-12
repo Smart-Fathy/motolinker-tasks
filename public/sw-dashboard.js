@@ -1,5 +1,5 @@
 const CACHE = 'motolinker-dash-v69';
-const SHELL = ['/dashboard', '/manifest-dashboard.json', '/help-docs.js', '/assets/dashboard.css', '/assets/dashboard.js'];
+const SHELL = ['/dashboard', '/manifest-dashboard.json', '/help-docs.js', '/assets/dashboard.css', '/assets/dashboard.js', '/assets/home.js', '/assets/huddle.js'];
 const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com', 'cdn.jsdelivr.net'];
 
 self.addEventListener('install', e => {

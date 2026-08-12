@@ -4,7 +4,7 @@ const fs = require('fs');
 const puppeteer = require('puppeteer');
 const http = require('http');
 
-const html = fs.readFileSync('public/assets/dashboard.js', 'utf8');
+const html = fs.readFileSync('public/assets/huddle.js', 'utf8');
 const CSSSRC = fs.readFileSync('public/assets/dashboard.css', 'utf8');
 const start = html.indexOf('// Mesh topology: every participant holds one RTCPeerConnection');
 const endMark = 'function statusEmojiOnly(emoji, text) {';
