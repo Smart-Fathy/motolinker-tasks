@@ -1080,6 +1080,14 @@
   /* ── Hide scrollbars globally ── */
   *, *::before, *::after { scrollbar-width: none; -ms-overflow-style: none; }
   *::-webkit-scrollbar { display: none; }
+  .stk-legacy { display:flex; align-items:flex-start; gap:8px; margin-top:10px; padding:9px 12px;
+                border:1px solid var(--warning); border-radius:9px; background:rgba(201,163,94,.08);
+                font-size:11.5px; line-height:1.5; color:var(--text); }
+  .stk-legacy i { flex-shrink:0; margin-top:1px; color:var(--warning); }
+  .sup-tabs { display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:14px; }
+  .sup-tab { background:none; border:none; border-bottom:2px solid transparent; color:var(--muted);
+             font-size:12.5px; font-weight:700; padding:7px 13px; cursor:pointer; }
+  .sup-tab.active { color:var(--text); border-bottom-color:var(--primary); }
   /* ── Home dashboard ── */
   .home-bar-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
   .home-grid { display:grid; grid-template-columns:repeat(12,1fr); gap:14px; align-items:start; }
@@ -4205,12 +4213,18 @@ function renderStock() {
 // One card per car: title, price, spec sheet and per-colour stock counts.
 function stockCardHtml(v) {
   const colors = Array.isArray(v.colors) ? v.colors : [];
-  const qty = Number(v.quantity) || 0;
-  const colorChips = colors.length
-    ? colors.map(c => `<span class="color-chip"><span class="color-dot" style="background:${stockColorSwatch(c.name)}"></span>${esc(c.name)}<b>${Number(c.qty) || 0}</b></span>`).join('')
-    : '<span style="color:var(--muted);font-size:12px">No colours recorded</span>';
   // Individual cars held against this model (VIN, tracking status, supplier…).
+  // These ARE the stock count — nothing here reads a typed-in total any more.
   const units = Array.isArray(v.units) ? v.units : [];
+  const qty = units.length;
+  const noVin = units.filter(u => !String(u.vin || '').trim()).length;
+  const legacy = units.length ? 0 : (parseInt(v.legacy_count, 10) || 0);
+  const colorChips = colors.length
+    ? colors.map(c => {
+        const held = units.filter(u => String(u.colour || '').trim().toLowerCase() === String(c.name || '').trim().toLowerCase()).length;
+        return `<span class="color-chip"><span class="color-dot" style="background:${stockColorSwatch(c.name)}"></span>${esc(c.name)}${held ? `<b>${held}</b>` : ''}</span>`;
+      }).join('')
+    : '<span style="color:var(--muted);font-size:12px">No colours recorded</span>';
   const unitsHtml = units.length ? `
     <div class="stock-colors">
       <div class="stock-sec-label">Units (${units.length})</div>
@@ -4241,6 +4255,13 @@ function stockCardHtml(v) {
         <div style="display:flex;flex-wrap:wrap;gap:6px">${colorChips}</div>
       </div>
       ${unitsHtml}
+      ${legacy ? `<div class="stk-legacy">
+        <i data-lucide="alert-triangle" style="width:14px;height:14px"></i>
+        <span><strong>${legacy} car${legacy === 1 ? '' : 's'}</strong> ${legacy === 1 ? 'was' : 'were'} recorded here before VIN tracking.
+        Add ${legacy === 1 ? 'it' : 'them'} to bring this model back into stock.</span></div>` : ''}
+      ${noVin ? `<div class="stk-legacy">
+        <i data-lucide="alert-triangle" style="width:14px;height:14px"></i>
+        <span>${noVin} car${noVin === 1 ? ' has' : 's have'} no VIN yet.</span></div>` : ''}
       ${v.notes ? `<div class="stock-notes">${esc(v.notes)}</div>` : ''}
       <div class="stock-actions">
         <button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="openStockForm(${v.id})"><i data-lucide="pencil" style="width:13px;height:13px"></i> Edit</button>
@@ -4269,10 +4290,10 @@ function openStockForm(id) {
       <div><label class="form-label">Price (EGP)</label><input id="stk-price" class="form-input" type="number" min="0" step="any" value="${v?.price ?? ''}" placeholder="e.g. 1150000"></div>
 
       <div>
-        <label class="form-label">Colours &amp; stock per colour</label>
+        <label class="form-label">Colours offered</label>
         <div id="stk-colors"></div>
         <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="stkAddColorRow()">+ Add colour</button>
-        <div style="font-size:11px;color:var(--muted);margin-top:6px">Total quantity in stock is the sum of these colours. Leave empty to set the total manually below.</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">Shown on the spec card. How many are in stock comes from the cars listed below, each with its own VIN.</div>
       </div>
 
       <div>
@@ -4288,10 +4309,13 @@ function openStockForm(id) {
           </table>
         </div>
         <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="stkAddUnitRow()">+ Add unit</button>
-        <div style="font-size:11px;color:var(--muted);margin-top:6px">When units are listed they set the total quantity; otherwise the colour counts do, and failing that the number below.</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">One row per car. These are the stock count — there is no separate total to type in.</div>
+        ${v && !(v.units || []).length && v.legacy_count ? `<div class="stk-legacy">
+          <i data-lucide="alert-triangle" style="width:14px;height:14px"></i>
+          <span>${v.legacy_count} car${v.legacy_count === 1 ? ' was' : 's were'} recorded here before VIN tracking.
+          Add ${v.legacy_count === 1 ? 'it' : 'them'} above to bring this model back into stock.</span>
+        </div>` : ''}
       </div>
-
-      <div><label class="form-label">Total quantity (used only when no units or colours are listed)</label><input id="stk-qty" class="form-input" type="number" min="0" step="1" value="${v?.quantity ?? ''}" placeholder="e.g. 4"></div>
       <div><label class="form-label">Notes</label><input id="stk-notes" class="form-input" value="${esc(v?.notes || '')}" placeholder="Options, delivery notes…"></div>
       <div id="stk-err" class="error-msg" style="display:none"></div>
     </div>`,
@@ -4307,11 +4331,10 @@ function stkAddColorRow(name, qty) {
   if (!wrap) return;
   const row = document.createElement('div');
   row.className = 'stk-color-row';
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 90px 34px;gap:8px;margin-bottom:6px';
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 34px;gap:8px;margin-bottom:6px';
   row.innerHTML = `
     <input class="form-input stk-color-name" placeholder="Colour (e.g. White)" value="${esc(name || '')}">
-    <input class="form-input stk-color-qty" type="number" min="0" step="1" placeholder="Qty" value="${qty ?? ''}">
-    <button class="btn btn-outline" style="padding:0;font-size:15px;color:var(--danger);border-color:var(--danger)" title="Remove">×</button>`;
+    <button class="btn btn-outline" style="padding:0;font-size:15px;color:var(--danger);border-color:var(--danger)" title="Remove"><i data-lucide="x" style="width:13px;height:13px"></i></button>`;
   row.querySelector('button').onclick = () => row.remove();
   wrap.appendChild(row);
 }
@@ -4346,7 +4369,7 @@ function stkRenumberUnits() {
 async function saveStock(id) {
   const colors = [...document.querySelectorAll('.stk-color-row')].map(r => ({
     name: r.querySelector('.stk-color-name').value.trim(),
-    qty: r.querySelector('.stk-color-qty').value,
+    qty: 0,                    // counts come from the individual cars, not here
   })).filter(c => c.name);
   const units = [...document.querySelectorAll('.stk-unit-row')].map(r => {
     const o = {}; r.querySelectorAll('.stk-u').forEach(el => { o[el.dataset.k] = el.value; }); return o;
@@ -4356,7 +4379,6 @@ async function saveStock(id) {
     model: document.getElementById('stk-model').value.trim(),
     trim: document.getElementById('stk-trim').value.trim(),
     price: document.getElementById('stk-price').value,
-    quantity: document.getElementById('stk-qty').value,
     notes: document.getElementById('stk-notes').value.trim(),
     colors, units,
   };
@@ -5152,6 +5174,23 @@ function openSaleForm(id) {
         ${SALE_STATUS_OPTS.map(o => `<option value="${o.key}" ${(x?.status || 'send_to_supplier') === o.key ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
       </select></div>`;
     }
+    if (k === 'client_file') {
+      // Client paperwork is scans and can be large, so it goes to Google Drive
+      // rather than the 1 GB Supabase tier. Upload needs a saved row to attach to.
+      const meta = x?.client_file_meta || null;
+      return `<div style="grid-column:1/-1"><div class="po-lbl">${esc(label)}</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          ${x?.client_file ? `<a href="${esc(x.client_file)}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">
+            <i data-lucide="file-text" style="width:13px;height:13px"></i> ${esc(meta?.name || 'Open current file')}</a>` : ''}
+          <input type="file" id="sale-file-input" style="display:none" onchange="saleUploadFile(${id || 'null'}, this)">
+          <button class="btn btn-outline btn-sm" ${id ? '' : 'disabled title="Save the sale first"'}
+            onclick="document.getElementById('sale-file-input').click()">
+            <i data-lucide="upload" style="width:13px;height:13px"></i> ${x?.client_file ? 'Replace file' : 'Upload file'}</button>
+          <span style="font-size:11px;color:var(--muted)">Google Drive · up to 100 MB</span>
+        </div>
+        <div id="sale-file-msg" style="font-size:12px;margin-top:6px"></div>
+        <input type="hidden" id="sale-client_file" value="${esc(x?.client_file || '')}"></div>`;
+    }
     const type = SALE_DATE_KEYS.includes(k) ? 'date' : SALE_NUM_KEYS.includes(k) ? 'number' : 'text';
     return `<div><div class="po-lbl">${esc(label)}</div><input id="sale-${k}" class="form-input" type="${type}" value="${esc(x?.[k] == null ? '' : String(x[k]))}"></div>`;
   };
@@ -5164,6 +5203,30 @@ function openSaleForm(id) {
      <button class="btn btn-primary" onclick="saveSale(${id || 'null'})">Save</button>`,
     { wide: true });
 }
+// Upload straight to Drive. Refuses rather than falling back to Supabase, so a
+// disconnected Drive is loud instead of quietly eating the free tier.
+async function saleUploadFile(id, input) {
+  const f = input.files && input.files[0];
+  const msg = document.getElementById('sale-file-msg');
+  if (!f || !id) return;
+  msg.style.color = 'var(--muted)';
+  msg.textContent = 'Uploading to Drive…';
+  const fd = new FormData();
+  fd.append('file', f);
+  const r = await apiFetch(`/api/dashboard/sales/${id}/file`, { method: 'POST', body: fd });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    msg.style.color = 'var(--danger)';
+    msg.innerHTML = esc(d.error || 'Upload failed.')
+      + (r.status === 409 ? ' <a href="#" onclick="hideModal();navigate(\'drive\');return false" style="color:var(--primary)">Connect Drive</a>' : '');
+    return;
+  }
+  msg.style.color = 'var(--success)';
+  msg.textContent = 'Uploaded.';
+  document.getElementById('sale-client_file').value = d.client_file || '';
+  loadSales();
+}
+
 async function saveSale(id) {
   const payload = {};
   SALE_COLS.forEach(([k]) => { payload[k] = document.getElementById('sale-' + k).value; });
@@ -5899,12 +5962,178 @@ async function loadSuppliers() {
           <td style="padding:8px 10px">${esc(x.country || '—')}</td>
           <td style="padding:8px 10px;color:var(--muted)">${esc(x.address || '')}</td>
           <td style="padding:8px 10px;text-align:right;white-space:nowrap">
+            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openSupplierDetail(${x.id})">Open</button>
             <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openSupplierForm(${x.id})">Edit</button>
             <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteSupplier(${x.id})">Delete</button>
           </td>
         </tr>`).join('')}</tbody>
     </table></div>`;
 }
+// ── Supplier detail: what they offer, their paperwork, and what we actually bought
+// Kept as three tabs because they answer different questions. "Purchases" is
+// derived from stock units and purchase-order lines, never typed in, so it cannot
+// drift from what really happened.
+let _supTab = 'vehicles';
+let _supDetailId = null;
+let _supData = { vehicles: [], docs: [], purchases: null };
+
+async function openSupplierDetail(id) {
+  _supDetailId = id;
+  _supTab = 'vehicles';
+  const sup = _suppliersCache.find(v => v.id === id) || {};
+  showModal(sup.name || 'Supplier', `
+    <div class="sup-tabs">
+      ${[['vehicles', 'Vehicles'], ['docs', 'Documents'], ['purchases', 'Purchases']]
+        .map(([k, l]) => `<button class="sup-tab" data-t="${k}" onclick="supTab('${k}')">${l}</button>`).join('')}
+    </div>
+    <div id="sup-pane" style="min-height:220px"><div class="loading"><div class="spinner"></div></div></div>`,
+    `<button class="btn btn-outline" onclick="hideModal()">Close</button>`, { wide: true });
+  supTab('vehicles');
+}
+
+async function supTab(which) {
+  _supTab = which;
+  document.querySelectorAll('.sup-tab').forEach(b => b.classList.toggle('active', b.dataset.t === which));
+  const pane = document.getElementById('sup-pane');
+  if (!pane) return;
+  pane.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  const id = _supDetailId;
+  try {
+    if (which === 'vehicles') {
+      _supData.vehicles = await apiFetch(`/api/dashboard/suppliers/${id}/vehicles`).then(r => r.json());
+      supRenderVehicles();
+    } else if (which === 'docs') {
+      _supData.docs = await apiFetch(`/api/dashboard/suppliers/${id}/docs`).then(r => r.json());
+      supRenderDocs();
+    } else {
+      _supData.purchases = await apiFetch(`/api/dashboard/suppliers/${id}/purchases`).then(r => r.json());
+      supRenderPurchases();
+    }
+  } catch (e) { pane.innerHTML = `<div class="error-msg">${esc(String(e.message || e))}</div>`; }
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+const SUP_V_COLS = [['brand', 'Brand'], ['model', 'Model'], ['trim', 'Trim'], ['model_year', 'Year'],
+  ['availability', 'Availability'], ['fob_price', 'FOB price'], ['lead_time', 'Lead time'],
+  ['accessories', 'Accessories']];
+
+function supRenderVehicles() {
+  const rows = Array.isArray(_supData.vehicles) ? _supData.vehicles : [];
+  document.getElementById('sup-pane').innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <button class="btn btn-outline btn-sm" onclick="supAddVehicleRow()"><i data-lucide="plus" style="width:13px;height:13px"></i> Add vehicle</button>
+    </div>
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px">
+      <table style="border-collapse:collapse;font-size:12px;min-width:900px;width:100%">
+        <thead><tr>${SUP_V_COLS.map(([, l]) => `<th class="po-th">${esc(l)}</th>`).join('')}<th class="po-th" style="width:38px"></th></tr></thead>
+        <tbody id="sup-v-body">${rows.map(supVehicleRowHtml).join('')}</tbody>
+      </table>
+    </div>
+    ${rows.length ? '' : '<div style="color:var(--muted);font-size:12.5px;padding:14px;text-align:center">Nothing listed yet. Add what this supplier offers so RFQs and purchase orders can pick from it.</div>'}`;
+}
+function supVehicleRowHtml(v) {
+  return `<tr data-vid="${v.id}">${SUP_V_COLS.map(([k]) => {
+    const val = k === 'fob_price' && v[k] ? Number(v[k]).toLocaleString() : (v[k] ?? '');
+    return `<td class="po-td"><input class="form-input sup-v" data-k="${k}" value="${esc(String(val))}"
+      style="font-size:12px;padding:5px 6px" onchange="supSaveVehicle(${v.id}, this)"></td>`;
+  }).join('')}
+  <td class="po-td"><button class="btn btn-outline" style="padding:2px 6px;color:var(--danger);border-color:var(--danger)"
+    onclick="supDeleteVehicle(${v.id})"><i data-lucide="x" style="width:12px;height:12px"></i></button></td></tr>`;
+}
+function supRowPayload(tr) {
+  const o = {};
+  tr.querySelectorAll('.sup-v').forEach(i => { o[i.dataset.k] = i.value; });
+  return o;
+}
+async function supAddVehicleRow() {
+  const r = await apiFetch(`/api/dashboard/suppliers/${_supDetailId}/vehicles`,
+    { method: 'POST', body: JSON.stringify({ brand: 'New', model: '' }) });
+  if (!r.ok) return showAdminToast('Could not add that row.');
+  supTab('vehicles');
+}
+async function supSaveVehicle(vid, input) {
+  const tr = input.closest('tr');
+  const r = await apiFetch(`/api/dashboard/suppliers/${_supDetailId}/vehicles/${vid}`,
+    { method: 'PUT', body: JSON.stringify(supRowPayload(tr)) });
+  if (!r.ok) showAdminToast('Could not save that change.');
+}
+async function supDeleteVehicle(vid) {
+  if (!confirm('Remove this vehicle from the supplier list?')) return;
+  await apiFetch(`/api/dashboard/suppliers/${_supDetailId}/vehicles/${vid}`, { method: 'DELETE' });
+  supTab('vehicles');
+}
+
+function supRenderDocs() {
+  const rows = Array.isArray(_supData.docs) ? _supData.docs : [];
+  const kb = n => n ? Math.max(1, Math.round(n / 1024)) + ' KB' : '';
+  document.getElementById('sup-pane').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <input type="file" id="sup-doc-file" style="display:none" onchange="supUploadDoc(this)">
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('sup-doc-file').click()">
+        <i data-lucide="upload" style="width:13px;height:13px"></i> Upload document</button>
+      <span style="font-size:11.5px;color:var(--muted)">Stored in Google Drive, under MotoLinker / Suppliers.</span>
+    </div>
+    <div id="sup-doc-err"></div>
+    ${rows.length ? `<div class="hd-files">${rows.map(d => `
+      <a class="hd-file" href="${esc(d.web_link || '#')}" target="_blank" rel="noopener">
+        <div class="hd-file-ic"><i data-lucide="file-text" style="width:22px;height:22px"></i></div>
+        <div class="hd-file-meta"><div class="hd-file-name">${esc(d.name || 'file')}</div>
+          <div class="hd-file-sub">${esc(kb(d.size_bytes))}</div></div></a>`).join('')}</div>`
+      : '<div style="color:var(--muted);font-size:12.5px;padding:14px;text-align:center">No documents yet.</div>'}`;
+}
+async function supUploadDoc(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const err = document.getElementById('sup-doc-err');
+  err.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px 0">Uploading…</div>';
+  const fd = new FormData();
+  fd.append('file', f);
+  const r = await apiFetch(`/api/dashboard/suppliers/${_supDetailId}/docs`, { method: 'POST', body: fd });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    err.innerHTML = `<div class="error-msg" style="display:block">${esc(e.error || 'Upload failed.')}</div>`;
+    return;
+  }
+  supTab('docs');
+}
+
+function supRenderPurchases() {
+  const p = _supData.purchases || { units: [], poLines: [], totals: {} };
+  const t = p.totals || {};
+  const money = n => (Number(n) || 0).toLocaleString();
+  document.getElementById('sup-pane').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">
+      ${[['Cars received', t.vehicles || 0], ['Ordered on POs', t.ordered || 0],
+         ['Avg price paid', money(t.avg_unit_price)], ['Avg PO price', money(t.avg_po_price)]]
+        .map(([l, v]) => `<div class="home-w" style="padding:12px 14px"><div class="home-w-title">${l}</div>
+          <div class="home-big" style="font-size:22px">${v}</div></div>`).join('')}
+    </div>
+    ${(t.lead_times || []).length ? `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Quoted lead times seen: ${esc((t.lead_times || []).join(' · '))}</div>` : ''}
+    <div class="stock-sec-label">Cars received (${p.units.length})</div>
+    ${p.units.length ? `<div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px;margin-bottom:14px">
+      <table style="border-collapse:collapse;font-size:12px;width:100%">
+        <thead><tr><th class="po-th">Model</th><th class="po-th">VIN</th><th class="po-th">Colour</th><th class="po-th" style="text-align:right">Price</th></tr></thead>
+        <tbody>${p.units.map(u => `<tr>
+          <td class="po-td">${esc([u.make, u.model, u.trim].filter(Boolean).join(' '))}</td>
+          <td class="po-td">${esc(u.vin || '—')}</td><td class="po-td">${esc(u.colour || '—')}</td>
+          <td class="po-td" style="text-align:right">${u.price ? money(u.price) : '—'}</td></tr>`).join('')}</tbody>
+      </table></div>`
+      : '<div style="color:var(--muted);font-size:12.5px;padding:10px 0 16px">None attributed to this supplier yet. Stock units carry a supplier — set it there and it shows here.</div>'}
+    <div class="stock-sec-label">Purchase-order lines (${p.poLines.length})</div>
+    ${p.poLines.length ? `<div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px">
+      <table style="border-collapse:collapse;font-size:12px;width:100%">
+        <thead><tr><th class="po-th">PO</th><th class="po-th">Model</th><th class="po-th">Qty</th>
+          <th class="po-th" style="text-align:right">Price</th><th class="po-th">Lead time</th></tr></thead>
+        <tbody>${p.poLines.map(l => `<tr>
+          <td class="po-td">${esc(l.po_number || '')}</td>
+          <td class="po-td">${esc([l.brand, l.model, l.trim].filter(Boolean).join(' '))}</td>
+          <td class="po-td">${l.qty}</td>
+          <td class="po-td" style="text-align:right">${l.price ? money(l.price) : '—'}</td>
+          <td class="po-td">${esc(l.lead_time || '—')}</td></tr>`).join('')}</tbody>
+      </table></div>` : '<div style="color:var(--muted);font-size:12.5px;padding:10px 0">No purchase orders yet.</div>'}`;
+}
+
 function openSupplierForm(id) {
   const x = id ? _suppliersCache.find(v => v.id === id) : null;
   showModal(x ? 'Edit supplier' : 'Add supplier', `

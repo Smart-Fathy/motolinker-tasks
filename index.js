@@ -828,10 +828,10 @@ function scheduleRecurringTasks() {
 
 // ─── Car Stock (immediate-delivery inventory) ───────────────────────────────────
 // A CRM-owned list of vehicles physically in stock for immediate delivery. One row
-// per make+model+trim (a model may carry several trims); `quantity` = units on hand,
-// `price` = price per car. Separate from the read-only website inventory picker.
+// per make+model+trim (a model may carry several trims); each physical car is a
+// unit with its own VIN, and `quantity` is derived from them. `price` = per car. Separate from the read-only website inventory picker.
 // Spec sheet shown on each car card. Keys are stable; labels drive the UI/CSV.
-const STOCK_CSV_HEADERS = ['make', 'model', 'trim', 'price', 'colors', 'units', 'quantity', 'notes'];
+const STOCK_CSV_HEADERS = ['make', 'model', 'trim', 'price', 'colors', 'units', 'notes'];
 
 // "White:3 | Black:2" (or "White:3,Black:2") → [{name:'White',qty:3},…]
 function parseStockColors(val) {
@@ -883,12 +883,10 @@ function stockBuildRow(body) {
 
   const colors = parseStockColors(b.colors);
   const units = parseStockUnits(b.units);
-  // Quantity is derived, most specific source first: individual units → colour
-  // counts → the manually entered total.
-  const qtyNum = parseInt(String(b.quantity ?? '').replace(/[^\d-]/g, ''), 10);
-  const quantity = units.length ? units.length
-    : colors.length ? colors.reduce((s, c) => s + c.qty, 0)
-    : ((isFinite(qtyNum) && qtyNum > 0) ? qtyNum : 0);
+  // Every car has its own VIN, so the cars themselves are the count. A typed-in
+  // total and per-colour tallies were summaries nobody could trace back to a
+  // vehicle; quantity is now derived and the client no longer sends one.
+  const quantity = units.length;
 
   return { row: {
     make, model,
@@ -897,25 +895,39 @@ function stockBuildRow(body) {
     quantity,
     colors, units,
     notes: String(b.notes || '').trim(),
+    // Once real cars are listed the pre-migration figure has served its purpose
+    legacy_count: units.length ? null : (b.legacy_count ?? undefined),
   } };
+}
+
+// How many cars are actually recorded, and how many the old count claimed. Used
+// by the UI to prompt for VINs that were never captured.
+function stockUnitGaps(row) {
+  const units = Array.isArray(row?.units) ? row.units : [];
+  return {
+    counted: units.length,
+    missingVin: units.filter(u => !String(u.vin || '').trim()).length,
+    legacy: units.length ? 0 : (parseInt(row?.legacy_count, 10) || 0),
+  };
 }
 
 // Until migrations/001 has been applied the specs/colors columns may not exist.
 // Detect that specific failure and retry without them so Car Stock keeps working.
 function isMissingColumnErr(err) {
   const m = String((err && (err.message || err.details)) || '');
-  return /column .*(colors|units).* does not exist/i.test(m)
-      || /could not find the '(colors|units)' column/i.test(m)
+  return /column .*(colors|units|legacy_count).* does not exist/i.test(m)
+      || /could not find the '(colors|units|legacy_count)' column/i.test(m)
       || err?.code === '42703' || err?.code === 'PGRST204';
 }
 async function stockWrite(row, id) {
+  Object.keys(row).forEach(k => { if (row[k] === undefined) delete row[k]; });
   const run = payload => id
     ? supabase.from('stock_vehicles').update(payload).eq('id', id).select().single()
     : supabase.from('stock_vehicles').insert(payload).select().single();
   let res = await run(row);
   if (res.error && isMissingColumnErr(res.error)) {
     console.warn('[stock] colors/units columns missing — apply migrations/001 and /003. Saving without them.');
-    const { colors, units, ...rest } = row;
+    const { colors, units, legacy_count, ...rest } = row;
     res = await run(rest);
   }
   return res;
@@ -1034,6 +1046,288 @@ receiver.router.delete('/api/dashboard/suppliers/:id', requireAuth, async (req, 
   const { error } = await supabase.from('suppliers').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
+});
+
+// ── Drive uploads ─────────────────────────────────────────────────────────────
+// Client files and supplier paperwork go to Google Drive rather than Supabase
+// Storage: the free Supabase tier is 1 GB total with capped egress, and a handful
+// of scanned passports and shipping documents would eat it. Workspace Drive is
+// effectively unlimited. Small chat attachments stay in Supabase — they already
+// work and are nowhere near the limit.
+const DRIVE_ROOT_FOLDER = 'MotoLinker';
+const _driveFolders = new Map();   // 'MotoLinker/Client Files' -> folderId
+
+async function driveFindOrCreateFolder(token, name, parentId) {
+  const safe = String(name).replace(/'/g, "\\'");
+  const q = [
+    `name='${safe}'`,
+    "mimeType='application/vnd.google-apps.folder'",
+    'trashed=false',
+    parentId ? `'${parentId}' in parents` : "'root' in parents",
+  ].join(' and ');
+  const look = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`,
+    { headers: { Authorization: `Bearer ${token}` } });
+  const found = await look.json();
+  if (found.error) throw new Error(found.error.message);
+  if (found.files && found.files.length) return found.files[0].id;
+
+  const made = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name, mimeType: 'application/vnd.google-apps.folder',
+      ...(parentId ? { parents: [parentId] } : {}),
+    }),
+  });
+  const created = await made.json();
+  if (created.error) throw new Error(created.error.message);
+  return created.id;
+}
+
+// 'Client Files' -> MotoLinker/Client Files, created on first use and then cached
+async function driveEnsureFolder(token, sub) {
+  const cacheKey = `${DRIVE_ROOT_FOLDER}/${sub}`;
+  if (_driveFolders.has(cacheKey)) return _driveFolders.get(cacheKey);
+  const root = await driveFindOrCreateFolder(token, DRIVE_ROOT_FOLDER, null);
+  const id = await driveFindOrCreateFolder(token, sub, root);
+  _driveFolders.set(cacheKey, id);
+  return id;
+}
+
+// Multipart upload: metadata part, then the bytes, in one request.
+async function driveUploadFile(token, { buffer, name, mimeType, folderId }) {
+  const boundary = 'ml' + crypto.randomBytes(12).toString('hex');
+  const meta = JSON.stringify({ name, ...(folderId ? { parents: [folderId] } : {}) });
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n`),
+    Buffer.from(`--${boundary}\r\nContent-Type: ${mimeType || 'application/octet-stream'}\r\n\r\n`),
+    buffer,
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const r = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size,mimeType,webViewLink',
+    { method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error.message);
+  return d;
+}
+
+// One place that answers "is Drive usable, and if not why" — the routes below all
+// refuse rather than silently falling back, so nothing large lands in Supabase by
+// accident and starts costing money later.
+async function driveAdminToken() {
+  if (!GOOGLE_CLIENT_ID) { const e = new Error('Google is not configured on this deployment.'); e.status = 409; throw e; }
+  if (!driveTokens)      { const e = new Error('Connect Google Drive first — Google → My Drive → Connect.'); e.status = 409; throw e; }
+  try {
+    return await getDriveToken(driveTokens, 'admin_drive');
+  } catch (_) {
+    const e = new Error('Google Drive needs reconnecting — Google → My Drive → Connect.');
+    e.status = 409; throw e;
+  }
+}
+
+// 100 MB: client paperwork is scans, and the shared `upload` is capped at 5 MB.
+// Memory storage is fine here because the multipart body needs the whole buffer.
+const driveUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+
+async function handleDriveUpload(req, res, folder) {
+  if (!req.file) return res.status(400).json({ error: 'No file' });
+  try {
+    const token = await driveAdminToken();
+    const folderId = await driveEnsureFolder(token, folder);
+    const f = await driveUploadFile(token, {
+      buffer: req.file.buffer,
+      name: req.file.originalname || 'file',
+      mimeType: req.file.mimetype,
+      folderId,
+    });
+    return { fileId: f.id, name: f.name, size: Number(f.size) || req.file.size || 0,
+             mimeType: f.mimeType || req.file.mimetype || '', webViewLink: f.webViewLink };
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+    return null;
+  }
+}
+
+// Multer rejects an oversized file by throwing; without this the request hangs.
+function driveUploadGuard(err, _req, res, next) {
+  if (err && err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'That file is over the 100 MB limit.' });
+  if (err) return res.status(400).json({ error: err.message });
+  next();
+}
+
+// Attach a client file to a sale
+receiver.router.post('/api/dashboard/sales/:id/file', requireAuth,
+  driveUpload.single('file'), driveUploadGuard, async (req, res) => {
+    const meta = await handleDriveUpload(req, res, 'Client Files');
+    if (!meta) return;
+    const { data, error } = await supabase.from('sales')
+      .update({ client_file: meta.webViewLink, client_file_meta: meta, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+// ─── Supplier catalogue, documents and purchase history ───────────────────────
+// Three different things, deliberately kept apart:
+//   supplier_vehicles — what they OFFER (quoted price, quoted lead time)
+//   supplier_docs     — the paperwork, stored in Drive
+//   purchases         — what we actually BOUGHT, derived from stock units and PO
+//                       lines. Never typed in, so it cannot drift from reality.
+
+const SUPPLIER_VEHICLE_FIELDS = ['brand', 'model', 'trim', 'model_year', 'availability',
+  'fob_price', 'currency', 'lead_time', 'accessories', 'notes'];
+
+function supplierVehicleRow(body, supplierId) {
+  const b = body || {};
+  const num = v => { const n = Number(String(v ?? '').replace(/[^\d.]/g, '')); return Number.isFinite(n) && n ? n : null; };
+  const row = {
+    supplier_id: supplierId,
+    brand: String(b.brand || '').trim(),
+    model: String(b.model || '').trim(),
+    trim: String(b.trim || '').trim(),
+    model_year: (() => { const y = parseInt(b.model_year, 10); return y >= 1900 && y <= 2100 ? y : null; })(),
+    availability: String(b.availability || '').trim(),
+    fob_price: num(b.fob_price),
+    currency: String(b.currency || 'USD').trim().slice(0, 8) || 'USD',
+    lead_time: String(b.lead_time || '').trim(),
+    accessories: String(b.accessories || '').trim(),
+    notes: String(b.notes || '').trim(),
+  };
+  if (!row.brand && !row.model) return { error: 'Brand or model is required' };
+  return { row };
+}
+
+// Everything actually bought from this supplier: the individual cars held against
+// stock rows, plus the lines of any purchase order pointed at them.
+async function supplierPurchases(supplierId) {
+  const id = Number(supplierId);
+  const [{ data: stock }, { data: pos }, { data: sup }] = await Promise.all([
+    supabase.from('stock_vehicles').select('id,make,model,trim,units'),
+    supabase.from('purchase_orders').select('id,po_number,po_date,supplier,supplier_id,currency,items'),
+    supabase.from('suppliers').select('id,name').eq('id', id).single(),
+  ]);
+  const name = String((sup || {}).name || '').trim().toLowerCase();
+  // supplier_id is authoritative; the free-text name is only a fallback for rows
+  // the migration could not match confidently.
+  const mine = u => String(u.supplier_id || '') === String(id)
+    || (!u.supplier_id && name && String(u.supplier || '').trim().toLowerCase() === name);
+
+  const units = [];
+  for (const row of stock || []) {
+    for (const u of Array.isArray(row.units) ? row.units : []) {
+      if (!mine(u)) continue;
+      units.push({
+        stock_id: row.id, make: row.make, model: row.model, trim: row.trim,
+        vin: u.vin || '', colour: u.colour || '', status: u.status || '',
+        price: Number(u.discounted) || Number(u.price_list) || 0,
+      });
+    }
+  }
+
+  const poLines = [];
+  for (const po of pos || []) {
+    const matches = String(po.supplier_id || '') === String(id)
+      || (!po.supplier_id && name && String(po.supplier || '').trim().toLowerCase() === name);
+    if (!matches) continue;
+    for (const it of Array.isArray(po.items) ? po.items : []) {
+      poLines.push({
+        po_id: po.id, po_number: po.po_number, po_date: po.po_date, currency: po.currency,
+        brand: it.brand || '', model: it.model || '', trim: it.trim || '',
+        qty: Number(it.qty) || 1,
+        price: Number(String(it.fob_price ?? it.price ?? '').replace(/[^\d.]/g, '')) || 0,
+        lead_time: it.lead_time || '',
+      });
+    }
+  }
+
+  const priced = units.filter(u => u.price > 0);
+  const poPriced = poLines.filter(l => l.price > 0);
+  const avg = rows => rows.length ? Math.round(rows.reduce((s, r) => s + r.price, 0) / rows.length) : 0;
+  return {
+    units, poLines,
+    totals: {
+      vehicles: units.length,
+      ordered: poLines.reduce((s, l) => s + l.qty, 0),
+      avg_unit_price: avg(priced),
+      avg_po_price: avg(poPriced),
+      lead_times: [...new Set(poLines.map(l => l.lead_time).filter(Boolean))],
+    },
+  };
+}
+
+// ── Catalogue ──
+receiver.router.get('/api/dashboard/suppliers/:id/vehicles', requireAuth, async (req, res) => {
+  const { data, error } = await supabase.from('supplier_vehicles').select('*')
+    .eq('supplier_id', req.params.id).order('brand').order('model');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+receiver.router.post('/api/dashboard/suppliers/:id/vehicles', requireAuth, express.json(), async (req, res) => {
+  const { row, error: verr } = supplierVehicleRow(req.body, parseInt(req.params.id));
+  if (verr) return res.status(400).json({ error: verr });
+  const { data, error } = await supabase.from('supplier_vehicles').insert(row).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+receiver.router.put('/api/dashboard/suppliers/:id/vehicles/:vid', requireAuth, express.json(), async (req, res) => {
+  const { row, error: verr } = supplierVehicleRow(req.body, parseInt(req.params.id));
+  if (verr) return res.status(400).json({ error: verr });
+  row.updated_at = new Date().toISOString();
+  const { data, error } = await supabase.from('supplier_vehicles').update(row)
+    .eq('id', req.params.vid).eq('supplier_id', req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+receiver.router.delete('/api/dashboard/suppliers/:id/vehicles/:vid', requireAuth, async (req, res) => {
+  const { error } = await supabase.from('supplier_vehicles').delete()
+    .eq('id', req.params.vid).eq('supplier_id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// Every vehicle any supplier offers — feeds the RFQ and PO item pickers, so those
+// stop being free text.
+receiver.router.get('/api/dashboard/supplier-vehicles', requireAuth, async (_req, res) => {
+  const { data, error } = await supabase.from('supplier_vehicles')
+    .select('*, suppliers(name)').order('brand').order('model').limit(1000);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json((data || []).map(v => ({ ...v, supplier_name: v.suppliers?.name || '' })));
+});
+
+// ── Documents (Drive-backed) ──
+receiver.router.get('/api/dashboard/suppliers/:id/docs', requireAuth, async (req, res) => {
+  const { data, error } = await supabase.from('supplier_docs').select('*')
+    .eq('supplier_id', req.params.id).order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+receiver.router.post('/api/dashboard/suppliers/:id/docs', requireAuth,
+  driveUpload.single('file'), driveUploadGuard, async (req, res) => {
+    const meta = await handleDriveUpload(req, res, 'Suppliers');
+    if (!meta) return;
+    const { data, error } = await supabase.from('supplier_docs').insert({
+      supplier_id: parseInt(req.params.id), name: meta.name, drive_file_id: meta.fileId,
+      web_link: meta.webViewLink, mime_type: meta.mimeType, size_bytes: meta.size,
+    }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+receiver.router.delete('/api/dashboard/suppliers/:id/docs/:docId', requireAuth, async (req, res) => {
+  // The row goes; the file stays in Drive on purpose, so a mis-click is recoverable.
+  const { error } = await supabase.from('supplier_docs').delete()
+    .eq('id', req.params.docId).eq('supplier_id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// ── What we actually bought ──
+receiver.router.get('/api/dashboard/suppliers/:id/purchases', requireAuth, async (req, res) => {
+  try { res.json(await supplierPurchases(req.params.id)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1734,6 +2028,7 @@ receiver.router.post('/api/drive/disconnect', requireAuth, (_req, res) => { driv
 
 receiver.router.get('/api/drive/files',  requireAuth, async (_req, res) => { try { res.json(await listDriveFiles(driveTokens)); } catch (e) { res.status(500).json({ error: e.message }); } });
 receiver.router.get('/api/drive/sheets', requireAuth, async (_req, res) => { try { res.json(await listDriveFiles(driveTokens, 'application/vnd.google-apps.spreadsheet')); } catch (e) { res.status(500).json({ error: e.message }); } });
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Google Chat (real spaces + messages, in-app) ──────────────────────────────

@@ -341,3 +341,46 @@ that won't connect.
 - Group administration lives next to it: the admin can rename any group, add and
   remove members and browse everything shared in the room. An employee gets the
   same controls for groups they created. The server enforces this, not just the UI.
+
+
+## 📁 Where files are stored
+
+Two stores, split by size rather than by feature:
+
+| What | Where | Why |
+| --- | --- | --- |
+| Chat attachments, avatars, issue screenshots | Supabase Storage | Small, already working, nowhere near the limit |
+| Client files on a sale, supplier documents | **Google Drive** | Scans and shipping paperwork are large |
+
+The Supabase free tier is **1 GB total with capped egress** — a few hundred scanned
+passports would exhaust it, and the only fix at that point is a paid plan. Workspace
+Drive is effectively unlimited, and the Drive OAuth was already wired up for the
+Drive/Sheets browser, so nothing new needed connecting.
+
+Uploads land in `MotoLinker / Client Files` and `MotoLinker / Suppliers`, created on
+first use. The app stores the Drive link and file id; the file itself never passes
+through Supabase. Cap is **100 MB** per file.
+
+**If Drive is not connected the upload is refused** with "Connect Google Drive first"
+rather than quietly falling back to Supabase — a silent fallback is how a free tier
+fills up without anyone noticing. Connect it under Google → My Drive.
+
+Deleting a supplier document removes the row but leaves the file in Drive, so a
+mis-click is recoverable.
+
+## 🚗 Stock is tracked per VIN
+
+Every car in inventory is its own record with its own VIN, colour, status, price and
+supplier. There is no "quantity" field to type in any more — the number in stock *is*
+the number of cars listed, so every figure traces back to a specific vehicle.
+
+Applying `migrations/005_stock_vin.sql` **will lower your stock totals**, on purpose.
+A model that previously read "5 in stock" with no individual cars recorded now reads 0
+and shows *"5 cars were recorded here before VIN tracking — add them to bring this
+model back into stock."* Nothing is deleted and nothing is invented; the old figure is
+kept solely to prompt for what to enter.
+
+`migrations/006_supplier_catalogue.sql` links purchase orders and stock units to
+supplier records by exact name match, case-insensitively. Anything it cannot match
+confidently is left unlinked rather than guessed — the file ends with two queries that
+list exactly what needs setting by hand.

@@ -1,4 +1,4 @@
-const CACHE = 'motolinker-emp-v47';
+const CACHE = 'motolinker-emp-v48';
 const SHELL = ['/employee', '/manifest-employee.json', '/help-docs.js'];
 const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com'];
 
