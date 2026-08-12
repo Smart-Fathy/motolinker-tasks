@@ -7992,6 +7992,11 @@ const HOMECFG = {
   base: '/api/dashboard',
   fetch: (url, opts) => apiFetch(url, opts),
   can: () => true,                       // the admin sees every widget
+  // Read-only views of state the page already keeps, so the widgets do not fetch
+  // what is sitting in memory a few lines away.
+  unread: () => adminChatUnread.size,
+  notifs: () => notifItems.filter(n => !n.read),
+  google: { drive: '/api/drive/files', sheets: '/api/drive/sheets', email: '/api/email/messages' },
   toast: msg => hdToast(msg),
   sheet: (t, b, f) => hdSheet(t, b, f),
   actions: () => ([

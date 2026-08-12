@@ -15,18 +15,52 @@ const HOME_SIZES = [
   { w: 6, label: 'Half' }, { w: 12, label: 'Full' },
 ];
 
+// Every section of the app has at least one widget. `perm` mirrors the gate the
+// server applies in src/routes/home.js — the server is the authority and sends the
+// resolved list as `allowed`; this copy is only the fallback for a summary that has
+// not arrived yet, so the Add list is never wrong in the permissive direction.
+// `async` widgets fetch their own data after the grid renders.
 const HOME_WIDGETS = {
-  my_tasks:      { title: 'My tasks',            icon: 'clipboard-list', w: 4, h: 2, perm: null },
-  task_status:   { title: 'Tasks by status',     icon: 'pie-chart',      w: 4, h: 1, perm: null },
-  overdue_tasks: { title: 'Overdue tasks',       icon: 'alarm-clock',    w: 3, h: 1, perm: null },
-  leads_status:  { title: 'Leads by status',     icon: 'users',          w: 4, h: 2, perm: 'leads' },
-  recent_leads:  { title: 'Recent leads',        icon: 'user-plus',      w: 4, h: 2, perm: 'leads' },
-  followups:     { title: 'Follow-ups due',      icon: 'calendar-clock', w: 4, h: 2, perm: 'leads' },
-  pipeline:      { title: 'Pipeline by stage',   icon: 'trending-up',    w: 6, h: 2, perm: 'deals' },
-  won_month:     { title: 'Won this month',      icon: 'trophy',         w: 3, h: 1, perm: 'deals' },
-  hours_week:    { title: 'Hours this week',     icon: 'timer',          w: 3, h: 1, perm: null },
-  stock_summary: { title: 'Stock',               icon: 'car-front',      w: 3, h: 1, perm: null },
-  quick_actions: { title: 'Quick actions',       icon: 'zap',            w: 4, h: 1, perm: null },
+  // Tasks
+  my_tasks:           { title: 'My tasks',            icon: 'clipboard-list',  w: 4, h: 2, perm: null },
+  task_status:        { title: 'Tasks by status',     icon: 'pie-chart',       w: 4, h: 1, perm: null },
+  overdue_tasks:      { title: 'Overdue tasks',       icon: 'alarm-clock',     w: 3, h: 1, perm: null },
+  // Leads and deals
+  leads_status:       { title: 'Leads by status',     icon: 'users',           w: 4, h: 2, perm: 'leads' },
+  recent_leads:       { title: 'Recent leads',        icon: 'user-plus',       w: 4, h: 2, perm: 'leads' },
+  followups:          { title: 'Follow-ups due',      icon: 'calendar-clock',  w: 4, h: 2, perm: 'leads' },
+  pipeline:           { title: 'Pipeline by stage',   icon: 'trending-up',     w: 6, h: 2, perm: 'deals' },
+  won_month:          { title: 'Won this month',      icon: 'trophy',          w: 3, h: 1, perm: 'deals' },
+  // Hours and inventory
+  hours_week:         { title: 'Hours this week',     icon: 'timer',           w: 3, h: 1, perm: null },
+  stock_summary:      { title: 'Stock',               icon: 'car-front',       w: 3, h: 1, perm: null },
+  stock_models:       { title: 'Stock by model',      icon: 'layers',          w: 4, h: 2, perm: null },
+  // Requests and approvals
+  my_requests:        { title: 'My requests',         icon: 'inbox',           w: 3, h: 1, perm: 'requests' },
+  approvals:          { title: 'Pending approvals',   icon: 'shield-check',    w: 4, h: 2, perm: 'admin' },
+  // Paperwork
+  quotation_recent:   { title: 'Recent quotations',   icon: 'file-text',       w: 4, h: 2, perm: 'quotation' },
+  contracts_recent:   { title: 'Recent contracts',    icon: 'file-signature',  w: 4, h: 2, perm: 'admin' },
+  sales_month:        { title: 'Sales this month',    icon: 'banknote',        w: 3, h: 1, perm: 'reports' },
+  // Purchasing
+  suppliers_top:      { title: 'Top suppliers',       icon: 'factory',         w: 4, h: 2, perm: 'admin' },
+  rfq_open:           { title: 'Open RFQs',           icon: 'send',            w: 4, h: 2, perm: 'admin' },
+  po_status:          { title: 'Purchase orders',     icon: 'shopping-cart',   w: 4, h: 1, perm: 'admin' },
+  // Company
+  submissions_recent: { title: 'Recent submissions',  icon: 'clipboard-check', w: 4, h: 2, perm: 'admin' },
+  automations_active: { title: 'Automations',         icon: 'workflow',        w: 3, h: 1, perm: 'admin' },
+  team_roster:        { title: 'Team',                icon: 'users-round',     w: 4, h: 2, perm: 'admin' },
+  whatsapp_recent:    { title: 'WhatsApp',            icon: 'message-circle',  w: 4, h: 2, perm: 'admin' },
+  issues_open:        { title: 'Open issues',         icon: 'bug',             w: 4, h: 2, perm: 'cto' },
+  // Built here rather than by the server
+  quick_actions:      { title: 'Quick actions',       icon: 'zap',             w: 4, h: 1, perm: null },
+  unread_chat:        { title: 'Unread chat',         icon: 'message-square',  w: 3, h: 1, perm: null },
+  notifications:      { title: 'Notifications',       icon: 'bell',            w: 4, h: 2, perm: null },
+  calendar:           { title: 'Calendar',            icon: 'calendar-days',   w: 4, h: 2, perm: null,      async: 'calendar' },
+  meet_quick:         { title: 'Meet',                icon: 'video',           w: 3, h: 1, perm: null },
+  drive_recent:       { title: 'Recent Drive files',  icon: 'hard-drive',      w: 4, h: 2, perm: 'drive',   async: 'drive' },
+  sheets_recent:      { title: 'Recent Sheets',       icon: 'table',           w: 4, h: 2, perm: 'sheets',  async: 'sheets' },
+  email_unread:       { title: 'Unread email',        icon: 'mail',            w: 4, h: 2, perm: 'email',   async: 'email' },
 };
 
 const HOME_DEFAULT = [
@@ -35,13 +69,18 @@ const HOME_DEFAULT = [
   { id: 'recent_leads', w: 6, h: 2 }, { id: 'quick_actions', w: 12, h: 1 },
 ];
 
-let _home = { widgets: [], data: null, editing: false, req: 0 };
+let _home = { widgets: [], data: null, editing: false, req: 0, allowed: null, async: {} };
 
-// The catalogue an employee sees is filtered by what they can actually open, so
-// nobody can add a widget for a section that would then 403 on them.
+// The catalogue is filtered by what the caller can actually open, so nobody can add
+// a widget for a section that would then come back empty or 403.
+//
+// The server decides and sends the resolved list as `allowed`; that is the authority,
+// because it is the same list the summary and the layout writer enforce. HOMECFG.can
+// is only consulted before the first summary arrives.
 function homeAvailable() {
+  const allowed = _home.allowed;
   return Object.entries(HOME_WIDGETS)
-    .filter(([, w]) => !w.perm || HOMECFG.can(w.perm))
+    .filter(([id, w]) => allowed ? allowed.includes(id) : (!w.perm || HOMECFG.can(w.perm)))
     .map(([id, w]) => ({ id, ...w }));
 }
 
@@ -60,14 +99,42 @@ async function loadHome() {
     const layout = layoutR.ok ? await layoutR.json() : { widgets: [] };
     _home.data = dataR.ok ? await dataR.json() : {};
     if (req !== _home.req) return;                 // a newer load has taken over
+    if (Array.isArray(_home.data.allowed)) _home.allowed = _home.data.allowed;
     const allowed = new Set(homeAvailable().map(w => w.id));
     const saved = (layout.widgets || []).filter(w => allowed.has(w.id));
     _home.widgets = saved.length ? saved : HOME_DEFAULT.filter(w => allowed.has(w.id));
   } catch (_) {
     _home.data = _home.data || {};
-    if (!_home.widgets.length) _home.widgets = HOME_DEFAULT;
+    // Falling back to the raw default here used to show an employee the widgets they
+    // are not allowed — the fallback has to be filtered like everything else.
+    if (!_home.widgets.length) {
+      const allowed = new Set(homeAvailable().map(w => w.id));
+      _home.widgets = HOME_DEFAULT.filter(w => allowed.has(w.id));
+    }
   }
   homeRender();
+  homeLoadAsync();
+}
+
+// Widgets that fetch their own data, so a slow Google call cannot hold up the grid.
+// Each result is cached for the life of the page view and patched into its tile.
+const HOME_ASYNC_URL = {
+  calendar: () => HOMECFG.base + '/home/calendar',
+  drive:    () => HOMECFG.google.drive,
+  sheets:   () => HOMECFG.google.sheets,
+  email:    () => HOMECFG.google.email,
+};
+async function homeLoadAsync() {
+  const kinds = [...new Set(_home.widgets
+    .map(w => (HOME_WIDGETS[w.id] || {}).async).filter(Boolean))];
+  await Promise.all(kinds.map(async kind => {
+    if (_home.async[kind]) return;                 // already fetched this page view
+    try {
+      const r = await HOMECFG.fetch(HOME_ASYNC_URL[kind]());
+      _home.async[kind] = r.ok ? await r.json() : { error: 'unavailable' };
+    } catch (_) { _home.async[kind] = { error: 'unavailable' }; }
+  }));
+  if (kinds.length) homeRender();
 }
 
 async function homeSaveLayout() {
@@ -164,12 +231,113 @@ function homeWidgetBody(id) {
     case 'hours_week':    return big(d.hours_week || 0, 'hours logged this week');
     case 'stock_summary':
       return big((d.stock_summary || {}).units || 0, `${(d.stock_summary || {}).models || 0} models in stock`);
+    case 'stock_models':
+      return list(d.stock_models, v => `<li><span class="home-li-main">${esc(v.label)}</span>
+        <span class="home-li-sub">${v.count} in stock</span></li>`);
+
+    case 'my_requests':   return bars(d.my_requests);
+    case 'approvals':
+      return list(d.approvals, a => `<li><span class="home-li-main">${esc(a.label || '')}</span>
+        <span class="home-li-sub">${esc(a.by || '')}</span></li>`);
+
+    case 'quotation_recent': return list(d.quotation_recent, q => nameRow(q));
+    case 'contracts_recent': return list(d.contracts_recent, c => nameRow(c, c.status));
+    case 'sales_month': {
+      const v = d.sales_month || {};
+      return big(money(v.value), `${v.count || 0} ${v.count === 1 ? 'sale' : 'sales'} this month`);
+    }
+
+    case 'suppliers_top': return bars(d.suppliers_top);
+    case 'po_status':     return bars(d.po_status);
+    case 'rfq_open':      return list(d.rfq_open, r => nameRow(r, r.sub));
+
+    case 'submissions_recent': return list(d.submissions_recent, x => nameRow(x, x.sub));
+    case 'automations_active': {
+      const a = d.automations_active || {};
+      return big(a.active || 0, `${a.total || 0} rules in total`);
+    }
+    case 'team_roster':
+      return !d.team_roster || !d.team_roster.length
+        ? '<div class="home-none">Nothing yet</div>'
+        : `<div class="home-people">${d.team_roster.map(e => `<span class="home-person" title="${esc(e.job_title || '')}">
+            ${e.avatar ? `<img src="${esc(e.avatar)}" alt="">` : `<i>${esc(homeInitials(e.name))}</i>`}
+            <b class="${e.online ? 'on' : ''}"></b>${esc((e.name || '').split(' ')[0])}</span>`).join('')}</div>`;
+    case 'whatsapp_recent': return list(d.whatsapp_recent, m => nameRow(m, m.sub));
+    case 'issues_open':     return list(d.issues_open, i => nameRow(i, i.sub));
+
+    // ── Built here, from what the page already holds ──
+    case 'unread_chat': {
+      const n = HOMECFG.unread ? HOMECFG.unread() : 0;
+      return big(n, n === 1 ? 'unread message' : 'unread messages');
+    }
+    case 'notifications': {
+      const rows = (HOMECFG.notifs ? HOMECFG.notifs() : []).slice(0, 6);
+      return list(rows, n => `<li><span class="home-li-main">${esc(n.title || '')}</span>
+        <span class="home-li-sub">${esc((n.body || '').slice(0, 40))}</span></li>`);
+    }
+    case 'meet_quick':
+      return `<div class="home-actions">
+        <button class="btn btn-outline btn-sm" onclick="window.open('https://meet.google.com/new','_blank','noopener')">
+          <i data-lucide="video" style="width:13px;height:13px"></i> Start a meeting</button>
+        <button class="btn btn-outline btn-sm" onclick="navigate('meet')">
+          <i data-lucide="calendar" style="width:13px;height:13px"></i> Open Meet</button></div>`;
+
+    // ── Fetched by homeLoadAsync ──
+    case 'calendar': {
+      const c = _home.async.calendar;
+      if (!c) return '<div class="home-none">Loading…</div>';
+      if (!c.connected) return `<div class="home-none">Calendar is not connected.
+        <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="navigate('calendar')">Connect</button></div>`;
+      return list(c.events, e => `<li><span class="home-li-main">${esc(e.title || '')}</span>
+        <span class="home-li-sub">${esc(homeWhen(e.start, e.allDay))}</span></li>`);
+    }
+    case 'drive_recent':  return homeFileList(_home.async.drive);
+    case 'sheets_recent': return homeFileList(_home.async.sheets);
+    case 'email_unread': {
+      const m = _home.async.email;
+      if (!m) return '<div class="home-none">Loading…</div>';
+      if (m.error || !Array.isArray(m)) return '<div class="home-none">Email is not connected.</div>';
+      const unread = m.filter(x => x.unread).slice(0, 6);
+      return list(unread, x => `<li><span class="home-li-main">${esc(x.subject || '')}</span>
+        <span class="home-li-sub">${esc((x.from || '').replace(/<[^>]*>/g, '').trim())}</span></li>`);
+    }
+
     case 'quick_actions':
       return `<div class="home-actions">${HOMECFG.actions().map(a =>
         `<button class="btn btn-outline btn-sm" onclick="${a.onclick}">
           <i data-lucide="${a.icon}" style="width:13px;height:13px"></i> ${esc(a.label)}</button>`).join('')}</div>`;
     default: return '<div class="home-none">—</div>';
   }
+
+  // A label with an optional muted second line — the shape most of the new list
+  // widgets share, so they do not each re-spell it.
+  function nameRow(r, sub) {
+    return `<li><span class="home-li-main">${esc(r.label || '')}</span>
+      <span class="home-li-sub">${esc(sub || (r.created_at ? String(r.created_at).slice(0, 10) : ''))}</span></li>`;
+  }
+}
+
+function homeInitials(name) {
+  return String(name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+}
+
+// "Today 14:30" reads better than a full timestamp on a tile this small.
+function homeWhen(iso, allDay) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return String(iso).slice(0, 10);
+  const day = d.toDateString() === new Date().toDateString() ? 'Today'
+    : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return allDay ? day : `${day} ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+function homeFileList(files) {
+  if (!files) return '<div class="home-none">Loading…</div>';
+  if (files.error || !Array.isArray(files)) return '<div class="home-none">Google Drive is not connected.</div>';
+  if (!files.length) return '<div class="home-none">Nothing yet</div>';
+  return `<ul class="home-list">${files.slice(0, 6).map(f => `<li>
+    <a class="home-li-main" href="${esc(f.webViewLink || '#')}" target="_blank" rel="noopener">${esc(f.name || '')}</a>
+    <span class="home-li-sub">${esc(String(f.modifiedTime || '').slice(0, 10))}</span></li>`).join('')}</ul>`;
 }
 
 // ── Edit mode ──

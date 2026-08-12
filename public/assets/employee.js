@@ -4458,6 +4458,12 @@ const HOMECFG = {
   // switch is enough here — a widget only reads, and empCan's per-action grants
   // (create/edit/delete) do not apply to reading a summary.
   can: section => (empPerms || {})[section] === true,
+  // Read-only views of state the page already keeps, so the widgets do not fetch
+  // what is sitting in memory a few lines away.
+  unread: () => chatUnread.size,
+  notifs: () => notifItems.filter(n => !n.read),
+  google: { drive: '/api/employee/drive/files', sheets: '/api/employee/drive/sheets',
+            email: '/api/employee/email/messages' },
   toast: msg => hdToast(msg),
   sheet: (t, b, f) => hdSheet(t, b, f),
   actions: () => ([

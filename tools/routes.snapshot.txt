@@ -99,9 +99,11 @@ DELETE /api/dashboard/nav-config
 GET /api/dashboard/home/layout
 PUT /api/dashboard/home/layout
 GET /api/dashboard/home/summary
+GET /api/dashboard/home/calendar
 GET /api/employee/home/layout
 PUT /api/employee/home/layout
 GET /api/employee/home/summary
+GET /api/employee/home/calendar
 GET /api/calendar/status
 GET /api/calendar/connect
 POST /api/calendar/disconnect
