@@ -1,7 +1,7 @@
 // Employee Portal
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
-const { GOOGLE_CLIENT_ID, SMTP_FROM, autoCreateSaleForWonDeal, createMailer, crypto, employeeSessions, express, generateToken, hashPassword, inventorySearch, multer, path, pendingDriveAuth, receiver, requireAuth, requireEmployeeAuth, supabase, verifyPassword } = ctx.need('GOOGLE_CLIENT_ID', 'SMTP_FROM', 'autoCreateSaleForWonDeal', 'createMailer', 'crypto', 'employeeSessions', 'express', 'generateToken', 'hashPassword', 'inventorySearch', 'multer', 'path', 'pendingDriveAuth', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'verifyPassword');
+const { GOOGLE_CLIENT_ID, PUBLIC_DIR, SMTP_FROM, autoCreateSaleForWonDeal, createMailer, crypto, employeeSessions, express, generateToken, hashPassword, inventorySearch, multer, path, pendingDriveAuth, receiver, requireAuth, requireEmployeeAuth, supabase, verifyPassword } = ctx.need('GOOGLE_CLIENT_ID', 'PUBLIC_DIR', 'SMTP_FROM', 'autoCreateSaleForWonDeal', 'createMailer', 'crypto', 'employeeSessions', 'express', 'generateToken', 'hashPassword', 'inventorySearch', 'multer', 'path', 'pendingDriveAuth', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'verifyPassword');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
 const autoNorm = (...a) => ctx.autoNorm(...a);
@@ -10,7 +10,9 @@ const requestCtx = (...a) => ctx.requestCtx(...a);
 const runAutomations = (...a) => ctx.runAutomations(...a);
 
 // ─── Employee Portal ──────────────────────────────────────────────────────────
-receiver.router.get('/employee', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'employee.html')));
+// PUBLIC_DIR, not __dirname: this file lives in src/routes, so joining its own
+// directory resolved to src/routes/public and the portal answered 404.
+receiver.router.get('/employee', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'employee.html')));
 
 // Employee Requests
 receiver.router.get('/api/employee/requests', requireEmployeeAuth, async (req, res) => {
