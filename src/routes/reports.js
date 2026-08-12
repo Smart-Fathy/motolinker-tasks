@@ -2,6 +2,11 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { GOOGLE_CLIENT_ID, crypto, express, getCalendarToken, getDriveToken, getEmployeeCalendarToken, multer, parseCSV, receiver, requireAuth, supabase, syncTaskToCalendar, upload } = ctx.need('GOOGLE_CLIENT_ID', 'crypto', 'express', 'getCalendarToken', 'getDriveToken', 'getEmployeeCalendarToken', 'multer', 'parseCSV', 'receiver', 'requireAuth', 'supabase', 'syncTaskToCalendar', 'upload');
+// Provided by another module, so resolved through the context rather than
+// captured at require time — load order between feature modules is not fixed.
+const autoNorm = (...a) => ctx.autoNorm(...a);
+const runAutomations = (...a) => ctx.runAutomations(...a);
+const taskCtx = (...a) => ctx.taskCtx(...a);
 // Reassigned at runtime (Drive connect/disconnect, VAPID boot), so these are
 // read from the context on use — capturing them here would pin the boot value.
 // Registered on the context by a module that loads after this one, so these
@@ -153,7 +158,7 @@ function budgetBucketOf(v, buckets) {
 }
 function enumLabelMap(field) {
   const m = {};
-  (LEADS_ENUM_DEFAULTS[field] || []).forEach(([k, l]) => { m[k] = l; });
+  (ctx.LEADS_ENUM_DEFAULTS[field] || []).forEach(([k, l]) => { m[k] = l; });
   return m;
 }
 async function buildLeadsReport(q) {

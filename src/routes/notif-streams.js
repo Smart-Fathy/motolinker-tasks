@@ -2,16 +2,20 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { chatCallerIdentity, express, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('chatCallerIdentity', 'express', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
+// Provided by another module, so resolved through the context rather than
+// captured at require time — load order between feature modules is not fixed.
+const chatCreateOrGetDirect = (...a) => ctx.chatCreateOrGetDirect(...a);
+const chatListRooms = (...a) => ctx.chatListRooms(...a);
 
 // ─── Notification Center streams + REST (both portals) ────────────────────────
 function openNotifStream(key, res, reqObj) {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
   res.write(':ok\n\n');
-  notifSseClients.set(key, res);
+  ctx.notifSseClients.set(key, res);
   console.log('[notif-sse] connected', key);
   const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
-  reqObj.on('close', () => { clearInterval(ka); notifSseClients.delete(key); });
+  reqObj.on('close', () => { clearInterval(ka); ctx.notifSseClients.delete(key); });
 }
 
 async function listNotifications(memberKey, res) {

@@ -2,6 +2,16 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { autoCreateSaleForWonDeal, customerInScope, dealInScope, empCan, empHasScope, express, importLeadRows, loadLeadsColsConfig, logLeadActivity, multer, multerCsv, normalizePhone, parseLeadsCsv, receiver, requireAuth, requireEmployeeAuth, scopedQuotedIds, supabase } = ctx.need('autoCreateSaleForWonDeal', 'customerInScope', 'dealInScope', 'empCan', 'empHasScope', 'express', 'importLeadRows', 'loadLeadsColsConfig', 'logLeadActivity', 'multer', 'multerCsv', 'normalizePhone', 'parseLeadsCsv', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'scopedQuotedIds', 'supabase');
+// Provided by another module, so resolved through the context rather than
+// captured at require time — load order between feature modules is not fixed.
+const autoCreateContractForWonDeal = (...a) => ctx.autoCreateContractForWonDeal(...a);
+const buildQuotationHtml = (...a) => ctx.buildQuotationHtml(...a);
+const createNotification = (...a) => ctx.createNotification(...a);
+const dealCtx = (...a) => ctx.dealCtx(...a);
+const leadCtx = (...a) => ctx.leadCtx(...a);
+const quoteTheme = (...a) => ctx.quoteTheme(...a);
+const renderQuotationPdf = (...a) => ctx.renderQuotationPdf(...a);
+const runAutomations = (...a) => ctx.runAutomations(...a);
 
 // ─── Quotation Draft ──────────────────────────────────────────────────────────
 const quotationImgUpload = multer({

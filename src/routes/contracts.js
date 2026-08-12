@@ -2,6 +2,9 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { escHtml, express, logLeadActivity, receiver, requireAuth, supabase } = ctx.need('escHtml', 'express', 'logLeadActivity', 'receiver', 'requireAuth', 'supabase');
+// Provided by another module, so resolved through the context rather than
+// captured at require time — load order between feature modules is not fixed.
+const createNotification = (...a) => ctx.createNotification(...a);
 // Registered on the context by a module that loads later, so these are looked
 // up when called rather than when required.
 const renderQuotationPdf = (...a) => ctx.renderQuotationPdf(...a);
@@ -358,4 +361,4 @@ async function autoCreateContractForWonDeal(deal) {
 }
 
 
-module.exports = { autoCreateContractForWonDeal };
+module.exports = { autoCreateContractForWonDeal, renderQuotationPdf };

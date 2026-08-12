@@ -2,6 +2,13 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { express, logLeadActivity, normalizePhone, receiver, requireAuth, supabase } = ctx.need('express', 'logLeadActivity', 'normalizePhone', 'receiver', 'requireAuth', 'supabase');
+// Provided by another module, so resolved through the context rather than
+// captured at require time — load order between feature modules is not fixed.
+const createNotification = (...a) => ctx.createNotification(...a);
+const memberKeyForAssignee = (...a) => ctx.memberKeyForAssignee(...a);
+const runAutomations = (...a) => ctx.runAutomations(...a);
+const submissionCtx = (...a) => ctx.submissionCtx(...a);
+const taskAssigneeList = (...a) => ctx.taskAssigneeList(...a);
 // Reassigned at runtime (Drive connect/disconnect, VAPID boot), so these are
 // read from the context on use — capturing them here would pin the boot value.
 

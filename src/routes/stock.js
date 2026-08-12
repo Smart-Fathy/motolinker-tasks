@@ -2,6 +2,8 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { express, parseCSV, receiver, requireAuth, supabase, upload } = ctx.need('express', 'parseCSV', 'receiver', 'requireAuth', 'supabase', 'upload');
+// Provided by another module, so resolved through the context rather than
+// captured at require time — load order between feature modules is not fixed.
 
 // ─── Car Stock (immediate-delivery inventory) ───────────────────────────────────
 // A CRM-owned list of vehicles physically in stock for immediate delivery. One row
@@ -33,7 +35,7 @@ function parseStockUnits(val) {
     consignee:  String(u.consignee  ?? '').trim(),
     colour:     String(u.colour     ?? u.color ?? '').trim(),
     vin:        String(u.vin        ?? '').trim().toUpperCase(),
-    status:     PO_LINE_STATUS_KEYS.includes(u.status) ? u.status : 'send_to_supplier',
+    status:     ctx.PO_LINE_STATUS_KEYS.includes(u.status) ? u.status : 'send_to_supplier',
     price_list: Number(String(u.price_list ?? '').replace(/[^\d.]/g, '')) || 0,
     discounted: Number(String(u.discounted ?? '').replace(/[^\d.]/g, '')) || 0,
     logistics:  String(u.logistics  ?? '').trim(),

@@ -23,9 +23,11 @@ function grab(name) {
   return src.slice(i, k + 1);
 }
 const PO_KEYS = JSON.parse('["send_to_supplier","in_production","in_logistics","in_customs","delivered"]');
-const sandbox = new Function('PO_LINE_STATUS_KEYS',
+// The module reads shared vocabulary off the context, so give it one
+const sandbox = new Function('ctx', 'PO_LINE_STATUS_KEYS',
   [grab('parseStockColors'), grab('parseStockUnits'), grab('stockBuildRow'), grab('stockUnitGaps')].join('\n')
-  + '\nreturn { parseStockColors, parseStockUnits, stockBuildRow, stockUnitGaps };')(PO_KEYS);
+  + '\nreturn { parseStockColors, parseStockUnits, stockBuildRow, stockUnitGaps };')(
+    { PO_LINE_STATUS_KEYS: PO_KEYS }, PO_KEYS);
 const { stockBuildRow, stockUnitGaps } = sandbox;
 
 const results = [];

@@ -318,4 +318,4 @@ receiver.router.get('/api/dashboard/automations/:id/runs', requireAuth, async (r
 });
 
 
-module.exports = { autoNorm, dealCtx, hoursCtx, leadCtx, requestCtx, runAutomations, scheduleAutomationSweep, submissionCtx, taskCtx };
+module.exports = { autoNorm, createNotification, dealCtx, hoursCtx, leadCtx, memberKeyForAssignee, requestCtx, runAutomations, scheduleAutomationSweep, submissionCtx, taskCtx };
