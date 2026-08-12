@@ -24,6 +24,10 @@ run phase3ui    node tests/phase3ui.js
 # needs a local coturn on 127.0.0.1:3478 for the success path; skips it otherwise
 run relaytest   node tests/relaytest.js
 
+printf '%-14s ' "smoke"
+if out=$(node tools/smoke-routes.js 2>&1); then echo "$out" | tail -1; pass=$((pass+1));
+else echo "$out" | grep -E "BROKEN|exercised" | tail -3; fail=$((fail+1)); fi
+
 printf '\n%-14s ' "routes"
 node tools/route-inventory.js /tmp/ml-routes.txt >/dev/null 2>&1
 if diff -q tools/routes.snapshot.txt /tmp/ml-routes.txt >/dev/null; then

@@ -2,6 +2,21 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { ADMIN_USERNAME, express, quotationImgUpload, receiver, requireAuth, requireEmployeeAuth, supabase, upload } = ctx.need('ADMIN_USERNAME', 'express', 'quotationImgUpload', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'upload');
+// Provided by another module, so resolved through the context rather than
+// captured at require time — load order between feature modules is not fixed.
+const buildLeadsReport = (...a) => ctx.buildLeadsReport(...a);
+const buildQuotationHtml = (...a) => ctx.buildQuotationHtml(...a);
+const buildSalesReport = (...a) => ctx.buildSalesReport(...a);
+const csvSerialize = (...a) => ctx.csvSerialize(...a);
+const customerInScope = (...a) => ctx.customerInScope(...a);
+const dealInScope = (...a) => ctx.dealInScope(...a);
+const empCan = (...a) => ctx.empCan(...a);
+const generateQuoteId = (...a) => ctx.generateQuoteId(...a);
+const logLeadActivity = (...a) => ctx.logLeadActivity(...a);
+const quoteTheme = (...a) => ctx.quoteTheme(...a);
+const renderQuotationPdf = (...a) => ctx.renderQuotationPdf(...a);
+const runAutomations = (...a) => ctx.runAutomations(...a);
+const scopedQuotedIds = (...a) => ctx.scopedQuotedIds(...a);
 // Reassigned at runtime (Drive connect/disconnect, VAPID boot), so these are
 // read from the context on use — capturing them here would pin the boot value.
 

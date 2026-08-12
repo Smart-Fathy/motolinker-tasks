@@ -2,6 +2,8 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { escHtml, express, logLeadActivity, receiver, requireAuth, supabase } = ctx.need('escHtml', 'express', 'logLeadActivity', 'receiver', 'requireAuth', 'supabase');
+// Provided by another module, so resolved through the context rather than
+// captured at require time — load order between feature modules is not fixed.
 // Registered on the context by a module that loads later, so these are looked
 // up when called rather than when required.
 const quoteTheme = (...a) => ctx.quoteTheme(...a);
@@ -14,7 +16,7 @@ const renderQuotationPdf = (...a) => ctx.renderQuotationPdf(...a);
 // client/consignee, spec, PI price, tracking status, VIN and client-file link.
 
 function poLineStatus(key) {
-  return PO_LINE_STATUSES.find(s => s.key === key) || PO_LINE_STATUSES[0];
+  return ctx.PO_LINE_STATUSES.find(s => s.key === key) || ctx.PO_LINE_STATUSES[0];
 }
 const PO_STATUSES = ['draft', 'sent', 'confirmed', 'closed'];
 
@@ -44,7 +46,7 @@ function poBuildItem(raw) {
     accessories:  String(r.accessories || '').trim(),
     payment_term: String(r.payment_term || '').trim(),
     pi_price:     num(r.pi_price),
-    status:       PO_LINE_STATUS_KEYS.includes(r.status) ? r.status : 'send_to_supplier',
+    status:       ctx.PO_LINE_STATUS_KEYS.includes(r.status) ? r.status : 'send_to_supplier',
     vin:          String(r.vin || '').trim(),
     file_link:    String(r.file_link || '').trim(),
   };
@@ -347,4 +349,4 @@ function buildPurchaseOrderHtml(po) {
 }
 
 
-module.exports = { DOC_DEFAULT_ACCESSORIES, DOC_DEFAULT_DOCUMENTS, DOC_DEFAULT_PAYMENT_TERMS, docChromeCss, docFooterHtml, docSupplierBlock, docTermsHtml };
+module.exports = { DOC_DEFAULT_ACCESSORIES, DOC_DEFAULT_DOCUMENTS, DOC_DEFAULT_PAYMENT_TERMS, docChromeCss, docFooterHtml, docSupplierBlock, docTermsHtml, quoteTheme };

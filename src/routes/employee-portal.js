@@ -2,6 +2,12 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { GOOGLE_CLIENT_ID, SMTP_FROM, autoCreateSaleForWonDeal, createMailer, crypto, employeeSessions, express, generateToken, hashPassword, inventorySearch, multer, path, pendingDriveAuth, receiver, requireAuth, requireEmployeeAuth, supabase, verifyPassword } = ctx.need('GOOGLE_CLIENT_ID', 'SMTP_FROM', 'autoCreateSaleForWonDeal', 'createMailer', 'crypto', 'employeeSessions', 'express', 'generateToken', 'hashPassword', 'inventorySearch', 'multer', 'path', 'pendingDriveAuth', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'verifyPassword');
+// Provided by another module, so resolved through the context rather than
+// captured at require time — load order between feature modules is not fixed.
+const autoNorm = (...a) => ctx.autoNorm(...a);
+const createNotification = (...a) => ctx.createNotification(...a);
+const requestCtx = (...a) => ctx.requestCtx(...a);
+const runAutomations = (...a) => ctx.runAutomations(...a);
 
 // ─── Employee Portal ──────────────────────────────────────────────────────────
 receiver.router.get('/employee', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'employee.html')));
@@ -83,7 +89,7 @@ function normEmpPerms(raw) {
   const s = (raw && typeof raw.scope === 'object' && raw.scope) ? raw.scope : {};
   p.scope = {
     assignedOnly: s.assignedOnly === true,
-    dealStages: Array.isArray(s.dealStages) ? s.dealStages.filter(x => DEAL_STAGES.includes(x)) : [],
+    dealStages: Array.isArray(s.dealStages) ? s.dealStages.filter(x => ctx.DEAL_STAGES.includes(x)) : [],
     leadStatuses: Array.isArray(s.leadStatuses) ? s.leadStatuses.map(x => autoNorm(x)).filter(Boolean) : [],
   };
   return p;

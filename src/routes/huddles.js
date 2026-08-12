@@ -2,6 +2,13 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { chatBroadcast, chatCallerIdentity, crypto, express, multer, path, receiver, requireAuth, requireEmployeeAuth, supabase, upload } = ctx.need('chatBroadcast', 'chatCallerIdentity', 'crypto', 'express', 'multer', 'path', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'upload');
+// Provided by another module, so resolved through the context rather than
+// captured at require time — load order between feature modules is not fixed.
+const chatDeleteMsg = (...a) => ctx.chatDeleteMsg(...a);
+const chatEditMsg = (...a) => ctx.chatEditMsg(...a);
+const chatGetMessages = (...a) => ctx.chatGetMessages(...a);
+const chatPeopleKeys = (...a) => ctx.chatPeopleKeys(...a);
+const chatSendMessage = (...a) => ctx.chatSendMessage(...a);
 
 // ─── Group administration + huddles ───────────────────────────────────────────
 // Admin may manage any group; an employee may manage groups they created.

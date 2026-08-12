@@ -2,6 +2,9 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { calcEgp, escHtml, express, fmtNum, generateQuoteId, getIsoWeek, logLeadActivity, quotationImgUpload, receiver, requireAuth, supabase } = ctx.need('calcEgp', 'escHtml', 'express', 'fmtNum', 'generateQuoteId', 'getIsoWeek', 'logLeadActivity', 'quotationImgUpload', 'receiver', 'requireAuth', 'supabase');
+// Provided by another module, so resolved through the context rather than
+// captured at require time — load order between feature modules is not fixed.
+const runAutomations = (...a) => ctx.runAutomations(...a);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── RFQ — Request for Quotation (sent to suppliers) ───────────────────────────
@@ -24,7 +27,7 @@ function rfqBuildItem(raw) {
     trim:        String(r.trim || '').trim(),
     colour:      String(r.colour || r.color || '').trim(),
     year:        String(r.year || '').trim(),
-    accessories: String(r.accessories || '').trim() || DOC_DEFAULT_ACCESSORIES,
+    accessories: String(r.accessories || '').trim() || ctx.DOC_DEFAULT_ACCESSORIES,
     lead_time:   String(r.lead_time || '').trim(),
     fob_price:   money(r.fob_price),
     cif_price:   money(r.cif_price),
@@ -87,8 +90,8 @@ receiver.router.get('/api/dashboard/rfqs/new/defaults', requireAuth, async (req,
       rfq_no: generateRfqNo(),
       rfq_date: new Date().toISOString().slice(0, 10),
       items,
-      payment_terms: DOC_DEFAULT_PAYMENT_TERMS,
-      documents_required: DOC_DEFAULT_DOCUMENTS,
+      payment_terms: ctx.DOC_DEFAULT_PAYMENT_TERMS,
+      documents_required: ctx.DOC_DEFAULT_DOCUMENTS,
       customer_id: customerId || null,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -167,7 +170,7 @@ function buildRfqHtml(r) {
       <td>${escHtml(v.trim || '')}</td>
       <td>${escHtml(v.colour || '')}</td>
       <td class="c">${escHtml(v.year || '')}</td>
-      <td class="acc">${escHtml(v.accessories || DOC_DEFAULT_ACCESSORIES).replace(/\n/g, '<br>')}</td>
+      <td class="acc">${escHtml(v.accessories || ctx.DOC_DEFAULT_ACCESSORIES).replace(/\n/g, '<br>')}</td>
       <td class="c">${escHtml(v.lead_time || '')}</td>
       <td class="r">${v.fob_price ? money(v.fob_price) : ''}</td>
       <td class="r">${v.cif_price ? money(v.cif_price) : ''}</td>

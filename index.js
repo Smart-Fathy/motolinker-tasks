@@ -22,6 +22,8 @@ module.exports = receiver;
 // module its dependencies immediately before requiring it, so what was in scope
 // at that point in the file still is.
 const ctx = require('./src/ctx');
+// The shared vocabulary is read by feature modules through the context.
+Object.assign(ctx, { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL });
 
 const supabase    = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
