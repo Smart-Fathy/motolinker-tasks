@@ -1131,6 +1131,11 @@
                   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .hd-video { width:132px; height:88px; object-fit:cover; display:block; background:#0e0e10; }
   .hd-avatar { width:132px; height:88px; display:flex; align-items:center; justify-content:center; font-size:26px; }
+  /* A real face when we have one, initials when we do not — everyone used to get the
+     same grey microphone glyph, which told you nothing about who was in the call. */
+  .hd-face { width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid var(--border); }
+  .hd-initials { width:46px; height:46px; border-radius:50%; display:flex; align-items:center;
+    justify-content:center; background:var(--border); color:var(--text); font-size:15px; font-weight:700; }
   .hd-controls { display:flex; gap:6px; justify-content:center; flex-wrap:wrap; }
   /* Widget chrome: drag by the header, collapse to a pill, or fill the screen */
   .hd-head { display:flex; align-items:center; gap:8px; cursor:grab; user-select:none;

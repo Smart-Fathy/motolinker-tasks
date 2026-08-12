@@ -26,6 +26,22 @@ function hdNameFor(key) {
   }
   return key === 'admin' ? 'Admin' : key;
 }
+// The same room list already carries member_avatar, which the chat message bubbles
+// render — so a huddle tile can show a real face rather than the grey microphone
+// glyph everyone shared. Guests invited from outside the room have no entry, and the
+// admin account has no employees row at all, so both fall back to initials.
+function hdAvatarFor(key) {
+  for (const r of HDCFG.rooms() || []) {
+    const m = (r.members || []).find(x => x.member_key === key);
+    if (m && m.member_avatar) return m.member_avatar;
+  }
+  return null;
+}
+function hdInitialsFor(key) {
+  const name = hdNameFor(key) || '?';
+  return String(name).trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
+}
+
 function hdSignal(type, to, data) {
   return hdFetch('/huddle/signal', { method: 'POST', body: JSON.stringify({ roomId: _hd.roomId, type, to, data }) });
 }
@@ -213,7 +229,15 @@ async function huddleOnSignal(msg) {
   if (msg.type === 'invite') { hdIncoming(msg); return; }
   if (msg.type === 'media') {
     const p = _hd.peers.get(msg.from);
-    if (p) { p.video = !!(msg.data && (msg.data.cam || msg.data.sharing)); p.sharing = !!(msg.data && msg.data.sharing); hdRenderBar(); }
+    if (p) {
+      // Kept as the authority the stats poll defers to, rather than a value the poll
+      // is free to contradict three seconds later.
+      p.announced = { cam: !!(msg.data && msg.data.cam), sharing: !!(msg.data && msg.data.sharing) };
+      p.video = p.announced.cam || p.announced.sharing;
+      p.sharing = p.announced.sharing;
+      if (!p.video) p.everPainted = false;      // require a fresh frame before showing again
+      hdRenderBar();
+    }
     return;
   }
   if (msg.type === 'decline') { hdToast(esc(msg.fromName || 'They') + ' declined the huddle.'); return; }
@@ -275,7 +299,24 @@ async function hdPollStats() {
       p.rtt = rtt;
       p.stats = { lost, recv, frames };
       p.quality = hdQuality(p);
-      if (frames > prev.frames) p.video = true;   // frames arriving = a real picture
+      // Frame movement is a backstop for a lost 'media' message, not the truth. It
+      // used to be a one-way latch — it could only ever set p.video true — so the tick
+      // straddling someone stopping a share re-raised the flag the stop had just
+      // cleared, and their last frame stayed frozen on everyone's screen. It is
+      // symmetric now, and it never overrides what the peer actually told us.
+      const moving = frames > prev.frames;
+      if (moving) p.stalls = 0; else p.stalls = (p.stalls || 0) + 1;
+      if (p.announced) {
+        p.video = !!(p.announced.cam || p.announced.sharing);
+      } else if (moving) {
+        p.video = true;
+      } else if (p.stalls >= 2) {
+        p.video = false;
+      }
+      // Only reveal a tile once a frame has actually arrived since it was hidden, so a
+      // stale frame held in the compositor can never paint on the way back up.
+      if (p.video && !moving && !p.everPainted) p.video = false;
+      if (moving) p.everPainted = true;
     } catch (_) { /* a closing connection throws; the next tick will settle it */ }
   }
   hdRenderBar();
@@ -337,6 +378,15 @@ function hdSwapVideo(track) {
     t.sender.replaceTrack(track).catch(() => {});
   });
 }
+// iOS does not expose getDisplayMedia to web pages in any browser — not Safari, not
+// Chrome, not Firefox — so the property is simply missing and calling it throws a
+// synchronous TypeError. That used to be swallowed by a bare catch whose comment said
+// "the picker was cancelled", which is why tapping the button on a phone did nothing
+// at all, forever, with no message. Android Chrome does support it.
+function hdCanShareScreen() {
+  return !!(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function');
+}
+
 async function huddleToggleShare() {
   if (!_hd.roomId) return;
   if (_hd.sharing) {
@@ -344,13 +394,26 @@ async function huddleToggleShare() {
     _hd.screen = null; _hd.sharing = false;
     hdSwapVideo(_hd.local.getVideoTracks()[0] || null);
   } else {
+    if (!hdCanShareScreen()) {
+      hdToast('This browser cannot share a screen. On an iPhone or iPad no browser can — '
+            + 'Apple does not allow it. You can turn your camera on instead.');
+      return;
+    }
     try {
       _hd.screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const track = _hd.screen.getVideoTracks()[0];
       track.onended = () => { if (_hd.sharing) huddleToggleShare(); };   // browser's own "Stop sharing"
       hdSwapVideo(track);
       _hd.sharing = true;
-    } catch (_) { /* the picker was cancelled */ }
+    } catch (e) {
+      // Cancelling the picker is not a failure and must stay silent. Anything else is
+      // a real reason the user cannot otherwise discover.
+      const name = (e && e.name) || '';
+      if (name !== 'NotAllowedError' && name !== 'AbortError') {
+        hdToast('Screen sharing did not start: ' + ((e && e.message) || name || 'unknown reason'));
+      }
+      _hd.screen = null;
+    }
   }
   hdAnnounceAndRender();
 }
@@ -428,7 +491,8 @@ function hdTileEl(tiles, id) {
   el.setAttribute('data-tile', id);
   el.innerHTML = '<div class="hd-tile-name"></div>'
     + '<video class="hd-video" autoplay playsinline></video>'
-    + '<div class="hd-avatar"><i data-lucide="mic" style="width:22px;height:22px"></i></div>'
+    + '<div class="hd-avatar"><img class="hd-face" alt="" style="display:none">'
+    +   '<span class="hd-initials"></span></div>'
     + '<button class="hd-full" style="display:none" title="Full screen">⛶</button>'
     + '<span class="hd-q" data-q="0"><i></i><i></i><i></i></span>';
   el.querySelector('.hd-full').addEventListener('click', () => hdFullscreen(el));
@@ -458,7 +522,7 @@ function hdFullscreen(tile) {
 // behind the avatar when there is no picture, and display:none does not stop audio.
 // Creating the element only once video arrived is what made audio-only huddles
 // silent: the audio was being received and decoded, but nothing was playing it.
-function hdPaintTile(el, label, stream, showVideo, mute, peer) {
+function hdPaintTile(el, label, stream, showVideo, mute, peer, key) {
   const nameEl = el.querySelector('.hd-tile-name');
   if (nameEl.textContent !== label) nameEl.textContent = label;
   const v = el.querySelector('.hd-video');
@@ -468,7 +532,26 @@ function hdPaintTile(el, label, stream, showVideo, mute, peer) {
     if (stream) { const r = v.play(); if (r && r.catch) r.catch(() => hdAudioBlocked()); }
   }
   v.style.display = showVideo ? '' : 'none';
-  el.querySelector('.hd-avatar').style.display = showVideo ? 'none' : '';
+  const av = el.querySelector('.hd-avatar');
+  av.style.display = showVideo ? 'none' : '';
+  // Updated rather than rebuilt: these tiles are deliberately reused across renders
+  // because they hold the live <video>, and replacing the markup would drop the audio.
+  if (!showVideo) {
+    const face = av.querySelector('.hd-face'), ini = av.querySelector('.hd-initials');
+    // A tile without these is a bug, but losing a face is not worth taking the whole
+    // call down for — hdPaintTile runs on every render for every participant.
+    if (!face || !ini) return;
+    const src = hdAvatarFor(key);
+    if (src) {
+      if (face.getAttribute('src') !== src) face.setAttribute('src', src);
+      face.style.display = ''; ini.style.display = 'none';
+      face.onerror = () => { face.style.display = 'none'; ini.style.display = ''; };
+    } else {
+      face.style.display = 'none'; ini.style.display = '';
+      const txt = hdInitialsFor(key);
+      if (ini.textContent !== txt) ini.textContent = txt;
+    }
+  }
   // Nothing to enlarge when there is no picture
   el.querySelector('.hd-full').style.display = showVideo ? 'flex' : 'none';
   // Quality bars, so everyone can see who is struggling and why
@@ -564,13 +647,14 @@ function hdRenderBar() {
   bar.querySelector('.hd-title').textContent = 'Huddle · ' + (_hd.peers.size + 1);
 
   const selfLabel = 'You' + (_hd.muted ? ' (muted)' : '') + (_hd.sharing ? ' · sharing' : '');
-  hdPaintTile(hdTileEl(tiles, '__self'), selfLabel, _hd.sharing ? _hd.screen : _hd.local, !!(_hd.cam || _hd.sharing), true);
+  hdPaintTile(hdTileEl(tiles, '__self'), selfLabel, _hd.sharing ? _hd.screen : _hd.local,
+              !!(_hd.cam || _hd.sharing), true, null, hdMe());
 
   const peers = [..._hd.peers.entries()];
   peers.forEach(([key, p]) => {
     const label = (p.name || key) + (p.state !== 'connected' ? ' · ' + p.state : '')
       + (p.sharing ? ' · sharing' : '');
-    hdPaintTile(hdTileEl(tiles, key), label, p.stream, !!p.video, false, p);
+    hdPaintTile(hdTileEl(tiles, key), label, p.stream, !!p.video, false, p, key);
   });
 
   const keep = new Set(['__self', ...peers.map(([k]) => k)]);
