@@ -18,6 +18,9 @@ const HOME_WIDGET_IDS = [
 ];
 const HOME_W = [3, 4, 6, 12];
 const HOME_H = [1, 2];
+// Ceiling on rows pulled per table for the summary. Well above today's volumes (806
+// customers), low enough that Home cannot become an unbounded table scan later.
+const HOME_SCAN_CAP = 2000;
 
 function homeLayoutKey(ownerKey) { return `home_layout:${ownerKey}`; }
 
@@ -59,15 +62,27 @@ async function buildHomeSummary({ ownerKey, employee, scope }) {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const today = iso(now).slice(0, 10);
 
+  // Every one of these was an unbounded select. Home is the landing page, so they ran
+  // on every login and every refresh, and they grow with the business. Each is now
+  // capped and explicitly ordered, so what gets dropped is the oldest rather than
+  // whatever the planner happened to return — and the caller is told when a cap bit,
+  // because a count that is quietly short is worse than one labelled partial.
   const [tasksR, leadsR, dealsR, hoursR, stockR, followR] = await Promise.all([
-    supabase.from('tasks').select('id,title,status,priority,due_date,assignee_id,assignee_ids,created_at'),
-    supabase.from('customers').select('id,name,lead_status,assigned_to,created_at'),
-    supabase.from('deals').select('id,stage,budget_egp,assigned_to,closed_at,created_at,customers(assigned_to,lead_status)'),
-    supabase.from('hours_logs').select('employee_id,hours,log_date').gte('log_date', iso(weekAgo).slice(0, 10)),
-    supabase.from('stock_vehicles').select('id,make,model,quantity,colors,units'),
+    supabase.from('tasks').select('id,title,status,priority,due_date,assignee_id,assignee_ids,created_at')
+      .order('created_at', { ascending: false }).limit(HOME_SCAN_CAP),
+    supabase.from('customers').select('id,name,lead_status,assigned_to,created_at')
+      .order('created_at', { ascending: false }).limit(HOME_SCAN_CAP),
+    supabase.from('deals').select('id,stage,budget_egp,assigned_to,closed_at,created_at,customers(assigned_to,lead_status)')
+      .order('created_at', { ascending: false }).limit(HOME_SCAN_CAP),
+    supabase.from('hours_logs').select('employee_id,hours,log_date')
+      .gte('log_date', iso(weekAgo).slice(0, 10)).limit(HOME_SCAN_CAP),
+    supabase.from('stock_vehicles').select('id,make,model,quantity,colors,units')
+      .order('id', { ascending: false }).limit(HOME_SCAN_CAP),
     supabase.from('lead_followups').select('id,customer_id,due_at,status,note,assigned_to')
       .neq('status', 'done').order('due_at', { ascending: true }).limit(200),
   ]);
+  const partial = Object.entries({ tasks: tasksR, leads: leadsR, deals: dealsR, stock: stockR })
+    .filter(([, r]) => (r.data || []).length >= HOME_SCAN_CAP).map(([k]) => k);
 
   // A task can have several assignees; taskAssigneeList handles the legacy single column
   const myTask = t => !employee || taskAssigneeList(t).includes(String(employee.id));
@@ -114,8 +129,32 @@ async function buildHomeSummary({ ownerKey, employee, scope }) {
     })(),
     unread_chat: 0,          // the client already tracks this live over SSE
     notifications: 0,        // ditto
+    partial,                 // tables where the scan cap bit, so the totals are a floor
     generated_at: iso(now),
   };
+}
+
+// ── Cache ─────────────────────────────────────────────────────────────────────
+// Home is the landing page: every login and every refresh calls this, and the six
+// queries behind it do not change meaningfully within a minute. Cached the same way
+// and for the same reason as chatProfileMap in src/routes/notifications.js.
+//
+// Keyed by owner, never shared. An employee's Home is filtered to their own rows, so
+// a cache hit crossing owners would show a rep the company's numbers — the entry is
+// keyed by ownerKey and the key is never derived from anything the caller sends.
+const HOME_TTL = 60000;
+const _homeCache = new Map();   // ownerKey → { at, data }
+
+async function homeSummaryCached(args) {
+  const hit = _homeCache.get(args.ownerKey);
+  if (hit && Date.now() - hit.at < HOME_TTL) return hit.data;
+  const data = await buildHomeSummary(args);
+  _homeCache.set(args.ownerKey, { at: Date.now(), data });
+  // Bounded so a large roster cannot grow this without limit; entries are cheap to rebuild.
+  if (_homeCache.size > 200) {
+    for (const [k, v] of _homeCache) if (Date.now() - v.at >= HOME_TTL) _homeCache.delete(k);
+  }
+  return data;
 }
 
 function mountHomeRoutes(base, guard, resolve) {
@@ -131,7 +170,7 @@ function mountHomeRoutes(base, guard, resolve) {
     try {
       const { ownerKey, employee } = resolve(req);
       const scope = employee ? await empReportScope(employee) : null;
-      res.json(await buildHomeSummary({ ownerKey, employee, scope }));
+      res.json(await homeSummaryCached({ ownerKey, employee, scope }));
     } catch (e) { console.error('[home]', e); res.status(500).json({ error: e.message }); }
   });
 }
