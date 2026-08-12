@@ -17,6 +17,7 @@ CREATE TABLE stock_vehicles (id BIGSERIAL PRIMARY KEY, make TEXT, model TEXT, tr
 -- supplier_id already present and unconstrained, as it is on the live database
 CREATE TABLE purchase_orders (id BIGSERIAL PRIMARY KEY, po_number TEXT UNIQUE NOT NULL,
   supplier TEXT DEFAULT '', supplier_id BIGINT, items JSONB DEFAULT '[]'::jsonb);
+CREATE TABLE sales (id BIGSERIAL PRIMARY KEY, client TEXT DEFAULT '', client_file TEXT DEFAULT '');
 INSERT INTO suppliers (name) VALUES ('Yu Motors'), ('Uniland'), ('  Weifang ');
 INSERT INTO stock_vehicles (make, model, quantity, colors, units) VALUES
   ('BYD','Seal',   5, '[{"name":"White","qty":3},{"name":"Black","qty":2}]', '[]'),
@@ -29,6 +30,7 @@ SQL
 
 psql -h $D/sock -p 54329 -U postgres -d mig -q -v ON_ERROR_STOP=1 -f migrations/005_stock_vin.sql >/dev/null || exit 1
 psql -h $D/sock -p 54329 -U postgres -d mig -q -v ON_ERROR_STOP=1 -f migrations/006_supplier_catalogue.sql >/dev/null || exit 1
+psql -h $D/sock -p 54329 -U postgres -d mig -q -v ON_ERROR_STOP=1 -f migrations/007_sales_client_file_meta.sql >/dev/null || exit 1
 
 ck "a counted model keeps its figure as a prompt, not as stock" \
    "$($Q -c "SELECT quantity||'/'||legacy_count FROM stock_vehicles WHERE model='Seal'")" "0/5"
@@ -54,6 +56,10 @@ ck "a unit with no supplier is untouched" \
    "$($Q -c "SELECT count(*) FROM stock_vehicles sv, jsonb_array_elements(sv.units) u WHERE u->>'vin'='V4' AND NOT (u ? 'supplier_id')")" "1"
 ck "a pre-existing supplier_id still gets its foreign key" \
    "$($Q -c "SELECT count(*) FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu USING (constraint_name) WHERE tc.constraint_type='FOREIGN KEY' AND kcu.table_name='purchase_orders' AND kcu.column_name='supplier_id'")" "1"
+ck "sales can record where a client file lives" \
+   "$($Q -c "SELECT count(*) FROM information_schema.columns WHERE table_name='sales' AND column_name='client_file_meta'")" "1"
+ck "and the existing client_file link is untouched" \
+   "$($Q -c "SELECT count(*) FROM information_schema.columns WHERE table_name='sales' AND column_name='client_file'")" "1"
 ck "the new tables exist" \
    "$($Q -c "SELECT count(*) FROM information_schema.tables WHERE table_name IN ('supplier_vehicles','supplier_docs')")" "2"
 
@@ -61,6 +67,7 @@ ck "the new tables exist" \
 BEFORE=$($Q -c "SELECT md5(string_agg(t::text,'|' ORDER BY t::text)) FROM (SELECT id,quantity,legacy_count,units FROM stock_vehicles) t")
 psql -h $D/sock -p 54329 -U postgres -d mig -q -v ON_ERROR_STOP=1 -f migrations/005_stock_vin.sql >/dev/null
 psql -h $D/sock -p 54329 -U postgres -d mig -q -v ON_ERROR_STOP=1 -f migrations/006_supplier_catalogue.sql >/dev/null
+psql -h $D/sock -p 54329 -U postgres -d mig -q -v ON_ERROR_STOP=1 -f migrations/007_sales_client_file_meta.sql >/dev/null
 AFTER=$($Q -c "SELECT md5(string_agg(t::text,'|' ORDER BY t::text)) FROM (SELECT id,quantity,legacy_count,units FROM stock_vehicles) t")
 ck "applying both a second time changes nothing" "$AFTER" "$BEFORE"
 

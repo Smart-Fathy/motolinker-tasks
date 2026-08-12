@@ -1847,6 +1847,74 @@ const PO_LINE_STATUSES = [
   { key: 'delivered',        label: 'Car Delivered to moto', bg: '#d7f2d9', fg: '#1e6b2a' },
 ];
 const PO_STATUS = { draft: 'Draft', sent: 'Sent', confirmed: 'Confirmed', closed: 'Closed' };
+// ── Supplier catalogue picker ────────────────────────────────────────────────
+// RFQ and purchase-order lines were free text, so the same car got typed three
+// different ways and prices drifted from what the supplier actually quoted. Both
+// editors can now pull a line straight from supplier_vehicles. Typing still works —
+// this only pre-fills.
+let _supCatalogue = null;
+async function supCatalogue() {
+  if (_supCatalogue) return _supCatalogue;
+  try {
+    const r = await apiFetch('/api/dashboard/supplier-vehicles');
+    _supCatalogue = r.ok ? await r.json() : [];
+  } catch (_) { _supCatalogue = []; }
+  return _supCatalogue;
+}
+function supCatLabel(v) {
+  return [v.brand, v.model, v.trim].filter(Boolean).join(' ') || '(unnamed)';
+}
+async function openCataloguePicker(target) {
+  const rows = await supCatalogue();
+  if (!rows.length) {
+    hdToast('No supplier vehicles yet — add them under Suppliers → Open → Vehicles.');
+    return;
+  }
+  hdSheet('Add from supplier catalogue', `
+    <input class="hd-input" id="supcat-q" placeholder="Search brand, model or supplier…"
+           oninput="supCatFilter(this.value)" style="width:100%;margin-bottom:10px">
+    <div class="hd-list" id="supcat-list" style="max-height:320px">${supCatRows(rows)}</div>`,
+    `<button class="btn btn-outline btn-sm" onclick="hdSheetClose()">Cancel</button>
+     <button class="btn btn-primary btn-sm" onclick="cataloguePick('${target}')">Add selected</button>`);
+}
+function supCatRows(rows) {
+  const money = n => (Number(n) || 0).toLocaleString();
+  return rows.map(v => `<label class="hd-row">
+      <input type="checkbox" class="supcat-cb" value="${esc(String(v.id))}">
+      <span style="flex:1;min-width:0">
+        <span style="display:block">${esc(supCatLabel(v))}${v.model_year ? ' · ' + v.model_year : ''}</span>
+        <span style="font-size:11px;color:var(--muted)">${esc(v.supplier_name || '')}${
+          v.fob_price ? ' · ' + esc(v.currency || 'USD') + ' ' + money(v.fob_price) : ''}${
+          v.lead_time ? ' · ' + esc(v.lead_time) : ''}</span>
+      </span></label>`).join('');
+}
+function supCatFilter(q) {
+  const term = String(q || '').trim().toLowerCase();
+  const rows = (_supCatalogue || []).filter(v => !term
+    || supCatLabel(v).toLowerCase().includes(term)
+    || String(v.supplier_name || '').toLowerCase().includes(term));
+  document.getElementById('supcat-list').innerHTML = rows.length ? supCatRows(rows)
+    : '<div style="font-size:12px;color:var(--muted);padding:8px">Nothing matched that.</div>';
+}
+function cataloguePick(target) {
+  const ids = new Set([...document.querySelectorAll('.supcat-cb:checked')].map(c => c.value));
+  const picked = (_supCatalogue || []).filter(v => ids.has(String(v.id)));
+  if (!picked.length) { hdToast('Pick at least one vehicle.'); return; }
+  picked.forEach(v => {
+    if (target === 'rfq') {
+      rfqAddRow({ brand: v.brand, model: v.model, trim: v.trim, year: v.model_year || '',
+                  accessories: v.accessories || '', lead_time: v.lead_time || '',
+                  fob_price: v.fob_price == null ? '' : v.fob_price });
+    } else {
+      poAddRow({ brand: v.brand, model: v.model, trim: v.trim, year: v.model_year || '',
+                 accessories: v.accessories || '', units: 1,
+                 pi_price: v.fob_price == null ? '' : v.fob_price });
+    }
+  });
+  hdSheetClose();
+  hdToast(picked.length === 1 ? 'Line added from the catalogue.' : picked.length + ' lines added.');
+}
+
 const PO_COLS = [
   ['client', 'CLIENT', 150], ['consignee', 'CONSIGNEE', 150], ['units', 'UNITS', 62],
   ['brand', 'BRAND', 92], ['model', 'MODEL', 110], ['trim', 'TRIM', 120],
@@ -1944,6 +2012,8 @@ async function openPoForm(id, seedCustomerId) {
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:10px;flex-wrap:wrap">
           <button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="poAddRow()">+ Add vehicle line</button>
+          <button class="btn btn-outline" style="padding:5px 10px;font-size:12px;margin-left:6px" onclick="openCataloguePicker('po')">
+            <i data-lucide="list-plus" style="width:13px;height:13px"></i> From supplier catalogue</button>
           <div id="po-total" style="font-size:13px;font-weight:700;color:var(--primary)"></div>
         </div>
       </div>
@@ -2473,6 +2543,8 @@ async function openRfqForm(id, seedCustomerId) {
           </table>
         </div>
         <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="rfqAddRow()">+ Add line</button>
+        <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px;margin-left:6px" onclick="openCataloguePicker('rfq')">
+          <i data-lucide="list-plus" style="width:13px;height:13px"></i> From supplier catalogue</button>
       </div>
 
       <div><div class="po-lbl">Payment Terms</div><textarea id="rfq-payment" class="form-input" rows="2">${esc(rec.payment_terms || '')}</textarea></div>

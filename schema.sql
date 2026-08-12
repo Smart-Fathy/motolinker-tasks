@@ -817,6 +817,8 @@ CREATE TABLE IF NOT EXISTS sales (
   payment_type     TEXT DEFAULT '',
   delivery_date    DATE,
   client_file      TEXT DEFAULT '',
+  -- Drive reference for client_file (see migrations/007)
+  client_file_meta JSONB DEFAULT '{}'::jsonb,
   created_by       TEXT DEFAULT 'dashboard',
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
