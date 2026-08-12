@@ -133,12 +133,19 @@ async function driveAdminToken() {
   }
 }
 
-// 100 MB: client paperwork is scans, and the shared `upload` is capped at 5 MB.
-// Memory storage is fine here because the multipart body needs the whole buffer.
-const driveUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+// 25 MB: client paperwork is scans, and the shared `upload` is capped at 5 MB.
+// The whole file sits in memory because Drive's multipart body needs one buffer, so
+// the cap is really a memory bound — two concurrent uploads at 100 MB was 200 MB
+// resident on a 512 MB instance, which presents as a mystery restart rather than an
+// error. Genuinely large files need Drive's resumable endpoint (see README).
+const DRIVE_MAX_MB = 25;
+const driveUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: DRIVE_MAX_MB * 1024 * 1024 } });
 
+// Callers branch on the return value, so every failure path must return null.
+// Returning res.status(...).json(...) here handed back a truthy response object that
+// the caller then wrote into the database — a circular structure, not a file.
 async function handleDriveUpload(req, res, folder) {
-  if (!req.file) return res.status(400).json({ error: 'No file' });
+  if (!req.file) { res.status(400).json({ error: 'No file' }); return null; }
   try {
     const token = await driveAdminToken();
     const folderId = await driveEnsureFolder(token, folder);
@@ -158,7 +165,7 @@ async function handleDriveUpload(req, res, folder) {
 
 // Multer rejects an oversized file by throwing; without this the request hangs.
 function driveUploadGuard(err, _req, res, next) {
-  if (err && err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'That file is over the 100 MB limit.' });
+  if (err && err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: `That file is over the ${DRIVE_MAX_MB} MB limit.` });
   if (err) return res.status(400).json({ error: err.message });
   next();
 }

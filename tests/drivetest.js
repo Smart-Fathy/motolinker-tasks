@@ -102,20 +102,41 @@ function sandbox(fetchImpl) {
 
   // ── The size guard ──
   {
-    const g = new Function('return ' + src.slice(src.indexOf('function driveUploadGuard')).match(/^function driveUploadGuard[\s\S]*?\n}/)[0])();
+    // The guard names the cap in its message, so the constant has to come along with
+    // it — and it is read out of the source rather than restated here, so the message
+    // and the multer limit can never drift apart in a passing test.
+    const cap = Number(src.match(/const DRIVE_MAX_MB = (\d+)/)[1]);
+    const g = new Function('DRIVE_MAX_MB', 'return ' + src.slice(src.indexOf('function driveUploadGuard')).match(/^function driveUploadGuard[\s\S]*?\n}/)[0])(cap);
     let code = 0, payload = null;
     const res = { status(s) { code = s; return this; }, json(p) { payload = p; } };
     g({ code: 'LIMIT_FILE_SIZE' }, {}, res, () => {});
     c('an oversized file is refused with 413 and a readable reason',
-      code === 413 && /100 MB/.test(payload.error), JSON.stringify({ code, payload }));
+      code === 413 && new RegExp(cap + ' MB').test(payload.error), JSON.stringify({ code, payload }));
     code = 0; let nexted = false;
     g(null, {}, res, () => { nexted = true; });
     c('a normal upload passes straight through', nexted && code === 0);
   }
 
-  c('the cap is 100 MB, not the shared 5 MB limit',
-    /driveUpload = multer\(.*fileSize: 100 \* 1024 \* 1024/.test(src),
+  // 25 MB is a memory bound, not a Drive limit: the whole file is buffered for the
+  // length of the request. Still well above the shared 5 MB upload.
+  c('the cap is 25 MB, above the shared 5 MB limit and below a memory hazard',
+    /const DRIVE_MAX_MB = 25;/.test(src)
+    && /driveUpload = multer\(.*fileSize: DRIVE_MAX_MB \* 1024 \* 1024/.test(src),
     (src.match(/const driveUpload = multer\(.*/) || [''])[0]);
+
+  // The no-file path returns null like every other failure path. It used to return
+  // the response object, which the caller then wrote to the database as a client
+  // file reference — a circular structure, and a 500 on top of an already-sent 400.
+  {
+    const fn = src.slice(src.indexOf('async function handleDriveUpload'))
+      .match(/^async function handleDriveUpload[\s\S]*?\n}/)[0];
+    const h = new Function('return ' + fn)();
+    let code = 0;
+    const res = { status(s) { code = s; return this; }, json() { return { sent: true }; } };
+    const out = await h({ file: null }, res, 'Client Files');
+    c('a request with no file answers 400 and returns null, not the response object',
+      out === null && code === 400, JSON.stringify({ code, out: typeof out }));
+  }
 
   console.log('\n' + results.filter(Boolean).length + '/' + results.length + ' passed');
   process.exit(results.every(Boolean) ? 0 : 1);

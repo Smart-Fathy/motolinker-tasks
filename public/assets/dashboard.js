@@ -2390,7 +2390,7 @@ function openSaleForm(id) {
           <button class="btn btn-outline btn-sm" ${id ? '' : 'disabled title="Save the sale first"'}
             onclick="document.getElementById('sale-file-input').click()">
             <i data-lucide="upload" style="width:13px;height:13px"></i> ${x?.client_file ? 'Replace file' : 'Upload file'}</button>
-          <span style="font-size:11px;color:var(--muted)">Google Drive · up to 100 MB</span>
+          <span style="font-size:11px;color:var(--muted)">Google Drive · up to 25 MB</span>
         </div>
         <div id="sale-file-msg" style="font-size:12px;margin-top:6px"></div>
         <input type="hidden" id="sale-client_file" value="${esc(x?.client_file || '')}"></div>`;
@@ -8090,7 +8090,15 @@ function homeRender() {
     return;
   }
 
-  grid.innerHTML = _home.widgets.map((w, i) => {
+  // Counts built from a capped scan are a floor, not a total. Saying so is the whole
+  // point of the cap being visible — a number that is quietly short is worse than one
+  // labelled incomplete.
+  const capped = (_home.data && _home.data.partial) || [];
+  const notice = capped.length
+    ? `<div class="home-partial"><i data-lucide="info" style="width:13px;height:13px"></i>
+         Showing the most recent records only (${capped.map(esc).join(', ')}) — totals below are a minimum.</div>`
+    : '';
+  grid.innerHTML = notice + _home.widgets.map((w, i) => {
     const def = HOME_WIDGETS[w.id];
     if (!def) return '';
     return `<section class="home-w" style="grid-column:span ${w.w}" data-h="${w.h}" data-i="${i}"

@@ -359,7 +359,15 @@ Drive/Sheets browser, so nothing new needed connecting.
 
 Uploads land in `MotoLinker / Client Files` and `MotoLinker / Suppliers`, created on
 first use. The app stores the Drive link and file id; the file itself never passes
-through Supabase. Cap is **100 MB** per file.
+through Supabase. Cap is **25 MB** per file.
+
+That cap is a memory bound, not a Drive limit. Drive's multipart upload wants the whole
+file as one body, so the file is buffered in memory for the length of the request — at
+100 MB, two concurrent uploads were 200 MB resident, which on a small instance shows up
+as a restart rather than an error. 25 MB covers scanned paperwork comfortably. If
+genuinely large files are ever needed, the fix is Drive's resumable upload endpoint
+(`uploadType=resumable`), which streams in chunks and never holds the whole file —
+worth building then, not speculatively.
 
 **If Drive is not connected the upload is refused** with "Connect Google Drive first"
 rather than quietly falling back to Supabase — a silent fallback is how a free tier
