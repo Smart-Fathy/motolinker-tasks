@@ -1172,14 +1172,22 @@
   .hd-q[data-q="3"] i { opacity:1; }
   /* Full screen: the tile is sized for a thumbnail, so the crop has to go or a
      shared screen loses its edges — exactly the content someone opened this for. */
-  .hd-tile:fullscreen { width:100vw; height:100vh; border:none; border-radius:0; background:#000; }
-  .hd-tile:fullscreen .hd-video { width:100vw; height:100vh; object-fit:contain; }
-  .hd-tile:fullscreen .hd-tile-name { font-size:14px; padding:10px 16px; }
-  .hd-tile:fullscreen .hd-full { width:34px; height:34px; font-size:17px; top:14px; right:14px; }
-  .hd-tile:-webkit-full-screen { width:100vw; height:100vh; border:none; border-radius:0; background:#000; }
-  .hd-tile:-webkit-full-screen .hd-video { width:100vw; height:100vh; object-fit:contain; }
-  .hd-tile:-webkit-full-screen .hd-tile-name { font-size:14px; padding:10px 16px; }
-  .hd-tile:-webkit-full-screen .hd-full { width:34px; height:34px; font-size:17px; top:14px; right:14px; }
+  /* Scoped with #hd-bar deliberately. Unscoped these are (0,3,0) and lose to
+     `#hd-bar.max .hd-video` at (1,2,0) — an id outranks any number of classes — so with
+     the widget maximised a shared screen stayed at its ~440x300 thumbnail size in the
+     corner of a black full-screen tile. Going full screen promotes the element to the
+     top layer but does not reparent it, so the .max rules still match. 100%/100% rather
+     than viewport units: 100vh overshoots the full-screen box under a mobile toolbar. */
+  #hd-bar .hd-tile:fullscreen { width:100vw; height:100vh; border:none; border-radius:0; background:#000; }
+  #hd-bar .hd-tile:fullscreen .hd-video { width:100%; height:100%; object-fit:contain; }
+  #hd-bar .hd-tile:fullscreen .hd-avatar { width:100%; height:100%; }
+  #hd-bar .hd-tile:fullscreen .hd-tile-name { font-size:14px; padding:10px 16px; }
+  #hd-bar .hd-tile:fullscreen .hd-full { width:34px; height:34px; font-size:17px; top:14px; right:14px; }
+  #hd-bar .hd-tile:-webkit-full-screen { width:100vw; height:100vh; border:none; border-radius:0; background:#000; }
+  #hd-bar .hd-tile:-webkit-full-screen .hd-video { width:100%; height:100%; object-fit:contain; }
+  #hd-bar .hd-tile:-webkit-full-screen .hd-avatar { width:100%; height:100%; }
+  #hd-bar .hd-tile:-webkit-full-screen .hd-tile-name { font-size:14px; padding:10px 16px; }
+  #hd-bar .hd-tile:-webkit-full-screen .hd-full { width:34px; height:34px; font-size:17px; top:14px; right:14px; }
   .hd-btn { border:1px solid var(--border); background:var(--bg); color:var(--text); border-radius:9px;
             padding:7px 10px; font-size:14px; cursor:pointer; line-height:1; }
   .hd-btn:hover { border-color:var(--primary); }

@@ -113,8 +113,11 @@ async function huddleStart(roomId, withVideo) {
     hdToast('Could not access your microphone. Check the browser permission.');
     return;
   }
-  _hd.roomId = roomId; _hd.cam = !!withVideo; _hd.muted = false; _hd.sharing = false;
+  // ICE first: committing roomId opens the gate on incoming signals, and an offer
+  // arriving before the relay config lands would build a connection with no STUN and
+  // no TURN — host candidates only, which fails on any real network.
   await hdIce();
+  _hd.roomId = roomId; _hd.cam = !!withVideo; _hd.muted = false; _hd.sharing = false;
   hdHideJoinChip();
   hdRenderBar();
   let r = null;
@@ -122,6 +125,11 @@ async function huddleStart(roomId, withVideo) {
   catch (_) {}
   if (!r || r.error) { hdToast((r && r.error) || 'Could not join the huddle.'); huddleLeave(); return; }
   _hd.roster = r.participants || [];
+  // Dial from the join response as well as from the roster frame. Signalling rides the
+  // chat stream, and a joiner whose stream has not finished registering misses its own
+  // roster broadcast — if it also holds the smaller key, nobody calls that pair at all
+  // and the two sit in silence. hdCall is idempotent, so doing both is free.
+  hdDialRoster();
   hdStartStats();
   // Ring everyone else in the conversation; they get an incoming-huddle prompt.
   hdRoomMemberKeys(roomId).forEach(k => { if (k !== hdMe()) hdSignal('invite', k).catch(() => {}); });
@@ -156,7 +164,16 @@ function hdPeer(key) {
   // onto it goes nowhere. That is why sharing a screen only ever worked in one
   // direction: the offerer's share arrived, the answerer's silently did not.
   if (hdMe() < key && !pc.getSenders().some(s => s.track && s.track.kind === 'video')) {
-    pc.addTransceiver('video', { direction: 'sendrecv' });
+    const vt = pc.addTransceiver('video', { direction: 'sendrecv' });
+    // Someone joining mid-share must get the picture too. _hd.local carries the camera,
+    // so a late joiner always saw that — but a screen share lives in its own stream and
+    // only ever reached peers through hdSwapVideo at the moment it was toggled. A peer
+    // created afterwards got an empty sender while hdBroadcastMedia announced
+    // sharing:true: a tile claiming a picture and showing none.
+    if (_hd.sharing && _hd.screen) {
+      const st = _hd.screen.getVideoTracks()[0];
+      if (st) vt.sender.replaceTrack(st).catch(() => {});
+    }
   }
   // Safety net for any m-line that genuinely appears later. Only the designated
   // offerer may renegotiate, and never before the first exchange has settled,
@@ -192,6 +209,23 @@ function hdPeer(key) {
   return entry;
 }
 
+// Glare rule: only the lexicographically smaller key offers, so two peers never
+// negotiate against each other. Idempotent — an existing peer is never re-dialled.
+function hdDialRoster() {
+  _hd.roster.forEach(p => {
+    if (p.key !== hdMe() && !_hd.peers.has(p.key) && hdMe() < p.key) hdCall(p.key);
+  });
+}
+
+// Candidates parked while there was no remote description to hang them on.
+async function hdFlushIce(entry) {
+  const queued = entry.pendingIce || [];
+  entry.pendingIce = [];
+  for (const c of queued) {
+    try { await entry.pc.addIceCandidate(new RTCIceCandidate(c)); } catch (_) {}
+  }
+}
+
 async function hdCall(key) {
   const entry = hdPeer(key);
   const { pc } = entry;
@@ -209,11 +243,7 @@ async function huddleOnSignal(msg) {
   if (msg.type === 'roster') {
     if (msg.roomId !== _hd.roomId) { hdNoteRoster(msg); return; }
     _hd.roster = msg.participants || [];
-    // Glare rule: only the lexicographically smaller key offers, so two peers
-    // never negotiate against each other.
-    _hd.roster.forEach(p => {
-      if (p.key !== hdMe() && !_hd.peers.has(p.key) && hdMe() < p.key) hdCall(p.key);
-    });
+    hdDialRoster();
     [..._hd.peers.keys()].forEach(k => {
       if (!_hd.roster.some(p => p.key === k)) {
         try { _hd.peers.get(k).pc.close(); } catch (_) {}
@@ -256,16 +286,32 @@ async function huddleOnSignal(msg) {
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     entry.negotiated = true;
+    await hdFlushIce(entry);
+    // Same for the answering side, once the offer has built the m-line to swap onto.
+    if (_hd.sharing && _hd.screen) {
+      const st = _hd.screen.getVideoTracks()[0];
+      const t = hdVideoTransceiver(pc);
+      if (st && t) t.sender.replaceTrack(st).catch(() => {});
+    }
     hdSignal('answer', from, answer).catch(() => {});
   } else if (msg.type === 'answer') {
     const p = _hd.peers.get(from);
     if (p && p.pc.signalingState !== 'stable') {
       await p.pc.setRemoteDescription(new RTCSessionDescription(msg.data));
       p.negotiated = true;
+      await hdFlushIce(p);
     }
   } else if (msg.type === 'ice') {
     const p = _hd.peers.get(from);
-    if (p && msg.data) { try { await p.pc.addIceCandidate(new RTCIceCandidate(msg.data)); } catch (_) {} }
+    if (!p || !msg.data) return;
+    // A candidate routinely arrives before the description it belongs to: this handler
+    // is async and the SSE listener does not await it, so an ice frame can be processed
+    // while the offer above is still suspended on setRemoteDescription — and each
+    // signal is its own fire-and-forget POST, so they race in flight anyway.
+    // addIceCandidate rejects in that window, and the candidate used to be swallowed
+    // for good, quietly degrading or killing that one pair.
+    if (!p.pc.remoteDescription) { (p.pendingIce = p.pendingIce || []).push(msg.data); return; }
+    try { await p.pc.addIceCandidate(new RTCIceCandidate(msg.data)); } catch (_) {}
   }
 }
 
@@ -543,9 +589,23 @@ function hdPaintTile(el, label, stream, showVideo, mute, peer, key) {
   if (nameEl.textContent !== label) nameEl.textContent = label;
   const v = el.querySelector('.hd-video');
   v.muted = !!mute;                        // only ever our own tile, or we echo
-  if (v.srcObject !== (stream || null)) {
-    v.srcObject = stream || null;
-    if (stream) { const r = v.play(); if (r && r.catch) r.catch(() => hdAudioBlocked()); }
+  // Follow the TRACKS, not the stream object. hdPeer creates entry.stream empty and
+  // ontrack mutates that same object, so an identity check binds the element to an
+  // empty stream on the first render — which for the offerer happens before any media
+  // arrives — plays nothing, and then never rebinds or replays when the audio turns up.
+  // That rejected play() on an empty stream is also what raised "your browser blocked
+  // the sound", and the click handler it installed is why a call would start working
+  // the instant the user clicked anything, screen-share button included.
+  const sig = stream ? stream.getTracks().map(t => t.id).join(',') : '';
+  if (v.dataset.sig !== sig) {
+    v.dataset.sig = sig;
+    if (sig) {
+      v.srcObject = stream;
+      const r = v.play();
+      if (r && r.catch) r.catch(() => hdAudioBlocked());
+    } else {
+      v.srcObject = null;          // nothing to play yet; binding empty is the bug
+    }
   }
   v.style.display = showVideo ? '' : 'none';
   const av = el.querySelector('.hd-avatar');
