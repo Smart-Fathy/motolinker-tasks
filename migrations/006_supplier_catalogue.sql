@@ -44,8 +44,24 @@ CREATE INDEX IF NOT EXISTS idx_supplier_docs_supplier ON supplier_docs (supplier
 ALTER TABLE IF EXISTS public.supplier_docs ENABLE ROW LEVEL SECURITY;
 
 -- ── Purchases point at a supplier record, not a typed-in name ────────────────
-ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_id BIGINT
-  REFERENCES suppliers(id) ON DELETE SET NULL;
+-- The column already exists on some deployments (added earlier without a foreign
+-- key). ADD COLUMN IF NOT EXISTS would skip the whole statement there, constraint
+-- and all, so the reference is added separately and guarded on its own.
+ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_id BIGINT;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu USING (constraint_name)
+     WHERE tc.constraint_type = 'FOREIGN KEY'
+       AND kcu.table_name = 'purchase_orders'
+       AND kcu.column_name = 'supplier_id'
+  ) THEN
+    ALTER TABLE purchase_orders
+      ADD CONSTRAINT purchase_orders_supplier_id_fkey
+      FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier ON purchase_orders (supplier_id);
 
 -- Backfill by exact name, case- and whitespace-insensitive. Deliberately strict:
