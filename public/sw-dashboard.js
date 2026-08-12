@@ -1,5 +1,5 @@
-const CACHE = 'motolinker-dash-v65';
-const SHELL = ['/dashboard', '/manifest-dashboard.json', '/help-docs.js'];
+const CACHE = 'motolinker-dash-v66';
+const SHELL = ['/dashboard', '/manifest-dashboard.json', '/help-docs.js', '/assets/dashboard.css', '/assets/dashboard.js'];
 const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com', 'cdn.jsdelivr.net'];
 
 self.addEventListener('install', e => {
@@ -55,7 +55,7 @@ self.addEventListener('fetch', e => {
   }
 
   // Icons and manifests — cache-first
-  if (url.pathname.startsWith('/icons/') || url.pathname.startsWith('/manifest-dashboard')) {
+  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/') || url.pathname.startsWith('/manifest-dashboard')) {
     e.respondWith(
       caches.match(request).then(hit => {
         if (hit) return hit;

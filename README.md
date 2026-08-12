@@ -384,3 +384,50 @@ kept solely to prompt for what to enter.
 supplier records by exact name match, case-insensitively. Anything it cannot match
 confidently is left unlinked rather than guessed — the file ends with two queries that
 list exactly what needs setting by hand.
+
+
+## 🗂 Repository layout
+
+```
+index.js              boot, config, auth, Google tokens, chat/notifications core
+src/ctx.js            the shared context feature modules pull their deps from
+src/lib/constants.js  domain vocabulary used across features
+src/routes/*.js       one module per feature (stock, suppliers, rfq, huddles, …)
+public/*.html         page markup only
+public/assets/*.{css,js}   the portals' styles and application code
+tools/route-inventory.js   dumps every registered route, in order
+tests/                browser, unit and migration suites
+```
+
+`index.js` hands each feature module its dependencies immediately before requiring
+it, so whatever was in scope at that point in the file still is. Modules pull them
+with `ctx.need(...)`, which throws naming the key if something is missing — a typo
+becomes a boot failure rather than a mystery crash on some request later. A handful
+of helpers are registered by a module that loads after the one using them; those are
+looked up when called instead, and say so in a comment.
+
+### Route order is load-bearing
+
+`/huddle/ice` must stay ahead of `/huddle/:roomId`, and there are other pairs like
+it, so the split had to preserve registration *order*, not just the set of routes.
+`tools/routes.snapshot.txt` was captured before the split and is byte-identical to
+what the modular version registers:
+
+```
+node tools/route-inventory.js out.txt && diff tools/routes.snapshot.txt out.txt
+```
+
+`bash tests/run.sh` runs every suite and finishes with that check. Regenerate the
+snapshot only when routes genuinely change, and say so in the commit.
+
+### Tests
+
+```
+bash tests/run.sh
+```
+
+They drive the shipped code rather than a copy: the browser suites slice the real
+module out of `public/assets/*.js` (and the real stylesheet, since some behaviour is
+CSS), the WebRTC suite runs three peers with fake media devices, and the migration
+suite applies the real SQL to a throwaway Postgres and asserts the resulting rows.
+The relay suite needs a local coturn on `127.0.0.1:3478` for its success case.
