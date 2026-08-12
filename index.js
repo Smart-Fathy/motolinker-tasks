@@ -11,6 +11,9 @@ const nodemailer = require('nodemailer');
 // an alias so the existing route registrations stay unchanged.
 const expressApp = express();
 const receiver = { router: expressApp, app: expressApp };
+// Exported so tooling can inspect the app without starting it — the route-inventory
+// check that guards this restructure walks receiver.app's stack.
+module.exports = receiver;
 
 const supabase    = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
