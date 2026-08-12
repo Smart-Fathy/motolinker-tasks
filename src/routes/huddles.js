@@ -265,14 +265,31 @@ receiver.router.delete('/api/employee/chat/rooms/:roomId/messages/:msgId', requi
 // File upload
 const chatUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
+// A pasted screenshot arrives with no usable filename, so the extension cannot come
+// from originalname alone — that produced a key ending in a bare dot and an object
+// the browser then refused to render. The client names what it pastes; this is the
+// second line of defence for anything that reaches here without one.
+const MIME_EXT = {
+  'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp',
+  'image/svg+xml': 'svg', 'application/pdf': 'pdf', 'audio/webm': 'webm', 'audio/ogg': 'ogg',
+};
+function chatUploadExt(file) {
+  const m = /\.([A-Za-z0-9]{1,8})$/.exec(file.originalname || '');
+  if (m) return m[1].toLowerCase();
+  if (MIME_EXT[file.mimetype]) return MIME_EXT[file.mimetype];
+  const sub = String(file.mimetype || '').split('/')[1] || '';
+  return sub.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'bin';
+}
+
 async function handleChatUpload(req, res) {
   if (!req.file) return res.status(400).json({ error: 'No file provided' });
-  const ext  = req.file.originalname.split('.').pop().toLowerCase();
+  const ext  = chatUploadExt(req.file);
   const path = `chat/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
   const { data, error } = await supabase.storage.from('chat-files').upload(path, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
   if (error) return res.status(500).json({ error: error.message });
   const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(data.path);
-  res.json({ url: urlData.publicUrl, name: req.file.originalname, size: req.file.size, type: req.file.mimetype });
+  res.json({ url: urlData.publicUrl, name: req.file.originalname || `attachment.${ext}`,
+             size: req.file.size, type: req.file.mimetype });
 }
 
 receiver.router.post('/api/dashboard/chat/upload', requireAuth, chatUpload.single('file'), handleChatUpload);

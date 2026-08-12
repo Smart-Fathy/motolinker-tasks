@@ -208,6 +208,8 @@ DELETE /api/dashboard/chat/rooms/:roomId/messages/:msgId
 DELETE /api/employee/chat/rooms/:roomId/messages/:msgId
 POST /api/dashboard/chat/upload
 POST /api/employee/chat/upload
+POST /api/dashboard/link-preview
+POST /api/employee/link-preview
 POST /api/dashboard/chat/rooms/:roomId/typing
 POST /api/employee/chat/rooms/:roomId/typing
 POST /api/employee/presence/heartbeat

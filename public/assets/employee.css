@@ -394,6 +394,13 @@
   .comment-composer-bar { display:flex; align-items:center; gap:8px; margin-top:4px; }
   .composer-icon-btn { width:34px; height:34px; border-radius:10px; background:none; border:1px solid var(--border); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:16px; flex-shrink:0; transition:color .15s,border-color .15s,background .15s; }
   .composer-icon-btn:hover { color:var(--primary); border-color:var(--primary); background:rgba(124,106,255,.08); }
+  /* Links inside a message bubble, and the preview card that lands under it. */
+  .chat-link { color:var(--primary); text-decoration:underline; text-underline-offset:2px; word-break:break-word; }
+  .chat-previews { display:flex; flex-direction:column; gap:6px; }
+  .chat-previews:empty { display:none; }
+  /* A pasted screenshot has no filename worth reading, so show the picture. */
+  .chat-attach-thumb { width:34px; height:34px; object-fit:cover; border-radius:6px;
+    border:1px solid var(--border); flex-shrink:0; }
   .gcard { display:flex; align-items:center; gap:10px; margin-top:6px; padding:8px 10px; border:1px solid var(--border); border-radius:12px; background:rgba(255,255,255,.04); text-decoration:none; color:var(--text); max-width:340px; flex-wrap:wrap; transition:border-color .15s, background .15s; }
   .gcard:hover { border-color:var(--primary); background:rgba(255,255,255,.06); }
   .gcard-badge { width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:17px; color:#fff; flex-shrink:0; }

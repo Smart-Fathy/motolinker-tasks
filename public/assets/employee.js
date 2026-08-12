@@ -3236,7 +3236,7 @@ function openChatSse() {
       const el = document.querySelector(`[data-msg-id="${message.id}"]`);
       if (!el) return;
       const bubble = el.querySelector('.chat-msg-bubble');
-      if (bubble) bubble.innerHTML = esc(message.body) + '<span class="chat-edited">(edited)</span>';
+      if (bubble) bubble.innerHTML = chatLinkify(message.body) + '<span class="chat-edited">(edited)</span>';
       const idx = chatMessages.findIndex(m => m.id === message.id);
       if (idx >= 0) chatMessages[idx] = message;
     } catch (_) {}
@@ -3551,7 +3551,8 @@ async function chatOpenRoom(roomId) {
       <input type="file" id="chat-file-input" style="display:none" onchange="chatFileSelected(this)">
       <button class="chat-attach-btn" onclick="document.getElementById('chat-file-input').click()" title="Attach file"><i data-lucide="paperclip" style="width:15px;height:15px"></i></button>
       <button class="chat-emoji-btn" onclick="chatToggleEmoji()" title="Emoji"><i data-lucide="smile" style="width:15px;height:15px"></i></button>
-      <textarea class="chat-input" id="chat-input" rows="1" placeholder="Message ${esc(name)}…" onkeydown="chatHandleKey(event)" oninput="chatHandleInput()"></textarea>
+      <textarea class="chat-input" id="chat-input" rows="1" placeholder="Message ${esc(name)}…" onkeydown="chatHandleKey(event)" oninput="chatHandleInput()"
+        onpaste="chatUploadFilePaste(event)" ondrop="chatUploadFileDrop(event)" ondragover="event.preventDefault()"></textarea>
       <button class="chat-voice-btn" id="chat-voice-btn" onclick="chatStartRecording()" title="Voice message"><i data-lucide="mic" style="width:15px;height:15px"></i></button>
       <button class="chat-send-btn" id="chat-send-btn" onclick="chatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
     </div>`;
@@ -3611,7 +3612,8 @@ function chatMsgHTML(msg, myKey) {
     ${actions}
     ${!mine ? `<div class="chat-msg-sender">${msg.sender_avatar ? `<img class="chat-msg-avatar" src="${esc(msg.sender_avatar)}" alt="">` : ''}${esc(msg.sender_name)}${statusEmojiOnly(msg.sender_status_emoji, msg.sender_status)}</div>` : ''}
     ${replyHTML}
-    ${msg.body ? `<div class="chat-msg-bubble">${esc(msg.body)}${msg.edited_at ? '<span class="chat-edited">(edited)</span>' : ''}</div>` : ''}
+    ${msg.body ? `<div class="chat-msg-bubble">${chatLinkify(msg.body)}${msg.edited_at ? '<span class="chat-edited">(edited)</span>' : ''}</div>` : ''}
+    ${msg.body ? googleUnfurl(msg.body) + chatPreviewSlot(msg.body) : ''}
     ${fileHTML}
     <div class="chat-msg-time">${timeStr}</div>
   </div>`;
@@ -3638,6 +3640,7 @@ function chatRenderMessages() {
     if (dateStr !== lastDate) { lastDate = dateStr; div = `<div class="chat-date-divider">${dateStr}</div>`; }
     return div + chatMsgHTML(msg, myKey);
   }).join('');
+  chatHydratePreviews(el, ef, '/api/employee');
 }
 
 function chatAppendMessage(msg) {
@@ -3645,6 +3648,7 @@ function chatAppendMessage(msg) {
   const el = document.getElementById('chat-messages');
   if (!el) return;
   el.insertAdjacentHTML('beforeend', chatMsgHTML(msg, myChatKey()));
+  chatHydratePreviews(el, ef, '/api/employee');
 }
 
 function chatScrollBottom() {
@@ -3654,10 +3658,17 @@ function chatScrollBottom() {
 
 let chatPendingFile = null; // { url, name, size, type }
 
-async function chatFileSelected(input) {
+function chatFileSelected(input) {
   const file = input.files[0];
   if (!file) return;
   input.value = '';
+  chatUploadFile(file);
+}
+
+// Takes a File rather than an <input>, so the picker, a pasted screenshot and a
+// dropped image all go the same way.
+async function chatUploadFile(file) {
+  if (!file) return;
   if (file.size > 10 * 1024 * 1024) { alert('File must be under 10 MB'); return; }
   const btn = document.getElementById('chat-send-btn');
   if (btn) btn.disabled = true;
@@ -3667,14 +3678,48 @@ async function chatFileSelected(input) {
     const d = await r.json();
     if (d.error) { alert('Upload failed: ' + d.error); return; }
     chatPendingFile = d;
-    document.getElementById('chat-attach-name').textContent = d.name;
-    document.getElementById('chat-attach-preview').style.display = 'flex';
+    chatUploadFilePreview(d);
   } catch (e) { alert('Upload failed: ' + e.message); }
   finally { if (btn) btn.disabled = false; }
 }
 
+// A pasted screenshot has no filename worth reading, so show the picture itself.
+function chatUploadFilePreview(d) {
+  const wrap = document.getElementById('chat-attach-preview');
+  const nameEl = document.getElementById('chat-attach-name');
+  if (nameEl) nameEl.textContent = d.name || 'Attachment';
+  if (wrap) {
+    const old = wrap.querySelector('.chat-attach-thumb');
+    if (old) old.remove();
+    if ((d.type || '').startsWith('image/') && d.url) {
+      const img = document.createElement('img');
+      img.className = 'chat-attach-thumb';
+      img.src = d.url;
+      wrap.insertBefore(img, wrap.firstChild);
+    }
+    wrap.style.display = 'flex';
+  }
+}
+
+// Paste and drop into the composer. A paste with no image is left entirely alone so
+// pasting text keeps working.
+function chatUploadFilePaste(e) {
+  const file = chatImageFromPaste(e);
+  if (!file) return;
+  e.preventDefault();
+  chatUploadFile(file);
+}
+function chatUploadFileDrop(e) {
+  const file = chatImageFromDrop(e);
+  if (!file) return;
+  e.preventDefault();
+  chatUploadFile(file);
+}
+
 function chatRemoveAttach() {
   chatPendingFile = null;
+  const _thumb = document.querySelector('#chat-attach-preview .chat-attach-thumb');
+  if (_thumb) _thumb.remove();
   document.getElementById('chat-attach-preview').style.display = 'none';
 }
 
@@ -3876,7 +3921,7 @@ function chatCancelEdit(msgId, orig) {
   if (!el) return;
   const msg = chatMessages.find(m => m.id === msgId);
   const bubble = el.querySelector('.chat-msg-bubble');
-  if (bubble) bubble.innerHTML = esc(orig) + (msg?.edited_at ? '<span class="chat-edited">(edited)</span>' : '');
+  if (bubble) bubble.innerHTML = chatLinkify(orig) + (msg?.edited_at ? '<span class="chat-edited">(edited)</span>' : '');
 }
 
 async function chatSaveEdit(msgId) {
@@ -3892,7 +3937,7 @@ async function chatSaveEdit(msgId) {
   const el = document.querySelector(`[data-msg-id="${msgId}"]`);
   if (el) {
     const bubble = el.querySelector('.chat-msg-bubble');
-    if (bubble) bubble.innerHTML = esc(updated.body) + '<span class="chat-edited">(edited)</span>';
+    if (bubble) bubble.innerHTML = chatLinkify(updated.body) + '<span class="chat-edited">(edited)</span>';
   }
 }
 
