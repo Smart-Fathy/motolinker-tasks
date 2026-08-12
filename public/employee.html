@@ -558,7 +558,7 @@
         <div id="emp-lead-filter-chips" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
         <div class="card" style="padding:0;overflow:hidden">
           <div class="table-scroll">
-            <table style="width:100%;border-collapse:collapse;min-width:980px" id="emp-leads-table">
+            <table class="wide-table" style="width:100%;border-collapse:collapse" id="emp-leads-table">
               <thead><tr id="emp-leads-head"></tr></thead>
               <tbody id="emp-leads-tbody">
                 <tr><td colspan="11" style="text-align:center;color:var(--muted);padding:28px">Loading…</td></tr>
@@ -1314,6 +1314,7 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
+<script src="/assets/mobile.js"></script>
 <script src="/assets/lead-filters.js"></script>
 <script src="/assets/chat-extras.js"></script>
 <script src="/assets/home.js"></script>

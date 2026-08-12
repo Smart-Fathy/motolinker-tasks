@@ -13,6 +13,12 @@
  * 390px devices sit inside both, which the old 380px rules missed by 10 pixels.
  */
 
+/* Desktop min-widths for the wide tables. These were inline, where no media query
+   could reach them — and the mobile card layout below has to remove them. */
+.wide-table { min-width: 1000px; }
+.wide-table-xl { min-width: 1900px; }
+.wide-table-sm { min-width: 460px; }
+
 .sidebar-close-btn { display: none; }
 .bottom-nav { display: none; }
 
@@ -153,6 +159,48 @@
   .app-content, .content { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
   /* The huddle widget and the help FAB share that bottom edge. */
   #hd-bar, #pwa-install-banner, #pwa-ios-hint { bottom: calc(76px + env(safe-area-inset-bottom)); }
+
+  /* ── Tables become cards ─────────────────────────────────────────────────
+   * A 12-to-20 column table cannot be made readable on a 390px screen by scrolling
+   * it — you see two columns and everything else, including the row's actions, is
+   * off to the right. Below this width each row becomes a card and each cell a
+   * labelled line, with the label taken from that table's own <th> by mobile.js.
+   *
+   * Done in CSS against the existing markup on purpose: the twelve renderers build
+   * their tables as innerHTML strings with no shared component, and rewriting all of
+   * them would risk far more than it fixes. Sorting, filtering, inline editing and
+   * the column config all keep working untouched. */
+  .table-scroll { overflow-x: visible; }
+  .table-scroll table, .wide-table, .wide-table-xl, .wide-table-sm { min-width: 0; }
+  .table-scroll thead { display: none; }
+  .table-scroll table, .table-scroll tbody, .table-scroll tr, .table-scroll td { display: block; }
+  .table-scroll tr {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px 12px; margin-bottom: 10px;
+  }
+  .table-scroll tr:hover td { background: none; }
+  .table-scroll td {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 6px 0; border: none; white-space: normal; max-width: none;
+    font-size: 14px; overflow-wrap: anywhere;
+  }
+  .table-scroll td + td { border-top: 1px solid rgba(255,255,255,.05); }
+  .table-scroll td::before {
+    content: attr(data-label); flex: 0 0 38%; max-width: 38%;
+    color: var(--muted); font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em; padding-top: 2px;
+  }
+  /* A cell with no header and nothing in it is a spacer column; hide it entirely. */
+  .table-scroll td:not([data-label]):empty, .table-scroll td[data-label=""]:empty { display: none; }
+  /* The actions cell reads as a row of buttons across the foot of the card. */
+  .table-scroll td[data-label="Actions"], .table-scroll td:last-child:not([data-label]) {
+    flex-wrap: wrap; gap: 8px; padding-top: 10px;
+  }
+  .table-scroll td[data-label="Actions"]::before { display: none; }
+  .table-scroll td[data-label="Actions"] .btn { flex: 1 1 auto; }
+  /* The frozen first column is meaningless once there is nothing to scroll. */
+  .table-scroll table thead th:first-child,
+  .table-scroll table tbody td:first-child { position: static; box-shadow: none; }
 
   /* ── Off-canvas panels ───────────────────────────────────────────────────
    * A fixed panel parked at translateX(100%) still extends the document's scrollable

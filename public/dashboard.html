@@ -732,7 +732,7 @@
       </div>
       <div id="lead-filter-chips" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
       <div class="table-card table-scroll">
-        <table class="table" id="customers-table" style="min-width:1200px">
+        <table class="table wide-table" id="customers-table">
           <thead><tr id="leads-head-row">
             <th style="width:36px;padding:8px 6px"><input type="checkbox" id="select-all-leads" onchange="toggleSelectAllLeads(this)"></th>
           </tr></thead>
@@ -761,8 +761,12 @@
         <button class="deal-tab" data-tab="sales" onclick="dealsTab('sales')">Sales</button>
       </div>
       <div id="deals-pane-pipeline">
-        <div id="deals-kanban" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:start;overflow-x:auto;min-width:900px">
-          <!-- Columns rendered by JS -->
+        <!-- The scroller and the min-width must be different elements: an element cannot
+             scroll its own min-width, so having both here pushed the page sideways. -->
+        <div class="table-scroll">
+          <div id="deals-kanban" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:start;min-width:900px">
+            <!-- Columns rendered by JS -->
+          </div>
         </div>
       </div>
       <div id="deals-pane-sales" style="display:none">
@@ -1664,6 +1668,7 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
+<script src="/assets/mobile.js"></script>
 <script src="/assets/lead-filters.js"></script>
 <script src="/assets/chat-extras.js"></script>
 <script src="/assets/home.js"></script>

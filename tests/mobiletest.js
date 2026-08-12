@@ -18,7 +18,8 @@ const VIEWPORT = { width: 390, height: 844, isMobile: true, hasTouch: true, devi
 const TOUCH_MIN = 44;
 
 // Enough of a fixture that lists actually have rows — an empty table cannot overflow.
-const LEADS = Array.from({ length: 120 }, (_, i) => ({
+const LEAD_COUNT = 120;
+const LEADS = Array.from({ length: LEAD_COUNT }, (_, i) => ({
   id: i + 1, name: `Lead Person ${i + 1}`, phone: '010012345' + (i % 10),
   lead_status: ['cold', 'warm', 'hot'][i % 3], source: 'fb_ad',
   car_in_question: 'Chery Tiggo 8 Pro Max Luxury', budget_lead: 1500000,
@@ -173,7 +174,44 @@ async function sweep(browser, o) {
     if (m.tinyCount) bad.font.push(`${pg}: ${m.tiny.join(' ')}`);
   }
 
+  // ── Tables must have become cards ──
+  // Scrolling a 20-column table sideways on a phone is not a fix: you see two columns
+  // and the row's own actions are off-screen. Below 700px each row is a card and each
+  // cell a labelled line, so this checks the rows actually stacked, the labels came
+  // from the table's own headers, and nothing sits outside the viewport.
+  const cardPages = (o.tablePages || []).filter(p => o.pages.includes(p));
+  const notCards = [], unlabelled = [], offscreen = [];
+  for (const pg of cardPages) {
+    await page.evaluate(p => { try { navigate(p); } catch (_) {} }, pg);
+    await sleep(350);
+    const r = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('.table-scroll table tbody tr')]
+        .filter(tr => tr.offsetParent !== null && !(tr.children.length === 1 && tr.children[0].hasAttribute('colspan')));
+      if (!rows.length) return { none: true };
+      const row = rows[0];
+      const cells = [...row.children].filter(c => c.offsetParent !== null);
+      const vw = document.documentElement.clientWidth;
+      return {
+        display: getComputedStyle(row).display,
+        cells: cells.length,
+        labelled: cells.filter(c => (c.getAttribute('data-label') || '').length).length,
+        widest: Math.max(...cells.map(c => Math.round(c.getBoundingClientRect().right))),
+        vw,
+      };
+    });
+    if (r.none) continue;
+    if (r.display !== 'block') notCards.push(`${pg}:${r.display}`);
+    // Every cell that carries data needs a label; spacer cells legitimately have none.
+    if (r.labelled < Math.max(1, r.cells - 2)) unlabelled.push(`${pg}:${r.labelled}/${r.cells}`);
+    if (r.widest > r.vw + 1) offscreen.push(`${pg}:${r.widest}>${r.vw}`);
+  }
+
   const t = (n, ok, x) => check(o.label + ': ' + n, ok, x);
+  if (cardPages.length) {
+    t(`table rows stack into cards (${cardPages.length} pages)`, !notCards.length, notCards.join(' '));
+    t('every card field carries its column name', !unlabelled.length, unlabelled.join(' '));
+    t('no card field sits outside the screen', !offscreen.length, offscreen.join(' '));
+  }
   // Pages still to be converted, named so the gap shrinks visibly instead of hiding in
   // a skipped test. Anything NOT on this list must not scroll sideways.
   const known = bad.overflow.filter(v => (o.knownOverflow || []).some(k => v.startsWith(k + ' ')));
@@ -183,6 +221,39 @@ async function sweep(browser, o) {
     !unexpected.length, unexpected.slice(0, 4).join(' | '));
   t('every tappable control is at least 44px', !bad.touch.length, bad.touch.slice(0, 3).join(' | '));
   t('no text input is under 16px (iOS zooms below that)', !bad.font.length, bad.font.slice(0, 3).join(' | '));
+  // ── Leads: paged, and safe to touch ──
+  if (o.leadsPage) {
+    await page.evaluate(p => { try { navigate(p); } catch (_) {} }, o.leadsPage);
+    await sleep(500);
+    const rowsOf = () => page.evaluate(sel =>
+      [...document.querySelectorAll(sel + ' tr')].filter(tr => tr.getAttribute('data-id')).length, o.leadsBody);
+    const first = await rowsOf();
+    t(`leads renders a page, not all ${LEAD_COUNT}`, first === 50, `rows=${first}`);
+
+    const more = await page.evaluate(() => {
+      const b = [...document.querySelectorAll('button')].find(x => /Load more/.test(x.textContent));
+      if (!b) return null;
+      const label = b.textContent.trim(); b.click(); return label;
+    });
+    await sleep(300);
+    const second = await rowsOf();
+    t('Load more appends the next page', !!more && second === 100, `${more} -> rows=${second}`);
+
+    // A tap must open the record, not start an edit on whatever field it landed on.
+    const tapped = await page.evaluate(() => {
+      const cell = document.querySelector('[data-id] td[data-label="Notes"], [data-id] td[data-label="Car"]');
+      if (!cell) return { err: 'no editable cell' };
+      cell.click();
+      return {
+        editing: !!document.querySelector('[data-id] td input.form-input'),
+        drawer: !!document.querySelector('.lead-drawer.open, #lead-drawer.open'),
+      };
+    });
+    await sleep(200);
+    t('tapping a field opens the record instead of editing it',
+      tapped.editing === false, JSON.stringify(tapped));
+  }
+
   t('no page errors while sweeping', !errs.length, errs.slice(0, 2).join(' | '));
   await page.close();
   return bad;
@@ -198,8 +269,10 @@ async function sweep(browser, o) {
   await sweep(browser, {
     label: 'admin', port, route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token',
     bootstrap: () => {},
-    // Deals is the kanban's min-width bug and reports is the inline charts grid.
-    knownOverflow: ['deals', 'reports'],
+    knownOverflow: ['reports'],   // the inline charts grid, phase 3
+    tablePages: ['tasks', 'employees', 'requests', 'submissions', 'hours', 'customers',
+                 'contracts', 'purchaseorders', 'rfqs', 'suppliers'],
+    leadsPage: 'customers', leadsBody: '#customers-tbody',
     pages: ['home', 'tasks', 'employees', 'requests', 'submissions', 'deletions', 'hours',
             'quotation', 'customers', 'deals', 'suppliers', 'rfqs', 'stock', 'contracts',
             'purchaseorders', 'reports', 'automations', 'chat', 'notif', 'calendar', 'meet',
@@ -215,6 +288,8 @@ async function sweep(browser, o) {
       document.getElementById('layout').style.display = 'flex';
     },
     knownOverflow: ['quotation'],   // the quotation builder's fixed-track grids
+    tablePages: ['tasks', 'hours', 'requests', 'leads'],
+    leadsPage: 'leads', leadsBody: '#emp-leads-tbody',
     pages: ['home', 'log', 'tasks', 'hours', 'requests', 'leads', 'deals', 'reports',
             'quotation', 'chat', 'notif', 'calendar', 'meet', 'email', 'drive', 'sheets'],
   });
