@@ -418,7 +418,7 @@ async function logout() {
 }
 
 /* ── Navigation ── */
-const pageTitles = { home: 'Home', log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', gchat: 'Google Chat', notif: 'Notifications', issues: 'Issues' };
+const pageTitles = { home: 'Home', chat: 'Chat', log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', gchat: 'Google Chat', notif: 'Notifications', issues: 'Issues' };
 const pageLoaders = { home: loadHome, requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation, leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, gchat: loadGChat, notif: loadNotifPage, issues: loadIssues };
 let _currentEmpPage = 'log';
 function navigate(page) {
@@ -437,7 +437,7 @@ function navigate(page) {
   openGroupForPage(page); // reveal the group containing the active item
   const bottomNav = document.getElementById('bnav-' + page);
   if (bottomNav) bottomNav.classList.add('active');
-  document.getElementById('topbar-title').textContent = pageTitles[page];
+  document.getElementById('topbar-title').textContent = pageTitles[page] || 'MotoLinker';
   rememberPage(page);
   if (pageLoaders[page]) pageLoaders[page]();
   closeSidebar();
@@ -4082,7 +4082,7 @@ function helpInit() {
       <div class="hb-head">
         <div style="font-weight:800;font-size:15px">Help · مساعدة</div>
         <div style="display:flex;gap:6px;align-items:center">
-          <select id="hb-lang" onchange="_helpLang=this.value" style="background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:8px;font-size:12px;padding:4px 6px">
+          <select id="hb-lang" onchange="_helpLang=this.value" style="background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:8px;padding:4px 6px">
             <option value="auto">Auto</option><option value="en">EN</option><option value="ar">AR</option>
           </select>
           <button onclick="helpClose()" style="background:none;border:none;color:var(--muted,#9a958a);font-size:22px;cursor:pointer;line-height:1">×</button>
