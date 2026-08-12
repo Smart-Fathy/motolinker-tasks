@@ -1,5 +1,5 @@
-const CACHE = 'motolinker-emp-v47';
-const SHELL = ['/employee', '/manifest-employee.json', '/help-docs.js'];
+const CACHE = 'motolinker-emp-v49';
+const SHELL = ['/employee', '/manifest-employee.json', '/help-docs.js', '/assets/employee.css', '/assets/employee.js'];
 const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com'];
 
 self.addEventListener('install', e => {
@@ -55,7 +55,7 @@ self.addEventListener('fetch', e => {
   }
 
   // Icons and manifests — cache-first
-  if (url.pathname.startsWith('/icons/') || url.pathname.startsWith('/manifest-employee')) {
+  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/') || url.pathname.startsWith('/manifest-employee')) {
     e.respondWith(
       caches.match(request).then(hit => {
         if (hit) return hit;
