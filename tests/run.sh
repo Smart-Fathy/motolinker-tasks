@@ -27,6 +27,7 @@ run shared      node tests/shared.js
 run widgets     node tests/widgets.js
 run linktest    node tests/linktest.js
 run pastetest   node tests/pastetest.js
+run invitetest  node tests/invitetest.js
 run homecache   node tests/homecache.js
 # needs a local coturn on 127.0.0.1:3478 for the success path; skips it otherwise
 run relaytest   node tests/relaytest.js

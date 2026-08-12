@@ -41,7 +41,7 @@ function makeClient(HDCFG) {
 ${MODULE}
   return { huddleStart, huddleJoinExisting, huddleLeave, huddleOnSignal, huddleToggleMute,
            huddleToggleCam, huddleToggleShare, hdRenderBar, hdIncoming, hdIce, hdOpenInvite,
-           hdPollStats, hdQuality, hdCanShareScreen, hdAvatarFor, hdInitialsFor,
+           hdPollStats, hdQuality, hdCanShareScreen, hdAvatarFor, hdInitialsFor, hdRingOnce,
            state: () => _hd, peers: () => _hd.peers };
 }
 
@@ -563,6 +563,38 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       !(await page.evaluate(() => !!document.querySelector('#hd-bar .hd-avatar [data-lucide="mic"]'))));
     await page.evaluate(() => window.A.huddleLeave());
     await sleep(150);
+  }
+
+  // ── 17. One ring per invite ──
+  // The invite now arrives on both the chat stream and the always-on notification
+  // stream, so anyone sitting on the chat page receives it twice.
+  {
+    // Counting DOM mutations is unreliable — two synchronous changes arrive in one
+    // observer batch. So the evidence is wiped between the two deliveries: if the
+    // second one rings, it puts it back.
+    const ring = await page.evaluate(async () => {
+      const el = document.getElementById('hd-incoming');
+      const wipe = () => { el.innerHTML = ''; el.style.display = 'none'; };
+      const rang = () => el.style.display === 'block' && /Bob Marley/.test(el.textContent);
+
+      wipe();
+      const inv = { type: 'invite', roomId: 7, from: 'B', fromName: 'Bob Marley' };
+      window.A.hdRingOnce(inv);                       // chat stream
+      const first = rang();
+
+      wipe();
+      window.A.hdRingOnce(inv);                       // notification stream, moments later
+      const second = rang();
+
+      wipe();
+      window.A.hdRingOnce({ type: 'invite', roomId: 8, from: 'B', fromName: 'Bob Marley' });
+      const other = rang();
+      wipe();
+      return { first, second, other };
+    });
+    check('an invite rings', ring.first === true, JSON.stringify(ring));
+    check('the same invite arriving twice does not ring twice', ring.second === false, JSON.stringify(ring));
+    check('a different huddle still rings', ring.other === true, JSON.stringify(ring));
   }
 
   check('no page errors', errs.length === 0, errs.slice(0, 4).join(' | '));

@@ -3290,6 +3290,13 @@ let notifUnread  = 0;
 function openNotifStream() {
   if (notifSse) { notifSse.close(); notifSse = null; }
   notifSse = new EventSource(`/api/employee/notifications/stream?_t=${encodeURIComponent(empToken)}`);
+  // Huddle invites also arrive here, because the chat stream only exists while the
+  // chat page is open — off that page an invite used to be dropped server-side with
+  // nothing to show it. Only invites come this way; the signalling itself stays on
+  // the chat stream.
+  notifSse.addEventListener('huddle', e => {
+    try { hdRingOnce(JSON.parse(e.data)); } catch (_) {}
+  });
   notifSse.addEventListener('notification', e => {
     try {
       const n = JSON.parse(e.data);
@@ -3327,7 +3334,7 @@ function notifRelTime(ts) {
 }
 
 function notifIcon(type) {
-  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox', issue: 'bug', followup: 'alarm-clock' };
+  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox', issue: 'bug', followup: 'alarm-clock', huddle: 'headphones' };
   return m[type] || 'bell';
 }
 // Strip any leading emoji/symbols so legacy notifications render clean text (new ones already clean)
@@ -4526,6 +4533,9 @@ const HDCFG = {
   rooms: () => chatRooms,
   activeRoom: () => activeChatRoomId,
   openRoom: id => chatOpenRoom(id),
+  // Opened on demand when a huddle is accepted from outside the chat page, which is
+  // where the signalling actually travels.
+  ensureStream: () => { if (!chatSse) openChatSse(); },
   refreshRooms: async () => {
     const r = await ef('/api/employee/chat/rooms');
     if (!r.ok) return;

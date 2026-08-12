@@ -136,6 +136,31 @@ function mountChatAdminRoutes(base, guard) {
       return res.status(400).json({ error: 'target not in this huddle' });
     }
     chatBroadcast([to], 'huddle', { type, roomId, from: key, fromName: name, data: req.body?.data ?? null });
+
+    // An invite has to reach someone who is not sitting on the chat page. chatBroadcast
+    // writes to chatSseClients, and that stream is opened by the chat page loader and
+    // torn down on navigating away — so anywhere else in the app the invite was simply
+    // dropped, with no ring, no bell and no push. It now also goes out over the
+    // always-on notification stream, and createNotification persists it and pushes to
+    // anyone who is offline entirely.
+    //
+    // Only the invite. offer/answer/ice/media stay on the chat stream: duplicating
+    // signalling across two transports is a correctness hazard, not a feature.
+    if (type === 'invite') {
+      const sse = ctx.notifSseClients && ctx.notifSseClients.get(to);
+      if (sse) {
+        try {
+          sse.write(`event: huddle\ndata: ${JSON.stringify({ type, roomId, from: key, fromName: name, data: null })}\n\n`);
+        } catch (_) { /* a dead stream is cleaned up by its own close handler */ }
+      }
+      const portal = to === 'admin' ? '/dashboard' : '/employee';
+      ctx.createNotification(to, {
+        type: 'huddle',
+        title: `${name} started a huddle`,
+        body: 'Tap to join the call.',
+        url: `${portal}#chat`,
+      }, 'always').catch(e => console.warn('[huddle] invite notification failed:', e.message));
+    }
     res.json({ ok: true });
   });
 }

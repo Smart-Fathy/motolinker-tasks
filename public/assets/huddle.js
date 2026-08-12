@@ -226,7 +226,7 @@ async function huddleOnSignal(msg) {
     if (_hd.peers.size) hdStartStats();
     return;
   }
-  if (msg.type === 'invite') { hdIncoming(msg); return; }
+  if (msg.type === 'invite') { hdRingOnce(msg); return; }
   if (msg.type === 'media') {
     const p = _hd.peers.get(msg.from);
     if (p) {
@@ -443,6 +443,19 @@ function hdShowJoinChip(roomId, n) {
 }
 function hdHideJoinChip() { const el = document.getElementById('hd-join-chip'); if (el) el.style.display = 'none'; }
 
+// An invite now arrives twice for anyone sitting on the chat page: once over the chat
+// stream and once over the always-on notification stream. Ring once.
+const _hdRang = new Map();          // roomId:from → when
+function hdRingOnce(msg) {
+  if (!msg || msg.roomId == null) return;
+  const k = msg.roomId + ':' + (msg.from || '');
+  const now = Date.now();
+  if (now - (_hdRang.get(k) || 0) < 10000) return;
+  _hdRang.set(k, now);
+  if (_hdRang.size > 50) for (const [key, at] of _hdRang) if (now - at > 60000) _hdRang.delete(key);
+  hdIncoming(msg);
+}
+
 function hdIncoming(msg) {
   if (_hd.roomId === msg.roomId) return;              // already in it
   const el = document.getElementById('hd-incoming');
@@ -468,6 +481,9 @@ function hdRing() {
 function hdAccept(roomId) {
   const el = document.getElementById('hd-incoming');
   if (el) el.style.display = 'none';
+  // Signalling rides the chat stream, and that is opened by the chat page. Accepting
+  // from Home or anywhere else has to open it first or the offer never arrives.
+  if (HDCFG.ensureStream) HDCFG.ensureStream();
   huddleJoinExisting(roomId);
 }
 function hdDecline(from, roomId) {
