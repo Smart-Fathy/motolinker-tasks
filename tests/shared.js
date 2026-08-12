@@ -12,6 +12,7 @@ const read = p => fs.readFileSync(p, 'utf8');
 const home    = read('public/assets/home.js');
 const huddle  = read('public/assets/huddle.js');
 const filters = read('public/assets/lead-filters.js');
+const mobile  = read('public/assets/mobile.css');
 const bundles = { dashboard: read('public/assets/dashboard.js'), employee: read('public/assets/employee.js') };
 const pages   = { dashboard: read('public/dashboard.html'),      employee: read('public/employee.html') };
 const workers = { dashboard: read('public/sw-dashboard.js'),     employee: read('public/sw-employee.js') };
@@ -45,6 +46,20 @@ for (const portal of ['dashboard', 'employee']) {
   check(`${portal} binds the filter engine with lfInit`, /lfInit\(\{/.test(bundles[portal]));
 }
 check('the filter engine declares no adapter of its own', !/^const LFCFG = \{/m.test(filters));
+
+// The mobile layer has to load LAST: several of its rules exist only to beat later
+// same-specificity rules in the portal sheets, and it uses no !important to do it.
+for (const portal of ['dashboard', 'employee']) {
+  const html = pages[portal];
+  const own = html.indexOf(`/assets/${portal}.css`);
+  const mob = html.indexOf('/assets/mobile.css');
+  check(`${portal} loads mobile.css after its own stylesheet`, own >= 0 && mob > own, `own@${own} mobile@${mob}`);
+  check(`${portal} service worker caches mobile.css`, workers[portal].includes("'/assets/mobile.css'"));
+}
+// Comments stripped first — the file explains twice why it avoids !important, and
+// matching that prose would be the test failing on its own documentation.
+check('the mobile layer needs no !important',
+  !/!important/.test(mobile.replace(/\/\*[\s\S]*?\*\//g, '')));
 
 // Load order: the shared files declare the functions the portal script calls, so they
 // have to be parsed first.

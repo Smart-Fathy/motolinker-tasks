@@ -535,7 +535,7 @@ function renderAutomations(rules) {
   }
   c.innerHTML = rules.map(r => `
     <div class="card" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:10px">
-      <input type="checkbox" ${r.enabled ? 'checked' : ''} onchange="toggleAutomation(${r.id}, this.checked)" title="${r.enabled ? 'Enabled' : 'Disabled'}" style="width:20px;height:20px;accent-color:var(--gold);flex:none;cursor:pointer">
+      <input type="checkbox" ${r.enabled ? 'checked' : ''} onchange="toggleAutomation(${r.id}, this.checked)" title="${r.enabled ? 'Enabled' : 'Disabled'}" style="accent-color:var(--gold);flex:none;cursor:pointer">
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:14px">${esc(r.name)}${r.enabled ? '' : ' <span style="font-size:11px;color:var(--muted);font-weight:400">(off)</span>'}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:2px">
@@ -3406,6 +3406,9 @@ function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.getElementById('nav-' + page).classList.add('active');
+  document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
+  const bnav = document.getElementById('bnav-' + page);
+  if (bnav) bnav.classList.add('active');
   currentPage = page;
   openGroupForPage(page); // reveal the group containing the active item
   rememberPage(page);
@@ -3436,6 +3439,8 @@ function toggleSidebar() {
   const ov = document.getElementById('sidebar-overlay');
   const isOpen = sb.classList.toggle('open');
   ov.classList.toggle('visible', isOpen);
+  // The team portal has always done this; without it the page scrolls behind the drawer.
+  document.body.style.overflow = isOpen ? 'hidden' : '';
 }
 
 function closeSidebar() {
@@ -3443,6 +3448,7 @@ function closeSidebar() {
   const ov = document.getElementById('sidebar-overlay');
   sb.classList.remove('open');
   ov.classList.remove('visible');
+  document.body.style.overflow = '';
 }
 
 // ── Sidebar collapse (rail) + collapsible section groups ──
@@ -5517,7 +5523,7 @@ function helpInit() {
           <div id="hb-status" style="font-size:11px;margin-top:2px;display:none"></div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
-          <select id="hb-lang" onchange="_helpLang=this.value" style="background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:8px;font-size:12px;padding:4px 6px">
+          <select id="hb-lang" onchange="_helpLang=this.value" style="background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:8px;padding:4px 6px">
             <option value="auto">Auto</option><option value="en">EN</option><option value="ar">AR</option>
           </select>
           <button onclick="helpClose()" style="background:none;border:none;color:var(--muted,#9a958a);font-size:22px;cursor:pointer;line-height:1">×</button>

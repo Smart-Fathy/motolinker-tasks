@@ -23,6 +23,9 @@
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
   <link rel="stylesheet" href="/assets/dashboard.css">
+  <!-- Shared with the team portal. Last on purpose: several mobile rules were being
+       beaten by later same-specificity rules in the sheet above. -->
+  <link rel="stylesheet" href="/assets/mobile.css">
 </head>
 <body>
 
@@ -46,6 +49,26 @@
   <!-- Mobile sidebar overlay -->
   <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
 
+  <!-- Mobile bottom navigation. Same markup and classes as the team portal's, which had
+       this from the start; the shared mobile layer styles both. -->
+  <nav class="bottom-nav" id="bottom-nav">
+    <button class="bottom-nav-item" id="bnav-home" onclick="navigate('home')">
+      <i data-lucide="home" style="width:20px;height:20px"></i><span>Home</span><div class="bottom-nav-dot"></div>
+    </button>
+    <button class="bottom-nav-item" id="bnav-tasks" onclick="navigate('tasks')">
+      <i data-lucide="clipboard-list" style="width:20px;height:20px"></i><span>Tasks</span><div class="bottom-nav-dot"></div>
+    </button>
+    <button class="bottom-nav-item" id="bnav-customers" onclick="navigate('customers')">
+      <i data-lucide="users" style="width:20px;height:20px"></i><span>Leads</span><div class="bottom-nav-dot"></div>
+    </button>
+    <button class="bottom-nav-item" id="bnav-chat" onclick="navigate('chat')">
+      <i data-lucide="message-square" style="width:20px;height:20px"></i><span>Chat</span><div class="bottom-nav-dot"></div>
+    </button>
+    <button class="bottom-nav-item" id="bnav-more" onclick="toggleSidebar()">
+      <i data-lucide="menu" style="width:20px;height:20px"></i><span>More</span><div class="bottom-nav-dot"></div>
+    </button>
+  </nav>
+
   <!-- Sidebar -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
@@ -55,6 +78,7 @@
         <div class="sidebar-logo-sub">Super Admin</div>
       </div>
       <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
+      <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu" aria-label="Close menu">&times;</button>
     </div>
     <nav class="sidebar-nav">
       <div class="nav-group" data-group="management">
@@ -895,25 +919,25 @@
         </div>
         <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:18px">
           <div><label class="form-label" style="font-size:11px">Group by</label>
-            <select class="form-input" id="lr-groupby" style="padding:6px 8px;font-size:12px" onchange="lrGroupChanged()"></select></div>
+            <select class="form-input rep-ctl" id="lr-groupby" onchange="lrGroupChanged()"></select></div>
           <div><label class="form-label" style="font-size:11px">Split by</label>
-            <select class="form-input" id="lr-splitby" style="padding:6px 8px;font-size:12px" onchange="lrGroupChanged()"></select></div>
+            <select class="form-input rep-ctl" id="lr-splitby" onchange="lrGroupChanged()"></select></div>
           <div><label class="form-label" style="font-size:11px">Measure</label>
-            <select class="form-input" id="lr-measure" style="padding:6px 8px;font-size:12px">
+            <select class="form-input rep-ctl" id="lr-measure">
               <option value="count">Lead count</option>
               <option value="budget_sum">Total budget</option>
               <option value="budget_avg">Average budget</option>
             </select></div>
-          <div><label class="form-label" style="font-size:11px">From</label><input class="form-input" id="lr-from" type="date" style="padding:6px 8px;font-size:12px"></div>
-          <div><label class="form-label" style="font-size:11px">To</label><input class="form-input" id="lr-to" type="date" style="padding:6px 8px;font-size:12px"></div>
+          <div><label class="form-label" style="font-size:11px">From</label><input class="form-input rep-ctl" id="lr-from" type="date"></div>
+          <div><label class="form-label" style="font-size:11px">To</label><input class="form-input rep-ctl" id="lr-to" type="date"></div>
           <div><label class="form-label" style="font-size:11px">Status</label>
-            <select class="form-input" id="lr-status" style="padding:6px 8px;font-size:12px">
+            <select class="form-input rep-ctl" id="lr-status">
               <option value="">All statuses</option>
               <option value="cold">Cold</option><option value="warm">Warm</option><option value="hot">Hot</option>
               <option value="immediate_delivery">Immediate Delivery</option><option value="not_interested">Not Interested</option><option value="blacklist">Blacklist</option>
             </select></div>
           <div><label class="form-label" style="font-size:11px">Origin</label>
-            <select class="form-input" id="lr-source" style="padding:6px 8px;font-size:12px">
+            <select class="form-input rep-ctl" id="lr-source">
               <option value="">All origins</option>
               <option value="fb_ad">FB Ad.</option><option value="whatsapp">Whatsapp</option><option value="messenger">Messenger</option>
               <option value="direct_call">Direct Call</option><option value="ig_ads">IG ads</option><option value="website">Website</option>
@@ -945,10 +969,10 @@
             <div style="font-size:13px;color:var(--muted);margin-top:4px">Pipeline, win-rate, revenue and conversion — computed live from your deals.</div>
           </div>
           <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
-            <div><label class="form-label" style="font-size:11px">From</label><input class="form-input" id="rep-from" type="date" style="padding:6px 8px;font-size:12px"></div>
-            <div><label class="form-label" style="font-size:11px">To</label><input class="form-input" id="rep-to" type="date" style="padding:6px 8px;font-size:12px"></div>
+            <div><label class="form-label" style="font-size:11px">From</label><input class="form-input rep-ctl" id="rep-from" type="date"></div>
+            <div><label class="form-label" style="font-size:11px">To</label><input class="form-input rep-ctl" id="rep-to" type="date"></div>
             <div><label class="form-label" style="font-size:11px">Source</label>
-              <select class="form-input" id="rep-source" style="padding:6px 8px;font-size:12px">
+              <select class="form-input rep-ctl" id="rep-source">
                 <option value="">All sources</option>
                 <option value="fb_ad">FB Ad.</option><option value="whatsapp">Whatsapp</option>
                 <option value="messenger">Messenger</option><option value="direct_call">Direct Call</option>

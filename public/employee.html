@@ -20,6 +20,8 @@
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
   <link rel="stylesheet" href="/assets/employee.css">
+  <!-- Shared with the admin dashboard. Last on purpose. -->
+  <link rel="stylesheet" href="/assets/mobile.css">
 </head>
 <body>
 
@@ -228,6 +230,7 @@
           <div class="sidebar-brand-sub">Team Portal</div>
         </div>
         <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
+        <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu" aria-label="Close menu">&times;</button>
       </div>
     </div>
     <nav class="sidebar-nav">

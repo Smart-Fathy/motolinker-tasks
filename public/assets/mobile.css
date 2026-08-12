@@ -1,0 +1,169 @@
+/* Shared mobile layer — loaded AFTER each portal stylesheet, by both portals.
+ *
+ * Order matters and is the point: several mobile rules already existed and never
+ * applied, because a later rule outside a media query beat them at the same
+ * specificity (.header h1 was set to 15px at ≤640px and then to 22px unconditionally
+ * further down the file). Putting the mobile layer last means it wins on source order
+ * and needs no !important to do it.
+ *
+ * The two portals use different breakpoint vocabularies — the admin sheet uses
+ * 380/640/700/900/1100/1200, the team sheet 380/600/700/768/900. This file uses two:
+ *   ≤700px  "a phone or a small tablet"  — layout changes
+ *   ≤480px  "a small phone"              — the last things to shed
+ * 390px devices sit inside both, which the old 380px rules missed by 10 pixels.
+ */
+
+.sidebar-close-btn { display: none; }
+.bottom-nav { display: none; }
+
+/* ── Safe area ───────────────────────────────────────────────────────────────
+ * Both portals ship viewport-fit=cover, but every inset was gated behind
+ * body.standalone — i.e. only once installed as a PWA. In an ordinary mobile browser
+ * tab none of it applied, and nothing anywhere handled the bottom inset except the
+ * team portal's bottom nav. */
+.header, .topbar { padding-top: env(safe-area-inset-top); }
+.header { height: calc(64px + env(safe-area-inset-top)); }
+.sidebar { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+.chat-composer { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+#pwa-install-banner, #pwa-ios-hint { bottom: calc(16px + env(safe-area-inset-bottom)); }
+
+@media (max-width: 700px) {
+  /* ── Header ──────────────────────────────────────────────────────────────
+   * .header is a flex row whose children default to min-width:auto, so neither side
+   * could shrink below its content and the right-hand cluster was pushed off-screen.
+   * The wordmark alone was 22px with 2px letter-spacing because the mobile 15px rule
+   * had been silently overridden. */
+  .header-left, .header-right, .topbar-left { min-width: 0; }
+  .header-left { flex: 1 1 auto; overflow: hidden; }
+  .header-right { flex: 0 0 auto; gap: 6px; }
+  .header h1 { font-size: 15px; letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar-title { font-size: 16px; overflow: hidden; text-overflow: ellipsis; }
+
+  /* The countdown and "Updated …" were only shed below 380px, so a 390px phone kept
+     both. Neither is worth a pixel of a phone screen — the dot already says it. */
+  .refresh-indicator span, .last-updated, .header-badge { display: none; }
+  .refresh-indicator { gap: 0; }
+
+  /* Refresh becomes icon-only: the label is what made the button unshrinkable. */
+  .header-right .btn { padding: 0; width: 44px; font-size: 0; gap: 0; }
+  .header-right .btn::before {
+    content: "\21bb"; font-size: 19px; line-height: 1;      /* ↻ */
+  }
+
+  /* ── Touch targets ───────────────────────────────────────────────────────
+   * .btn already had min-height:44px here. Everything else was missed: icon buttons
+   * sat at 36px, the hamburger at 38x34 and the modal close was an unsized glyph. */
+  .btn { min-width: 44px; }
+  .btn-sm { min-height: 44px; }
+  .notif-bell, .hamburger, .modal-close, .chat-send-btn, .chat-attach-btn,
+  .chat-emoji-btn, .chat-voice-btn, .hd-head-btn {
+    min-width: 44px; min-height: 44px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .modal-close { font-size: 24px; }
+  .nav-item, .bottom-nav-item { min-height: 44px; }
+
+  /* Every button, not a list of them. Dozens carry inline padding that keeps them at
+     30-35px, and enumerating those selectors would miss the next one somebody adds. */
+  button, [role="button"], a.btn, .tab, .deal-tab, .qt-tab { min-height: 44px; min-width: 44px; }
+  /* Report controls keep their compact desktop padding but must not be under 16px. */
+  .rep-ctl { padding: 8px 10px; }
+
+  /* A checkbox is sized by the UA and looks absurd at 44px, so the box grows to 24px
+     and the row around it carries the rest of the hit area. */
+  input[type=checkbox], input[type=radio] { width: 24px; height: 24px; }
+  td:has(> input[type=checkbox]), th:has(> input[type=checkbox]) { min-height: 44px; }
+
+  /* ── Inputs ──────────────────────────────────────────────────────────────
+   * Under 16px iOS zooms the page on focus and never zooms back. The admin sheet
+   * already handled its own classes; the team portal's .form-input (25 of them) and
+   * its unstyled selects did not, and neither portal styled the help panel's fields. */
+  /* Element-qualified on purpose: employee.css sets `input.form-input` at (0,1,1),
+     which outranks a bare `.form-input` no matter how late this file loads. */
+  input, select, textarea,
+  input.form-input, textarea.form-input, select.form-input, select.filter-input,
+  .form-control, .form-input, .filter-input, .auth-input, .chat-input,
+  #hb-input, #hb-lang { font-size: 16px; }
+
+  /* The help panel builds its own <style> at runtime, which lands after this file and
+     wins at equal specificity — so these are scoped through .hb-panel to outrank it
+     rather than reaching for !important. */
+  .hb-panel .hb-tab, .hb-panel .hb-send, .hb-panel .hb-head button,
+  .hb-panel select, .hb-panel input { min-height: 44px; font-size: 16px; }
+  .hb-panel .hb-send { min-width: 44px; }
+  .hb-panel .hb-head button { min-width: 44px; font-size: 22px; }
+
+  /* Small controls the portals style inline or leave to the UA. */
+  #pwa-install-banner button, #pwa-ios-hint button { min-height: 44px; min-width: 44px; }
+  .bselect-trigger { min-height: 44px; }
+  .user-name button { min-width: 44px; min-height: 44px; }
+
+  /* ── Display type ────────────────────────────────────────────────────────
+   * The "Luxury Atelier" block near the end of dashboard.css restyles the display
+   * faces outside any media query, so it silently beat SIX mobile sizes that were
+   * already written at ≤640px — the wordmark (15→22), stat values (26→46), page
+   * titles (18→30), card/table titles (12→20), hours values (22→34) and progress
+   * percentages (18→26). Every one of those mobile rules had never applied. */
+  .stat-value { font-size: 26px; }
+  .page-title { font-size: 20px; }
+  .card-title, .table-title { font-size: 14px; }
+  .hours-card-val { font-size: 22px; }
+  .progress-pct { font-size: 18px; }
+
+  /* A `1fr` track has a min-content floor, so a long value pushes the whole grid past
+     the viewport however many columns you ask for. minmax(0,1fr) lets it shrink. */
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .charts-grid, .home-grid, .stock-grid, .employee-grid { grid-template-columns: minmax(0, 1fr); }
+  .stat-card, .chart-card, .card, .stat-value, .stat-label, .stat-sub { min-width: 0; }
+  .stat-value, .stat-label, .stat-sub { overflow-wrap: anywhere; }
+
+  /* ── Drawer ──────────────────────────────────────────────────────────────
+   * A tap-anywhere scrim already existed in both portals; what was missing was any
+   * visible way to close, since the collapse button is hidden at these widths. */
+  .sidebar-close-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 44px; min-height: 44px; margin-left: auto;
+    background: none; border: none; color: var(--muted); font-size: 26px;
+    line-height: 1; cursor: pointer; border-radius: 8px;
+  }
+  .sidebar-close-btn:active { background: rgba(255,255,255,.06); }
+
+  /* ── Bottom navigation ───────────────────────────────────────────────────
+   * The team portal shipped one of these from the start and the admin never had it —
+   * 26 destinations behind a hamburger. Defined here so both portals share it, and it
+   * carries the bottom safe-area inset for everything docked above it. */
+  .bottom-nav {
+    display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 90;
+    height: calc(64px + env(safe-area-inset-bottom));
+    padding: 0 4px env(safe-area-inset-bottom);
+    background: var(--surface); border-top: 1px solid var(--border);
+    justify-content: space-around; align-items: center;
+  }
+  .bottom-nav-item {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    flex: 1 1 0; min-width: 56px; min-height: 44px; padding: 6px 4px;
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 10px; font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .bottom-nav-item.active { color: var(--primary); }
+  .bottom-nav-item.active .bottom-nav-dot { opacity: 1; }
+  .bottom-nav-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--primary); opacity: 0; }
+  /* Reserve the space so the bar never covers the last row of a list. */
+  .app-content, .content { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  /* The huddle widget and the help FAB share that bottom edge. */
+  #hd-bar, #pwa-install-banner, #pwa-ios-hint { bottom: calc(76px + env(safe-area-inset-bottom)); }
+
+  /* ── Off-canvas panels ───────────────────────────────────────────────────
+   * A fixed panel parked at translateX(100%) still extends the document's scrollable
+   * width, which is why the team portal scrolled sideways with the lead drawer merely
+   * present. Taking it out of layout while closed is the honest fix — clipping the
+   * body would also have hidden the real overflow this file exists to remove. */
+  .lead-drawer:not(.open), .lead-drawer-overlay:not(.open) { display: none; }
+}
+
+@media (max-width: 480px) {
+  /* Last to go: the dot, and the team portal's hours pill. */
+  .refresh-indicator { display: none; }
+  .topbar-hours { display: none; }
+}
