@@ -707,7 +707,7 @@
         <button class="btn btn-sm btn-outline" id="fu-chip" onclick="toggleFuFilter()" title="Show leads with follow-ups due" style="display:none"></button>
       </div>
       <div id="lead-filter-chips" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
-      <div class="table-card" style="overflow-x:auto">
+      <div class="table-card table-scroll">
         <table class="table" id="customers-table" style="min-width:1200px">
           <thead><tr id="leads-head-row">
             <th style="width:36px;padding:8px 6px"><input type="checkbox" id="select-all-leads" onchange="toggleSelectAllLeads(this)"></th>
@@ -1640,6 +1640,7 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
+<script src="/assets/lead-filters.js"></script>
 <script src="/assets/chat-extras.js"></script>
 <script src="/assets/home.js"></script>
 <script src="/assets/huddle.js"></script>

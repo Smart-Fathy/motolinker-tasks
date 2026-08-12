@@ -1062,6 +1062,23 @@
   /* ── Hide scrollbars globally ── */
   *, *::before, *::after { scrollbar-width: none; -ms-overflow-style: none; }
   *::-webkit-scrollbar { display: none; }
+  /* ── A wide table you can actually steer ────────────────────────────────────
+     These wrappers always had overflow-x:auto, but the global rule above hides every
+     scrollbar in the app, so there was no handle to grab and no sign the table
+     continued past the edge. This re-enables one for the table wrappers only. */
+  .table-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent; -ms-overflow-style: auto; }
+  .table-scroll::-webkit-scrollbar { display: block; height: 10px; }
+  .table-scroll::-webkit-scrollbar-track { background: transparent; }
+  .table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+  .table-scroll::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  /* The first column stays put, so a row is still identifiable once you scroll right.
+     Below .lead-menu's z-index deliberately — that menu is position:fixed and must
+     stay on top of a pinned cell. */
+  .table-scroll table thead th:first-child,
+  .table-scroll table tbody td:first-child { position: sticky; left: 0; z-index: 2;
+    background: var(--surface); box-shadow: 1px 0 0 var(--border); }
+  .table-scroll table thead th:first-child { z-index: 3; }
   .stk-legacy { display:flex; align-items:flex-start; gap:8px; margin-top:10px; padding:9px 12px;
                 border:1px solid var(--warning); border-radius:9px; background:rgba(201,163,94,.08);
                 font-size:11.5px; line-height:1.5; color:var(--text); }

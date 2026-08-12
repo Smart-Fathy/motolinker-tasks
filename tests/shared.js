@@ -11,6 +11,7 @@ const check = (n, ok, x) => { results.push(ok); console.log((ok ? '  ok  ' : ' F
 const read = p => fs.readFileSync(p, 'utf8');
 const home    = read('public/assets/home.js');
 const huddle  = read('public/assets/huddle.js');
+const filters = read('public/assets/lead-filters.js');
 const bundles = { dashboard: read('public/assets/dashboard.js'), employee: read('public/assets/employee.js') };
 const pages   = { dashboard: read('public/dashboard.html'),      employee: read('public/employee.html') };
 const workers = { dashboard: read('public/sw-dashboard.js'),     employee: read('public/sw-employee.js') };
@@ -18,8 +19,9 @@ const workers = { dashboard: read('public/sw-dashboard.js'),     employee: read(
 // A marker per module that is distinctive enough not to appear by accident, and that
 // sits at the very top of the block so a partial copy still trips it.
 const MARKERS = {
-  '/assets/home.js':   { src: home,   re: /const HOME_WIDGETS = \{/ },
-  '/assets/huddle.js': { src: huddle, re: /let _hd = \{ roomId: null/ },
+  '/assets/home.js':         { src: home,    re: /const HOME_WIDGETS = \{/ },
+  '/assets/huddle.js':       { src: huddle,  re: /let _hd = \{ roomId: null/ },
+  '/assets/lead-filters.js': { src: filters, re: /function leadFilterMatch\(/ },
 };
 
 for (const [path, { src, re }] of Object.entries(MARKERS)) {
@@ -38,6 +40,11 @@ for (const portal of ['dashboard', 'employee']) {
 }
 check('the shared files define no adapter of their own',
   !/const H(OME)?CFG = \{/.test(home) && !/const HDCFG = \{/.test(huddle));
+// The filter engine takes its adapter at runtime rather than declaring one.
+for (const portal of ['dashboard', 'employee']) {
+  check(`${portal} binds the filter engine with lfInit`, /lfInit\(\{/.test(bundles[portal]));
+}
+check('the filter engine declares no adapter of its own', !/^const LFCFG = \{/m.test(filters));
 
 // Load order: the shared files declare the functions the portal script calls, so they
 // have to be parsed first.
