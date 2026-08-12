@@ -1010,8 +1010,6 @@
   .po-td { padding:4px 5px; border-bottom:1px solid var(--border); vertical-align:top; }
   .po-td .form-input { width:100%; }
   /* Chat pages: lift the Help agent clear of the composer's send button (mobile + desktop) */
-  body.has-chat-composer .hb-fab{ bottom:calc(84px + env(safe-area-inset-bottom, 0px)) !important; }
-  @media (max-width:768px){ body.has-chat-composer .hb-fab{ bottom:calc(96px + env(safe-area-inset-bottom, 0px)) !important; } }
   /* ── Brand dropdown component (replaces native select menus) ── */
   .bselect-hidden{ display:none !important; }
   .bselect-trigger{
@@ -1082,6 +1080,42 @@
   /* ── Hide scrollbars globally ── */
   *, *::before, *::after { scrollbar-width: none; -ms-overflow-style: none; }
   *::-webkit-scrollbar { display: none; }
+  /* ── Home dashboard ── */
+  .home-bar-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .home-grid { display:grid; grid-template-columns:repeat(12,1fr); gap:14px; align-items:start; }
+  .home-w { background:var(--surface); border:1px solid var(--border); border-radius:12px;
+            padding:14px 16px; min-width:0; display:flex; flex-direction:column; }
+  .home-w[data-h="1"] { min-height:120px; }
+  .home-w[data-h="2"] { min-height:232px; }
+  .home-w-head { display:flex; align-items:center; gap:7px; margin-bottom:10px; color:var(--muted); }
+  .home-w-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px;
+                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .home-w-tools { margin-left:auto; display:flex; align-items:center; gap:4px; }
+  .home-w-size { background:var(--bg); color:var(--text); border:1px solid var(--border);
+                 border-radius:6px; font-size:11px; padding:2px 4px; }
+  .home-w-btn { background:none; border:1px solid var(--border); color:var(--muted); cursor:pointer;
+                border-radius:6px; padding:3px; display:flex; }
+  .home-w-btn:hover { color:var(--text); border-color:var(--primary); }
+  .home-w-body { flex:1; min-height:0; overflow:auto; }
+  .home-grid.editing .home-w { cursor:grab; border-style:dashed; }
+  .home-w.dragging { opacity:.45; }
+  .home-w.over { border-color:var(--primary); }
+  .home-empty { grid-column:span 12; text-align:center; padding:48px 16px; border:1px dashed var(--border); border-radius:12px; }
+  .home-big { font-size:30px; font-weight:700; line-height:1.1; font-family:'Cormorant Garamond',serif; }
+  .home-sub { font-size:11.5px; color:var(--muted); margin-top:3px; }
+  .home-none { font-size:12px; color:var(--muted); padding:6px 0; }
+  .home-list { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+  .home-list li { display:flex; align-items:baseline; gap:8px; font-size:12.5px; }
+  .home-li-main { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .home-li-sub { font-size:11px; color:var(--muted); white-space:nowrap; }
+  .home-bars { display:grid; gap:7px; }
+  .home-bar-row { display:flex; align-items:center; gap:8px; font-size:12px; }
+  .home-bar-lbl { width:86px; flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--muted); }
+  .home-bar { flex:1; height:7px; background:var(--bg); border-radius:4px; overflow:hidden; }
+  .home-bar i { display:block; height:100%; background:var(--primary); border-radius:4px; }
+  .home-bar-val { width:64px; text-align:right; font-weight:600; font-size:11.5px; }
+  .home-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  @media (max-width:900px) { .home-w { grid-column:span 12 !important; } }
   /* ── Huddles, group panel & status chips ── */
   /* Sits to the left of the help FAB's column so the two never overlap */
   #hd-bar { display:none; position:fixed; right:86px; bottom:18px; z-index:1200; flex-direction:column; gap:10px;
@@ -1243,7 +1277,8 @@
       <div class="nav-group" data-group="management">
         <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Management</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
         <div class="nav-group-items">
-          <div class="nav-item active" onclick="navigate('tasks')"    id="nav-tasks">    <span class="nav-icon"><i data-lucide="clipboard-list"></i></span> Tasks</div>
+          <div class="nav-item active" onclick="navigate('home')"     id="nav-home">     <span class="nav-icon"><i data-lucide="layout-dashboard"></i></span> Home</div>
+          <div class="nav-item"        onclick="navigate('tasks')"    id="nav-tasks">    <span class="nav-icon"><i data-lucide="clipboard-list"></i></span> Tasks</div>
           <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon"><i data-lucide="users"></i></span> Employees</div>
           <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon"><i data-lucide="inbox"></i></span> Requests</div>
           <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><i data-lucide="clock"></i></span> Hours Logs</div>
@@ -1332,6 +1367,9 @@
         <span id="refresh-countdown">Auto-refresh in 30s</span>
       </div>
       <span class="last-updated" id="last-updated"></span>
+      <button class="notif-bell" id="help-btn" onclick="helpOpen()" aria-label="Help" title="Help · مساعدة">
+        <i data-lucide="help-circle" style="width:20px;height:20px"></i>
+      </button>
       <div class="notif-wrap">
         <button class="notif-bell" id="notif-bell" onclick="toggleNotifPanel()" aria-label="Notifications" title="Notifications">
           <i data-lucide="bell" style="width:20px;height:20px"></i>
@@ -1355,7 +1393,20 @@
   </header>
 
   <!-- ── TASKS PAGE ─────────────────────────────────────── -->
-  <div id="page-tasks" class="page active">
+  <div id="page-home" class="page">
+    <div class="home-bar-top">
+      <h2 class="page-title" style="margin:0;flex:1">Home</h2>
+      <button class="btn btn-outline btn-sm" id="home-add-btn" style="display:none" onclick="homeOpenAdd()">
+        <i data-lucide="plus" style="width:13px;height:13px"></i> Add widget</button>
+      <button class="btn btn-outline btn-sm" id="home-reset-btn" style="display:none" onclick="homeReset()">
+        <i data-lucide="rotate-ccw" style="width:13px;height:13px"></i> Reset</button>
+      <button class="btn btn-primary btn-sm" onclick="homeToggleEdit()">
+        <i data-lucide="layout-grid" style="width:13px;height:13px"></i> <span id="home-edit-label">Edit layout</span></button>
+    </div>
+    <div class="home-grid" id="home-grid"></div>
+  </div>
+
+  <div id="page-tasks" class="page">
   <main class="main">
     <div id="error-container"></div>
 
@@ -5910,7 +5961,7 @@ function supplierFillFields(selId, prefix) {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, calendar: loadCalendarSync, gchat: loadGChat, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
+const pageLoaders = { home: loadHome, tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, calendar: loadCalendarSync, gchat: loadGChat, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
@@ -5921,12 +5972,28 @@ function navigate(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.getElementById('nav-' + page).classList.add('active');
   currentPage = page;
-  // Pages with a bottom composer need the Help agent lifted above the send button
-  document.body.classList.toggle('has-chat-composer', page === 'chat' || page === 'whatsapp' || page === 'gchat');
   openGroupForPage(page); // reveal the group containing the active item
+  rememberPage(page);
   if (pageLoaders[page]) pageLoaders[page]();
   closeSidebar(); // close on mobile after navigation
   requestAnimationFrame(() => lucide.createIcons());
+}
+
+// Startup already read location.hash, but nothing ever wrote it — so a refresh
+// always found it empty and fell back to the default page. replaceState rather
+// than pushState, or Back turns into a crawl through every section visited.
+function rememberPage(page) {
+  try {
+    history.replaceState(null, '', '#' + page);
+    localStorage.setItem('ml_page', page);
+  } catch (_) { /* private mode; the hash alone still works */ }
+}
+function lastPage(valid, fallback) {
+  const hash = (location.hash || '').replace('#', '');
+  if (hash && valid.includes(hash)) return hash;
+  let saved = null;
+  try { saved = localStorage.getItem('ml_page'); } catch (_) {}
+  return saved && valid.includes(saved) ? saved : fallback;
 }
 
 function toggleSidebar() {
@@ -6696,10 +6763,8 @@ let notifUnread = 0;
   initSidebarState();
   await loadNavConfig();   // apply the admin's saved section order + names
   gchatInitNav();          // Google Chat nav appears only when it's configured
-  const hash = location.hash.replace('#', '');
-  const validPages = ['tasks','employees','requests','submissions','hours','email','drive','sheets','chat','calendar','meet','quotation','customers','deals','stock','suppliers','rfqs','contracts','purchaseorders','reports','automations','deletions','whatsapp','gchat','notif'];
-  if (hash && validPages.includes(hash)) navigate(hash);
-  else loadDashboard();
+  const validPages = ['home','tasks','employees','requests','submissions','hours','email','drive','sheets','chat','calendar','meet','quotation','customers','deals','stock','suppliers','rfqs','contracts','purchaseorders','reports','automations','deletions','whatsapp','gchat','notif'];
+  navigate(lastPage(validPages, 'home'));
 })();
 
 // ── Notification center (bell + counter) ──────────────────────────────────────
@@ -7918,13 +7983,31 @@ function helpInit() {
   if (document.getElementById('hb-root')) return;
   const style = document.createElement('style');
   style.textContent = `
-    .hb-fab{position:fixed;right:20px;bottom:20px;z-index:9990;width:54px;height:54px;border-radius:50%;background:var(--primary,#c9a35e);color:#0c0c0e;border:none;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
     .hb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9994;opacity:0;pointer-events:none;transition:opacity .2s}
     .hb-overlay.open{opacity:1;pointer-events:auto}
     .hb-panel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(201,163,94,.3);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,.5)}
     .hb-panel.open{transform:translateX(0)}
     .hb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 18px;border-bottom:1px solid var(--border,#2a2a2e)}
     .hb-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+    .hb-tabs{display:flex;gap:4px;padding:10px 14px 0;border-bottom:1px solid var(--border,#2a2a2e)}
+    .hb-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--muted,#9a958a);
+            font-size:12.5px;font-weight:700;padding:7px 12px;cursor:pointer}
+    .hb-tab.active{color:var(--text,#e8e4da);border-bottom-color:var(--primary,#c9a35e)}
+    .hb-docs{flex:1;overflow-y:auto;padding:14px;display:none;flex-direction:column;gap:10px}
+    .hb-docs.open{display:flex}
+    .hb-search{background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);
+               border-radius:8px;padding:8px 11px;font-size:13px;font-family:inherit}
+    .hb-doc{display:block;width:100%;text-align:start;background:none;border:1px solid var(--border,#2a2a2e);
+            border-radius:9px;padding:10px 12px;color:inherit;cursor:pointer;margin-bottom:7px}
+    .hb-doc:hover{border-color:var(--primary,#c9a35e)}
+    .hb-doc-t{font-size:13px;font-weight:700}
+    .hb-doc-s{font-size:11.5px;color:var(--muted,#9a958a);margin-top:3px;
+              display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .hb-art h3{font-size:14px;margin:16px 0 6px}
+    .hb-art p{font-size:13px;line-height:1.65;margin:0 0 9px}
+    .hb-art li{font-size:13px;line-height:1.65;margin-bottom:4px}
+    .hb-art[dir="rtl"]{text-align:right}
+    .hb-back{background:none;border:none;color:var(--primary,#c9a35e);font-size:12px;cursor:pointer;padding:0 0 8px}
     .hb-msg{max-width:86%;padding:10px 13px;border-radius:14px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
     .hb-msg.user{align-self:flex-end;background:var(--primary,#c9a35e);color:#0c0c0e;border-bottom-right-radius:4px}
     .hb-msg.bot{align-self:flex-start;background:rgba(255,255,255,.06);color:var(--text,#e8e4da);border-bottom-left-radius:4px}
@@ -7939,7 +8022,6 @@ function helpInit() {
   const root = document.createElement('div');
   root.id = 'hb-root';
   root.innerHTML = `
-    <button class="hb-fab" title="Help · مساعدة" onclick="helpOpen()"><i data-lucide="help-circle" style="width:26px;height:26px"></i></button>
     <div class="hb-overlay" id="hb-overlay" onclick="helpClose()"></div>
     <div class="hb-panel" id="hb-panel">
       <div class="hb-head">
@@ -7954,6 +8036,15 @@ function helpInit() {
           <button onclick="helpClose()" style="background:none;border:none;color:var(--muted,#9a958a);font-size:22px;cursor:pointer;line-height:1">×</button>
         </div>
       </div>
+      <div class="hb-tabs">
+        <button class="hb-tab active" data-tab="docs" onclick="helpTab('docs')">Docs</button>
+        <button class="hb-tab" data-tab="ask" onclick="helpTab('ask')">Ask</button>
+      </div>
+      <div class="hb-docs" id="hb-docs">
+        <input class="hb-search" id="hb-search" placeholder="Search the docs…" oninput="helpDocSearch(this.value)">
+        <div id="hb-doc-list"></div>
+        <div id="hb-doc-view" style="display:none"></div>
+      </div>
       <div class="hb-body" id="hb-body"></div>
       <div class="hb-composer">
         <textarea id="hb-input" rows="1" placeholder="Ask about the system… · اسأل عن النظام…" onkeydown="helpKey(event)"></textarea>
@@ -7963,12 +8054,77 @@ function helpInit() {
   document.body.appendChild(root);
   requestAnimationFrame(() => { try { lucide.createIcons(); } catch (_) {} });
 }
+// ── Help centre docs ──────────────────────────────────────────────────────────
+// Articles come from public/help-docs.js, shared by both portals. The bot stays
+// on its own tab; this one is plain reading and search.
+let _helpTab = 'docs';
+function helpTab(which) {
+  _helpTab = which;
+  document.querySelectorAll('.hb-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === which));
+  document.getElementById('hb-docs').classList.toggle('open', which === 'docs');
+  document.getElementById('hb-body').style.display = which === 'docs' ? 'none' : 'flex';
+  document.querySelector('.hb-composer').style.display = which === 'docs' ? 'none' : 'flex';
+  if (which === 'docs') helpDocSearch(document.getElementById('hb-search').value || '');
+}
+function helpDocLang() {
+  const v = (document.getElementById('hb-lang') || {}).value || 'auto';
+  if (v === 'en' || v === 'ar') return v;
+  return (navigator.language || '').toLowerCase().startsWith('ar') ? 'ar' : 'en';
+}
+function helpDocSearch(q) {
+  const lang = helpDocLang();
+  const docs = window.HELP_DOCS || [];
+  const term = String(q || '').trim().toLowerCase();
+  const hits = docs.filter(d => !term
+    || (d.title[lang] || '').toLowerCase().includes(term)
+    || (d.body[lang] || '').toLowerCase().includes(term)
+    || (d.title.en || '').toLowerCase().includes(term));
+  document.getElementById('hb-doc-view').style.display = 'none';
+  const list = document.getElementById('hb-doc-list');
+  list.style.display = '';
+  list.innerHTML = hits.length
+    ? hits.map(d => `<button class="hb-doc" onclick="helpDocOpen('${d.id}')" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">
+        <div class="hb-doc-t">${esc(d.title[lang] || d.title.en)}</div>
+        <div class="hb-doc-s">${esc((d.body[lang] || '').replace(/[#*-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 110))}</div>
+      </button>`).join('')
+    : '<div style="font-size:12.5px;color:var(--muted);padding:8px">Nothing matched that.</div>';
+}
+// A deliberately small markdown subset — ## heading, - bullet, **bold**
+function helpDocRender(md) {
+  const out = [];
+  let ul = false;
+  for (const raw of String(md || '').split('\n')) {
+    const line = raw.trim();
+    const bold = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    if (line.startsWith('## ')) { if (ul) { out.push('</ul>'); ul = false; } out.push('<h3>' + bold(line.slice(3)) + '</h3>'); }
+    else if (line.startsWith('- ')) { if (!ul) { out.push('<ul>'); ul = true; } out.push('<li>' + bold(line.slice(2)) + '</li>'); }
+    else if (!line) { if (ul) { out.push('</ul>'); ul = false; } }
+    else { if (ul) { out.push('</ul>'); ul = false; } out.push('<p>' + bold(line) + '</p>'); }
+  }
+  if (ul) out.push('</ul>');
+  return out.join('');
+}
+function helpDocOpen(id) {
+  const lang = helpDocLang();
+  const d = (window.HELP_DOCS || []).find(x => x.id === id);
+  if (!d) return;
+  document.getElementById('hb-doc-list').style.display = 'none';
+  const v = document.getElementById('hb-doc-view');
+  v.style.display = '';
+  v.innerHTML = `<button class="hb-back" onclick="helpDocSearch(document.getElementById('hb-search').value||'')">&larr; All articles</button>
+    <div class="hb-art" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">
+      <h3 style="margin-top:0">${esc(d.title[lang] || d.title.en)}</h3>
+      ${helpDocRender(d.body[lang] || d.body.en)}
+    </div>`;
+}
+
 function helpOpen() {
   helpInit();
   document.getElementById('hb-overlay').classList.add('open');
   document.getElementById('hb-panel').classList.add('open');
   if (!_helpHistory.length) helpWelcome();
   helpRefreshStatus();
+  helpTab(_helpTab);
   setTimeout(() => document.getElementById('hb-input')?.focus(), 120);
 }
 async function helpRefreshStatus() {
@@ -10396,6 +10552,255 @@ function dismissAdminIOSHint() {
   }).observe(document.body, { childList: true, subtree: true });
 })();
 
+// Portal binding for the shared Home dashboard below.
+const HOMECFG = {
+  base: '/api/dashboard',
+  fetch: (url, opts) => apiFetch(url, opts),
+  can: () => true,                       // the admin sees every widget
+  toast: msg => hdToast(msg),
+  sheet: (t, b, f) => hdSheet(t, b, f),
+  actions: () => ([
+    { label: 'New lead',  icon: 'user-plus',      onclick: "navigate('customers')" },
+    { label: 'New task',  icon: 'plus',           onclick: "navigate('tasks')" },
+    { label: 'Quotation', icon: 'file-text',      onclick: "navigate('quotation')" },
+    { label: 'Chat',      icon: 'message-square', onclick: "navigate('chat')" },
+  ]),
+};
+/* ── Home dashboard ───────────────────────────────────────────────────────────
+   Portal-specific bits live in HOMECFG, defined just above this block.
+   Layout is a 12-column grid: each widget carries a width (3/4/6/12) and a height
+   (1/2), which collapses to one column on a phone. Free-form x/y was deliberately
+   avoided — hand-rolled collision and packing is where this kind of UI goes wrong. */
+
+const HOME_SIZES = [
+  { w: 3, label: 'Quarter' }, { w: 4, label: 'Third' },
+  { w: 6, label: 'Half' }, { w: 12, label: 'Full' },
+];
+
+const HOME_WIDGETS = {
+  my_tasks:      { title: 'My tasks',            icon: 'clipboard-list', w: 4, h: 2, perm: null },
+  task_status:   { title: 'Tasks by status',     icon: 'pie-chart',      w: 4, h: 1, perm: null },
+  overdue_tasks: { title: 'Overdue tasks',       icon: 'alarm-clock',    w: 3, h: 1, perm: null },
+  leads_status:  { title: 'Leads by status',     icon: 'users',          w: 4, h: 2, perm: 'leads' },
+  recent_leads:  { title: 'Recent leads',        icon: 'user-plus',      w: 4, h: 2, perm: 'leads' },
+  followups:     { title: 'Follow-ups due',      icon: 'calendar-clock', w: 4, h: 2, perm: 'leads' },
+  pipeline:      { title: 'Pipeline by stage',   icon: 'trending-up',    w: 6, h: 2, perm: 'deals' },
+  won_month:     { title: 'Won this month',      icon: 'trophy',         w: 3, h: 1, perm: 'deals' },
+  hours_week:    { title: 'Hours this week',     icon: 'timer',          w: 3, h: 1, perm: null },
+  stock_summary: { title: 'Stock',               icon: 'car-front',      w: 3, h: 1, perm: null },
+  quick_actions: { title: 'Quick actions',       icon: 'zap',            w: 4, h: 1, perm: null },
+};
+
+const HOME_DEFAULT = [
+  { id: 'my_tasks', w: 4, h: 2 }, { id: 'task_status', w: 4, h: 1 },
+  { id: 'overdue_tasks', w: 4, h: 1 }, { id: 'pipeline', w: 6, h: 2 },
+  { id: 'recent_leads', w: 6, h: 2 }, { id: 'quick_actions', w: 12, h: 1 },
+];
+
+let _home = { widgets: [], data: null, editing: false, req: 0 };
+
+// The catalogue an employee sees is filtered by what they can actually open, so
+// nobody can add a widget for a section that would then 403 on them.
+function homeAvailable() {
+  return Object.entries(HOME_WIDGETS)
+    .filter(([, w]) => !w.perm || HOMECFG.can(w.perm))
+    .map(([id, w]) => ({ id, ...w }));
+}
+
+async function loadHome() {
+  const grid = document.getElementById('home-grid');
+  if (!grid) return;
+  // A token rather than a busy flag: an early return here meant that navigating
+  // away and straight back while the first fetch was in flight left Home blank.
+  const req = ++_home.req;
+  try {
+    // One round trip for every widget on the page, not one per widget
+    const [layoutR, dataR] = await Promise.all([
+      HOMECFG.fetch(HOMECFG.base + '/home/layout'),
+      HOMECFG.fetch(HOMECFG.base + '/home/summary'),
+    ]);
+    const layout = layoutR.ok ? await layoutR.json() : { widgets: [] };
+    _home.data = dataR.ok ? await dataR.json() : {};
+    if (req !== _home.req) return;                 // a newer load has taken over
+    const allowed = new Set(homeAvailable().map(w => w.id));
+    const saved = (layout.widgets || []).filter(w => allowed.has(w.id));
+    _home.widgets = saved.length ? saved : HOME_DEFAULT.filter(w => allowed.has(w.id));
+  } catch (_) {
+    _home.data = _home.data || {};
+    if (!_home.widgets.length) _home.widgets = HOME_DEFAULT;
+  }
+  homeRender();
+}
+
+async function homeSaveLayout() {
+  try {
+    await HOMECFG.fetch(HOMECFG.base + '/home/layout',
+      { method: 'PUT', body: JSON.stringify({ widgets: _home.widgets }) });
+  } catch (_) { HOMECFG.toast('Could not save the layout.'); }
+}
+
+function homeRender() {
+  const grid = document.getElementById('home-grid');
+  if (!grid) return;
+  document.getElementById('home-edit-label').textContent = _home.editing ? 'Done' : 'Edit layout';
+  document.getElementById('home-add-btn').style.display = _home.editing ? '' : 'none';
+  document.getElementById('home-reset-btn').style.display = _home.editing ? '' : 'none';
+  grid.classList.toggle('editing', _home.editing);
+
+  if (!_home.widgets.length) {
+    grid.innerHTML = `<div class="home-empty">
+      <div style="font-weight:600;font-size:15px">Your Home is empty</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:6px">Choose <em>Edit layout</em> to add widgets.</div>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = _home.widgets.map((w, i) => {
+    const def = HOME_WIDGETS[w.id];
+    if (!def) return '';
+    return `<section class="home-w" style="grid-column:span ${w.w}" data-h="${w.h}" data-i="${i}"
+              ${_home.editing ? 'draggable="true"' : ''}>
+      <header class="home-w-head">
+        <i data-lucide="${def.icon}" style="width:14px;height:14px"></i>
+        <span class="home-w-title">${esc(def.title)}</span>
+        ${_home.editing ? `<span class="home-w-tools">
+          <select class="home-w-size" onchange="homeSetSize(${i}, this.value)" title="Width">
+            ${HOME_SIZES.map(s => `<option value="${s.w}"${s.w === w.w ? ' selected' : ''}>${s.label}</option>`).join('')}
+          </select>
+          <button class="home-w-btn" onclick="homeSetHeight(${i})" title="Toggle height">
+            <i data-lucide="${w.h === 2 ? 'chevrons-down-up' : 'chevrons-up-down'}" style="width:13px;height:13px"></i></button>
+          <button class="home-w-btn" onclick="homeRemove(${i})" title="Remove">
+            <i data-lucide="x" style="width:13px;height:13px"></i></button>
+        </span>` : ''}
+      </header>
+      <div class="home-w-body">${homeWidgetBody(w.id)}</div>
+    </section>`;
+  }).join('');
+
+  if (_home.editing) homeBindDrag(grid);
+  if (window.lucide) requestAnimationFrame(() => lucide.createIcons());
+}
+
+function homeWidgetBody(id) {
+  const d = _home.data || {};
+  const money = n => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const bars = rows => !rows || !rows.length
+    ? '<div class="home-none">Nothing yet</div>'
+    : `<div class="home-bars">${(() => {
+        const max = Math.max(...rows.map(r => r.count || r.value || 0), 1);
+        return rows.slice(0, 6).map(r => {
+          const v = r.count != null ? r.count : r.value;
+          return `<div class="home-bar-row"><span class="home-bar-lbl">${esc(r.label)}</span>
+            <span class="home-bar"><i style="width:${Math.max(2, Math.round((v / max) * 100))}%"></i></span>
+            <span class="home-bar-val">${r.value != null && r.count != null ? money(r.value) : v}</span></div>`;
+        }).join('');
+      })()}</div>`;
+  const list = (rows, line) => !rows || !rows.length
+    ? '<div class="home-none">Nothing yet</div>'
+    : `<ul class="home-list">${rows.map(line).join('')}</ul>`;
+  const big = (v, sub) => `<div class="home-big">${v}</div><div class="home-sub">${esc(sub)}</div>`;
+
+  switch (id) {
+    case 'my_tasks':
+      return list(d.my_tasks, t => `<li><span class="home-li-main">${esc(t.title || '')}</span>
+        <span class="home-li-sub">${t.due_date ? esc(String(t.due_date).slice(0, 10)) : ''}</span></li>`);
+    case 'task_status':   return bars(d.task_status);
+    case 'overdue_tasks': return big(d.overdue_tasks || 0, 'tasks past their due date');
+    case 'leads_status':  return bars(d.leads_status);
+    case 'recent_leads':
+      return list(d.recent_leads, c => `<li><span class="home-li-main">${esc(c.name || '')}</span>
+        <span class="home-li-sub">${esc(c.lead_status || '')}</span></li>`);
+    case 'followups':
+      return list(d.followups, f => `<li><span class="home-li-main">${esc(f.note || 'Follow-up')}</span>
+        <span class="home-li-sub">${f.due_at ? esc(String(f.due_at).slice(0, 10)) : ''}</span></li>`);
+    case 'pipeline':      return bars(d.pipeline);
+    case 'won_month':     return big(money(d.won_month), 'EGP won this month');
+    case 'hours_week':    return big(d.hours_week || 0, 'hours logged this week');
+    case 'stock_summary':
+      return big((d.stock_summary || {}).units || 0, `${(d.stock_summary || {}).models || 0} models in stock`);
+    case 'quick_actions':
+      return `<div class="home-actions">${HOMECFG.actions().map(a =>
+        `<button class="btn btn-outline btn-sm" onclick="${a.onclick}">
+          <i data-lucide="${a.icon}" style="width:13px;height:13px"></i> ${esc(a.label)}</button>`).join('')}</div>`;
+    default: return '<div class="home-none">—</div>';
+  }
+}
+
+// ── Edit mode ──
+function homeToggleEdit() {
+  _home.editing = !_home.editing;
+  if (!_home.editing) homeSaveLayout();
+  homeRender();
+}
+function homeSetSize(i, w) {
+  if (_home.widgets[i]) _home.widgets[i].w = Number(w) || 4;
+  homeRender();
+}
+function homeSetHeight(i) {
+  if (_home.widgets[i]) _home.widgets[i].h = _home.widgets[i].h === 2 ? 1 : 2;
+  homeRender();
+}
+function homeRemove(i) {
+  _home.widgets.splice(i, 1);
+  homeRender();
+}
+function homeReset() {
+  const allowed = new Set(homeAvailable().map(w => w.id));
+  _home.widgets = HOME_DEFAULT.filter(w => allowed.has(w.id)).map(w => ({ ...w }));
+  homeRender();
+}
+function homeOpenAdd() {
+  const used = new Set(_home.widgets.map(w => w.id));
+  const free = homeAvailable().filter(w => !used.has(w.id));
+  if (!free.length) { HOMECFG.toast('Every widget is already on your Home.'); return; }
+  HOMECFG.sheet('Add a widget', `<div class="hd-list">
+      ${free.map(w => `<label class="hd-row"><input type="checkbox" class="home-add-cb" value="${esc(w.id)}">
+        <i data-lucide="${w.icon}" style="width:14px;height:14px"></i>
+        <span style="flex:1">${esc(w.title)}</span></label>`).join('')}
+    </div>`,
+    `<button class="btn btn-outline btn-sm" onclick="hdSheetClose()">Cancel</button>
+     <button class="btn btn-primary btn-sm" onclick="homeAddPicked()">Add</button>`);
+  if (window.lucide) requestAnimationFrame(() => lucide.createIcons());
+}
+function homeAddPicked() {
+  [...document.querySelectorAll('.home-add-cb:checked')].forEach(cb => {
+    const def = HOME_WIDGETS[cb.value];
+    if (def) _home.widgets.push({ id: cb.value, w: def.w, h: def.h });
+  });
+  hdSheetClose();
+  homeRender();
+}
+
+// Drag to reorder. Same shape as the sidebar arranger: drop before or after the
+// widget under the pointer, decided by which half of it you are over.
+function homeBindDrag(grid) {
+  let from = null;
+  grid.querySelectorAll('.home-w').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      from = Number(el.dataset.i);
+      el.classList.add('dragging');
+      try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(from)); } catch (_) {}
+    });
+    el.addEventListener('dragend', () => { el.classList.remove('dragging'); grid.querySelectorAll('.home-w').forEach(x => x.classList.remove('over')); });
+    el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('over'));
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      el.classList.remove('over');
+      const to = Number(el.dataset.i);
+      if (from == null || from === to) return;
+      const r = el.getBoundingClientRect();
+      const after = (e.clientX - r.left) > r.width / 2;
+      const moved = _home.widgets.splice(from, 1)[0];
+      let idx = to + (after ? 1 : 0);
+      if (from < idx) idx--;
+      _home.widgets.splice(idx, 0, moved);
+      from = null;
+      homeRender();
+    });
+  });
+}
+
 // Portal binding for the shared huddle / group-admin module below.
 const HDCFG = {
   base: '/api/dashboard/chat',
@@ -11204,5 +11609,6 @@ function statusEmojiOnly(emoji, text) {
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
+<script src="/help-docs.js"></script>
 </body>
 </html>
