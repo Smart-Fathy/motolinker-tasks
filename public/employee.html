@@ -539,14 +539,22 @@
           </div>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <input class="form-control" id="emp-lead-search" placeholder="Search name, phone, car…" oninput="empFilterLeads()" style="max-width:240px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <input class="form-control" id="emp-lead-date-from" type="date" onchange="empFilterLeads()" title="From date" style="max-width:150px">
+              <span style="color:var(--muted);font-size:12px">→</span>
+              <input class="form-control" id="emp-lead-date-to" type="date" onchange="empFilterLeads()" title="To date" style="max-width:150px">
+            </div>
+            <button class="btn btn-outline" onclick="openLeadFilterPicker()"><i data-lucide="filter" style="width:13px;height:13px"></i> Add filter</button>
+            <button class="btn btn-outline" onclick="clearLeadFilters()">Clear</button>
             <button class="btn btn-outline" id="lead-cols-btn" data-perm="leads.edit" onclick="openLeadColsPicker(event)"><i data-lucide="columns-3" style="width:15px;height:15px"></i> Columns</button>
             <button class="btn btn-outline" data-perm="leads.export" onclick="exportLeadsTable()" title="Export the table as CSV — visible columns only"><i data-lucide="download" style="width:15px;height:15px"></i> Export</button>
             <button class="btn btn-outline" data-perm="leads.import" onclick="openEmpCsvModal()"><i data-lucide="upload" style="width:15px;height:15px"></i> Import CSV</button>
             <button class="btn btn-primary" data-perm="leads.create" onclick="openEmpLeadModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> Add Lead</button>
           </div>
         </div>
+        <div id="emp-lead-filter-chips" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
         <div class="card" style="padding:0;overflow:hidden">
-          <div style="overflow-x:auto">
+          <div class="table-scroll">
             <table style="width:100%;border-collapse:collapse;min-width:980px" id="emp-leads-table">
               <thead><tr id="emp-leads-head"></tr></thead>
               <tbody id="emp-leads-tbody">
@@ -664,6 +672,21 @@
     </div>
 
     <!-- ── Add Lead Column Modal ── -->
+    <!-- ── Add Lead Filter Modal ── -->
+    <div id="emp-lead-filter-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:420px;margin:auto">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-size:16px;font-weight:800">Add filter</div>
+          <button onclick="document.getElementById('emp-lead-filter-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
+        </div>
+        <div id="emp-lf-body"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+          <button class="btn btn-outline" onclick="document.getElementById('emp-lead-filter-modal').style.display='none'">Cancel</button>
+          <button class="btn btn-primary" onclick="addLeadFilter()">Add filter</button>
+        </div>
+      </div>
+    </div>
+
     <div id="lead-col-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:420px;margin:auto">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
@@ -1288,6 +1311,7 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
+<script src="/assets/lead-filters.js"></script>
 <script src="/assets/chat-extras.js"></script>
 <script src="/assets/home.js"></script>
 <script src="/assets/huddle.js"></script>

@@ -941,6 +941,7 @@ const EMP_ORIGIN_LABELS      = { fb_ad:'FB Ad.', whatsapp:'Whatsapp', messenger:
 const EMP_NEXT_ACTION_LABELS = { followed_by_sales:'Followed By Sales', need_follow_up:'Need Follow Up', closed:'Closed', no_answer:'No Answer' };
 const EMP_LEAD_STATUS_OPTS   = [['cold','Cold'],['warm','Warm'],['hot','Hot'],['immediate_delivery','Immediate Delivery'],['not_interested','Not Interested'],['blacklist','Blacklist']];
 let _empLeads = [];
+let _empLeadOptions = [];   // slim list for the deal modal's lead picker
 let _empCoworkers = null;
 // Sort state (persisted): { key, dir:'asc'|'desc' }
 let _leadSort = (() => { try { return JSON.parse(localStorage.getItem('ml_emp_leads_sort')) || { key: null, dir: 'asc' }; } catch (_) { return { key: null, dir: 'asc' }; } })();
@@ -1026,10 +1027,32 @@ function leadSortArrow(key) {
   return `<span class="lead-sort-arrow" style="color:var(--primary);margin-left:3px;font-size:10px">${_leadSort.dir === 'desc' ? '▼' : '▲'}</span>`;
 }
 
+// Filter engine shared with the admin dashboard — public/assets/lead-filters.js.
+// Only the portal-specific bindings live here.
+lfInit({
+  storageKey: 'ml_emp_lead_filters',      // separate from the admin's saved filters
+  chipsId: 'emp-lead-filter-chips',
+  inputClass: 'form-control',
+  inputIds: ['emp-lead-search', 'emp-lead-date-from', 'emp-lead-date-to'],
+  owners: () => _empCoworkers,
+  apply: () => empFilterLeads(),
+  showPicker: body => {
+    document.getElementById('emp-lf-body').innerHTML = body;
+    document.getElementById('emp-lead-filter-modal').style.display = 'flex';
+  },
+  hidePicker: () => { document.getElementById('emp-lead-filter-modal').style.display = 'none'; },
+  warn: msg => showToast(msg),
+});
+
 function empFilterLeads() {
   const q = (document.getElementById('emp-lead-search')?.value || '').toLowerCase();
-  const base = q ? _empLeads.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.car_in_question||'').toLowerCase().includes(q)) : _empLeads;
-  empRenderLeads(applyLeadSort(base));
+  const from = document.getElementById('emp-lead-date-from')?.value || '';
+  const to   = document.getElementById('emp-lead-date-to')?.value || '';
+  let list = _empLeads;
+  if (q) list = list.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.car_in_question||'').toLowerCase().includes(q));
+  if (from) list = list.filter(c => c.lead_date && c.lead_date >= from);
+  if (to)   list = list.filter(c => c.lead_date && c.lead_date <= to);
+  empRenderLeads(applyLeadSort(lfApply(list)));
 }
 
 let _lastRenderedLeads = []; // filtered+sorted list currently on screen (feeds Export)
@@ -1114,6 +1137,19 @@ let _leadMenuEl = null;
 let _typeColKey = null;
 
 function leadCol(key) { return (_leadCols || LEAD_DEFAULT_COLS).find(c => c.key === key); }
+// Rebuild a built-in select from the live column config. The Add Lead form used to
+// carry its Status, Origin and Next Action options hardcoded in the HTML while the
+// table read them from the config, so renaming or adding an option left the two
+// disagreeing. Same function the admin portal has always used.
+function fillLeadSelect(id, colKey, emptyLabel, rawValue) {
+  const sel = document.getElementById(id);
+  const col = leadCol(colKey);
+  if (!sel || !col) return;
+  sel.innerHTML = (emptyLabel != null ? `<option value="">${esc(emptyLabel)}</option>` : '') +
+    (col.options || []).map(o => `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join('');
+  const k = normKey(rawValue, colOptMap(col));
+  sel.value = [...sel.options].some(o => o.value === k) ? k : (emptyLabel != null ? '' : (col.options?.[0]?.key || ''));
+}
 function colOptMap(col) { const m = {}; (col?.options || []).forEach(o => { m[o.key] = o.label; }); return m; }
 function slugKey(label) { return String(label).toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'col'; }
 function isChecked(raw) { return raw === true || raw === 'true' || raw === 1 || raw === '1'; }
@@ -1779,9 +1815,13 @@ function openEmpLeadModal(id) {
   document.getElementById('eml-id').value = c?.id || '';
   const set = (k, v) => { const el = document.getElementById(k); if (el) el.value = v; };
   set('eml-name', c?.name || ''); set('eml-phone', c?.phone || ''); set('eml-date', c?.lead_date || ''); set('eml-time', c?.lead_time || '');
-  set('eml-status', c?.lead_status || 'cold'); set('eml-source', c?.source || ''); set('eml-car', c?.car_in_question || '');
+  set('eml-car', c?.car_in_question || '');
+  // Built from the column config, not from the markup — see fillLeadSelect.
+  fillLeadSelect('eml-status', 'lead_status', null, c?.lead_status || 'cold');
+  fillLeadSelect('eml-source', 'source', '— Unknown —', c?.source);
   set('eml-budget', (c?.budget_max != null && c?.budget_max !== '') ? `${c.budget_lead}-${c.budget_max}` : (c?.budget_lead || ''));
-  set('eml-next-action', c?.next_action || ''); set('eml-notes', c?.notes || ''); set('eml-sales-feedback', c?.sales_feedback || ''); set('eml-inquiry', c?.inquiry || '');
+  fillLeadSelect('eml-next-action', 'next_action', '— None —', c?.next_action);
+  set('eml-notes', c?.notes || ''); set('eml-sales-feedback', c?.sales_feedback || ''); set('eml-inquiry', c?.inquiry || '');
   document.getElementById('eml-contacted').checked = !!c?.been_contacted;
   const owner = document.getElementById('eml-owner');
   owner.innerHTML = '<option value="">— Unassigned —</option>' + (_empCoworkers || []).map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
@@ -2275,7 +2315,10 @@ async function loadEmpDeals() {
   await loadEmpCoworkers();
   // Best-effort: load the slim scoped lead list so the deal modal's lead picker is populated
   // (works for deal-creators even without full Leads access).
-  try { const L = await ef('/api/employee/lead-options').then(r => r.json()); if (Array.isArray(L)) _empLeads = L; } catch (_) {}
+  // Its own array, not _empLeads. This used to overwrite the Leads table's rows with
+  // the slim {id,name,phone} picker list, so coming back from Deals rendered — and now
+  // would filter — against rows with no status, car or dates until the refetch landed.
+  try { const L = await ef('/api/employee/lead-options').then(r => r.json()); if (Array.isArray(L)) _empLeadOptions = L; } catch (_) {}
   const kanban = document.getElementById('emp-deals-kanban');
   try {
     _empDeals = await ef('/api/employee/deals').then(r => r.json());
@@ -2340,7 +2383,8 @@ function openEmpDealModal(id) {
   document.getElementById('emd-title').textContent = d ? 'Edit Deal' : 'Add Deal';
   document.getElementById('emd-id').value = d?.id || '';
   const pick = document.getElementById('emd-customer');
-  pick.innerHTML = '<option value="">— Select lead —</option>' + [...(_empLeads || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(l => `<option value="${l.id}">${esc(l.name)}${l.phone ? ' · ' + esc(l.phone) : ''}</option>`).join('');
+  const pickFrom = (_empLeadOptions && _empLeadOptions.length) ? _empLeadOptions : (_empLeads || []);
+  pick.innerHTML = '<option value="">— Select lead —</option>' + [...pickFrom].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(l => `<option value="${l.id}">${esc(l.name)}${l.phone ? ' · ' + esc(l.phone) : ''}</option>`).join('');
   if (d?.customer_id && !pick.querySelector(`option[value="${d.customer_id}"]`)) pick.insertAdjacentHTML('beforeend', `<option value="${d.customer_id}">${esc(d.customers?.name || ('#' + d.customer_id))}</option>`);
   pick.value = d?.customer_id ? String(d.customer_id) : '';
   document.getElementById('emd-title-input').value = d?.title || '';

@@ -464,6 +464,23 @@
   /* ── Hide scrollbars globally ── */
   *, *::before, *::after { scrollbar-width: none; -ms-overflow-style: none; }
   *::-webkit-scrollbar { display: none; }
+  /* ── A wide table you can actually steer ────────────────────────────────────
+     These wrappers always had overflow-x:auto, but the global rule above hides every
+     scrollbar in the app, so there was no handle to grab and no sign the table
+     continued past the edge. This re-enables one for the table wrappers only. */
+  .table-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent; -ms-overflow-style: auto; }
+  .table-scroll::-webkit-scrollbar { display: block; height: 10px; }
+  .table-scroll::-webkit-scrollbar-track { background: transparent; }
+  .table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+  .table-scroll::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  /* The first column stays put, so a row is still identifiable once you scroll right.
+     Below .lead-menu's z-index deliberately — that menu is position:fixed and must
+     stay on top of a pinned cell. */
+  .table-scroll table thead th:first-child,
+  .table-scroll table tbody td:first-child { position: sticky; left: 0; z-index: 2;
+    background: var(--surface); box-shadow: 1px 0 0 var(--border); }
+  .table-scroll table thead th:first-child { z-index: 3; }
   /* ── Status presets ── */
   .st-preset { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:none; border:none; color:var(--text); font-size:13.5px; padding:10px 12px; border-radius:8px; cursor:pointer; }
   .st-preset:hover { background:rgba(255,255,255,.05); }
@@ -672,14 +689,22 @@
   .hd-q[data-q="3"] i { opacity:1; }
   /* Full screen: the tile is sized for a thumbnail, so the crop has to go or a
      shared screen loses its edges — exactly the content someone opened this for. */
-  .hd-tile:fullscreen { width:100vw; height:100vh; border:none; border-radius:0; background:#000; }
-  .hd-tile:fullscreen .hd-video { width:100vw; height:100vh; object-fit:contain; }
-  .hd-tile:fullscreen .hd-tile-name { font-size:14px; padding:10px 16px; }
-  .hd-tile:fullscreen .hd-full { width:34px; height:34px; font-size:17px; top:14px; right:14px; }
-  .hd-tile:-webkit-full-screen { width:100vw; height:100vh; border:none; border-radius:0; background:#000; }
-  .hd-tile:-webkit-full-screen .hd-video { width:100vw; height:100vh; object-fit:contain; }
-  .hd-tile:-webkit-full-screen .hd-tile-name { font-size:14px; padding:10px 16px; }
-  .hd-tile:-webkit-full-screen .hd-full { width:34px; height:34px; font-size:17px; top:14px; right:14px; }
+  /* Scoped with #hd-bar deliberately. Unscoped these are (0,3,0) and lose to
+     `#hd-bar.max .hd-video` at (1,2,0) — an id outranks any number of classes — so with
+     the widget maximised a shared screen stayed at its ~440x300 thumbnail size in the
+     corner of a black full-screen tile. Going full screen promotes the element to the
+     top layer but does not reparent it, so the .max rules still match. 100%/100% rather
+     than viewport units: 100vh overshoots the full-screen box under a mobile toolbar. */
+  #hd-bar .hd-tile:fullscreen { width:100vw; height:100vh; border:none; border-radius:0; background:#000; }
+  #hd-bar .hd-tile:fullscreen .hd-video { width:100%; height:100%; object-fit:contain; }
+  #hd-bar .hd-tile:fullscreen .hd-avatar { width:100%; height:100%; }
+  #hd-bar .hd-tile:fullscreen .hd-tile-name { font-size:14px; padding:10px 16px; }
+  #hd-bar .hd-tile:fullscreen .hd-full { width:34px; height:34px; font-size:17px; top:14px; right:14px; }
+  #hd-bar .hd-tile:-webkit-full-screen { width:100vw; height:100vh; border:none; border-radius:0; background:#000; }
+  #hd-bar .hd-tile:-webkit-full-screen .hd-video { width:100%; height:100%; object-fit:contain; }
+  #hd-bar .hd-tile:-webkit-full-screen .hd-avatar { width:100%; height:100%; }
+  #hd-bar .hd-tile:-webkit-full-screen .hd-tile-name { font-size:14px; padding:10px 16px; }
+  #hd-bar .hd-tile:-webkit-full-screen .hd-full { width:34px; height:34px; font-size:17px; top:14px; right:14px; }
   .hd-btn { border:1px solid var(--border); background:var(--bg); color:var(--text); border-radius:9px;
             padding:7px 10px; font-size:14px; cursor:pointer; line-height:1; }
   .hd-btn:hover { border-color:var(--primary); }

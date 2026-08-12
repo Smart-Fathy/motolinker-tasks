@@ -23,6 +23,9 @@ for (; cssEnd < CSSSRC.length; cssEnd++) {
   else if (CSSSRC[cssEnd] === '}') { d--; if (!d) { cssEnd++; break; } }
 }
 const CSS = CSSSRC.slice(cssFrom, cssEnd);
+// Validates the slice covers the right region. It deliberately does NOT pin the exact
+// selector: asserting the rule's text is what let a rule that never wins ship once.
+// The geometry assertions below are the real check.
 if (!/\.hd-tile:fullscreen \.hd-video/.test(CSS)) throw new Error('css slice looks wrong');
 console.log('module slice:', MODULE.split('\n').length, 'lines;  css slice:', CSS.split('\n').length, 'lines');
 
@@ -42,6 +45,7 @@ ${MODULE}
   return { huddleStart, huddleJoinExisting, huddleLeave, huddleOnSignal, huddleToggleMute,
            huddleToggleCam, huddleToggleShare, hdRenderBar, hdIncoming, hdIce, hdOpenInvite,
            hdPollStats, hdQuality, hdCanShareScreen, hdAvatarFor, hdInitialsFor, hdRingOnce,
+           hdRenderBar, hdDialRoster,
            state: () => _hd, peers: () => _hd.peers };
 }
 
@@ -175,12 +179,95 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const offers = log.filter(l => l.includes('-> offer'));
   check('exactly one offer, sent by A', offers.length === 1 && offers[0].startsWith('A'), JSON.stringify(offers));
 
-  // 4. A receives audio from B
-  const gotAudio = await page.evaluate(() => {
-    const p = [...window.A.peers().values()][0];
-    return p.stream.getAudioTracks().length;
+  // 4. AUDIO BOTH WAYS. Every assertion above reads window.A — and A is always the
+  //    offerer, because the glare rule picks by key order. So the answering side was
+  //    never checked at all, which is the direction users report as "he cannot hear me".
+  //    Checked at the element, not the peer entry: a track the page holds but never
+  //    plays is silence.
+  const bothWays = await page.evaluate(() => {
+    const probe = (who, peerKey) => {
+      const p = window[who].peers().get(peerKey);
+      if (!p) return { err: 'no peer ' + peerKey + ' on ' + who };
+      const el = [...document.querySelectorAll('#hd-bar [data-tile]')]
+        .find(t => t.getAttribute('data-tile') === peerKey);
+      const v = el && el.querySelector('video');
+      const recv = p.pc.getReceivers().filter(r => r.track && r.track.kind === 'audio');
+      const send = p.pc.getSenders().filter(r => r.track && r.track.kind === 'audio');
+      const at = p.pc.getTransceivers().find(t => (t.receiver.track || {}).kind === 'audio');
+      return {
+        entryAudio: p.stream.getAudioTracks().length,
+        sending: send.length, receiving: recv.length,
+        audioDirection: at ? at.currentDirection : null,
+        elAudio: v && v.srcObject ? v.srcObject.getAudioTracks().length : 0,
+        elPaused: v ? v.paused : null,
+        elMuted: v ? v.muted : null,
+      };
+    };
+    return { aFromB: probe('A', 'B'), bFromA: probe('B', 'A') };
   });
-  check('A receives B audio track', gotAudio === 1, 'tracks=' + gotAudio);
+  check('the offerer receives the answerer\'s audio',
+    bothWays.aFromB.entryAudio === 1, JSON.stringify(bothWays.aFromB));
+  check('the ANSWERER receives the offerer\'s audio',
+    bothWays.bFromA.entryAudio === 1, JSON.stringify(bothWays.bFromA));
+  check('both sides are actually sending audio',
+    bothWays.aFromB.sending === 1 && bothWays.bFromA.sending === 1,
+    JSON.stringify({ a: bothWays.aFromB.sending, b: bothWays.bFromA.sending }));
+  check('neither audio m-line ended up receive-only',
+    bothWays.aFromB.audioDirection === 'sendrecv' && bothWays.bFromA.audioDirection === 'sendrecv',
+    JSON.stringify({ a: bothWays.aFromB.audioDirection, b: bothWays.bFromA.audioDirection }));
+
+  // 4b. THE PLAYBACK INVARIANT. The negotiation above is fine in both directions, so
+  //     silence comes from the element, not the SDP. hdPeer creates entry.stream EMPTY
+  //     and hdPaintTile binds it behind an identity check; ontrack later mutates that
+  //     same object. If a render happens before the first track — which it does for the
+  //     offerer, since the roster handler calls hdCall() then hdRenderBar() — the
+  //     element is bound to an empty stream, play() rejects, and because the identity
+  //     never changes it is never bound or played again. That rejected play() is what
+  //     raises "your browser blocked the sound", and the click listener it installs is
+  //     why the call starts working the moment the user clicks anything at all.
+  const playback = await page.evaluate(async () => {
+    const A = window.A;
+    // Record every play() with whether the element had anything to play.
+    const realPlay = HTMLMediaElement.prototype.play;
+    const calls = [];
+    HTMLMediaElement.prototype.play = function () {
+      calls.push({ tracks: this.srcObject ? this.srcObject.getTracks().length : -1 });
+      return realPlay.call(this);
+    };
+
+    // A peer that exists before any of its media has arrived — the ordinary case.
+    const stream = new MediaStream();
+    A.peers().set('Z', { pc: { connectionState: 'connected', close() {} },
+                         stream, name: 'Zoe', state: 'connected', video: false, quality: 3 });
+    A.hdRenderBar();
+    await new Promise(r => setTimeout(r, 50));
+    const tile = () => document.querySelector('#hd-bar [data-tile="Z"]');
+    const boundWhileEmpty = !!(tile() && tile().querySelector('video').srcObject);
+    const playsWhileEmpty = calls.filter(c => c.tracks === 0).length;
+
+    // Now the audio arrives, exactly as ontrack delivers it: added to the same object.
+    const track = A.state().local.getAudioTracks()[0].clone();
+    stream.addTrack(track);
+    const before = calls.length;
+    A.hdRenderBar();
+    await new Promise(r => setTimeout(r, 50));
+    const v = tile() && tile().querySelector('video');
+    const out = {
+      boundWhileEmpty, playsWhileEmpty,
+      playedAfterTrack: calls.length - before,
+      elHasAudio: v && v.srcObject ? v.srcObject.getAudioTracks().length : 0,
+      elPaused: v ? v.paused : null,
+    };
+    HTMLMediaElement.prototype.play = realPlay;
+    A.peers().delete('Z'); A.hdRenderBar();
+    return out;
+  });
+  check('a tile with no media yet is not bound to an empty stream',
+    playback.boundWhileEmpty === false && playback.playsWhileEmpty === 0, JSON.stringify(playback));
+  check('audio arriving after the tile was painted gets played',
+    playback.playedAfterTrack >= 1, JSON.stringify(playback));
+  check('and the element ends up holding it, unpaused',
+    playback.elHasAudio === 1 && playback.elPaused === false, JSON.stringify(playback));
 
   // 5. Mute disables the local audio track without renegotiating
   await page.evaluate(() => window.A.huddleToggleMute());
@@ -229,6 +316,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   check('the full-screen button shows on a tile with a picture', fsBefore.withVideo === 'flex', JSON.stringify(fsBefore));
   check('and stays hidden on an audio-only tile', fsBefore.audioOnly === 'none', JSON.stringify(fsBefore));
 
+  // Maximised, because that is the only state the bug appears in — and it is sticky,
+  // persisted in localStorage and reapplied on every render, so once a user clicks
+  // maximise full screen stays broken for them across calls and reloads.
+  // `#hd-bar.max .hd-video` is (1,2,0) and beat the unscoped `.hd-tile:fullscreen
+  // .hd-video` at (0,3,0), leaving the share at thumbnail size in the corner.
+  // Maximise through the real control, not by adding the class: hdApplyWidget
+  // re-derives it from the persisted _hdUI on every render and would strip it.
+  await page.evaluate(() => document.querySelector('#hd-bar .hd-wbtn[data-act="max"]')
+    .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 9 })));
+  await sleep(150);
+
   // requestFullscreen needs a trusted gesture, so drive a real click.
   // The toast is pointer-events:none precisely so it cannot intercept this.
   await page.click('[data-tile="__self"] .hd-full');
@@ -240,12 +338,39 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const cs = getComputedStyle(v), ts = getComputedStyle(el);
     return { active: true, tile: el.getAttribute('data-tile'),
              fit: cs.objectFit, cssW: cs.width, w: v.clientWidth, vw: innerWidth,
+             h: v.clientHeight, vh: innerHeight,
+             maxed: document.getElementById('hd-bar').classList.contains('max'),
              tileW: el.clientWidth, tileCssW: ts.width, screenW: screen.width };
   });
   check('clicking it takes that tile full screen', inFs.active && inFs.tile === '__self', JSON.stringify(inFs));
   check('the thumbnail crop is dropped, so a shared screen keeps its edges',
     inFs.fit === 'contain', JSON.stringify(inFs));
   check('and the video fills the viewport', inFs.w >= inFs.vw - 2, JSON.stringify(inFs));
+  // The pixel geometry above cannot prove the maximised case: headless Chromium does
+  // not lay a full-screen element out faithfully — with the rule scoped or unscoped it
+  // reports the same non-pixel computed width. So the cascade is asserted directly,
+  // which is where the bug actually lived. `#hd-bar.max .hd-video` is (1,2,0) and an id
+  // outranks any number of classes, so an unscoped `.hd-tile:fullscreen .hd-video` at
+  // (0,3,0) loses and the share stays thumbnail-sized in the corner of a black screen.
+  {
+    const spec = sel => {
+      const ids = (sel.match(/#[\w-]+/g) || []).length;
+      const cls = (sel.match(/\.[\w-]+|:[\w-]+(?:\([^)]*\))?|\[[^\]]+\]/g) || []).length;
+      return ids * 1000 + cls;   // one id outranks any realistic number of classes
+    };
+    // A rule can list several selectors; only the one that targets .hd-video counts.
+    const ruleFor = re => {
+      const list = (CSS.match(re) || [])[1];
+      if (!list) return null;
+      return list.split(',').map(x => x.trim()).find(x => x.includes('.hd-video')) || null;
+    };
+    const fsVideo = ruleFor(/\n\s*([^\n{]*:fullscreen[^\n{]*\.hd-video)\s*\{/);
+    const maxVideo = ruleFor(/\n\s*([^\n{]*#hd-bar\.max[^\n{]*\.hd-video[^\n{]*)\s*\{[^}]*height/);
+    check('the full-screen video rule outranks the maximised-widget rule',
+      !!fsVideo && !!maxVideo && spec(fsVideo) > spec(maxVideo),
+      JSON.stringify({ fsVideo, fs: fsVideo && spec(fsVideo), maxVideo, max: maxVideo && spec(maxVideo) }));
+    check('and it was exercised with the widget actually maximised', inFs.maxed === true);
+  }
 
   const stillLive = await page.evaluate(() => {
     const v = document.querySelector('[data-tile="__self"] .hd-video');
@@ -258,6 +383,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(300);
   check('a re-render does not kick us out of full screen',
     await page.evaluate(() => !!document.fullscreenElement));
+  await page.evaluate(() => {
+    document.querySelector('#hd-bar .hd-wbtn[data-act="max"]')
+      .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 10 }));
+    localStorage.removeItem('ml_huddle_ui');
+  });
 
   await page.click('[data-tile="__self"] .hd-full');
   await sleep(700);
@@ -561,7 +691,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check('initials come from the real name', faces.ini === 'BM', faces.ini);
     check('nobody gets the old shared microphone glyph',
       !(await page.evaluate(() => !!document.querySelector('#hd-bar .hd-avatar [data-lucide="mic"]'))));
-    await page.evaluate(() => window.A.huddleLeave());
+    // Both sides leave: B lingering in this room made a later join a no-op.
+    await page.evaluate(() => { window.A.huddleLeave(); window.B.huddleLeave(); });
     await sleep(150);
   }
 
@@ -596,6 +727,98 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check('the same invite arriving twice does not ring twice', ring.second === false, JSON.stringify(ring));
     check('a different huddle still rings', ring.other === true, JSON.stringify(ring));
   }
+
+  // ── 18. A candidate arriving before its description is kept, not dropped ──
+  // Every signal is an independent POST and this handler is never awaited, so an ice
+  // frame overtaking its offer is routine rather than exotic. It used to be swallowed
+  // by a bare catch, quietly degrading that one pair while the others worked.
+  {
+    const ice = await page.evaluate(async () => {
+      await window.A.huddleStart(5, false);
+      // A peer with no remote description yet — exactly the window that loses candidates.
+      const pc = new RTCPeerConnection({});
+      const added = [];
+      pc.addIceCandidate = async c => { added.push(c); };
+      window.A.peers().set('Q', { pc, stream: new MediaStream(), name: 'Q', state: 'connecting' });
+      const cand = { candidate: 'candidate:1 1 udp 1 127.0.0.1 1 typ host', sdpMid: '0', sdpMLineIndex: 0 };
+      await window.A.huddleOnSignal({ type: 'ice', roomId: 5, from: 'Q', data: cand });
+      const entry = window.A.peers().get('Q');
+      const queued = (entry.pendingIce || []).length;
+      const appliedEarly = added.length;
+      // Once a description exists the queue is flushed by the answer path.
+      Object.defineProperty(pc, 'remoteDescription', { value: { type: 'offer' }, configurable: true });
+      await window.A.huddleOnSignal({ type: 'ice', roomId: 5, from: 'Q', data: cand });
+      const out = { queued, appliedEarly, appliedLater: added.length };
+      window.A.peers().delete('Q'); window.A.huddleLeave();
+      return out;
+    });
+    check('a candidate with no remote description yet is queued, not thrown away',
+      ice.queued === 1 && ice.appliedEarly === 0, JSON.stringify(ice));
+    check('and once there is a description candidates go straight in',
+      ice.appliedLater === 1, JSON.stringify(ice));
+  }
+  await sleep(200);
+
+  // ── 19. Dialling does not depend on the roster frame arriving ──
+  // huddleStart already has the participant list in its join response; relying only on
+  // the SSE frame meant a joiner whose stream had not finished registering never
+  // dialled, and if it held the smaller key nobody dialled that pair at all. Proven by
+  // withholding A's roster frame entirely — the join response has to be enough.
+  {
+    const dials = await page.evaluate(async () => {
+      const bus = window.__bus, realInbox = bus.inbox.A;
+      await window.B.huddleStart(6, false);        // B is already in the room
+      await new Promise(r => setTimeout(r, 200));
+      bus.inbox.A = () => {};                      // A never hears the roster broadcast
+      window.__log.length = 0;
+      await window.A.huddleStart(6, false);
+      await new Promise(r => setTimeout(r, 500));
+      const offers = window.__log.filter(l => l.includes('-> offer'));
+      window.A.hdDialRoster();                     // idempotent?
+      await new Promise(r => setTimeout(r, 300));
+      const after = window.__log.filter(l => l.includes('-> offer'));
+      bus.inbox.A = realInbox;
+      const out = { offers: offers.slice(), after: after.slice(),
+                    roster: window.A.state().roster.map(p => p.key) };
+      window.A.huddleLeave(); window.B.huddleLeave();
+      return out;
+    });
+    check('the join response alone is enough to dial the other side',
+      dials.offers.length === 1 && dials.offers[0] === 'A -> offer @B', JSON.stringify(dials));
+    check('and dialling twice does not offer twice', dials.after.length === 1, JSON.stringify(dials.after));
+  }
+  await sleep(300);
+
+  // ── 20. Someone joining mid-share gets the picture ──
+  // A screen share lives in its own stream and only ever reached peers through the
+  // toggle, so anyone who arrived afterwards got an empty video sender while being told
+  // a share was running.
+  {
+    const late = await page.evaluate(async () => {
+      const bus = window.__bus, realInbox = bus.inbox.A;
+      await window.A.huddleStart(7, false);
+      await new Promise(r => setTimeout(r, 150));
+      bus.inbox.A = () => {};                      // keep the roster stable under us
+      const canvas = document.createElement('canvas'); canvas.width = 32; canvas.height = 24;
+      const fake = canvas.captureStream(1);
+      window.A.state().screen = fake;
+      window.A.state().sharing = true;
+      window.A.state().roster = [{ key: 'A', name: 'A' }, { key: 'Y', name: 'Y' }];
+      window.A.hdDialRoster();
+      await new Promise(r => setTimeout(r, 400));
+      const p = window.A.peers().get('Y');
+      const senders = p ? p.pc.getSenders().filter(x => x.track && x.track.kind === 'video') : [];
+      const out = { hasPeer: !!p, videoSenders: senders.length,
+                    sendingScreen: senders.some(x => x.track === fake.getVideoTracks()[0]) };
+      bus.inbox.A = realInbox;
+      window.A.state().sharing = false; window.A.state().screen = null;
+      window.A.huddleLeave();
+      return out;
+    });
+    check('a peer created during a share is sent the shared screen',
+      late.hasPeer && late.videoSenders === 1 && late.sendingScreen, JSON.stringify(late));
+  }
+  await sleep(300);
 
   check('no page errors', errs.length === 0, errs.slice(0, 4).join(' | '));
 
