@@ -81,8 +81,15 @@ setTimeout(async () => {
   // a clean pass while testing nothing at all. The guard below catches that anyway.
   const authPlumbing = /\/api\/(auth\/(login|logout)|employee\/(login|logout))$/;
   const targets = seen.filter(([m, p]) =>
-    p.startsWith('/api/') && !skip.test(p) && !authPlumbing.test(p) && m !== 'options');
-  const skipped = seen.filter(([m, p]) => p.startsWith('/api/') && skip.test(p));
+    !skip.test(p) && !authPlumbing.test(p) && m !== 'options');
+  const skipped = seen.filter(([, p]) => skip.test(p));
+
+  // The page routes serve a file off disk and must answer 200. They were left out of
+  // this run because everything here filtered on /api/, and that is precisely how
+  // /employee shipped as a 404: after the split its module joined its own __dirname
+  // and looked for src/routes/public/employee.html. Registration proved nothing — the
+  // route existed, the inventory matched, and the portal was still gone.
+  const isPage = p => !p.startsWith('/api/');
 
   // Writes are safe here: SUPABASE_URL is a stub, so nothing reaches a database. A
   // 400 from validation is a pass — the only failure this looks for is the app
@@ -101,10 +108,10 @@ setTimeout(async () => {
     };
     try {
       return await Promise.race([
-        fetch(url, opts).then(x => x.text()),
-        new Promise(res => setTimeout(() => res('__timeout__'), 6000)),
+        fetch(url, opts).then(async x => ({ status: x.status, text: await x.text() })),
+        new Promise(res => setTimeout(() => res({ status: 0, text: '__timeout__' }), 6000)),
       ]);
-    } catch (e) { return String(e && e.message); }
+    } catch (e) { return { status: 0, text: String(e && e.message) }; }
   };
 
   let broken = 0, rejected = 0;
@@ -115,12 +122,19 @@ setTimeout(async () => {
     currentRoute = method.toUpperCase() + ' ' + p;
     // Which token a route wants is not reliably its path prefix, so try the admin
     // session and fall back to the employee one rather than assuming.
-    let out = await call(method, url, token);
-    if (REJECTED.test(out)) out = await call(method, url, empToken);
+    let r = await call(method, url, token);
+    if (REJECTED.test(r.text)) r = await call(method, url, empToken);
+    const out = r.text;
     if (out === '__timeout__') continue;
     hit[method] = (hit[method] || 0) + 1;
     if (REJECTED.test(out) && !dataGated.has(currentRoute)) { rejected++; blind.push(currentRoute); }
-    if (BAD.test(out)) {
+    // A page route is either served or it is not; there is no plausible reason for one
+    // to 404 or 500. API routes are judged only on missing bindings, since a stubbed
+    // database legitimately produces all sorts of statuses.
+    if (isPage(p) && (r.status === 404 || r.status >= 500)) {
+      broken++;
+      console.log(`  BROKEN ${method.toUpperCase()} ${p}\n         serves no page: HTTP ${r.status}`);
+    } else if (BAD.test(out)) {
       broken++;
       console.log(`  BROKEN ${method.toUpperCase()} ${p}\n         ` + out.replace(/\s+/g, ' ').slice(0, 150));
     }

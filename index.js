@@ -213,17 +213,23 @@ function requireEmployeeAuth(req, res, next) {
 // ─── Static Assets (PWA icons, manifests, service workers) ───────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 
-receiver.router.use(express.static(path.join(__dirname, 'public')));
+// One definition of where the static files are. Modules under src/ have a different
+// __dirname, so a route that joined its own would look for src/routes/public — which
+// is what took the team portal down after the split. It is on the context, so nobody
+// has to work the relative depth out again.
+const PUBLIC_DIR = ctx.PUBLIC_DIR = path.join(__dirname, 'public');
+
+receiver.router.use(express.static(PUBLIC_DIR));
 
 receiver.router.get('/sw-employee.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
   res.setHeader('Service-Worker-Allowed', '/employee');
-  res.sendFile(path.join(__dirname, 'public', 'sw-employee.js'));
+  res.sendFile(path.join(PUBLIC_DIR, 'sw-employee.js'));
 });
 receiver.router.get('/sw-dashboard.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
   res.setHeader('Service-Worker-Allowed', '/dashboard');
-  res.sendFile(path.join(__dirname, 'public', 'sw-dashboard.js'));
+  res.sendFile(path.join(PUBLIC_DIR, 'sw-dashboard.js'));
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -231,7 +237,7 @@ receiver.router.get('/sw-dashboard.js', (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 receiver.router.get('/', (_req, res) => res.redirect('/dashboard'));
-receiver.router.get('/dashboard', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
+receiver.router.get('/dashboard', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'dashboard.html')));
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 receiver.router.post('/api/auth/login', express.json(), (req, res) => {
