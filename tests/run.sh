@@ -21,6 +21,8 @@ run stocktest   node tests/stocktest.js
 run drivetest   node tests/drivetest.js
 run suptest     node tests/suptest.js
 run phase3ui    node tests/phase3ui.js
+run catalogue   node tests/cataloguetest.js
+run columns     node tests/columns.js
 # needs a local coturn on 127.0.0.1:3478 for the success path; skips it otherwise
 run relaytest   node tests/relaytest.js
 
