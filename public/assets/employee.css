@@ -772,3 +772,30 @@
     .hd-tile, .hd-video, .hd-avatar { width:100%; }
     .hd-tiles { display:grid; grid-template-columns:1fr 1fr; }
   }
+
+/* ── Modal ──────────────────────────────────────────────────────────────────
+   The generic modal the admin dashboard has always had. The portal grew its
+   overlays one hand-rolled div at a time and never got this one, so the shared
+   operations module had nothing to open its forms in. Same class names and same
+   shape as dashboard.css, because mobile.css already styles both by those names
+   (max-height in dvh, a 44px close target) and would otherwise miss the portal. */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; padding: 20px;
+}
+.modal {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.modal.modal-wide { max-width: min(1500px, 96vw); }
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px 0;
+}
+.modal-title  { font-size: 16px; font-weight: 700; }
+.modal-close  { cursor: pointer; font-size: 20px; color: var(--muted); line-height: 1; background: none; border: none; }
+.modal-close:hover { color: var(--text); }
+.modal-body   { padding: 20px 24px; }
+.modal-footer { padding: 0 24px 20px; display: flex; justify-content: flex-end; gap: 8px; }

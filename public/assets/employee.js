@@ -59,6 +59,7 @@ const PERM_SECTIONS = [
   'requests', 'tasks', 'hours',
   'drive', 'sheets', 'email', 'calendar', 'meet', 'gchat',
   'chat', 'quotation', 'leads', 'deals', 'reports', 'issues',
+  'suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions',
 ];
 // Nav items whose visibility is an action rather than a whole section.
 const PERM_NAV_ACTIONS = { log: ['hours', 'log'], hours: ['hours', 'view'] };
@@ -128,6 +129,7 @@ function applyPermissions(permissions) {
   };
   groupOn('nav-label-tools', empHas('quotation'));
   groupOn('nav-label-crm', empHas('leads') || empHas('deals') || empHas('reports'));
+  groupOn('nav-label-ops', ['suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions'].some(empHas));
   // Google and Chat groups have no id, so they are found by their data-group.
   const anyGoogle = ['drive', 'sheets', 'email', 'calendar', 'meet', 'gchat'].some(empHas);
   const gGoogle = document.querySelector('.nav-group[data-group="google"]');
@@ -467,8 +469,14 @@ async function logout() {
 }
 
 /* ── Navigation ── */
-const pageTitles = { home: 'Home', chat: 'Chat', log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', gchat: 'Google Chat', notif: 'Notifications', issues: 'Issues' };
-const pageLoaders = { home: loadHome, requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation, leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, gchat: loadGChat, notif: loadNotifPage, issues: loadIssues };
+const pageTitles = { home: 'Home', chat: 'Chat', log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', gchat: 'Google Chat', notif: 'Notifications', issues: 'Issues',
+  suppliers: 'Suppliers', rfq: 'RFQ', purchaseorders: 'Purchase Orders',
+  contracts: 'Contracts', submissions: 'Website Submissions' };
+const pageLoaders = { home: loadHome, requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: loadEmpQuotation, leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, gchat: loadGChat, notif: loadNotifPage, issues: loadIssues,
+  // Operations: the renderers live in the shared procurement.js, which both
+  // portals load, so these are the same functions the dashboard calls.
+  suppliers: () => loadSuppliers(), rfq: () => loadRfqs(), purchaseorders: () => loadPurchaseOrders(),
+  contracts: () => loadContracts(), submissions: () => loadSubmissions() };
 let _currentEmpPage = 'log';
 function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
@@ -4643,6 +4651,33 @@ const HOMECFG = {
 };
 
 // Portal binding for the shared huddle / group-admin module below.
+/* ── Generic modal ──────────────────────────────────────────────────────────
+   Same three functions and the same element ids as the dashboard, because the
+   shared operations module calls them through PROCFG and mobile.css already
+   styles both portals by these class names. */
+function showModal(title, bodyHTML, footerHTML, opts) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML    = bodyHTML;
+  document.getElementById('modal-footer').innerHTML  = footerHTML;
+  document.getElementById('modal-box').classList.toggle('modal-wide', !!(opts && opts.wide));
+  document.getElementById('modal-overlay').style.display = 'flex';
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function hideModal() { document.getElementById('modal-overlay').style.display = 'none'; }
+function closeModal(e) { if (e.target === document.getElementById('modal-overlay')) hideModal(); }
+
+// Portal binding for the shared operations module (Suppliers, RFQ, POs, Contracts,
+// Submissions). Same handlers as the dashboard on the server; the difference is
+// entirely in `can`, which is what the admin actually granted this employee.
+const PROCFG = {
+  base: '/api/employee',
+  fetch: (url, opts) => ef(url, opts),
+  modal: (...a) => showModal(...a),
+  closeModal: () => hideModal(),
+  toast: (m) => showToast(m),
+  can: (section, action) => empCan(section, action),
+};
+
 const HDCFG = {
   base: '/api/employee/chat',
   me: () => myChatKey(),

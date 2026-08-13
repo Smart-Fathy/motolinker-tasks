@@ -1,5 +1,6 @@
-const CACHE = 'motolinker-emp-v63';
-const SHELL = ['/employee', '/manifest-employee.json', '/help-docs.js', '/assets/employee.css', '/assets/mobile.css', '/assets/employee.js', '/assets/home.js', '/assets/huddle.js', '/assets/chat-extras.js', '/assets/lead-filters.js', '/assets/mobile.js'];
+const CACHE = 'motolinker-emp-v65';
+const SHELL = ['/employee', '/manifest-employee.json', '/help-docs.js', '/assets/employee.css', '/assets/mobile.css', '/assets/employee.js', '/assets/home.js', '/assets/huddle.js',
+  '/assets/procurement.js', '/assets/chat-extras.js', '/assets/lead-filters.js', '/assets/mobile.js'];
 const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com'];
 
 self.addEventListener('install', e => {

@@ -383,7 +383,9 @@ async function sweep(browser, o) {
     quotePage: 'quotation', quoteRowSel: '.emp-qt-item-row',
     openModal: { page: 'leads', fn: 'openEmpLeadModal', sel: '#emp-lead-modal' },
     pages: ['home', 'log', 'tasks', 'hours', 'requests', 'leads', 'deals', 'reports',
-            'quotation', 'chat', 'notif', 'calendar', 'meet', 'email', 'drive', 'sheets'],
+            'quotation', 'chat', 'notif', 'calendar', 'meet', 'email', 'drive', 'sheets',
+            // Operations, shared with the dashboard via procurement.js
+            'suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions'],
   });
 
   await browser.close(); srv.close();
