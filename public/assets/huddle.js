@@ -898,9 +898,13 @@ function chatHeaderActions(room) {
   if (!room) return '';
   const ic = (n) => `<i data-lucide="${n}" style="width:16px;height:16px"></i>`;
   const inThis = _hd.roomId === room.id;
+  // Someone already in a call can always hang up, whatever their permissions say —
+  // the alternative is a participant trapped in a huddle with no leave button.
+  const mayHuddle = !HDCFG.can || HDCFG.can('chat', 'huddle');
   return `<div class="chat-head-actions">
     ${inThis
       ? `<button class="hd-head-btn live" onclick="huddleLeave()" title="Leave the huddle">${ic('phone-off')}</button>`
+      : !mayHuddle ? ''
       : `<button class="hd-head-btn" onclick="huddleStart(${room.id},false)" title="Start a huddle">${ic('headphones')}</button>
          <button class="hd-head-btn" onclick="huddleStart(${room.id},true)" title="Start a huddle with video">${ic('video')}</button>`}
     <button class="hd-head-btn" onclick="chatGroupPanel(${room.id})" title="${room.type === 'group' ? 'Group info, members and files' : 'Shared files'}">${ic(room.type === 'group' ? 'users' : 'paperclip')}</button>

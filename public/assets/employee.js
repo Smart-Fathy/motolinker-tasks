@@ -48,17 +48,43 @@ function showLogin() {
   document.getElementById('layout').style.display = 'none';
 }
 
-// Sections that can be controlled by admin permissions
-const PERM_SECTIONS = ['requests', 'drive', 'sheets', 'email', 'quotation', 'leads', 'deals', 'reports'];
+// Sections the admin can switch on or off. One entry per nav item that has a
+// master permission — the ones missing from this list (Home, Notifications, Help)
+// are the ones nobody should ever be locked out of.
+//
+// `log` and `hours` are two nav items over one section: filing your own hours and
+// reading the team's log are separate actions, so they map to hours.log and
+// hours.view rather than to a master switch each.
+const PERM_SECTIONS = [
+  'requests', 'tasks', 'hours',
+  'drive', 'sheets', 'email', 'calendar', 'meet', 'gchat',
+  'chat', 'quotation', 'leads', 'deals', 'reports', 'issues',
+];
+// Nav items whose visibility is an action rather than a whole section.
+const PERM_NAV_ACTIONS = { log: ['hours', 'log'], hours: ['hours', 'view'] };
 
 // Normalized permissions of the logged-in employee (rich shape from the server).
 let empPerms = {};
 // Can the employee perform <action> in <section>? Master on AND the action allowed.
 function empCan(section, action) {
   const p = empPerms || {};
+  // Mirrors the server: the Issues centre is the CTO's by job title, permission or
+  // not, so the nav must agree with what /api/employee/issues will actually answer.
+  if (section === 'issues' && isCtoUser()) return true;
   if (p[section] !== true) return false;
   const a = p[section + 'Actions'];
-  return !!(a && a[action] === true);
+  // No actions object means a permission shape from before this section had
+  // actions. The server's normEmpPerms reads that as "master on ⇒ every action",
+  // and the client has to agree or the portal hides buttons the endpoint would
+  // happily serve. The one exception is the same one the server carves out.
+  if (!a) return !PERM_LEGACY_OFF.includes(section + '.' + action);
+  return a[action] === true;
+}
+// Actions a master switch must never imply — mirrors PERM_LEGACY on the server.
+const PERM_LEGACY_OFF = ['requests.viewAll'];
+// Whether a whole section is on, honouring the same CTO rule.
+function empHas(section) {
+  return section === 'issues' ? (empPerms.issues === true || isCtoUser()) : empPerms[section] === true;
 }
 // Hide any element tagged data-perm="section.action" the employee can't do.
 function applyActionPerms() {
@@ -67,25 +93,46 @@ function applyActionPerms() {
     el.style.display = empCan(section, action) ? '' : 'none';
   });
 }
+// The client-side defaults have to match DEFAULT_PERMISSIONS on the server, or a
+// section is shown here and refused there — or worse, hidden here while the
+// endpoint happily answers. The server normalizes every login response, so this
+// only covers a cached shape from before a section existed.
+const PERM_DEFAULTS = {
+  requests:true, tasks:true, hours:true,
+  drive:true, sheets:true, calendar:true, meet:true, email:false, gchat:false,
+  chat:true, quotation:false, leads:false, deals:false, reports:false, issues:false,
+};
 function applyPermissions(permissions) {
-  const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, reports:false, ...(permissions||{}) };
+  const p = { ...PERM_DEFAULTS, ...(permissions || {}) };
   empPerms = p;
-  PERM_SECTIONS.forEach(section => {
-    const navEl   = document.getElementById('nav-' + section);
-    const bnavEl  = document.getElementById('bnav-' + section);
-    const pageEl  = document.getElementById('page-' + section);
-    const display = p[section] ? '' : 'none';
-    if (navEl)  navEl.style.display  = display;
-    if (bnavEl) bnavEl.style.display = display;
-    if (pageEl) pageEl.dataset.permitted = p[section] ? '1' : '0';
-  });
+  const show = (id, on) => {
+    const navEl  = document.getElementById('nav-' + id);
+    const bnavEl = document.getElementById('bnav-' + id);
+    const pageEl = document.getElementById('page-' + id);
+    if (navEl)  navEl.style.display  = on ? '' : 'none';
+    if (bnavEl) bnavEl.style.display = on ? '' : 'none';
+    if (pageEl) pageEl.dataset.permitted = on ? '1' : '0';
+  };
+  PERM_SECTIONS.forEach(section => show(section, empHas(section)));
+  // Nav items that are an action rather than a section of their own.
+  for (const [id, [section, action]] of Object.entries(PERM_NAV_ACTIONS)) show(id, empCan(section, action));
   applyActionPerms();
-  // Show "Tools" section head only if quotation is enabled (and open the group so it's visible)
-  const toolsLabel = document.getElementById('nav-label-tools');
-  if (toolsLabel) { toolsLabel.style.display = p.quotation ? '' : 'none'; if (p.quotation) toolsLabel.closest('.nav-group')?.classList.add('open'); }
-  // Show "CRM" section head only if leads or deals is enabled
-  const crmLabel = document.getElementById('nav-label-crm');
-  if (crmLabel) { const on = p.leads || p.deals || p.reports; crmLabel.style.display = on ? '' : 'none'; if (on) crmLabel.closest('.nav-group')?.classList.add('open'); }
+  // A group heading with nothing under it is a dead label, so each one follows its
+  // own items rather than being hardcoded on.
+  const groupOn = (sel, on) => {
+    const el = typeof sel === 'string' ? document.getElementById(sel) : sel;
+    if (!el) return;
+    el.style.display = on ? '' : 'none';
+    if (on) el.closest('.nav-group')?.classList.add('open');
+  };
+  groupOn('nav-label-tools', empHas('quotation'));
+  groupOn('nav-label-crm', empHas('leads') || empHas('deals') || empHas('reports'));
+  // Google and Chat groups have no id, so they are found by their data-group.
+  const anyGoogle = ['drive', 'sheets', 'email', 'calendar', 'meet', 'gchat'].some(empHas);
+  const gGoogle = document.querySelector('.nav-group[data-group="google"]');
+  if (gGoogle) gGoogle.style.display = anyGoogle ? '' : 'none';
+  const gChat = document.querySelector('.nav-group[data-group="chat"]');
+  if (gChat) gChat.style.display = empHas('chat') ? '' : 'none';
   // Reports is only reachable if at least one individual report is granted
   gchatInitNav();   // Google Chat nav appears only when it's configured server-side
   loadNavConfig();  // apply the admin's shared section order + names
@@ -151,9 +198,10 @@ async function toggleIssueStatus(id, status) {
 
 /* ── Profile: avatar, status, username ── */
 function renderProfile() {
-  // Reveal the Issues nav for the CTO
+  // Issues is the CTO's by title or anyone's by permission; empHas knows both.
+  // renderProfile runs after the profile loads, which is when job_title arrives.
   const issuesNav = document.getElementById('nav-issues');
-  if (issuesNav) issuesNav.style.display = isCtoUser() ? '' : 'none';
+  if (issuesNav) issuesNav.style.display = empHas('issues') ? '' : 'none';
   const name = empInfo?.name || empInfo?.username || '?';
   const nameEl = document.getElementById('user-name');
   if (nameEl) nameEl.firstChild.textContent = name + ' ';
@@ -425,9 +473,13 @@ function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
   if (_currentEmpPage === 'gchat' && page !== 'gchat') gchatStopPoll();
   _currentEmpPage = page;
-  // Block navigation to sections the employee doesn't have permission for
+  // Block navigation to sections the employee doesn't have permission for.
+  // Home, not Log Hours: Log Hours is itself gated now (hours.log), so bouncing
+  // there called navigate again, which bounced again — a stack overflow the
+  // moment an employee without it opened any other forbidden page. Home is the
+  // one page nobody can be locked out of, which is what makes it a safe floor.
   const pageEl = document.getElementById('page-' + page);
-  if (pageEl && pageEl.dataset.permitted === '0') return navigate('log');
+  if (pageEl && pageEl.dataset.permitted === '0' && page !== 'home') return navigate('home');
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
@@ -2047,12 +2099,12 @@ async function gchatOpen(space, keepPoll) {
   main.innerHTML = `
     <div class="chat-header"><div class="chat-header-name">${esc(sp ? sp.title : 'Space')}</div></div>
     <div class="chat-messages" id="gchat-messages"><div class="loading"><div class="spinner"></div></div></div>
-    ${caps.send ? `<div class="chat-composer">
+    ${caps.send && empCan('gchat', 'send') ? `<div class="chat-composer">
         <textarea class="chat-input" id="gchat-input" rows="1" placeholder="Message ${esc(sp ? sp.title : '')}… (sent as you)" onkeydown="gchatKey(event)"></textarea>
         <button class="chat-send-btn" id="gchat-send" onclick="gchatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
       </div>`
       : `<div class="chat-composer" style="justify-content:center;color:var(--muted);font-size:12px">
-          Read-only — you didn't grant permission to send. <a href="#" onclick="gchatConnect();return false" style="color:var(--primary);margin-left:4px">Reconnect</a>
+          ${empCan('gchat', 'send') ? `Read-only — you didn't grant permission to send. <a href="#" onclick="gchatConnect();return false" style="color:var(--primary);margin-left:4px">Reconnect</a>` : 'Read-only — your admin has not granted sending.'}
         </div>`}`;
   await gchatLoadMessages();
   if (!keepPoll) gchatStartPoll();
@@ -2127,6 +2179,10 @@ function gchatStopPoll() { if (_gchat.timer) { clearInterval(_gchat.timer); _gch
 async function gchatInitNav() {
   const nav = document.getElementById('nav-gchat');
   if (!nav) return;
+  // Two conditions, both required: Google Chat configured on the deployment, and
+  // this employee permitted to use it. /status now 403s without the permission,
+  // so the catch below is also the permission path.
+  if (!empHas('gchat')) { nav.style.display = 'none'; return; }
   try {
     const st = await gchatFetch('/status').then(r => r.json());
     nav.style.display = st.configured ? '' : 'none';
@@ -3615,13 +3671,14 @@ async function chatOpenRoom(roomId) {
         <div class="chat-emoji-grid" id="chat-emoji-grid"></div>
       </div>
       <input type="file" id="chat-file-input" style="display:none" onchange="chatFileSelected(this)">
-      <button class="chat-attach-btn" onclick="document.getElementById('chat-file-input').click()" title="Attach file"><i data-lucide="paperclip" style="width:15px;height:15px"></i></button>
+      <button class="chat-attach-btn" data-perm="chat.upload" onclick="document.getElementById('chat-file-input').click()" title="Attach file"><i data-lucide="paperclip" style="width:15px;height:15px"></i></button>
       <button class="chat-emoji-btn" onclick="chatToggleEmoji()" title="Emoji"><i data-lucide="smile" style="width:15px;height:15px"></i></button>
       <textarea class="chat-input" id="chat-input" rows="1" placeholder="Message ${esc(name)}…" onkeydown="chatHandleKey(event)" oninput="chatHandleInput()"
         onpaste="chatUploadFilePaste(event)" ondrop="chatUploadFileDrop(event)" ondragover="event.preventDefault()"></textarea>
-      <button class="chat-voice-btn" id="chat-voice-btn" onclick="chatStartRecording()" title="Voice message"><i data-lucide="mic" style="width:15px;height:15px"></i></button>
-      <button class="chat-send-btn" id="chat-send-btn" onclick="chatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
+      <button class="chat-voice-btn" id="chat-voice-btn" data-perm="chat.upload" onclick="chatStartRecording()" title="Voice message"><i data-lucide="mic" style="width:15px;height:15px"></i></button>
+      <button class="chat-send-btn" id="chat-send-btn" data-perm="chat.send" onclick="chatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
     </div>`;
+  applyActionPerms();   // this markup did not exist when permissions were applied
   requestAnimationFrame(() => lucide.createIcons());
 
   const r = await ef(`/api/employee/chat/rooms/${roomId}/messages`);
@@ -4568,7 +4625,7 @@ const HOMECFG = {
   // Only offer widgets for sections this employee can actually open. The master
   // switch is enough here — a widget only reads, and empCan's per-action grants
   // (create/edit/delete) do not apply to reading a summary.
-  can: section => (empPerms || {})[section] === true,
+  can: section => empHas(section),
   // Read-only views of state the page already keeps, so the widgets do not fetch
   // what is sitting in memory a few lines away.
   unread: () => chatUnread.size,
@@ -4588,6 +4645,8 @@ const HOMECFG = {
 const HDCFG = {
   base: '/api/employee/chat',
   me: () => myChatKey(),
+  // The shared huddle module runs in both portals; only this one has permissions.
+  can: (section, action) => empCan(section, action),
   fetch: (url, opts) => ef(url, opts),
   rooms: () => chatRooms,
   activeRoom: () => activeChatRoomId,

@@ -7,6 +7,9 @@ const { GOOGLE_CLIENT_ID, PUBLIC_DIR, SMTP_FROM, autoCreateSaleForWonDeal, creat
 const autoNorm = (...a) => ctx.autoNorm(...a);
 const createNotification = (...a) => ctx.createNotification(...a);
 const requestCtx = (...a) => ctx.requestCtx(...a);
+// Defined in index.js alongside the auth guards; see the note there on why it
+// reaches empCan through the context.
+const requirePerm = (...a) => ctx.requirePerm(...a);
 const runAutomations = (...a) => ctx.runAutomations(...a);
 
 // ─── Employee Portal ──────────────────────────────────────────────────────────
@@ -15,8 +18,8 @@ const runAutomations = (...a) => ctx.runAutomations(...a);
 receiver.router.get('/employee', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'employee.html')));
 
 // Employee Requests
-receiver.router.get('/api/employee/requests', requireEmployeeAuth, async (req, res) => {
-  const canViewAll = req.employee.permissions?.viewAllRequests === true;
+receiver.router.get('/api/employee/requests', requireEmployeeAuth, requirePerm('requests', 'view'), async (req, res) => {
+  const canViewAll = empCan(req.employee, 'requests', 'viewAll');
   try {
     if (canViewAll) {
       const { data, error } = await supabase.from('requests').select('*').order('created_at', { ascending: false });
@@ -36,7 +39,7 @@ receiver.router.get('/api/employee/requests', requireEmployeeAuth, async (req, r
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json(), async (req, res) => {
+receiver.router.post('/api/employee/requests', requireEmployeeAuth, requirePerm('requests', 'create'), express.json(), async (req, res) => {
   const { title, description, category, priority } = req.body || {};
   if (!title) return res.status(400).json({ error: 'Title is required' });
   const assignee_id = req.body?.assignee_id ? parseInt(req.body.assignee_id) : null;
@@ -65,12 +68,54 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, express.json
 });
 
 // Employee auth
-const DEFAULT_PERMISSIONS = { requests: true, drive: true, sheets: true, pdfscraper: false, email: false, viewAllRequests: false, quotation: false, leads: false, deals: false, reports: false };
+// Defaults for an employee whose record predates a section. Everything the whole
+// team has always had is `true` here, so adding a section to the model never
+// silently takes it away from people who already had it; anything sensitive
+// (email, CRM, reports, the issues centre) stays opt-in.
+const DEFAULT_PERMISSIONS = {
+  // Day to day
+  requests: true, tasks: true, hours: true,
+  // Google
+  drive: true, sheets: true, calendar: true, meet: true, email: false, gchat: false,
+  // Talking to each other
+  chat: true,
+  // Tools and CRM
+  pdfscraper: false, quotation: false, leads: false, deals: false, reports: false,
+  // System
+  issues: false,
+  // Legacy flat flag, kept because normEmpPerms still reads it — see PERM_LEGACY
+  viewAllRequests: false,
+};
 
-// ── Advanced permissions: per-action + data scope for CRM sections ────────────
+// ── Advanced permissions: per-action + data scope, for every section ──────────
 // Backward compatible: legacy flat booleans (e.g. leads:true) normalize to full
 // actions + no scope. The rich shape adds <section>Actions objects and a scope.
+//
+// An action earns its place here only if something actually enforces it — a route
+// guard, a nav item or a button. A checkbox that governs nothing is worse than no
+// checkbox, because the admin believes they have turned something off.
 const PERM_ACTIONS = {
+  // Day to day
+  requests: ['view', 'create', 'comment', 'viewAll'],
+  tasks: ['view', 'create', 'edit', 'comment'],
+  // Two nav items, one section: "Log Hours" writes, "Hours Log" reads. A rep who
+  // must file their hours but should not read the team's gets log without view.
+  hours: ['log', 'view'],
+  // Google. `connect` is separate from `view` because connecting binds a personal
+  // Google account to the workplace account — a different decision from browsing.
+  drive: ['view', 'connect'],
+  sheets: ['view'],
+  email: ['view', 'send', 'connect'],
+  calendar: ['view', 'connect'],
+  // Meet has no actions on purpose. The page opens meet.google.com and touches no
+  // endpoint of ours, so access is the only thing there is to grant — and a `view`
+  // checkbox here would be one nothing enforces.
+  meet: [],
+  gchat: ['view', 'send'],
+  // In-app chat. `edit`/`delete` are for one's own messages; huddles and uploads
+  // are the two things a chat member can do that cost bandwidth or leave files.
+  chat: ['view', 'send', 'edit', 'delete', 'upload', 'huddle'],
+  // CRM
   leads: ['view', 'create', 'edit', 'delete', 'import', 'export'],
   deals: ['view', 'create', 'edit', 'delete', 'move'],
   quotation: ['draft', 'history', 'settings', 'delete', 'attachLead'],
@@ -78,16 +123,34 @@ const PERM_ACTIONS = {
   // report without the revenue figures (or vice-versa). Reports always obey the
   // employee's data scope — they aggregate only rows that employee may see.
   reports: ['leads', 'sales', 'export'],
+  // System
+  issues: ['view', 'resolve'],
 };
+
+// Where "the master switch is on" is the wrong default for an action, because the
+// action used to be governed by a flag of its own. Without this, turning Requests
+// on — which it is for everyone — would hand every employee the whole company's
+// requests, since requests.viewAll would inherit the master's `true`.
+const PERM_LEGACY = {
+  'requests.viewAll': p => p.viewAllRequests === true,
+};
+
 function normEmpPerms(raw) {
   const p = { ...DEFAULT_PERMISSIONS, ...(raw || {}) };
   for (const [section, actions] of Object.entries(PERM_ACTIONS)) {
     const master = p[section] === true;
     const given = raw && raw[section + 'Actions'] && typeof raw[section + 'Actions'] === 'object' ? raw[section + 'Actions'] : null;
     const out = {};
-    for (const a of actions) out[a] = given ? given[a] === true : master; // legacy: master on ⇒ all actions
+    for (const a of actions) {
+      const legacy = PERM_LEGACY[section + '.' + a];
+      // legacy: master on ⇒ all actions, except where an older flag said otherwise
+      out[a] = given ? given[a] === true : (legacy ? master && legacy(p) : master);
+    }
     p[section + 'Actions'] = out;
   }
+  // Keep the flat flag in step with the action, so anything still reading it — a
+  // saved automation, an old client cached in a service worker — sees one answer.
+  p.viewAllRequests = p.requestsActions.viewAll === true;
   const s = (raw && typeof raw.scope === 'object' && raw.scope) ? raw.scope : {};
   p.scope = {
     assignedOnly: s.assignedOnly === true,
@@ -99,10 +162,68 @@ function normEmpPerms(raw) {
 // Can this employee perform <action> in <section>? Master must be on AND the action allowed.
 function empCan(emp, section, action) {
   const p = emp && emp.permissions; if (!p) return false;
+  // The Issues centre belonged to the CTO by job title before it had a permission.
+  // Honouring that here means nobody loses it the moment the section gains a
+  // switch; the switch is now how anyone *else* is given it.
+  if (section === 'issues' && /chief technical officer/i.test(emp.job_title || '')) return true;
   if (p[section] !== true) return false;
   const acts = p[section + 'Actions'];
   return !!(acts && acts[action] === true);
 }
+// ── What the admin's editor renders ───────────────────────────────────────────
+// Grouped and labelled next to the model rather than in dashboard.js, and served
+// over an endpoint, so the editor is generated from the same list the server
+// enforces. Add a section to PERM_ACTIONS and it appears in the admin UI; it
+// cannot be forgotten there, and it cannot show up as a bare camelCase key.
+const PERM_GROUPS = [
+  { group: 'Day to day', sections: ['requests', 'tasks', 'hours'] },
+  { group: 'Google',     sections: ['drive', 'sheets', 'email', 'calendar', 'meet', 'gchat'] },
+  { group: 'Chat',       sections: ['chat'] },
+  { group: 'Tools',      sections: ['quotation'] },
+  { group: 'CRM',        sections: ['leads', 'deals', 'reports'] },
+  { group: 'System',     sections: ['issues'] },
+];
+const PERM_SECTION_LABELS = {
+  requests: 'Requests', tasks: 'My Tasks', hours: 'Hours',
+  drive: 'My Drive', sheets: 'My Sheets', email: 'My Email',
+  calendar: 'Calendar', meet: 'Meet', gchat: 'Google Chat',
+  chat: 'Team chat', quotation: 'Quotation',
+  leads: 'Leads', deals: 'Deals', reports: 'Reports', issues: 'Issues centre',
+};
+// Keyed "section.action" where the plain word would mislead, and by the bare word
+// otherwise. Reports has no generic actions at all — each one names a report.
+const PERM_ACTION_LABELS = {
+  view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete',
+  comment: 'Comment', connect: 'Connect account', send: 'Send',
+  import: 'Import', export: 'Export', move: 'Move between stages',
+  upload: 'Upload files', huddle: 'Start huddles', resolve: 'Resolve',
+  draft: 'Draft quotations', history: 'Quotation history', settings: 'Quotation settings',
+  attachLead: 'Attach to a lead',
+  'requests.viewAll': "See everyone's requests",
+  'hours.log': 'Log own hours', 'hours.view': 'Read the hours log',
+  'chat.edit': 'Edit own messages', 'chat.delete': 'Delete own messages',
+  'reports.leads': 'Leads report', 'reports.sales': 'Sales & revenue report',
+  'reports.export': 'Export report data',
+  'quotation.delete': 'Delete quotations',
+  'issues.view': 'Open the issues centre',
+};
+function permCatalogue() {
+  return PERM_GROUPS.map(g => ({
+    group: g.group,
+    sections: g.sections.filter(s => PERM_ACTIONS[s]).map(s => ({
+      key: s,
+      label: PERM_SECTION_LABELS[s] || s,
+      defaultOn: DEFAULT_PERMISSIONS[s] === true,
+      actions: PERM_ACTIONS[s].map(a => ({
+        key: a,
+        label: PERM_ACTION_LABELS[s + '.' + a] || PERM_ACTION_LABELS[a] || a,
+      })),
+    })),
+  }));
+}
+receiver.router.get('/api/dashboard/permissions/catalogue', requireAuth,
+  (_req, res) => res.json({ groups: permCatalogue(), stages: ctx.DEAL_STAGES }));
+
 function empHasScope(emp) {
   const s = emp && emp.permissions && emp.permissions.scope;
   return !!(s && (s.assignedOnly || (s.dealStages && s.dealStages.length) || (s.leadStatuses && s.leadStatuses.length)));
@@ -238,7 +359,7 @@ receiver.router.post('/api/employee/reset-password', express.json(), async (req,
 });
 
 // Employee tasks list (for dropdown — only their assigned, non-done tasks)
-receiver.router.get('/api/employee/tasks', requireEmployeeAuth, async (req, res) => {
+receiver.router.get('/api/employee/tasks', requireEmployeeAuth, requirePerm('tasks', 'view'), async (req, res) => {
   try {
     const all = await fetchEmployeeTasks(req.employee.id);
     res.json(all.filter(t => t.status !== 'done').map(t => ({ id: t.id, title: t.title, channel_name: t.channel_name, status: t.status })));
@@ -261,14 +382,14 @@ async function fetchEmployeeTasks(employeeId) {
 }
 
 // All employee tasks (current + completed) for My Tasks page
-receiver.router.get('/api/employee/my-tasks', requireEmployeeAuth, async (req, res) => {
+receiver.router.get('/api/employee/my-tasks', requireEmployeeAuth, requirePerm('tasks', 'view'), async (req, res) => {
   try {
     res.json(await fetchEmployeeTasks(req.employee.id));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Employee marks their own task as done
-receiver.router.put('/api/employee/my-tasks/:id', requireEmployeeAuth, express.json(), async (req, res) => {  try {
+receiver.router.put('/api/employee/my-tasks/:id', requireEmployeeAuth, requirePerm('tasks', 'edit'), express.json(), async (req, res) => {  try {
     const { data: emp } = await supabase.from('employees').select('slack_user_id').eq('id', req.employee.id).single();
     const ids = [String(req.employee.id), emp?.slack_user_id].filter(Boolean);
     // Verify the task is actually assigned to this employee (single or multi assignee)
@@ -286,7 +407,7 @@ receiver.router.put('/api/employee/my-tasks/:id', requireEmployeeAuth, express.j
 });
 
 // Employee creates a new task (assigned to themselves)
-receiver.router.post('/api/employee/my-tasks', requireEmployeeAuth, express.json(), async (req, res) => {
+receiver.router.post('/api/employee/my-tasks', requireEmployeeAuth, requirePerm('tasks', 'create'), express.json(), async (req, res) => {
   try {
     const { title, description, due_date, priority, milestone } = req.body;
     if (!title || !due_date) return res.status(400).json({ error: 'Title and due date are required' });
@@ -299,7 +420,7 @@ receiver.router.post('/api/employee/my-tasks', requireEmployeeAuth, express.json
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-receiver.router.get('/api/employee/hours', requireEmployeeAuth, async (req, res) => {
+receiver.router.get('/api/employee/hours', requireEmployeeAuth, requirePerm('hours', 'view'), async (req, res) => {
   const { data, error } = await supabase.from('hours_logs')
     .select('*, tasks(title, channel_name)')
     .eq('employee_id', req.employee.id)
@@ -308,7 +429,7 @@ receiver.router.get('/api/employee/hours', requireEmployeeAuth, async (req, res)
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
-receiver.router.post('/api/employee/hours', requireEmployeeAuth, express.json(), async (req, res) => {
+receiver.router.post('/api/employee/hours', requireEmployeeAuth, requirePerm('hours', 'log'), express.json(), async (req, res) => {
   const { task_id, task_description, hours, description, log_date } = req.body;
   if (!hours) return res.status(400).json({ error: 'Hours are required' });
   if (!task_id && !task_description) return res.status(400).json({ error: 'Either select a task or type a task name' });
@@ -1059,4 +1180,4 @@ receiver.router.put('/api/dashboard/deletion-requests/:id', requireAuth, express
 Object.assign(ctx, { express, logLeadActivity, normalizePhone, parseBudget, path, receiver, requireAuth, supabase });
 Object.assign(ctx, require('./automation'));
 
-module.exports = { backfillHotLeadDeals, customerInScope, dealInScope, empCan, empHasScope, importLeadRows, loadLeadsColsConfig, logLeadActivity, multerCsv, normEmpPerms, normalizePhone, parseBudget, parseLeadsCsv, scopedQuotedIds };
+module.exports = { DEFAULT_PERMISSIONS, PERM_ACTIONS, backfillHotLeadDeals, customerInScope, dealInScope, empCan, empHasScope, importLeadRows, loadLeadsColsConfig, logLeadActivity, multerCsv, normEmpPerms, normalizePhone, parseBudget, parseLeadsCsv, scopedQuotedIds };

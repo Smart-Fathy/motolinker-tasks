@@ -138,6 +138,85 @@ function sandbox(fetchImpl) {
       out === null && code === 400, JSON.stringify({ code, out: typeof out }));
   }
 
+  // ── The scope, which is what actually broke client-file upload ────────────────
+  // Drive was authorised read-only, so every upload 403'd at the folder-creation
+  // step no matter how connected the Drive page claimed to be. Asserting the scope
+  // string is the only place this is checkable without a live Google account, and
+  // it is the one line that has to stay right.
+  {
+    const idx = serverSrc('const DRIVE_SCOPES =');
+    const scopes = (idx.match(/const DRIVE_SCOPES = [`'"]([^`'"]*)[`'"]/) || [])[1] || idx.match(/const DRIVE_SCOPES = `([\s\S]*?)`/)[1];
+    const resolved = scopes.replace('${DRIVE_UPLOAD_SCOPE}', 'https://www.googleapis.com/auth/drive.file');
+    c('Drive is authorised with a scope that can actually write',
+      /auth\/drive\.file|auth\/drive(?![.\w])/.test(resolved), resolved);
+    c('…and still with the read scope the Drive and Sheets browsers need',
+      /auth\/drive\.readonly/.test(resolved));
+
+    const can = new Function('DRIVE_UPLOAD_SCOPE',
+      idx.slice(idx.indexOf('function driveCanUpload')).match(/^function driveCanUpload[\s\S]*?\n}/)[0]
+      + '; return driveCanUpload;')('https://www.googleapis.com/auth/drive.file');
+    const RO = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email';
+    c('a token minted under the old read-only grant is recognised as unable to upload',
+      can({ scope: RO }) === false);
+    c('a token carrying the upload scope is accepted', can({ scope: resolved }) === true);
+    c('a full-drive grant is accepted too',
+      can({ scope: 'https://www.googleapis.com/auth/drive' }) === true);
+    c('a token from before scopes were recorded is not condemned on a guess',
+      can({}) === true && can(null) === true);
+  }
+
+  // A stale grant must be reported as "reconnect", not as a Drive failure: the token
+  // refreshes perfectly, so nothing else in the system looks wrong.
+  {
+    const sup = serverSrc('async function driveAdminToken()');
+    const fn = sup.slice(sup.indexOf('const RECONNECT =')).match(/^const RECONNECT[\s\S]*?\n}\n/)[0];
+    const mk = (canUpload) => new Function('ctx', 'GOOGLE_CLIENT_ID', 'getDriveToken',
+      fn + '; return driveAdminToken;')(
+      { driveTokens: { access_token: 'a', scope: 'x' }, driveCanUpload: () => canUpload },
+      'cid', async () => 'TOKEN');
+    let err = null;
+    try { await mk(false)(); } catch (e) { err = e; }
+    c('a stale grant is refused before Drive is called, with a 409 and one clear action',
+      !!err && err.status === 409 && /reconnect/i.test(err.message), err && err.message);
+    c('a healthy grant hands back the token', await mk(true)() === 'TOKEN');
+  }
+
+  // Drive's own 403 says "Insufficient Permission", which reads as an outage. The
+  // cure is the same single click, so the upload handler must say so.
+  {
+    const sup = serverSrc('function driveErrStatus');
+    const fns = sup.slice(sup.indexOf('const RECONNECT =')).match(/^const RECONNECT[\s\S]*?function driveErrMessage[\s\S]*?\n}/)[0];
+    const m = new Function(fns + '; return { driveErrStatus, driveErrMessage, RECONNECT };')();
+    const e = new Error('Insufficient Permission');
+    c('a Drive 403 becomes a 409 the UI already offers a Connect link for',
+      m.driveErrStatus(e) === 409, String(m.driveErrStatus(e)));
+    c('…and its message names the fix rather than quoting Google',
+      /reconnect/i.test(m.driveErrMessage(e)), m.driveErrMessage(e));
+    const other = Object.assign(new Error('Rate limit exceeded'), {});
+    c('an unrelated Drive error is left alone',
+      m.driveErrStatus(other) === 500 && m.driveErrMessage(other) === 'Rate limit exceeded');
+  }
+
+  // With drive.file the app may only write to folders it created — but readonly lets
+  // it *see* a "MotoLinker" folder the user made by hand. Uploading into that one
+  // 403s, so the lookup has to pass over it.
+  {
+    const calls = [];
+    const f = async (url, opts) => {
+      calls.push({ url: String(url), method: (opts || {}).method || 'GET' });
+      if (String(url).includes('/drive/v3/files?q=')) {
+        return { json: async () => ({ files: [{ id: 'THEIRS', capabilities: { canAddChildren: false } }] }) };
+      }
+      return { json: async () => ({ id: 'OURS' }) };
+    };
+    const s = sandbox(f);
+    const id = await s.driveFindOrCreateFolder('tok', 'MotoLinker', null);
+    c('a folder the app cannot write to is passed over and its own is created',
+      id === 'OURS' && calls.some(x => x.method === 'POST'), 'id=' + id);
+    c('the lookup asks Drive whether it may add children at all',
+      calls[0].url.includes('canAddChildren'), decodeURIComponent(calls[0].url).slice(-60));
+  }
+
   console.log('\n' + results.filter(Boolean).length + '/' + results.length + ' passed');
   process.exit(results.every(Boolean) ? 0 : 1);
 })();

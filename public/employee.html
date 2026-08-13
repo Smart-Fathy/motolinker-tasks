@@ -431,7 +431,7 @@
           <input class="form-control" id="h-note" placeholder="What did you work on specifically?">
         </div>
 
-        <button class="btn btn-primary" id="log-btn" onclick="logHours()">Log Hours</button>
+        <button class="btn btn-primary" id="log-btn" data-perm="hours.log" onclick="logHours()">Log Hours</button>
       </div>
     </div>
 
@@ -442,7 +442,7 @@
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <span id="emp-cal-status" style="font-size:12px;color:var(--muted)"></span>
           <button id="emp-cal-btn" class="btn btn-outline btn-sm" style="display:none" onclick="empCalendarToggle()"></button>
-          <button class="btn btn-primary" onclick="openNewTaskModal()">+ New Task</button>
+          <button class="btn btn-primary" data-perm="tasks.create" onclick="openNewTaskModal()">+ New Task</button>
         </div>
       </div>
       <div id="tasks-stats" class="stats-row"></div>
@@ -508,7 +508,7 @@
           <label class="form-label">Details</label>
           <textarea class="form-control" id="req-description" rows="4" placeholder="Provide any additional details…" style="resize:vertical"></textarea>
         </div>
-        <button class="btn btn-primary" id="req-submit-btn" onclick="submitRequest()">Submit Request</button>
+        <button class="btn btn-primary" id="req-submit-btn" data-perm="requests.create" onclick="submitRequest()">Submit Request</button>
       </div>
 
       <!-- My requests list -->

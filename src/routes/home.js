@@ -22,13 +22,12 @@ const empCan = (...a) => ctx.empCan(...a);
 //         '<section>'               that section's master permission
 //         {section, action}         a specific granted action
 //         'admin'                   the admin dashboard only
-//         'cto'                     the employee Issues centre (job title)
 //   src   which queries the widget needs; [] means the client builds it itself
 const HOME_WIDGETS = {
   // Tasks
-  my_tasks:            { gate: null,        src: ['tasks'] },
-  task_status:         { gate: null,        src: ['tasks'] },
-  overdue_tasks:       { gate: null,        src: ['tasks'] },
+  my_tasks:            { gate: 'tasks',     src: ['tasks'] },
+  task_status:         { gate: 'tasks',     src: ['tasks'] },
+  overdue_tasks:       { gate: 'tasks',     src: ['tasks'] },
   // Leads
   leads_status:        { gate: 'leads',     src: ['customers'] },
   recent_leads:        { gate: 'leads',     src: ['customers'] },
@@ -37,7 +36,7 @@ const HOME_WIDGETS = {
   pipeline:            { gate: 'deals',     src: ['deals'] },
   won_month:           { gate: 'deals',     src: ['deals'] },
   // Hours
-  hours_week:          { gate: null,        src: ['hours'] },
+  hours_week:          { gate: { section: 'hours', action: 'view' }, src: ['hours'] },
   // Inventory
   stock_summary:       { gate: null,        src: ['stock'] },
   stock_models:        { gate: null,        src: ['stock'] },
@@ -57,13 +56,13 @@ const HOME_WIDGETS = {
   automations_active:  { gate: 'admin',     src: ['automations'] },
   team_roster:         { gate: 'admin',     src: ['employees', 'presence'] },
   whatsapp_recent:     { gate: 'admin',     src: ['whatsapp'] },
-  issues_open:         { gate: 'cto',       src: ['issues'] },
+  issues_open:         { gate: { section: 'issues', action: 'view' }, src: ['issues'] },
   // Built by the client from what it already holds or from an endpoint of its own
   quick_actions:       { gate: null,        src: [] },
-  unread_chat:         { gate: null,        src: [] },
+  unread_chat:         { gate: 'chat',      src: [] },
   notifications:       { gate: null,        src: [] },
-  calendar:            { gate: null,        src: [] },
-  meet_quick:          { gate: null,        src: [] },
+  calendar:            { gate: 'calendar',  src: [] },
+  meet_quick:          { gate: 'meet',      src: [] },
   drive_recent:        { gate: 'drive',     src: [] },
   sheets_recent:       { gate: 'sheets',    src: [] },
   email_unread:        { gate: 'email',     src: [] },
@@ -86,7 +85,6 @@ function widgetAllowed(id, employee) {
   const gate = HOME_WIDGETS[id] ? HOME_WIDGETS[id].gate : undefined;
   if (gate === undefined) return false;               // not a widget we know
   if (gate === null) return true;
-  if (gate === 'cto') return !!employee && /chief technical officer/i.test(employee.job_title || '');
   if (gate === 'admin') return !employee;
   if (!employee) return true;
   if (typeof gate === 'string') return (employee.permissions || {})[gate] === true;

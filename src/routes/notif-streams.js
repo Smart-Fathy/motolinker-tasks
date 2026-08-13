@@ -5,6 +5,7 @@ const { chatCallerIdentity, express, receiver, requireAuth, requireEmployeeAuth,
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
 const chatCreateOrGetDirect = (...a) => ctx.chatCreateOrGetDirect(...a);
+const requirePerm = (...a) => ctx.requirePerm(...a);
 const chatListRooms = (...a) => ctx.chatListRooms(...a);
 
 // ─── Notification Center streams + REST (both portals) ────────────────────────
@@ -66,7 +67,7 @@ receiver.router.get('/api/dashboard/chat/people', requireAuth, async (_req, res)
   res.json((data || []).map(e => ({ key: `employee_${e.id}`, name: e.name, role: 'Employee' })));
 });
 
-receiver.router.get('/api/employee/chat/people', requireEmployeeAuth, async (req, res) => {
+receiver.router.get('/api/employee/chat/people', requireEmployeeAuth, requirePerm('chat', 'view'), async (req, res) => {
   const { data, error } = await supabase.from('employees').select('id, name').order('name');
   if (error) return res.status(500).json({ error: error.message });
   res.json([
@@ -79,7 +80,7 @@ receiver.router.get('/api/employee/chat/people', requireEmployeeAuth, async (req
 receiver.router.get('/api/dashboard/chat/rooms', requireAuth, async (_req, res) => {
   try { res.json(await chatListRooms('admin')); } catch (e) { res.status(500).json({ error: e.message }); }
 });
-receiver.router.get('/api/employee/chat/rooms', requireEmployeeAuth, async (req, res) => {
+receiver.router.get('/api/employee/chat/rooms', requireEmployeeAuth, requirePerm('chat', 'view'), async (req, res) => {
   try { res.json(await chatListRooms(`employee_${req.employee.id}`)); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -90,7 +91,7 @@ receiver.router.post('/api/dashboard/chat/rooms/direct', requireAuth, express.js
   try { res.json(await chatCreateOrGetDirect('admin', 'Admin', targetKey, targetName)); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
-receiver.router.post('/api/employee/chat/rooms/direct', requireEmployeeAuth, express.json(), async (req, res) => {
+receiver.router.post('/api/employee/chat/rooms/direct', requireEmployeeAuth, requirePerm('chat', 'send'), express.json(), async (req, res) => {
   const { targetKey, targetName } = req.body || {};
   if (!targetKey || !targetName) return res.status(400).json({ error: 'targetKey and targetName required' });
   const { key, name } = chatCallerIdentity(req);
