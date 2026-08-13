@@ -69,12 +69,17 @@ async function driveFindOrCreateFolder(token, name, parentId) {
     'trashed=false',
     parentId ? `'${parentId}' in parents` : "'root' in parents",
   ].join(' and ');
+  // canAddChildren, because the two Drive scopes see different things: readonly lists
+  // every folder in the account, drive.file may only write to folders this app made.
+  // A "MotoLinker" folder the user created by hand is therefore findable and yet
+  // unwritable, and uploading into it 403s. Skip those and make our own instead.
   const look = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`,
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,capabilities/canAddChildren)&pageSize=10`,
     { headers: { Authorization: `Bearer ${token}` } });
   const found = await look.json();
   if (found.error) throw new Error(found.error.message);
-  if (found.files && found.files.length) return found.files[0].id;
+  const writable = (found.files || []).find(f => !f.capabilities || f.capabilities.canAddChildren !== false);
+  if (writable) return writable.id;
 
   const made = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
     method: 'POST',
@@ -122,15 +127,30 @@ async function driveUploadFile(token, { buffer, name, mimeType, folderId }) {
 // One place that answers "is Drive usable, and if not why" — the routes below all
 // refuse rather than silently falling back, so nothing large lands in Supabase by
 // accident and starts costing money later.
+const RECONNECT = 'Google Drive was connected without upload permission — reconnect it: Google → My Drive → Connect.';
+
 async function driveAdminToken() {
   if (!GOOGLE_CLIENT_ID) { const e = new Error('Google is not configured on this deployment.'); e.status = 409; throw e; }
   if (!ctx.driveTokens)      { const e = new Error('Connect Google Drive first — Google → My Drive → Connect.'); e.status = 409; throw e; }
+  // Checked before the request, not after: a token from before the upload scope was
+  // added refreshes fine and then fails at Drive with "Insufficient Permission",
+  // which reads like a Google outage rather than one click of reconnecting.
+  if (!ctx.driveCanUpload(ctx.driveTokens)) { const e = new Error(RECONNECT); e.status = 409; throw e; }
   try {
     return await getDriveToken(ctx.driveTokens, 'admin_drive');
   } catch (_) {
     const e = new Error('Google Drive needs reconnecting — Google → My Drive → Connect.');
     e.status = 409; throw e;
   }
+}
+
+// Drive says 403 "Insufficient Permission" both for a stale grant and for writing
+// into a folder we do not own. Either way the cure is the same click, so say so.
+function driveErrStatus(e) {
+  return /insufficient permission|insufficientpermissions|forbidden/i.test(e.message || '') ? 409 : (e.status || 500);
+}
+function driveErrMessage(e) {
+  return driveErrStatus(e) === 409 && !e.status ? RECONNECT : e.message;
 }
 
 // 25 MB: client paperwork is scans, and the shared `upload` is capped at 5 MB.
@@ -158,7 +178,7 @@ async function handleDriveUpload(req, res, folder) {
     return { fileId: f.id, name: f.name, size: Number(f.size) || req.file.size || 0,
              mimeType: f.mimeType || req.file.mimetype || '', webViewLink: f.webViewLink };
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    res.status(driveErrStatus(e)).json({ error: driveErrMessage(e) });
     return null;
   }
 }

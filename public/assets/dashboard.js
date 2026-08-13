@@ -3547,19 +3547,29 @@ async function loadEmployees() {
 }
 
 // ── Advanced employee permissions editor ──────────────────────────────────────
-const EMP_SIMPLE_PERMS = [
-  { key:'requests',        label:'Requests',          desc:'Submit & view own requests', def:true },
-  { key:'viewAllRequests', label:'View All Requests', desc:'See every employee\'s requests', def:false },
-  { key:'drive',           label:'My Drive',          desc:'Browse Google Drive files', def:true },
-  { key:'sheets',          label:'My Sheets',         desc:'Browse Google Sheets', def:true },
-  { key:'email',           label:'Email',             desc:'Access personal email', def:false },
-];
-const EMP_CRM_ACTIONS = {
-  leads:     [['view','View'],['create','Add'],['edit','Edit'],['delete','Delete (needs approval)'],['import','Import'],['export','Export']],
-  deals:     [['view','View'],['create','Add'],['edit','Edit'],['move','Move stage'],['delete','Delete (needs approval)']],
-  quotation: [['draft','Draft & generate'],['history','History'],['settings','Settings'],['delete','Delete'],['attachLead','Attach to a lead']],
-  reports:   [['leads','Custom Leads Report'],['sales','Sales & Revenue'],['export','Export CSV']],
-};
+// The section and action lists are not written here. They are fetched from
+// /api/dashboard/permissions/catalogue, which the server builds from the same
+// PERM_ACTIONS its route guards consult. Two copies of that list is how you end up
+// with a checkbox that governs nothing, or a section that quietly has no switch —
+// both of which this editor had before, for every section outside the CRM.
+let _permCatalogue = null;
+async function permCatalogue() {
+  if (_permCatalogue) return _permCatalogue;
+  try {
+    const r = await apiFetch('/api/dashboard/permissions/catalogue');
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    if (!d || !Array.isArray(d.groups)) throw new Error('bad payload');
+    _permCatalogue = d;
+  } catch (_) {
+    // Not cached, so the next open retries. The form still opens — an admin
+    // renaming somebody should not be blocked by this — but it says the controls
+    // are missing, and empBuildPerms leaves their permissions exactly as they were
+    // rather than saving the empty set the absent checkboxes would imply.
+    return { groups: [], stages: [], failed: true };
+  }
+  return _permCatalogue;
+}
 const EMP_DEAL_STAGES = ['lead','inquiry','quoted','negotiating','won','lost'];
 function empScopeStatusOpts() {
   try { const o = leadCol('lead_status')?.options; if (Array.isArray(o) && o.length) return o.map(x => [x.key, x.label]); } catch (_) {}
@@ -3567,17 +3577,46 @@ function empScopeStatusOpts() {
 }
 function empCnorm(s) { return String(s == null ? '' : s).toLowerCase().trim().replace(/[\s-]+/g, '_'); }
 function empActs(p, section) { return (p && p[section + 'Actions']) || {}; }
-function empCrmBlock(section, label, p) {
-  const on = p && p[section] === true;
-  const acts = empActs(p, section);
-  return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+
+// One block per section: a master switch, and beneath it the exact actions. An
+// employee record that predates a section has no key for it, so the catalogue
+// carries the server's default and the block falls back to that rather than to
+// "off" — otherwise opening and saving an old employee would silently strip
+// everything the section list has grown since they were created.
+function empPermBlock(sec, p) {
+  const on = p && Object.prototype.hasOwnProperty.call(p, sec.key) ? p[sec.key] === true : sec.defaultOn;
+  const acts = empActs(p, sec.key);
+  const known = p && Object.prototype.hasOwnProperty.call(p, sec.key + 'Actions');
+  return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px">
     <label style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;cursor:pointer">
-      <input type="checkbox" id="perm-${section}" ${on ? 'checked' : ''} onchange="empToggleSection('${section}')" style="accent-color:var(--primary);width:15px;height:15px"> ${label}
+      <input type="checkbox" id="perm-${sec.key}" ${on ? 'checked' : ''} onchange="empToggleSection('${sec.key}')" style="accent-color:var(--primary);width:15px;height:15px"> ${esc(sec.label)}
     </label>
-    <div id="perm-${section}-actions" style="display:${on ? 'flex' : 'none'};flex-wrap:wrap;gap:12px;margin-top:8px;padding-left:23px">
-      ${EMP_CRM_ACTIONS[section].map(([a, al]) => `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="perm-act" data-section="${section}" data-action="${a}" ${acts[a] ? 'checked' : ''} style="accent-color:var(--primary)"> ${al}</label>`).join('')}
+    <div id="perm-${sec.key}-actions" style="display:${on ? 'flex' : 'none'};flex-wrap:wrap;gap:10px 14px;margin-top:8px;padding-left:23px">
+      ${sec.actions.map(a => `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="perm-act" data-section="${sec.key}" data-action="${esc(a.key)}" ${(known ? acts[a.key] : on) ? 'checked' : ''} style="accent-color:var(--primary)"> ${esc(a.label)}</label>`).join('')}
     </div>
   </div>`;
+}
+function empPermGroup(g) {
+  return `<div style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">${esc(g.group)}</div>
+      <div style="display:flex;gap:10px">
+        <a href="#" onclick="empGroupSet('${esc(g.group)}',true);return false" style="font-size:11px;color:var(--primary)">All</a>
+        <a href="#" onclick="empGroupSet('${esc(g.group)}',false);return false" style="font-size:11px;color:var(--muted)">None</a>
+      </div>
+    </div>
+    <div data-perm-group="${esc(g.group)}" style="display:grid;gap:8px">
+      ${g.sections.map(s => empPermBlock(s, _empModalPerms)).join('')}
+    </div>
+  </div>`;
+}
+// Whole group on or off in one click — with sixteen sections, setting up a new
+// starter one checkbox at a time is the kind of chore that gets skipped.
+function empGroupSet(group, on) {
+  const wrap = document.querySelector(`[data-perm-group="${group}"]`);
+  if (!wrap) return;
+  wrap.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = on; });
+  wrap.querySelectorAll('[id^="perm-"][id$="-actions"]').forEach(d => { d.style.display = on ? 'flex' : 'none'; });
 }
 function empToggleSection(section) {
   const on = document.getElementById('perm-' + section)?.checked;
@@ -3589,11 +3628,14 @@ function empToggleSection(section) {
     if (boxes.length && !boxes.some(b => b.checked)) boxes.forEach(b => { b.checked = true; });
   }
 }
-function openEmpModal(id) {
+let _empModalPerms = {};
+async function openEmpModal(id) {
+  const cat = await permCatalogue();
   const e = id ? allEmployees.find(x => x.id === id) : null;
-  const p = { requests:true, drive:true, sheets:true, email:false, viewAllRequests:false, quotation:false, leads:false, deals:false, reports:false, ...(e?.permissions||{}) };
+  const p = _empModalPerms = { ...(e?.permissions || {}) };
   const scope = (p.scope && typeof p.scope === 'object') ? p.scope : { assignedOnly:false, dealStages:[], leadStatuses:[] };
   const scopeStatuses = (scope.leadStatuses || []).map(empCnorm);
+  const stages = Array.isArray(cat.stages) && cat.stages.length ? cat.stages : EMP_DEAL_STAGES;
   showModal(e ? 'Edit Employee' : 'Create Employee', `
     <div class="form-row">
       <div class="form-group"><label class="form-label">Full Name *</label><input class="form-control" id="em-name" value="${esc(e?.name||'')}" placeholder="e.g. Sara Ahmed"></div>
@@ -3606,23 +3648,12 @@ function openEmpModal(id) {
     <div class="form-row">
       <div class="form-group"><label class="form-label">Job Title</label><input class="form-control" id="em-job-title" value="${esc(e?.job_title||'')}" placeholder="e.g. Sales Manager"></div>
     </div>
-    <div class="form-group" style="margin-top:4px">
-      <label class="form-label">General access</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
-        ${EMP_SIMPLE_PERMS.map(item => `
-        <label style="display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--surface)">
-          <input type="checkbox" id="perm-${item.key}" ${p[item.key]?'checked':''} style="margin-top:2px;accent-color:var(--primary);width:15px;height:15px;flex-shrink:0">
-          <div><div style="font-size:13px;font-weight:600;color:var(--text)">${item.label}</div><div style="font-size:11px;color:var(--muted);margin-top:2px">${item.desc}</div></div>
-        </label>`).join('')}
-      </div>
-    </div>
     <div class="form-group" style="margin-top:8px">
-      <label class="form-label">CRM access — tick a section, then the exact actions allowed</label>
+      <label class="form-label">Access — tick a section, then the exact actions allowed</label>
       <div style="margin-top:6px">
-        ${empCrmBlock('leads', 'Leads', p)}
-        ${empCrmBlock('deals', 'Deals', p)}
-        ${empCrmBlock('quotation', 'Quotation', p)}
-        ${empCrmBlock('reports', 'Reports', p)}
+        ${cat.failed
+          ? `<div class="error-msg" style="display:block">Could not load the permission list, so it cannot be edited here right now. Saving will leave this employee's access unchanged.</div>`
+          : cat.groups.map(empPermGroup).join('')}
       </div>
     </div>
     <div class="form-group" style="margin-top:8px">
@@ -3634,7 +3665,7 @@ function openEmpModal(id) {
         <div>
           <div style="font-size:12px;color:var(--muted);margin-bottom:5px">Only leads whose deal is in these stage(s):</div>
           <div style="display:flex;flex-wrap:wrap;gap:10px">
-            ${EMP_DEAL_STAGES.map(s => `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="scope-stage" value="${s}" ${(scope.dealStages||[]).includes(s)?'checked':''} style="accent-color:var(--primary)"> ${s.charAt(0).toUpperCase()+s.slice(1)}</label>`).join('')}
+            ${stages.map(s => `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="scope-stage" value="${esc(s)}" ${(scope.dealStages||[]).includes(s)?'checked':''} style="accent-color:var(--primary)"> ${esc(s.charAt(0).toUpperCase()+s.slice(1))}</label>`).join('')}
           </div>
         </div>
         <div>
@@ -3650,14 +3681,21 @@ function openEmpModal(id) {
 }
 
 function empBuildPerms() {
+  // No catalogue means the form rendered no checkboxes. Reading them back would
+  // produce "nothing is allowed" and quietly strip an employee's access on a save
+  // that was only meant to fix a typo in their name.
+  if (!_permCatalogue) return _empModalPerms;
   const perms = {};
-  ['requests', 'viewAllRequests', 'drive', 'sheets', 'email'].forEach(k => { perms[k] = document.getElementById('perm-' + k)?.checked || false; });
-  ['leads', 'deals', 'quotation', 'reports'].forEach(sec => {
-    perms[sec] = document.getElementById('perm-' + sec)?.checked || false;
-    const acts = {};
-    document.querySelectorAll(`.perm-act[data-section="${sec}"]`).forEach(cb => { acts[cb.dataset.action] = cb.checked; });
-    perms[sec + 'Actions'] = acts;
-  });
+  // Read back from the catalogue that rendered the form, so a section added on the
+  // server appears here without this function being touched.
+  for (const g of (_permCatalogue.groups || [])) {
+    for (const sec of g.sections) {
+      perms[sec.key] = document.getElementById('perm-' + sec.key)?.checked || false;
+      const acts = {};
+      document.querySelectorAll(`.perm-act[data-section="${sec.key}"]`).forEach(cb => { acts[cb.dataset.action] = cb.checked; });
+      perms[sec.key + 'Actions'] = acts;
+    }
+  }
   perms.scope = {
     assignedOnly: document.getElementById('scope-assigned')?.checked || false,
     dealStages: [...document.querySelectorAll('.scope-stage:checked')].map(c => c.value),
@@ -4128,6 +4166,10 @@ async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, co
           </div>
           <button class="btn btn-outline" onclick="${disconnectFn}()" style="font-size:12px">Disconnect</button>
         </div>
+        ${status.canUpload === false ? `<div class="error-msg" style="display:block;margin-bottom:16px">
+          This connection was authorised before uploads were supported, so attaching a client
+          file will fail. <a href="#" onclick="${connectFn}();return false" style="color:var(--primary)">Reconnect</a> to fix it.
+        </div>` : ''}
         <div class="table-card">
           <div class="table-header"><span class="table-title">${icon} ${title}</span><span style="font-size:12px;color:var(--muted)">${files.length} file${files.length!==1?'s':''}</span></div>
           <table style="width:100%;border-collapse:collapse">
@@ -7928,6 +7970,8 @@ const HOMECFG = {
 
 // Portal binding for the shared huddle / group-admin module below.
 const HDCFG = {
+  // The admin is not subject to employee permissions; nothing here is gated.
+  can: () => true,
   base: '/api/dashboard/chat',
   me: () => 'admin',
   fetch: (url, opts) => apiFetch(url, opts),

@@ -6,6 +6,9 @@ const { chatBroadcast, chatSseClients, receiver, requireAuth, requireEmployeeAut
 // ─── Notification Center ────────────────────────────────────────────────────
 // Persistent notification SSE: one per logged-in member ('admin' | 'employee_<id>'),
 // kept open the whole time the portal is loaded.
+// Late-resolved: defined in index.js, which requires this module.
+const requirePerm = (...a) => ctx.requirePerm(...a);
+
 const notifSseClients = new Map();
 
 // Create a notification: persist (best-effort), push it live over SSE, and fire push.
@@ -223,7 +226,7 @@ receiver.router.get('/api/dashboard/chat/events', requireAuth, (req, res) => {
 });
 
 // SSE — Employee chat
-receiver.router.get('/api/employee/chat/events', requireEmployeeAuth, (req, res) => {
+receiver.router.get('/api/employee/chat/events', requireEmployeeAuth, requirePerm('chat', 'view'), (req, res) => {
   const key = `employee_${req.employee.id}`;
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();

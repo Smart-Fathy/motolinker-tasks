@@ -22,9 +22,9 @@ const HOME_SIZES = [
 // `async` widgets fetch their own data after the grid renders.
 const HOME_WIDGETS = {
   // Tasks
-  my_tasks:           { title: 'My tasks',            icon: 'clipboard-list',  w: 4, h: 2, perm: null },
-  task_status:        { title: 'Tasks by status',     icon: 'pie-chart',       w: 4, h: 1, perm: null },
-  overdue_tasks:      { title: 'Overdue tasks',       icon: 'alarm-clock',     w: 3, h: 1, perm: null },
+  my_tasks:           { title: 'My tasks',            icon: 'clipboard-list',  w: 4, h: 2, perm: 'tasks' },
+  task_status:        { title: 'Tasks by status',     icon: 'pie-chart',       w: 4, h: 1, perm: 'tasks' },
+  overdue_tasks:      { title: 'Overdue tasks',       icon: 'alarm-clock',     w: 3, h: 1, perm: 'tasks' },
   // Leads and deals
   leads_status:       { title: 'Leads by status',     icon: 'users',           w: 4, h: 2, perm: 'leads' },
   recent_leads:       { title: 'Recent leads',        icon: 'user-plus',       w: 4, h: 2, perm: 'leads' },
@@ -32,7 +32,7 @@ const HOME_WIDGETS = {
   pipeline:           { title: 'Pipeline by stage',   icon: 'trending-up',     w: 6, h: 2, perm: 'deals' },
   won_month:          { title: 'Won this month',      icon: 'trophy',          w: 3, h: 1, perm: 'deals' },
   // Hours and inventory
-  hours_week:         { title: 'Hours this week',     icon: 'timer',           w: 3, h: 1, perm: null },
+  hours_week:         { title: 'Hours this week',     icon: 'timer',           w: 3, h: 1, perm: 'hours' },
   stock_summary:      { title: 'Stock',               icon: 'car-front',       w: 3, h: 1, perm: null },
   stock_models:       { title: 'Stock by model',      icon: 'layers',          w: 4, h: 2, perm: null },
   // Requests and approvals
@@ -51,13 +51,13 @@ const HOME_WIDGETS = {
   automations_active: { title: 'Automations',         icon: 'workflow',        w: 3, h: 1, perm: 'admin' },
   team_roster:        { title: 'Team',                icon: 'users-round',     w: 4, h: 2, perm: 'admin' },
   whatsapp_recent:    { title: 'WhatsApp',            icon: 'message-circle',  w: 4, h: 2, perm: 'admin' },
-  issues_open:        { title: 'Open issues',         icon: 'bug',             w: 4, h: 2, perm: 'cto' },
+  issues_open:        { title: 'Open issues',         icon: 'bug',             w: 4, h: 2, perm: 'issues' },
   // Built here rather than by the server
   quick_actions:      { title: 'Quick actions',       icon: 'zap',             w: 4, h: 1, perm: null },
-  unread_chat:        { title: 'Unread chat',         icon: 'message-square',  w: 3, h: 1, perm: null },
+  unread_chat:        { title: 'Unread chat',         icon: 'message-square',  w: 3, h: 1, perm: 'chat' },
   notifications:      { title: 'Notifications',       icon: 'bell',            w: 4, h: 2, perm: null },
-  calendar:           { title: 'Calendar',            icon: 'calendar-days',   w: 4, h: 2, perm: null,      async: 'calendar' },
-  meet_quick:         { title: 'Meet',                icon: 'video',           w: 3, h: 1, perm: null },
+  calendar:           { title: 'Calendar',            icon: 'calendar-days',   w: 4, h: 2, perm: 'calendar', async: 'calendar' },
+  meet_quick:         { title: 'Meet',                icon: 'video',           w: 3, h: 1, perm: 'meet' },
   drive_recent:       { title: 'Recent Drive files',  icon: 'hard-drive',      w: 4, h: 2, perm: 'drive',   async: 'drive' },
   sheets_recent:      { title: 'Recent Sheets',       icon: 'table',           w: 4, h: 2, perm: 'sheets',  async: 'sheets' },
   email_unread:       { title: 'Unread email',        icon: 'mail',            w: 4, h: 2, perm: 'email',   async: 'email' },

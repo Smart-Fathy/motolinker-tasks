@@ -208,6 +208,27 @@ function requireEmployeeAuth(req, res, next) {
   next();
 }
 
+// Route guard for the per-action permission model. Mount it after
+// requireEmployeeAuth, which is what puts req.employee there:
+//
+//   receiver.router.get('/api/employee/hours', requireEmployeeAuth, requirePerm('hours', 'view'), …)
+//
+// empCan is reached through the context at request time rather than captured here,
+// because it is defined in src/routes/employee-portal.js — which index.js requires
+// a thousand lines below the first route that needs this.
+//
+// No req.employee means an admin session (chat and huddles mount the same handlers
+// behind requireAuth for the dashboard and requireEmployeeAuth for the portal), and
+// the admin is not subject to employee permissions. Always mount this behind one of
+// the two auth guards; on its own it authorises nothing.
+function requirePerm(section, action) {
+  return function (req, res, next) {
+    if (!req.employee || ctx.empCan(req.employee, section, action)) return next();
+    res.status(403).json({ error: 'Not permitted' });
+  };
+}
+ctx.requirePerm = requirePerm;
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Static Assets (PWA icons, manifests, service workers) ───────────────────
@@ -301,7 +322,7 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
 });
 
 // Sales & revenue analytics  → src/routes/reports.js
-Object.assign(ctx, { GOOGLE_CLIENT_ID, crypto, driveTokens, express, getCalendarToken, getDriveToken, getEmployeeCalendarToken, multer, parseCSV, receiver, requireAuth, supabase, syncTaskToCalendar, upload });
+Object.assign(ctx, { GOOGLE_CLIENT_ID, crypto, driveCanUpload: (...a) => driveCanUpload(...a), driveTokens, express, getCalendarToken, getDriveToken, getEmployeeCalendarToken, multer, parseCSV, receiver, requireAuth, supabase, syncTaskToCalendar, upload });
 Object.assign(ctx, require('./src/routes/reports'));
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Sales (one sold car; the Deals → Sales tab) ───────────────────────────────
@@ -478,8 +499,8 @@ async function postTaskComment(taskId, authorKey, authorName, payload, res) {
 receiver.router.get('/api/dashboard/tasks/:id/comments', requireAuth, (req, res) => listTaskComments(parseInt(req.params.id), res));
 receiver.router.post('/api/dashboard/tasks/:id/comments', requireAuth, express.json(), (req, res) =>
   postTaskComment(parseInt(req.params.id), 'admin', 'Admin', req.body, res));
-receiver.router.get('/api/employee/tasks/:id/comments', requireEmployeeAuth, (req, res) => listTaskComments(parseInt(req.params.id), res));
-receiver.router.post('/api/employee/tasks/:id/comments', requireEmployeeAuth, express.json(), (req, res) =>
+receiver.router.get('/api/employee/tasks/:id/comments', requireEmployeeAuth, requirePerm('tasks', 'view'), (req, res) => listTaskComments(parseInt(req.params.id), res));
+receiver.router.post('/api/employee/tasks/:id/comments', requireEmployeeAuth, requirePerm('tasks', 'comment'), express.json(), (req, res) =>
   postTaskComment(parseInt(req.params.id), `employee_${req.employee.id}`, req.employee.name, req.body, res));
 
 // Coworker names (for @mention autocomplete in comments)
@@ -554,11 +575,11 @@ async function employeeMayAccessRequest(req, reqId) {
 receiver.router.get('/api/dashboard/requests/:id/comments', requireAuth, (req, res) => listRequestComments(parseInt(req.params.id), res));
 receiver.router.post('/api/dashboard/requests/:id/comments', requireAuth, express.json(), (req, res) =>
   postRequestComment(parseInt(req.params.id), 'admin', 'Admin', req.body, res));
-receiver.router.get('/api/employee/requests/:id/comments', requireEmployeeAuth, async (req, res) => {
+receiver.router.get('/api/employee/requests/:id/comments', requireEmployeeAuth, requirePerm('requests', 'view'), async (req, res) => {
   if (!(await employeeMayAccessRequest(req, parseInt(req.params.id)))) return res.status(403).json({ error: 'Not permitted' });
   listRequestComments(parseInt(req.params.id), res);
 });
-receiver.router.post('/api/employee/requests/:id/comments', requireEmployeeAuth, express.json(), async (req, res) => {
+receiver.router.post('/api/employee/requests/:id/comments', requireEmployeeAuth, requirePerm('requests', 'comment'), express.json(), async (req, res) => {
   if (!(await employeeMayAccessRequest(req, parseInt(req.params.id)))) return res.status(403).json({ error: 'Not permitted' });
   postRequestComment(parseInt(req.params.id), `employee_${req.employee.id}`, req.employee.name, req.body, res);
 });
@@ -610,18 +631,17 @@ receiver.router.post('/api/employee/report-issue', requireEmployeeAuth, issueUpl
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Issues center (CTO only) ──────────────────────────────────────────────────
-function isCto(req) { return /chief technical officer/i.test(req.employee?.job_title || ''); }
+// ── Issues center ─────────────────────────────────────────────────────────────
+// Granted by permission now, not only by job title. empCan still lets any CTO
+// through on their title alone, so this is strictly a widening.
 
-receiver.router.get('/api/employee/issues', requireEmployeeAuth, async (req, res) => {
-  if (!isCto(req)) return res.status(403).json({ error: 'Not permitted' });
+receiver.router.get('/api/employee/issues', requireEmployeeAuth, requirePerm('issues', 'view'), async (_req, res) => {
   const { data, error } = await supabase.from('issues').select('*').order('created_at', { ascending: false }).limit(200);
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
 
-receiver.router.put('/api/employee/issues/:id', requireEmployeeAuth, express.json(), async (req, res) => {
-  if (!isCto(req)) return res.status(403).json({ error: 'Not permitted' });
+receiver.router.put('/api/employee/issues/:id', requireEmployeeAuth, requirePerm('issues', 'resolve'), express.json(), async (req, res) => {
   const status = req.body?.status === 'resolved' ? 'resolved' : 'open';
   const { data, error } = await supabase.from('issues').update({ status }).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
@@ -791,12 +811,15 @@ receiver.router.get('/api/email/callback', async (req, res) => {
       if (pending.type === 'employee-login') {
         // Google login for employee portal — match by email
         // Case-insensitive match (ilike, no wildcards) + limit(1) so mixed-case stored emails work and duplicates don't throw
-        const { data: empRows } = await supabase.from('employees').select('id,name,username,permissions').ilike('email', String(profile.email || '').trim()).limit(1);
+        // job_title comes along because permissions read it: the Issues centre is
+        // still the CTO's by title. Signing in with Google used to drop it, so the
+        // same person saw a different portal depending on which button they used.
+        const { data: empRows } = await supabase.from('employees').select('id,name,username,permissions,job_title').ilike('email', String(profile.email || '').trim()).limit(1);
         const emp = empRows && empRows[0];
         if (!emp) return res.redirect('/employee?google_login_error=' + encodeURIComponent('No account linked to this Google address. Contact your admin.'));
         const sessionToken = generateToken();
         const permissions = ctx.normEmpPerms(emp.permissions);
-        employeeSessions.set(sessionToken, { id: emp.id, name: emp.name, username: emp.username, permissions });
+        employeeSessions.set(sessionToken, { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions });
         return res.redirect('/employee?emp_token=' + sessionToken);
       }
       if (pending.type === 'employee' && pending.employeeId) {
@@ -955,7 +978,27 @@ receiver.router.post('/api/email/send', requireAuth, express.json(), async (req,
 });
 
 // ── Google Drive / Sheets ─────────────────────────────────────────────────────
-const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
+// Two Drive scopes, deliberately, rather than the one blanket `auth/drive`:
+//   drive.readonly — the Drive and Sheets browsers list everything in the account
+//   drive.file     — create and write, but only files this app made
+// Read-only alone is what shipped, which is why uploading a client file could never
+// work: the folder creation in src/routes/suppliers.js came back 403 Insufficient
+// Permission no matter how healthy the connection looked on the Drive page.
+// `drive.file` is the smallest scope that permits an upload; it cannot touch anything
+// the user created themselves, so adding it does not widen what MotoLinker can reach
+// beyond the MotoLinker folder it owns.
+const DRIVE_UPLOAD_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_SCOPES = `https://www.googleapis.com/auth/drive.readonly ${DRIVE_UPLOAD_SCOPE} https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile`;
+
+// A token minted before the scope above was widened still refreshes happily — the
+// refresh token carries the OLD grant, so nothing looks broken until the upload
+// itself 403s. Google returns what it actually granted in `scope`, so a stale grant
+// is detectable here and can be reported as "reconnect" instead of as a Drive error.
+function driveCanUpload(tokens) {
+  const granted = String((tokens && tokens.scope) || '');
+  if (!granted) return true;   // pre-dates scope recording; let Google be the judge
+  return granted.split(/\s+/).some(s => s === DRIVE_UPLOAD_SCOPE || s === 'https://www.googleapis.com/auth/drive');
+}
 
 async function getDriveToken(tokens, userKey) {
   if (!tokens) throw new Error('Drive not connected');
@@ -985,7 +1028,10 @@ async function listDriveFiles(tokens, mimeType, userKey) {
 receiver.router.get('/api/drive/status', requireAuth, (_req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.json({ configured: false });
   if (!driveTokens) return res.json({ configured: true, connected: false });
-  res.json({ configured: true, connected: true, email: driveTokens.email, name: driveTokens.name });
+  // canUpload, so the Drive page can say that a connection predating the upload
+  // scope needs one reconnect — rather than leaving it to be discovered by a client
+  // file upload failing months later.
+  res.json({ configured: true, connected: true, email: driveTokens.email, name: driveTokens.name, canUpload: driveCanUpload(driveTokens) });
 });
 
 receiver.router.get('/api/drive/connect', requireAuth, (req, res) => {
@@ -1104,9 +1150,9 @@ function chatStatusPayload(kind) {
 
 // Register the six Chat routes for one audience (admin or employee).
 function mountChatRoutes(base, guard, kindOf, redirect) {
-  receiver.router.get(`${base}/status`, guard, (req, res) => res.json(chatStatusPayload(kindOf(req))));
+  receiver.router.get(`${base}/status`, guard, requirePerm('gchat', 'view'), (req, res) => res.json(chatStatusPayload(kindOf(req))));
 
-  receiver.router.get(`${base}/connect`, guard, (req, res) => {
+  receiver.router.get(`${base}/connect`, guard, requirePerm('gchat', 'view'), (req, res) => {
     if (!GOOGLE_CHAT_ENABLED) return res.status(400).send('Google Chat is not enabled (set GOOGLE_CHAT_ENABLED=1)');
     if (!CHAT_CLIENT_ID) return res.status(400).send('GOOGLE_CLIENT_ID not configured');
     const b = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
@@ -1116,13 +1162,13 @@ function mountChatRoutes(base, guard, kindOf, redirect) {
     res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
   });
 
-  receiver.router.post(`${base}/disconnect`, guard, (req, res) => {
+  receiver.router.post(`${base}/disconnect`, guard, requirePerm('gchat', 'view'), (req, res) => {
     const store = chatStore(kindOf(req));
     store.set(null); saveGoogleToken(store.key, null);
     res.json({ ok: true });
   });
 
-  receiver.router.get(`${base}/spaces`, guard, async (req, res) => {
+  receiver.router.get(`${base}/spaces`, guard, requirePerm('gchat', 'view'), async (req, res) => {
     const r = await chatApi(kindOf(req), 'spaces?pageSize=100');
     if (r.error) return res.json({ spaces: [], error: r.error, detail: r.detail });
     // Chat returns nothing at all for an empty list
@@ -1134,7 +1180,7 @@ function mountChatRoutes(base, guard, kindOf, redirect) {
     res.json({ spaces });
   });
 
-  receiver.router.get(`${base}/messages`, guard, async (req, res) => {
+  receiver.router.get(`${base}/messages`, guard, requirePerm('gchat', 'view'), async (req, res) => {
     const space = String(req.query.space || '');
     if (!/^spaces\/[A-Za-z0-9_-]+$/.test(space)) return res.json({ messages: [], error: 'bad_space' });
     const r = await chatApi(kindOf(req), `${space}/messages?pageSize=50&orderBy=${encodeURIComponent('createTime desc')}`);
@@ -1149,7 +1195,7 @@ function mountChatRoutes(base, guard, kindOf, redirect) {
     res.json({ messages });
   });
 
-  receiver.router.post(`${base}/messages`, guard, express.json(), async (req, res) => {
+  receiver.router.post(`${base}/messages`, guard, requirePerm('gchat', 'send'), express.json(), async (req, res) => {
     const space = String(req.body?.space || '');
     const text = String(req.body?.text || '').trim().slice(0, 4000);
     if (!/^spaces\/[A-Za-z0-9_-]+$/.test(space)) return res.status(400).json({ error: 'bad_space' });
@@ -1256,14 +1302,14 @@ async function getCalendarToken() {
 // All-day event on the due date, with the assignees invited by email.
 // Employees can connect their own calendar so task events land directly on it
 // instead of arriving as an invitation from the company account.
-receiver.router.get('/api/employee/calendar/status', requireEmployeeAuth, (req, res) => {
+receiver.router.get('/api/employee/calendar/status', requireEmployeeAuth, requirePerm('calendar', 'view'), (req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.json({ configured: false });
   const t = employeeCalendarTokens.get(req.employee.id);
   if (!t) return res.json({ configured: true, connected: false });
   res.json({ configured: true, connected: true, email: t.email, name: t.name });
 });
 
-receiver.router.get('/api/employee/calendar/connect', requireEmployeeAuth, (req, res) => {
+receiver.router.get('/api/employee/calendar/connect', requireEmployeeAuth, requirePerm('calendar', 'connect'), (req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.status(400).send('GOOGLE_CLIENT_ID not configured');
   const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
   const state = crypto.randomBytes(16).toString('hex');
@@ -1272,7 +1318,7 @@ receiver.router.get('/api/employee/calendar/connect', requireEmployeeAuth, (req,
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
 
-receiver.router.post('/api/employee/calendar/disconnect', requireEmployeeAuth, async (req, res) => {
+receiver.router.post('/api/employee/calendar/disconnect', requireEmployeeAuth, requirePerm('calendar', 'connect'), async (req, res) => {
   const id = req.employee.id;
   res.json({ ok: true });
   // Remove the events we put there while the token is still valid, otherwise they
@@ -1452,14 +1498,14 @@ async function syncTaskToCalendar(task) {
 }
 
 // Employee drive connect
-receiver.router.get('/api/employee/drive/status', requireEmployeeAuth, (req, res) => {
+receiver.router.get('/api/employee/drive/status', requireEmployeeAuth, requirePerm('drive', 'view'), (req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.json({ configured: false });
   const t = employeeDriveTokens.get(req.employee.id);
   if (!t) return res.json({ configured: true, connected: false });
-  res.json({ configured: true, connected: true, email: t.email, name: t.name });
+  res.json({ configured: true, connected: true, email: t.email, name: t.name, canUpload: driveCanUpload(t) });
 });
 
-receiver.router.get('/api/employee/drive/connect', requireEmployeeAuth, (req, res) => {
+receiver.router.get('/api/employee/drive/connect', requireEmployeeAuth, requirePerm('drive', 'connect'), (req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.status(400).send('GOOGLE_CLIENT_ID not configured');
   const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
   const state = crypto.randomBytes(16).toString('hex');
@@ -1468,22 +1514,22 @@ receiver.router.get('/api/employee/drive/connect', requireEmployeeAuth, (req, re
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
 
-receiver.router.post('/api/employee/drive/disconnect', requireEmployeeAuth, (req, res) => { employeeDriveTokens.delete(req.employee.id); res.json({ ok: true }); });
+receiver.router.post('/api/employee/drive/disconnect', requireEmployeeAuth, requirePerm('drive', 'connect'), (req, res) => { employeeDriveTokens.delete(req.employee.id); res.json({ ok: true }); });
 
-receiver.router.get('/api/employee/drive/files',  requireEmployeeAuth, async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id), null, `${req.employee.id}_drive`)); } catch (e) { res.status(500).json({ error: e.message }); } });
-receiver.router.get('/api/employee/drive/sheets', requireEmployeeAuth, async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id), 'application/vnd.google-apps.spreadsheet', `${req.employee.id}_drive`)); } catch (e) { res.status(500).json({ error: e.message }); } });
+receiver.router.get('/api/employee/drive/files',  requireEmployeeAuth, requirePerm('drive', 'view'), async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id), null, `${req.employee.id}_drive`)); } catch (e) { res.status(500).json({ error: e.message }); } });
+receiver.router.get('/api/employee/drive/sheets', requireEmployeeAuth, requirePerm('sheets', 'view'), async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id), 'application/vnd.google-apps.spreadsheet', `${req.employee.id}_drive`)); } catch (e) { res.status(500).json({ error: e.message }); } });
 
 // ── Employee Email ─────────────────────────────────────────────────────────────
 const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 
-receiver.router.get('/api/employee/email/status', requireEmployeeAuth, (req, res) => {
+receiver.router.get('/api/employee/email/status', requireEmployeeAuth, requirePerm('email', 'view'), (req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.json({ configured: false });
   const t = employeeEmailTokens.get(req.employee.id);
   if (!t) return res.json({ configured: true, connected: false });
   res.json({ configured: true, connected: true, email: t.email, name: t.name });
 });
 
-receiver.router.get('/api/employee/email/connect', requireEmployeeAuth, (req, res) => {
+receiver.router.get('/api/employee/email/connect', requireEmployeeAuth, requirePerm('email', 'connect'), (req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.status(400).send('GOOGLE_CLIENT_ID not configured');
   const base  = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
   const state = crypto.randomBytes(16).toString('hex');
@@ -1492,7 +1538,7 @@ receiver.router.get('/api/employee/email/connect', requireEmployeeAuth, (req, re
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
 
-receiver.router.post('/api/employee/email/disconnect', requireEmployeeAuth, (req, res) => { employeeEmailTokens.delete(req.employee.id); res.json({ ok: true }); });
+receiver.router.post('/api/employee/email/disconnect', requireEmployeeAuth, requirePerm('email', 'connect'), (req, res) => { employeeEmailTokens.delete(req.employee.id); res.json({ ok: true }); });
 
 async function getEmployeeGmailToken(employeeId) {
   const t = employeeEmailTokens.get(employeeId);
@@ -1509,7 +1555,7 @@ async function getEmployeeGmailToken(employeeId) {
   return employeeEmailTokens.get(employeeId).access_token;
 }
 
-receiver.router.get('/api/employee/email/messages', requireEmployeeAuth, async (req, res) => {
+receiver.router.get('/api/employee/email/messages', requireEmployeeAuth, requirePerm('email', 'view'), async (req, res) => {
   try {
     const token   = await getEmployeeGmailToken(req.employee.id);
     const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&labelIds=INBOX', { headers: { Authorization: `Bearer ${token}` } });
@@ -1526,7 +1572,7 @@ receiver.router.get('/api/employee/email/messages', requireEmployeeAuth, async (
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-receiver.router.get('/api/employee/email/messages/:id', requireEmployeeAuth, async (req, res) => {
+receiver.router.get('/api/employee/email/messages/:id', requireEmployeeAuth, requirePerm('email', 'view'), async (req, res) => {
   try {
     const token = await getEmployeeGmailToken(req.employee.id);
     const r   = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${req.params.id}?format=full`, { headers: { Authorization: `Bearer ${token}` } });
@@ -1537,7 +1583,7 @@ receiver.router.get('/api/employee/email/messages/:id', requireEmployeeAuth, asy
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-receiver.router.post('/api/employee/email/send', requireEmployeeAuth, express.json(), async (req, res) => {
+receiver.router.post('/api/employee/email/send', requireEmployeeAuth, requirePerm('email', 'send'), express.json(), async (req, res) => {
   const { to, subject, body, threadId, inReplyTo } = req.body || {};
   if (!to || !subject || !body) return res.status(400).json({ error: 'to, subject and body are required' });
   try {

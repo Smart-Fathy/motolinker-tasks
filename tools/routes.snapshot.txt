@@ -124,6 +124,7 @@ POST /api/employee/email/send
 GET /employee
 GET /api/employee/requests
 POST /api/employee/requests
+GET /api/dashboard/permissions/catalogue
 GET /api/employee/auth/google
 POST /api/employee/login
 GET /api/employee/check

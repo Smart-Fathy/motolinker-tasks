@@ -9,6 +9,7 @@ const chatEditMsg = (...a) => ctx.chatEditMsg(...a);
 const chatGetMessages = (...a) => ctx.chatGetMessages(...a);
 const chatPeopleKeys = (...a) => ctx.chatPeopleKeys(...a);
 const chatSendMessage = (...a) => ctx.chatSendMessage(...a);
+const requirePerm = (...a) => ctx.requirePerm(...a);
 
 // ─── Group administration + huddles ───────────────────────────────────────────
 // Admin may manage any group; an employee may manage groups they created.
@@ -90,18 +91,18 @@ function mountChatAdminRoutes(base, guard) {
   // ── Huddles ──────────────────────────────────────────────────────────────
   // WebRTC signalling rides the existing chat SSE: each payload is relayed to one
   // peer. Roster is in-memory and ephemeral — a restart simply ends the call.
-  receiver.router.get(`${base}/huddle/ice`, guard, async (_req, res) => {
+  receiver.router.get(`${base}/huddle/ice`, guard, requirePerm('chat', 'huddle'), async (_req, res) => {
     res.json(await huddleIceConfig());
   });
 
-  receiver.router.get(`${base}/huddle/:roomId`, guard, async (req, res) => {
+  receiver.router.get(`${base}/huddle/:roomId`, guard, requirePerm('chat', 'huddle'), async (req, res) => {
     const { key } = chatCallerIdentity(req);
     const roomId = parseInt(req.params.roomId);
     if (!huddleMaySignal(roomId, key, await chatRoomMemberKeys(roomId))) return res.status(403).json({ error: 'Not a member' });
     res.json({ participants: huddleRoster(roomId) });
   });
 
-  receiver.router.post(`${base}/huddle/signal`, guard, express.json({ limit: '256kb' }), async (req, res) => {
+  receiver.router.post(`${base}/huddle/signal`, guard, requirePerm('chat', 'huddle'), express.json({ limit: '256kb' }), async (req, res) => {
     const { key, name } = chatCallerIdentity(req);
     const roomId = parseInt(req.body?.roomId);
     const type = String(req.body?.type || '');
@@ -277,15 +278,15 @@ receiver.router.post('/api/dashboard/chat/rooms/group', requireAuth, express.jso
 
 // Messages
 receiver.router.get('/api/dashboard/chat/rooms/:roomId/messages', requireAuth, (req, res) => chatGetMessages(req, res, 'admin'));
-receiver.router.get('/api/employee/chat/rooms/:roomId/messages', requireEmployeeAuth, (req, res) => chatGetMessages(req, res, `employee_${req.employee.id}`));
+receiver.router.get('/api/employee/chat/rooms/:roomId/messages', requireEmployeeAuth, requirePerm('chat', 'view'), (req, res) => chatGetMessages(req, res, `employee_${req.employee.id}`));
 receiver.router.post('/api/dashboard/chat/rooms/:roomId/messages', requireAuth, express.json(), (req, res) => chatSendMessage(req, res, 'admin', 'Admin'));
-receiver.router.post('/api/employee/chat/rooms/:roomId/messages', requireEmployeeAuth, express.json(), (req, res) => chatSendMessage(req, res, `employee_${req.employee.id}`, req.employee.name));
+receiver.router.post('/api/employee/chat/rooms/:roomId/messages', requireEmployeeAuth, requirePerm('chat', 'send'), express.json(), (req, res) => chatSendMessage(req, res, `employee_${req.employee.id}`, req.employee.name));
 // Edit
 receiver.router.patch('/api/dashboard/chat/rooms/:roomId/messages/:msgId', requireAuth, express.json(), (req, res) => chatEditMsg(req, res, 'admin'));
-receiver.router.patch('/api/employee/chat/rooms/:roomId/messages/:msgId', requireEmployeeAuth, express.json(), (req, res) => chatEditMsg(req, res, `employee_${req.employee.id}`));
+receiver.router.patch('/api/employee/chat/rooms/:roomId/messages/:msgId', requireEmployeeAuth, requirePerm('chat', 'edit'), express.json(), (req, res) => chatEditMsg(req, res, `employee_${req.employee.id}`));
 // Delete
 receiver.router.delete('/api/dashboard/chat/rooms/:roomId/messages/:msgId', requireAuth, (req, res) => chatDeleteMsg(req, res, 'admin'));
-receiver.router.delete('/api/employee/chat/rooms/:roomId/messages/:msgId', requireEmployeeAuth, (req, res) => chatDeleteMsg(req, res, `employee_${req.employee.id}`));
+receiver.router.delete('/api/employee/chat/rooms/:roomId/messages/:msgId', requireEmployeeAuth, requirePerm('chat', 'delete'), (req, res) => chatDeleteMsg(req, res, `employee_${req.employee.id}`));
 
 // File upload
 const chatUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -318,7 +319,7 @@ async function handleChatUpload(req, res) {
 }
 
 receiver.router.post('/api/dashboard/chat/upload', requireAuth, chatUpload.single('file'), handleChatUpload);
-receiver.router.post('/api/employee/chat/upload',  requireEmployeeAuth, chatUpload.single('file'), handleChatUpload);
+receiver.router.post('/api/employee/chat/upload',  requireEmployeeAuth, requirePerm('chat', 'upload'), chatUpload.single('file'), handleChatUpload);
 
 
 module.exports = {};
