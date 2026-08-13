@@ -79,8 +79,9 @@ const DEFAULT_PERMISSIONS = {
   drive: true, sheets: true, calendar: true, meet: true, email: false, gchat: false,
   // Talking to each other
   chat: true,
-  // Inventory
+  // Inventory, operations and procurement — off until someone is given them
   stock: true,
+  suppliers: false, rfq: false, purchaseorders: false, contracts: false, submissions: false,
   // Tools and CRM
   pdfscraper: false, quotation: false, leads: false, deals: false, reports: false,
   // System
@@ -121,6 +122,15 @@ const PERM_ACTIONS = {
   // vehicle picker in the lead and quotation forms and two Home widgets — which
   // were ungated, so every employee saw the company's stock counts on Home.
   stock: ['view'],
+  // Operations and procurement. The handlers are the dashboard's own, mounted a
+  // second time under /api/employee — so these actions are the only difference
+  // between what an employee may do here and what the admin may.
+  suppliers: ['view', 'create', 'edit', 'delete', 'catalogue', 'docs'],
+  rfq: ['view', 'create', 'edit', 'delete', 'export'],
+  purchaseorders: ['view', 'create', 'edit', 'delete', 'export'],
+  contracts: ['view', 'create', 'edit', 'delete', 'export'],
+  // The website writes these; a person only reads one or bins it.
+  submissions: ['view', 'delete'],
   // CRM
   leads: ['view', 'create', 'edit', 'delete', 'import', 'export'],
   deals: ['view', 'create', 'edit', 'delete', 'move'],
@@ -186,6 +196,7 @@ const PERM_GROUPS = [
   { group: 'Google',     sections: ['drive', 'sheets', 'email', 'calendar', 'meet', 'gchat'] },
   { group: 'Chat',       sections: ['chat'] },
   { group: 'Inventory',  sections: ['stock'] },
+  { group: 'Operations', sections: ['suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions'] },
   { group: 'Tools',      sections: ['quotation'] },
   { group: 'CRM',        sections: ['leads', 'deals', 'reports'] },
   { group: 'System',     sections: ['issues'] },
@@ -195,6 +206,8 @@ const PERM_SECTION_LABELS = {
   drive: 'My Drive', sheets: 'My Sheets', email: 'My Email',
   calendar: 'Calendar', meet: 'Meet', gchat: 'Google Chat',
   chat: 'Team chat', quotation: 'Quotation', stock: 'Inventory',
+  suppliers: 'Suppliers', rfq: 'RFQ', purchaseorders: 'Purchase orders',
+  contracts: 'Sales contracts', submissions: 'Website submissions',
   leads: 'Leads', deals: 'Deals', reports: 'Reports', issues: 'Issues centre',
 };
 // Keyed "section.action" where the plain word would mislead, and by the bare word
@@ -214,6 +227,12 @@ const PERM_ACTION_LABELS = {
   'quotation.delete': 'Delete quotations',
   'issues.view': 'Open the issues centre',
   'stock.view': 'See stock levels and look vehicles up',
+  'suppliers.catalogue': 'Manage the vehicle catalogue',
+  'suppliers.docs': 'Supplier documents',
+  'rfq.export': 'Generate the PDF',
+  'purchaseorders.export': 'Generate the PDF',
+  'contracts.export': 'Generate the PDF',
+  'submissions.delete': 'Delete a submission',
 };
 function permCatalogue() {
   return PERM_GROUPS.map(g => ({

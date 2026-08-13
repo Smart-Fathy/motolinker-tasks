@@ -1,13 +1,15 @@
 // Contracts (Arabic
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
-const { escHtml, express, logLeadActivity, receiver, requireAuth, supabase } = ctx.need('escHtml', 'express', 'logLeadActivity', 'receiver', 'requireAuth', 'supabase');
+const { escHtml, express, logLeadActivity, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('escHtml', 'express', 'logLeadActivity', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
 const createNotification = (...a) => ctx.createNotification(...a);
 // Registered on the context by a module that loads later, so these are looked
 // up when called rather than when required.
 const renderQuotationPdf = (...a) => ctx.renderQuotationPdf(...a);
+const requirePerm = (...a) => ctx.requirePerm(...a);
+const callerIdentity = (...a) => ctx.callerIdentity(...a);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Contracts (Arabic "عقد شراء وإستيراد سيارة لحساب الغير") ──────────────────
@@ -225,103 +227,113 @@ ${page(p1)}${page(p2)}${page(p3)}${page(p4)}${page(p5)}${page(p6)}
 }
 
 // ── Contract routes ───────────────────────────────────────────────────────────
-receiver.router.get('/api/dashboard/contracts', requireAuth, async (_req, res) => {
-  const { data, error } = await supabase.from('contracts')
-    .select('id,contract_no,title,status,customer_id,deal_id,created_by,created_at')
-    .order('created_at', { ascending: false }).limit(200);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
-});
+// Mounted twice: for the dashboard behind requireAuth and for the team portal
+// behind requireEmployeeAuth, over one set of handlers rather than two — a fix
+// here cannot land in one portal and miss the other. requirePerm waves the admin
+// through (they have no req.employee) and checks the action for everyone else.
+function mountContractRoutes(base, guard) {
+  // ── Contract routes ───────────────────────────────────────────────────────────
+  receiver.router.get(base, guard, requirePerm('contracts', 'view'), async (_req, res) => {
+    const { data, error } = await supabase.from('contracts')
+      .select('id,contract_no,title,status,customer_id,deal_id,created_by,created_at')
+      .order('created_at', { ascending: false }).limit(200);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
 
-receiver.router.get('/api/dashboard/contracts/:id', requireAuth, async (req, res) => {
-  const { data, error } = await supabase.from('contracts').select('*').eq('id', req.params.id).single();
-  if (error) return res.status(404).json({ error: 'Contract not found' });
-  res.json(data);
-});
+  receiver.router.get(`${base}/:id`, guard, requirePerm('contracts', 'view'), async (req, res) => {
+    const { data, error } = await supabase.from('contracts').select('*').eq('id', req.params.id).single();
+    if (error) return res.status(404).json({ error: 'Contract not found' });
+    res.json(data);
+  });
 
-// Prefill payload for a brand-new contract (optionally seeded from a lead/deal).
-receiver.router.get('/api/dashboard/contracts/new/defaults', requireAuth, async (req, res) => {
-  try {
-    const customerId = req.query.customer_id ? parseInt(req.query.customer_id) : null;
-    const dealId = req.query.deal_id ? parseInt(req.query.deal_id) : null;
-    const [cust, deal, settingsRows] = await Promise.all([
-      customerId ? supabase.from('customers').select('*').eq('id', customerId).single().then(r => r.data) : null,
-      dealId ? supabase.from('deals').select('*').eq('id', dealId).single().then(r => r.data) : null,
-      supabase.from('quotation_settings').select('key,value').then(r => r.data),
-    ]);
-    const settings = {};
-    for (const row of settingsRows || []) settings[row.key] = row.value;
-    res.json({ contract_no: generateContractNo(), data: contractDefaults({ customer: cust, deal, settings }) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+  // Prefill payload for a brand-new contract (optionally seeded from a lead/deal).
+  receiver.router.get(`${base}/new/defaults`, guard, requirePerm('contracts', 'create'), async (req, res) => {
+    try {
+      const customerId = req.query.customer_id ? parseInt(req.query.customer_id) : null;
+      const dealId = req.query.deal_id ? parseInt(req.query.deal_id) : null;
+      const [cust, deal, settingsRows] = await Promise.all([
+        customerId ? supabase.from('customers').select('*').eq('id', customerId).single().then(r => r.data) : null,
+        dealId ? supabase.from('deals').select('*').eq('id', dealId).single().then(r => r.data) : null,
+        supabase.from('quotation_settings').select('key,value').then(r => r.data),
+      ]);
+      const settings = {};
+      for (const row of settingsRows || []) settings[row.key] = row.value;
+      res.json({ contract_no: generateContractNo(), data: contractDefaults({ customer: cust, deal, settings }) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
 
-receiver.router.post('/api/dashboard/contracts', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
-  const b = req.body || {};
-  const row = {
-    contract_no: String(b.contract_no || '').trim() || generateContractNo(),
-    title: String(b.title || '').trim(),
-    data: b.data && typeof b.data === 'object' ? b.data : {},
-    customer_id: b.customer_id ? parseInt(b.customer_id) : null,
-    deal_id: b.deal_id ? parseInt(b.deal_id) : null,
-    status: ['draft', 'signed', 'cancelled'].includes(b.status) ? b.status : 'draft',
-    created_by: 'dashboard',
-  };
-  const { data, error } = await supabase.from('contracts').insert(row).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-  // Timeline: show the contract on the attached lead's 360° profile
-  if (data.customer_id) {
-    logLeadActivity(data.customer_id, {
-      type: 'note', body: `Contract generated — ${data.contract_no}`,
-      meta: { contract_id: data.id, contract_no: data.contract_no },
-      authorKey: 'admin', authorName: 'Admin',
-    });
-  }
-});
+  receiver.router.post(base, guard, requirePerm('contracts', 'create'), express.json({ limit: '2mb' }), async (req, res) => {
+    const b = req.body || {};
+    const who = callerIdentity(req);
+    const row = {
+      contract_no: String(b.contract_no || '').trim() || generateContractNo(),
+      title: String(b.title || '').trim(),
+      data: b.data && typeof b.data === 'object' ? b.data : {},
+      customer_id: b.customer_id ? parseInt(b.customer_id) : null,
+      deal_id: b.deal_id ? parseInt(b.deal_id) : null,
+      status: ['draft', 'signed', 'cancelled'].includes(b.status) ? b.status : 'draft',
+      created_by: who.key,
+    };
+    const { data, error } = await supabase.from('contracts').insert(row).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+    // Timeline: show the contract on the attached lead's 360° profile
+    if (data.customer_id) {
+      logLeadActivity(data.customer_id, {
+        type: 'note', body: `Contract generated — ${data.contract_no}`,
+        meta: { contract_id: data.id, contract_no: data.contract_no },
+        authorKey: who.key, authorName: who.name,
+      });
+    }
+  });
 
-receiver.router.put('/api/dashboard/contracts/:id', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
-  const b = req.body || {};
-  const upd = { updated_at: new Date().toISOString() };
-  if (b.title != null) upd.title = String(b.title).trim();
-  if (b.data && typeof b.data === 'object') upd.data = b.data;
-  if (['draft', 'signed', 'cancelled'].includes(b.status)) upd.status = b.status;
-  if (b.customer_id !== undefined) upd.customer_id = b.customer_id ? parseInt(b.customer_id) : null;
-  const { data, error } = await supabase.from('contracts').update(upd).eq('id', req.params.id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+  receiver.router.put(`${base}/:id`, guard, requirePerm('contracts', 'edit'), express.json({ limit: '2mb' }), async (req, res) => {
+    const b = req.body || {};
+    const upd = { updated_at: new Date().toISOString() };
+    if (b.title != null) upd.title = String(b.title).trim();
+    if (b.data && typeof b.data === 'object') upd.data = b.data;
+    if (['draft', 'signed', 'cancelled'].includes(b.status)) upd.status = b.status;
+    if (b.customer_id !== undefined) upd.customer_id = b.customer_id ? parseInt(b.customer_id) : null;
+    const { data, error } = await supabase.from('contracts').update(upd).eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
 
-receiver.router.delete('/api/dashboard/contracts/:id', requireAuth, async (req, res) => {
-  const { error } = await supabase.from('contracts').delete().eq('id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
-});
+  receiver.router.delete(`${base}/:id`, guard, requirePerm('contracts', 'delete'), async (req, res) => {
+    const { error } = await supabase.from('contracts').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
 
-// Render the Arabic contract to PDF (reuses the quotation Puppeteer renderer).
-receiver.router.post('/api/dashboard/contracts/pdf', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
-  try {
-    const payload = (req.body && req.body.data) || {};
-    const html = buildContractHtml(payload);
-    const pdf = await renderQuotationPdf(html);
-    res.json({ pdf: Buffer.from(pdf).toString('base64') });
-  } catch (e) {
-    console.error('[contract-pdf]', e);
-    res.status(500).json({ error: e.message });
-  }
-});
+  // Render the Arabic contract to PDF (reuses the quotation Puppeteer renderer).
+  receiver.router.post(`${base}/pdf`, guard, requirePerm('contracts', 'export'), express.json({ limit: '2mb' }), async (req, res) => {
+    try {
+      const payload = (req.body && req.body.data) || {};
+      const html = buildContractHtml(payload);
+      const pdf = await renderQuotationPdf(html);
+      res.json({ pdf: Buffer.from(pdf).toString('base64') });
+    } catch (e) {
+      console.error('[contract-pdf]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
 
-// Render a saved contract by id (used by the lead profile's document viewer).
-receiver.router.post('/api/dashboard/contracts/:id/pdf', requireAuth, async (req, res) => {
-  try {
-    const { data: row, error } = await supabase.from('contracts').select('*').eq('id', req.params.id).single();
-    if (error || !row) return res.status(404).json({ error: 'Contract not found' });
-    const pdf = await renderQuotationPdf(buildContractHtml(row.data || {}));
-    res.json({ pdf: Buffer.from(pdf).toString('base64'), name: row.contract_no || 'contract' });
-  } catch (e) {
-    console.error('[contract-pdf-id]', e);
-    res.status(500).json({ error: e.message });
-  }
-});
+  // Render a saved contract by id (used by the lead profile's document viewer).
+  receiver.router.post(`${base}/:id/pdf`, guard, requirePerm('contracts', 'export'), async (req, res) => {
+    try {
+      const { data: row, error } = await supabase.from('contracts').select('*').eq('id', req.params.id).single();
+      if (error || !row) return res.status(404).json({ error: 'Contract not found' });
+      const pdf = await renderQuotationPdf(buildContractHtml(row.data || {}));
+      res.json({ pdf: Buffer.from(pdf).toString('base64'), name: row.contract_no || 'contract' });
+    } catch (e) {
+      console.error('[contract-pdf-id]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+}
+mountContractRoutes('/api/dashboard/contracts', requireAuth);
+mountContractRoutes('/api/employee/contracts', requireEmployeeAuth);
 
 // ── Auto-generate a contract when a deal reaches the Won stage ────────────────
 // Idempotent: one contract per deal (guarded by idx_contracts_deal_unique and an

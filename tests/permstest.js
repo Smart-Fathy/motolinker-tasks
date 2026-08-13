@@ -21,7 +21,11 @@ const DASH_JS     = fs.readFileSync('public/assets/dashboard.js', 'utf8');
 const HUDDLES     = fs.readFileSync('src/routes/huddles.js', 'utf8');
 const STREAMS     = fs.readFileSync('src/routes/notif-streams.js', 'utf8');
 const NOTIFS      = fs.readFileSync('src/routes/notifications.js', 'utf8');
-const SERVER_FILES = [IDX, EMP, HUDDLES, STREAMS, NOTIFS].join('\n');
+// The procurement modules serve both portals from one set of handlers, so their
+// guards count as enforcement the same as anything in index.js.
+const PROC = ['suppliers', 'supplier-catalogue', 'rfq', 'purchase-orders', 'contracts', 'submissions']
+  .map(f => fs.readFileSync(`src/routes/${f}.js`, 'utf8'));
+const SERVER_FILES = [IDX, EMP, HUDDLES, STREAMS, NOTIFS, ...PROC].join('\n');
 
 // ── Load the model out of the real module ─────────────────────────────────────
 // Sliced rather than required, because employee-portal.js registers a hundred
@@ -210,24 +214,62 @@ const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', perm
       .every(([k, v]) => new RegExp(`${k}:${v}`).test(PORTAL_JS.replace(/\s/g, ''))));
 }
 
-// ── Which admin sections have no employee-facing permission, and why ──────────
-// Suppliers, RFQ, Purchase Orders, Sales Contracts and Website Submissions exist
-// in the admin dashboard only: no page in the team portal, no /api/employee route,
-// and their Home widgets are gated 'admin'. A permission for them would be a
-// checkbox governing nothing. This asserts the reason rather than the absence, so
-// the day a team-portal page appears for one of them, this goes red and says so.
+// ── Operations and procurement reach both portals from one set of handlers ────
+// Suppliers, RFQ, Purchase Orders, Sales Contracts and Submissions used to be
+// admin-only. Rather than a second copy of each under /api/employee, every module
+// mounts its handlers twice — so a fix cannot land in the dashboard and miss the
+// portal, and the permission actions are the only difference between the two.
 {
-  const ADMIN_ONLY = ['suppliers', 'rfqs', 'purchase-orders', 'contracts', 'submissions'];
-  const leaked = ADMIN_ONLY.filter(a =>
-    new RegExp(`'/api/employee/${a}`).test(SERVER_FILES)
-    || new RegExp(`id="page-${a.replace('-', '')}"`).test(PORTAL_HTML));
-  c('the admin-only sections still have no team-portal surface to grant',
-    leaked.length === 0, leaked.join(', ') + ' now reachable by employees — give it a permission');
-  c('…and their Home widgets stay admin-gated',
-    ['suppliers_top', 'rfq_open', 'po_status', 'contracts_recent', 'submissions_recent']
-      .every(id => new RegExp(`${id}:\\s+\\{ gate: 'admin'`).test(HOME)));
-  // Inventory is the exception: the vehicle picker and two Home widgets are real
-  // employee surface, and the widgets used to be open to everyone.
+  const MOUNTS = [
+    ['suppliers.js', 'mountSupplierRoutes', '/api/employee/suppliers'],
+    ['rfq.js', 'mountRfqRoutes', '/api/employee/rfqs'],
+    ['purchase-orders.js', 'mountPurchaseOrderRoutes', '/api/employee/purchase-orders'],
+    ['contracts.js', 'mountContractRoutes', '/api/employee/contracts'],
+    ['submissions.js', 'mountSubmissionRoutes', '/api/employee/submissions'],
+  ];
+  for (const [file, fn, empBase] of MOUNTS) {
+    const src = fs.readFileSync('src/routes/' + file, 'utf8');
+    const admin = new RegExp(`${fn}\\('/api/(dashboard/|)[a-z-]+', requireAuth\\)`).test(src);
+    c(`${file} mounts one handler set for both portals`,
+      admin && src.includes(`${fn}('${empBase}', requireEmployeeAuth)`), fn);
+    c(`…and keeps no second copy of its routes for employees`,
+      !new RegExp(`receiver\\.router\\.[a-z]+\\('${empBase}`).test(src));
+  }
+  // Every route inside those factories carries an action; a bare `guard` would be
+  // a route an employee reaches with no permission at all.
+  const bare = [];
+  for (const [file] of MOUNTS) {
+    const src = fs.readFileSync('src/routes/' + file, 'utf8');
+    for (const m of src.matchAll(/receiver\.router\.[a-z]+\((?:base|`\$\{base[^`]*`)\s*,\s*guard\s*,\s*([A-Za-z]+)/g)) {
+      if (m[1] !== 'requirePerm') bare.push(file + ': ' + m[0].slice(0, 60));
+    }
+  }
+  c('no route in a shared factory is mounted without an action', bare.length === 0, bare.join(' | '));
+
+  // Whoever drafts the paperwork is credited for it. Every one of these hardcoded
+  // 'dashboard' / 'Admin', which would have put the admin's name on an employee's
+  // contract the moment the portal could create one.
+  // Scoped to the shared factory: rfq.js also holds the admin-only quotation
+  // generator, where 'Admin' is the correct answer and must stay.
+  for (const [f, fn] of [['contracts.js', 'mountContractRoutes'], ['rfq.js', 'mountRfqRoutes'],
+                         ['purchase-orders.js', 'mountPurchaseOrderRoutes'], ['suppliers.js', 'mountSupplierRoutes']]) {
+    const src = fs.readFileSync('src/routes/' + f, 'utf8');
+    const body = src.slice(src.indexOf(`function ${fn}(`), src.indexOf(`${fn}('/api/dashboard`));
+    c(`${f} records who actually created the record`,
+      body.length > 100 && !/created_by: 'dashboard'|authorKey: 'admin'/.test(body) && /callerIdentity\(/.test(body));
+  }
+
+  // Their Home widgets follow the section now, not the 'admin' gate.
+  c('the operations widgets follow their sections rather than being admin-only',
+    [['suppliers_top', 'suppliers'], ['rfq_open', 'rfq'], ['po_status', 'purchaseorders'],
+     ['contracts_recent', 'contracts'], ['submissions_recent', 'submissions']]
+      .every(([id, sec]) => new RegExp(`${id}:\\s+\\{ gate: '${sec}'`).test(HOME)));
+  c('…and are off by default, so widening the model granted nobody anything',
+    ['suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions']
+      .every(k => M.DEFAULT_PERMISSIONS[k] === false));
+
+  // Inventory: the vehicle picker and two Home widgets are real employee surface,
+  // and the widgets used to be open to everyone.
   c('inventory is a permission, because the portal really can read it',
     !!M.PERM_ACTIONS.stock && /requirePerm\('stock', 'view'\)/.test(EMP));
   c('…and the stock widgets are no longer open to every employee',

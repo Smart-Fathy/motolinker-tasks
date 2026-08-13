@@ -1,10 +1,12 @@
 // RFQ — Request for Quotation
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
-const { calcEgp, escHtml, express, fmtNum, generateQuoteId, getIsoWeek, logLeadActivity, quotationImgUpload, receiver, requireAuth, supabase } = ctx.need('calcEgp', 'escHtml', 'express', 'fmtNum', 'generateQuoteId', 'getIsoWeek', 'logLeadActivity', 'quotationImgUpload', 'receiver', 'requireAuth', 'supabase');
+const { calcEgp, escHtml, express, fmtNum, generateQuoteId, getIsoWeek, logLeadActivity, quotationImgUpload, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('calcEgp', 'escHtml', 'express', 'fmtNum', 'generateQuoteId', 'getIsoWeek', 'logLeadActivity', 'quotationImgUpload', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
 const runAutomations = (...a) => ctx.runAutomations(...a);
+const requirePerm = (...a) => ctx.requirePerm(...a);
+const callerIdentity = (...a) => ctx.callerIdentity(...a);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── RFQ — Request for Quotation (sent to suppliers) ───────────────────────────
@@ -59,79 +61,6 @@ function rfqBuildRow(body) {
   };
 }
 
-receiver.router.get('/api/dashboard/rfqs', requireAuth, async (_req, res) => {
-  const { data, error } = await supabase.from('rfqs')
-    .select('id,rfq_no,title,supplier_name,issuer,rfq_date,status,customer_id,items,created_by,created_at')
-    .order('created_at', { ascending: false }).limit(200);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
-});
-
-// Prefill a new RFQ from a lead — same contract as the contract/PO defaults.
-receiver.router.get('/api/dashboard/rfqs/new/defaults', requireAuth, async (req, res) => {
-  try {
-    const customerId = req.query.customer_id ? parseInt(req.query.customer_id) : null;
-    const cust = customerId
-      ? await supabase.from('customers').select('*').eq('id', customerId).single().then(r => r.data)
-      : null;
-    const item = rfqBuildItem({});
-    if (cust) {
-      const cf = cust.custom_fields || {};
-      const car = String(cf.cf_vehicle_offered || cf.cf_vehicle_requested || cust.car_in_question || '').trim();
-      const bits = car.split(/\s+/).filter(Boolean);
-      item.brand = bits[0] || '';
-      item.model = bits.slice(1).join(' ') || '';
-      item.colour = cf.cf_color || '';
-      item.year = cf.cf_year || '';
-    }
-    // Eight blank lines, matching the printed form.
-    const items = [item, ...Array.from({ length: 7 }, () => rfqBuildItem({}))];
-    res.json({
-      rfq_no: generateRfqNo(),
-      rfq_date: new Date().toISOString().slice(0, 10),
-      items,
-      payment_terms: ctx.DOC_DEFAULT_PAYMENT_TERMS,
-      documents_required: ctx.DOC_DEFAULT_DOCUMENTS,
-      customer_id: customerId || null,
-    });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-receiver.router.get('/api/dashboard/rfqs/:id', requireAuth, async (req, res) => {
-  const { data, error } = await supabase.from('rfqs').select('*').eq('id', req.params.id).single();
-  if (error) return res.status(404).json({ error: 'RFQ not found' });
-  res.json(data);
-});
-
-receiver.router.post('/api/dashboard/rfqs', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
-  const row = rfqBuildRow(req.body);
-  row.created_by = 'dashboard';
-  const { data, error } = await supabase.from('rfqs').insert(row).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-  if (data.customer_id) {
-    logLeadActivity(data.customer_id, {
-      type: 'note', body: `RFQ created — ${data.rfq_no}`,
-      meta: { rfq_id: data.id, rfq_no: data.rfq_no }, authorKey: 'admin', authorName: 'Admin',
-    });
-  }
-});
-
-receiver.router.put('/api/dashboard/rfqs/:id', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
-  const row = rfqBuildRow(req.body);
-  row.updated_at = new Date().toISOString();
-  delete row.rfq_no;   // immutable once issued
-  const { data, error } = await supabase.from('rfqs').update(row).eq('id', req.params.id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-
-receiver.router.delete('/api/dashboard/rfqs/:id', requireAuth, async (req, res) => {
-  const { error } = await supabase.from('rfqs').delete().eq('id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
-});
-
 async function rfqSettings() {
   const { data } = await supabase.from('quotation_settings').select('key,value');
   const settings = {};
@@ -139,21 +68,101 @@ async function rfqSettings() {
   return settings;
 }
 
-receiver.router.post('/api/dashboard/rfqs/pdf', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
-  try {
-    const html = buildRfqHtml({ ...rfqBuildRow(req.body), settings: await rfqSettings() });
-    res.json({ pdf: Buffer.from(await renderQuotationPdf(html)).toString('base64') });
-  } catch (e) { console.error('[rfq-pdf]', e); res.status(500).json({ error: e.message }); }
-});
+// Mounted for both portals over one set of handlers — see contracts.js for why.
+function mountRfqRoutes(base, guard) {
+  receiver.router.get(base, guard, requirePerm('rfq', 'view'), async (_req, res) => {
+    const { data, error } = await supabase.from('rfqs')
+      .select('id,rfq_no,title,supplier_name,issuer,rfq_date,status,customer_id,items,created_by,created_at')
+      .order('created_at', { ascending: false }).limit(200);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
 
-receiver.router.post('/api/dashboard/rfqs/:id/pdf', requireAuth, async (req, res) => {
-  try {
-    const { data: row, error } = await supabase.from('rfqs').select('*').eq('id', req.params.id).single();
-    if (error || !row) return res.status(404).json({ error: 'RFQ not found' });
-    const html = buildRfqHtml({ ...row, settings: await rfqSettings() });
-    res.json({ pdf: Buffer.from(await renderQuotationPdf(html)).toString('base64'), name: row.rfq_no || 'rfq' });
-  } catch (e) { console.error('[rfq-pdf-id]', e); res.status(500).json({ error: e.message }); }
-});
+  // Prefill a new RFQ from a lead — same contract as the contract/PO defaults.
+  receiver.router.get(`${base}/new/defaults`, guard, requirePerm('rfq', 'create'), async (req, res) => {
+    try {
+      const customerId = req.query.customer_id ? parseInt(req.query.customer_id) : null;
+      const cust = customerId
+        ? await supabase.from('customers').select('*').eq('id', customerId).single().then(r => r.data)
+        : null;
+      const item = rfqBuildItem({});
+      if (cust) {
+        const cf = cust.custom_fields || {};
+        const car = String(cf.cf_vehicle_offered || cf.cf_vehicle_requested || cust.car_in_question || '').trim();
+        const bits = car.split(/\s+/).filter(Boolean);
+        item.brand = bits[0] || '';
+        item.model = bits.slice(1).join(' ') || '';
+        item.colour = cf.cf_color || '';
+        item.year = cf.cf_year || '';
+      }
+      // Eight blank lines, matching the printed form.
+      const items = [item, ...Array.from({ length: 7 }, () => rfqBuildItem({}))];
+      res.json({
+        rfq_no: generateRfqNo(),
+        rfq_date: new Date().toISOString().slice(0, 10),
+        items,
+        payment_terms: ctx.DOC_DEFAULT_PAYMENT_TERMS,
+        documents_required: ctx.DOC_DEFAULT_DOCUMENTS,
+        customer_id: customerId || null,
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  receiver.router.get(`${base}/:id`, guard, requirePerm('rfq', 'view'), async (req, res) => {
+    const { data, error } = await supabase.from('rfqs').select('*').eq('id', req.params.id).single();
+    if (error) return res.status(404).json({ error: 'RFQ not found' });
+    res.json(data);
+  });
+
+  receiver.router.post(base, guard, requirePerm('rfq', 'create'), express.json({ limit: '2mb' }), async (req, res) => {
+    const who = callerIdentity(req);
+    const row = rfqBuildRow(req.body);
+    row.created_by = who.key;
+    const { data, error } = await supabase.from('rfqs').insert(row).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+    if (data.customer_id) {
+      logLeadActivity(data.customer_id, {
+        type: 'note', body: `RFQ created — ${data.rfq_no}`,
+        meta: { rfq_id: data.id, rfq_no: data.rfq_no }, authorKey: who.key, authorName: who.name,
+      });
+    }
+  });
+
+  receiver.router.put(`${base}/:id`, guard, requirePerm('rfq', 'edit'), express.json({ limit: '2mb' }), async (req, res) => {
+    const row = rfqBuildRow(req.body);
+    row.updated_at = new Date().toISOString();
+    delete row.rfq_no;   // immutable once issued
+    const { data, error } = await supabase.from('rfqs').update(row).eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  receiver.router.delete(`${base}/:id`, guard, requirePerm('rfq', 'delete'), async (req, res) => {
+    const { error } = await supabase.from('rfqs').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
+
+
+  receiver.router.post(`${base}/pdf`, guard, requirePerm('rfq', 'export'), express.json({ limit: '2mb' }), async (req, res) => {
+    try {
+      const html = buildRfqHtml({ ...rfqBuildRow(req.body), settings: await rfqSettings() });
+      res.json({ pdf: Buffer.from(await renderQuotationPdf(html)).toString('base64') });
+    } catch (e) { console.error('[rfq-pdf]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  receiver.router.post(`${base}/:id/pdf`, guard, requirePerm('rfq', 'export'), async (req, res) => {
+    try {
+      const { data: row, error } = await supabase.from('rfqs').select('*').eq('id', req.params.id).single();
+      if (error || !row) return res.status(404).json({ error: 'RFQ not found' });
+      const html = buildRfqHtml({ ...row, settings: await rfqSettings() });
+      res.json({ pdf: Buffer.from(await renderQuotationPdf(html)).toString('base64'), name: row.rfq_no || 'rfq' });
+    } catch (e) { console.error('[rfq-pdf-id]', e); res.status(500).json({ error: e.message }); }
+  });
+}
+mountRfqRoutes('/api/dashboard/rfqs', requireAuth);
+mountRfqRoutes('/api/employee/rfqs', requireEmployeeAuth);
 
 // A4 portrait Request for Quotation on company letterhead.
 function buildRfqHtml(r) {

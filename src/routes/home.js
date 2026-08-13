@@ -45,14 +45,14 @@ const HOME_WIDGETS = {
   approvals:           { gate: 'admin',     src: ['deletions'] },
   // Quotation, contracts, sales
   quotation_recent:    { gate: 'quotation', src: ['quotations'] },
-  contracts_recent:    { gate: 'admin',     src: ['contracts'] },
+  contracts_recent:    { gate: 'contracts', src: ['contracts'] },
   sales_month:         { gate: { section: 'reports', action: 'sales' }, src: ['sales'] },
   // Purchasing
-  suppliers_top:       { gate: 'admin',     src: ['purchases', 'suppliers'] },
-  rfq_open:            { gate: 'admin',     src: ['rfqs'] },
-  po_status:           { gate: 'admin',     src: ['purchases'] },
+  suppliers_top:       { gate: 'suppliers', src: ['purchases', 'suppliers'] },
+  rfq_open:            { gate: 'rfq',       src: ['rfqs'] },
+  po_status:           { gate: 'purchaseorders', src: ['purchases'] },
   // Company
-  submissions_recent:  { gate: 'admin',     src: ['submissions'] },
+  submissions_recent:  { gate: 'submissions', src: ['submissions'] },
   automations_active:  { gate: 'admin',     src: ['automations'] },
   team_roster:         { gate: 'admin',     src: ['employees', 'presence'] },
   whatsapp_recent:     { gate: 'admin',     src: ['whatsapp'] },

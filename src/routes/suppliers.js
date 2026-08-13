@@ -1,7 +1,9 @@
 // Suppliers (Logistics & Shipping)
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
-const { GOOGLE_CLIENT_ID, crypto, express, getDriveToken, multer, receiver, requireAuth, supabase, upload } = ctx.need('GOOGLE_CLIENT_ID', 'crypto', 'express', 'getDriveToken', 'multer', 'receiver', 'requireAuth', 'supabase', 'upload');
+const requirePerm = (...a) => ctx.requirePerm(...a);
+const callerIdentity = (...a) => ctx.callerIdentity(...a);
+const { GOOGLE_CLIENT_ID, crypto, express, getDriveToken, multer, receiver, requireAuth, requireEmployeeAuth, supabase, upload } = ctx.need('GOOGLE_CLIENT_ID', 'crypto', 'express', 'getDriveToken', 'multer', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'upload');
 // Reassigned at runtime (Drive connect/disconnect, VAPID boot), so these are
 // read from the context on use — capturing them here would pin the boot value.
 
@@ -22,35 +24,42 @@ function supplierBuildRow(body) {
   } };
 }
 
-receiver.router.get('/api/dashboard/suppliers', requireAuth, async (_req, res) => {
-  const { data, error } = await supabase.from('suppliers').select('*').order('name', { ascending: true });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
-});
+// Mounted for both portals over one set of handlers — see contracts.js for why.
+// The catalogue, documents and purchase history in supplier-catalogue.js hang off
+// the same base and are mounted from there by the same pair of calls.
+function mountSupplierRoutes(base, guard) {
+  receiver.router.get(base, guard, requirePerm('suppliers', 'view'), async (_req, res) => {
+    const { data, error } = await supabase.from('suppliers').select('*').order('name', { ascending: true });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
 
-receiver.router.post('/api/dashboard/suppliers', requireAuth, express.json(), async (req, res) => {
-  const { row, error: verr } = supplierBuildRow(req.body);
-  if (verr) return res.status(400).json({ error: verr });
-  row.created_by = 'dashboard';
-  const { data, error } = await supabase.from('suppliers').insert(row).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+  receiver.router.post(base, guard, requirePerm('suppliers', 'create'), express.json(), async (req, res) => {
+    const { row, error: verr } = supplierBuildRow(req.body);
+    if (verr) return res.status(400).json({ error: verr });
+    row.created_by = callerIdentity(req).key;
+    const { data, error } = await supabase.from('suppliers').insert(row).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
 
-receiver.router.put('/api/dashboard/suppliers/:id', requireAuth, express.json(), async (req, res) => {
-  const { row, error: verr } = supplierBuildRow(req.body);
-  if (verr) return res.status(400).json({ error: verr });
-  row.updated_at = new Date().toISOString();
-  const { data, error } = await supabase.from('suppliers').update(row).eq('id', req.params.id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+  receiver.router.put(`${base}/:id`, guard, requirePerm('suppliers', 'edit'), express.json(), async (req, res) => {
+    const { row, error: verr } = supplierBuildRow(req.body);
+    if (verr) return res.status(400).json({ error: verr });
+    row.updated_at = new Date().toISOString();
+    const { data, error } = await supabase.from('suppliers').update(row).eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
 
-receiver.router.delete('/api/dashboard/suppliers/:id', requireAuth, async (req, res) => {
-  const { error } = await supabase.from('suppliers').delete().eq('id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
-});
+  receiver.router.delete(`${base}/:id`, guard, requirePerm('suppliers', 'delete'), async (req, res) => {
+    const { error } = await supabase.from('suppliers').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
+
+  ctx.mountSupplierCatalogueRoutes(base, guard);
+}
 
 // ── Drive uploads ─────────────────────────────────────────────────────────────
 // Client files and supplier paperwork go to Google Drive rather than Supabase
@@ -205,5 +214,7 @@ receiver.router.post('/api/dashboard/sales/:id/file', requireAuth,
 // Supplier catalogue, documents and purchase history  → src/routes/supplier-catalogue.js
 Object.assign(ctx, { driveUpload, driveUploadGuard, express, handleDriveUpload, receiver, requireAuth, supabase });
 require('./supplier-catalogue');
+mountSupplierRoutes('/api/dashboard/suppliers', requireAuth);
+mountSupplierRoutes('/api/employee/suppliers', requireEmployeeAuth);
 
 module.exports = {};
