@@ -198,21 +198,22 @@
    * them would risk far more than it fixes. Sorting, filtering, inline editing and
    * the column config all keep working untouched. */
   .table-scroll { overflow-x: visible; }
-  .table-scroll table, .wide-table, .wide-table-xl, .wide-table-sm { min-width: 0; }
-  .table-scroll thead { display: none; }
-  .table-scroll table, .table-scroll tbody, .table-scroll tr, .table-scroll td { display: block; }
-  .table-scroll tr {
+  .table-scroll table, .table-card table, .wide-table, .wide-table-xl, .wide-table-sm { min-width: 0; }
+  .table-scroll thead, .table-card thead { display: none; }
+  .table-scroll table, .table-scroll tbody, .table-scroll tr, .table-scroll td,
+  .table-card table, .table-card tbody, .table-card tr, .table-card td { display: block; }
+  .table-scroll tr, .table-card tr {
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
     padding: 10px 12px; margin-bottom: 10px;
   }
-  .table-scroll tr:hover td { background: none; }
-  .table-scroll td {
+  .table-scroll tr:hover td, .table-card tr:hover td { background: none; }
+  .table-scroll td, .table-card td {
     display: flex; gap: 12px; align-items: flex-start;
     padding: 6px 0; border: none; white-space: normal; max-width: none;
     font-size: 14px; overflow-wrap: anywhere;
   }
-  .table-scroll td + td { border-top: 1px solid rgba(255,255,255,.05); }
-  .table-scroll td::before {
+  .table-scroll td + td, .table-card td + td { border-top: 1px solid rgba(255,255,255,.05); }
+  .table-scroll td::before, .table-card td::before {
     content: attr(data-label); flex: 0 0 38%; max-width: 38%;
     color: var(--muted); font-size: 11px; font-weight: 600;
     text-transform: uppercase; letter-spacing: .04em; padding-top: 2px;
@@ -247,6 +248,27 @@
   .chat-composer .chat-attach-btn, .chat-composer .chat-emoji-btn,
   .chat-composer .chat-voice-btn { min-width: 40px; }
   .chat-input { min-width: 0; }
+
+  /* ── Home widgets ────────────────────────────────────────────────────────
+   * The widgets keep desktop minimum heights, so a "My tasks" card with one line in
+   * it was 230px of empty space. Content drives the height here, and layout editing
+   * is hidden — dragging tiles around a 12-column grid is not a touch interaction. */
+  .home-w[data-h="1"], .home-w[data-h="2"] { min-height: 0; }
+  .home-none { padding: 6px 0; font-size: 13px; }
+  #home-edit-btn { display: none; }
+  .home-w-tools { display: none; }
+
+  /* Inventory's KPIs were flex items sized to their content, so three cards came out
+     three different widths. A real grid makes them agree. */
+  #stock-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  #stock-summary .stat-card { min-width: 0; }
+
+  /* Page toolbars stacked one left-aligned button per row — Tasks showed Add Task,
+     Recurring and CSV Upload as three lines. Two up, full width. */
+  .page-header > div:last-child, .table-filters, .bulk-bar {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%;
+  }
+  .page-header > div:last-child > .btn, .table-filters > .btn { width: 100%; }
 
   /* ── Off-canvas panels ───────────────────────────────────────────────────
    * A fixed panel parked at translateX(100%) still extends the document's scrollable

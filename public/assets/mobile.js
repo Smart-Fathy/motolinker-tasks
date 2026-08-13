@@ -57,6 +57,14 @@
   else start();
 })();
 
+// Keep the calendar embed in step with the viewport, at load and on rotation.
+(function () {
+  const sync = () => { try { mlCalendarMode(); } catch (_) {} };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', sync);
+  else sync();
+  window.matchMedia('(max-width: 700px)').addEventListener('change', sync);
+})();
+
 // ── Escape closes whatever is open ───────────────────────────────────────────
 // There are 34 fixed overlays across the two portals in five different patterns —
 // the generic showModal one, a dozen hand-rolled divs that borrow its CSS, four PDF
@@ -106,6 +114,21 @@ document.addEventListener('keydown', e => {
   const el = mlOpenOverlay();
   if (el) { e.preventDefault(); mlCloseOverlay(el); }
 });
+
+// ── Google Calendar embed ────────────────────────────────────────────────────
+// The week grid is seven columns of a day each; at 390px that is unreadable. Agenda
+// mode is the same data as a list. The mode is a query parameter rather than
+// something CSS can reach, so it is swapped on the iframe — and swapped back if the
+// window grows, so a tablet rotating to landscape gets the grid again.
+function mlCalendarMode() {
+  const want = mlIsMobile() ? 'AGENDA' : 'WEEK';
+  for (const f of document.querySelectorAll('iframe[src*="calendar.google.com/calendar/embed"]')) {
+    const src = f.getAttribute('src') || '';
+    if (!/[?&]mode=/.test(src)) continue;
+    const next = src.replace(/([?&]mode=)[A-Z]+/, '$1' + want);
+    if (next !== src) f.setAttribute('src', next);   // only reload when it changes
+  }
+}
 
 // Is the viewport in the card layout? Renderers that need to behave differently on a
 // phone — Leads swaps tap-to-edit for tap-to-open — ask this rather than re-deriving

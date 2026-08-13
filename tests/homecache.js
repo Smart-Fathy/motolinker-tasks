@@ -46,7 +46,14 @@ const layoutRow = url => {
   return LAYOUTS[owner] ? [{ value: JSON.stringify({ widgets: LAYOUTS[owner] }) }] : [];
 };
 
+// Deal rows the approval-label test reads, and the inserts it captures.
+const DEALS_FOR_LABEL = [];
+const inserted = [];
+let labelMode = null;
+
 const rowsFor = (table, url) => {
+  if (table === 'deals' && labelMode === 'deal') return DEALS_FOR_LABEL;
+  if (table === 'deletion_requests') return [];
   if (table === 'tasks')     return floodTasks ? BIG : TASKS;
   if (table === 'deals')     return DEALS;
   if (table === 'customers') return CUSTOMERS;
@@ -72,6 +79,12 @@ global.fetch = async (input, init) => {
   const single = accept.includes('pgrst.object');
   // .limit() travels as a ?limit= query param, and PostgREST honours it. The stub must
   // too, or the cap assertion below would pass just as happily with no limit at all.
+  if (init && init.method === 'POST' && table === 'deletion_requests') {
+    const body = JSON.parse(init.body);
+    inserted.push(body);
+    return new Response(JSON.stringify(accept.includes('pgrst.object') ? body : [body]),
+      { status: 201, headers: { 'Content-Type': 'application/json' } });
+  }
   let rows = rowsFor(table, url);
   const lim = Number(new URL(url).searchParams.get('limit'));
   if (lim > 0) rows = rows.slice(0, lim);
@@ -201,6 +214,27 @@ setTimeout(async () => {
   // 2500 rows exist; exactly HOME_SCAN_CAP come back. Drop the .limit() and this is 2500.
   check('the cap actually bounded the rows', f1.task_status.reduce((s, r) => s + r.count, 0) === 2000,
     JSON.stringify(f1.task_status));
+
+  // ── An approval card should name the customer once ──
+  // Deals are auto-titled "<customer> — <car>", and the approval label appended the
+  // customer again, so every deal approval read "Ahmed Ali — BMW X5 · Ahmed Ali".
+  {
+    DEALS_FOR_LABEL.push({ id: 9, title: 'Ahmed Ali — BMW X5', customers: { name: 'Ahmed Ali' } });
+    const empTok = 'label-test-employee';
+    ctx.employeeSessions.set(empTok, {
+      id: 6, name: 'Del', username: 'del', job_title: '',
+      permissions: normEmpPerms({ deals: true, leads: true }),
+    });
+    labelMode = 'deal';
+    const r = await (await fetch(base + '/api/employee/deletion-requests', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + empTok, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity_type: 'deal', entity_id: 9, reason: 'duplicate' }),
+    })).json();
+    const label = (inserted.find(x => x.entity_type === 'deal') || {}).entity_label || (r && r.entity_label) || '';
+    const times = (label.match(/Ahmed Ali/g) || []).length;
+    check('a deal approval names the customer once, not twice', times === 1, JSON.stringify({ label, times }));
+  }
 
   const pass = results.filter(Boolean).length;
   console.log(`\n${pass}/${results.length} home-cache checks passed`);

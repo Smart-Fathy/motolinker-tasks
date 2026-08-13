@@ -314,6 +314,36 @@ async function sweep(browser, o) {
     t('the modal height resolves against the viewport', mh && mh !== 'none', String(mh));
   }
 
+  // ── Google Calendar shows an agenda, not a seven-column week grid ──
+  {
+    await page.evaluate(() => { try { navigate('calendar'); } catch (_) {} });
+    await sleep(400);
+    const mode = await page.evaluate(() => {
+      const f = document.querySelector('iframe[src*="calendar.google.com/calendar/embed"]');
+      return f ? (f.getAttribute('src').match(/[?&]mode=([A-Z]+)/) || [])[1] : null;
+    });
+    if (mode) t('the calendar embed uses agenda mode on a phone', mode === 'AGENDA', String(mode));
+  }
+
+  // ── Home widgets are sized by their content ──
+  {
+    await page.evaluate(() => { try { navigate('home'); } catch (_) {} });
+    await sleep(500);
+    const home = await page.evaluate(() => {
+      const w = document.querySelector('.home-w');
+      const editBtn = document.getElementById('home-edit-btn');
+      return {
+        minHeight: w ? getComputedStyle(w).minHeight : null,
+        editHidden: !editBtn || getComputedStyle(editBtn).display === 'none',
+      };
+    });
+    if (home.minHeight !== null) {
+      t('home widgets are not held open by a desktop minimum height',
+        home.minHeight === '0px' || home.minHeight === 'auto', String(home.minHeight));
+    }
+    t('layout editing is out of the way on a phone', home.editHidden, JSON.stringify(home));
+  }
+
   t('no page errors while sweeping', !errs.length, errs.slice(0, 2).join(' | '));
   await page.close();
   return bad;
@@ -330,7 +360,7 @@ async function sweep(browser, o) {
     label: 'admin', port, route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token',
     bootstrap: () => {},
     tablePages: ['tasks', 'employees', 'requests', 'submissions', 'hours', 'customers',
-                 'contracts', 'purchaseorders', 'rfqs', 'suppliers'],
+                 'contracts', 'purchaseorders', 'rfqs', 'suppliers', 'drive', 'sheets'],
     leadsPage: 'customers', leadsBody: '#customers-tbody',
     quotePage: 'quotation', quoteRowSel: '.qt-item-row',
     openModal: { page: 'employees', fn: 'openEmpModal', sel: '#modal-overlay' },
@@ -348,7 +378,7 @@ async function sweep(browser, o) {
                          leads: true, deals: true, reports: true });
       document.getElementById('layout').style.display = 'flex';
     },
-    tablePages: ['tasks', 'hours', 'requests', 'leads'],
+    tablePages: ['tasks', 'hours', 'requests', 'leads', 'drive', 'sheets'],
     leadsPage: 'leads', leadsBody: '#emp-leads-tbody',
     quotePage: 'quotation', quoteRowSel: '.emp-qt-item-row',
     openModal: { page: 'leads', fn: 'openEmpLeadModal', sel: '#emp-lead-modal' },
