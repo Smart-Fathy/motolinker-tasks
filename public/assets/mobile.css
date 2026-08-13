@@ -13,6 +13,31 @@
  * 390px devices sit inside both, which the old 380px rules missed by 10 pixels.
  */
 
+/* Desktop min-widths for the wide tables. These were inline, where no media query
+   could reach them — and the mobile card layout below has to remove them. */
+/* Was an inline style on the Reports panel, which silently beat all three of
+   .charts-grid's collapse rules. As a class the media queries can reach it again. */
+.charts-grid-2 { grid-template-columns: 1fr 1fr; }
+
+/* Quotation builder. All of these were inline, so no media query could reach them —
+   and the line-item rows reserved 376px of fixed track plus gaps before the flexible
+   first column got a single pixel, which cannot fit a 390px screen at any zoom. */
+.qt-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.qt-line-5 { display: grid; grid-template-columns: 1fr 80px 130px 130px 36px; gap: 8px; }
+.qt-line-3 { display: grid; grid-template-columns: 1fr 130px 130px; gap: 8px; }
+/* The line-item remove button hardcoded 32x32 inline, where the touch-target rule
+   could not reach it — an inline min-height outranks any stylesheet. */
+.qt-remove { width: 32px; height: 32px; }
+
+.wide-table { min-width: 1000px; }
+.wide-table-xl { min-width: 1900px; }
+.wide-table-sm { min-width: 460px; }
+
+/* Modal heights against the dynamic viewport. 90vh measures the largest viewport, so
+   mobile browser chrome clips the bottom of a full-height modal — including its
+   footer buttons. The vh line stays as the fallback for anything without dvh. */
+.modal, .hd-sheet-box { max-height: 90vh; max-height: 90dvh; }
+
 .sidebar-close-btn { display: none; }
 .bottom-nav { display: none; }
 
@@ -113,6 +138,14 @@
   /* A `1fr` track has a min-content floor, so a long value pushes the whole grid past
      the viewport however many columns you ask for. minmax(0,1fr) lets it shrink. */
   .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .charts-grid-2 { grid-template-columns: minmax(0, 1fr); }
+  /* One field per row, and the line-item rows become stacked labelled blocks. */
+  .qt-grid-3 { grid-template-columns: minmax(0, 1fr); }
+  .qt-line-5, .qt-line-3 { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .qt-line-5 > *, .qt-line-3 > * { min-width: 0; }
+  .qt-remove { width: auto; height: auto; min-height: 44px; }
+  /* A <canvas> has an intrinsic 300px width and will not shrink on its own. */
+  .chart-wrap, .chart-wrap canvas { max-width: 100%; }
   .charts-grid, .home-grid, .stock-grid, .employee-grid { grid-template-columns: minmax(0, 1fr); }
   .stat-card, .chart-card, .card, .stat-value, .stat-label, .stat-sub { min-width: 0; }
   .stat-value, .stat-label, .stat-sub { overflow-wrap: anywhere; }
@@ -153,6 +186,89 @@
   .app-content, .content { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
   /* The huddle widget and the help FAB share that bottom edge. */
   #hd-bar, #pwa-install-banner, #pwa-ios-hint { bottom: calc(76px + env(safe-area-inset-bottom)); }
+
+  /* ── Tables become cards ─────────────────────────────────────────────────
+   * A 12-to-20 column table cannot be made readable on a 390px screen by scrolling
+   * it — you see two columns and everything else, including the row's actions, is
+   * off to the right. Below this width each row becomes a card and each cell a
+   * labelled line, with the label taken from that table's own <th> by mobile.js.
+   *
+   * Done in CSS against the existing markup on purpose: the twelve renderers build
+   * their tables as innerHTML strings with no shared component, and rewriting all of
+   * them would risk far more than it fixes. Sorting, filtering, inline editing and
+   * the column config all keep working untouched. */
+  .table-scroll { overflow-x: visible; }
+  .table-scroll table, .table-card table, .wide-table, .wide-table-xl, .wide-table-sm { min-width: 0; }
+  .table-scroll thead, .table-card thead { display: none; }
+  .table-scroll table, .table-scroll tbody, .table-scroll tr, .table-scroll td,
+  .table-card table, .table-card tbody, .table-card tr, .table-card td { display: block; }
+  .table-scroll tr, .table-card tr {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px 12px; margin-bottom: 10px;
+  }
+  .table-scroll tr:hover td, .table-card tr:hover td { background: none; }
+  .table-scroll td, .table-card td {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 6px 0; border: none; white-space: normal; max-width: none;
+    font-size: 14px; overflow-wrap: anywhere;
+  }
+  .table-scroll td + td, .table-card td + td { border-top: 1px solid rgba(255,255,255,.05); }
+  .table-scroll td::before, .table-card td::before {
+    content: attr(data-label); flex: 0 0 38%; max-width: 38%;
+    color: var(--muted); font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em; padding-top: 2px;
+  }
+  /* A cell with no header and nothing in it is a spacer column; hide it entirely. */
+  .table-scroll td:not([data-label]):empty, .table-scroll td[data-label=""]:empty { display: none; }
+  /* The actions cell reads as a row of buttons across the foot of the card. */
+  .table-scroll td[data-label="Actions"], .table-scroll td:last-child:not([data-label]) {
+    flex-wrap: wrap; gap: 8px; padding-top: 10px;
+  }
+  .table-scroll td[data-label="Actions"]::before { display: none; }
+  .table-scroll td[data-label="Actions"] .btn { flex: 1 1 auto; }
+  /* The frozen first column is meaningless once there is nothing to scroll. */
+  .table-scroll table thead th:first-child,
+  .table-scroll table tbody td:first-child { position: static; box-shadow: none; }
+
+  /* ── Lead drawer ─────────────────────────────────────────────────────────
+   * The drawer itself is fine — capped at 96vw and readable. Its seven action
+   * buttons wrapped onto three rows, and the read-only info grid was two columns
+   * inside a 330px panel. Two primary actions stay full width; the five document
+   * generators become a compact grid rather than a ragged wrap. */
+  .lead-drawer { width: 100%; max-width: 100%; }
+  .ld-info-grid { grid-template-columns: minmax(0, 1fr); }
+  .lead-drawer-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 16px; }
+  .lead-drawer-actions > :nth-child(1), .lead-drawer-actions > :nth-child(2) { grid-column: span 2; }
+  .lead-drawer-actions .btn { width: 100%; }
+
+  /* ── Chat composer ───────────────────────────────────────────────────────
+   * Five controls plus padding took 186px of a 390px row, leaving the input too
+   * narrow to show its own placeholder. */
+  .chat-composer { gap: 4px; padding-left: 8px; padding-right: 8px; }
+  .chat-composer .chat-attach-btn, .chat-composer .chat-emoji-btn,
+  .chat-composer .chat-voice-btn { min-width: 40px; }
+  .chat-input { min-width: 0; }
+
+  /* ── Home widgets ────────────────────────────────────────────────────────
+   * The widgets keep desktop minimum heights, so a "My tasks" card with one line in
+   * it was 230px of empty space. Content drives the height here, and layout editing
+   * is hidden — dragging tiles around a 12-column grid is not a touch interaction. */
+  .home-w[data-h="1"], .home-w[data-h="2"] { min-height: 0; }
+  .home-none { padding: 6px 0; font-size: 13px; }
+  #home-edit-btn { display: none; }
+  .home-w-tools { display: none; }
+
+  /* Inventory's KPIs were flex items sized to their content, so three cards came out
+     three different widths. A real grid makes them agree. */
+  #stock-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  #stock-summary .stat-card { min-width: 0; }
+
+  /* Page toolbars stacked one left-aligned button per row — Tasks showed Add Task,
+     Recurring and CSV Upload as three lines. Two up, full width. */
+  .page-header > div:last-child, .table-filters, .bulk-bar {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%;
+  }
+  .page-header > div:last-child > .btn, .table-filters > .btn { width: 100%; }
 
   /* ── Off-canvas panels ───────────────────────────────────────────────────
    * A fixed panel parked at translateX(100%) still extends the document's scrollable

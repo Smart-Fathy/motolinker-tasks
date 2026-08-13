@@ -13,6 +13,7 @@ const home    = read('public/assets/home.js');
 const huddle  = read('public/assets/huddle.js');
 const filters = read('public/assets/lead-filters.js');
 const mobile  = read('public/assets/mobile.css');
+const mobjs   = read('public/assets/mobile.js');
 const bundles = { dashboard: read('public/assets/dashboard.js'), employee: read('public/assets/employee.js') };
 const pages   = { dashboard: read('public/dashboard.html'),      employee: read('public/employee.html') };
 const workers = { dashboard: read('public/sw-dashboard.js'),     employee: read('public/sw-employee.js') };
@@ -23,6 +24,7 @@ const MARKERS = {
   '/assets/home.js':         { src: home,    re: /const HOME_WIDGETS = \{/ },
   '/assets/huddle.js':       { src: huddle,  re: /let _hd = \{ roomId: null/ },
   '/assets/lead-filters.js': { src: filters, re: /function leadFilterMatch\(/ },
+  '/assets/mobile.js':       { src: mobjs,   re: /function labelTable\(/ },
 };
 
 for (const [path, { src, re }] of Object.entries(MARKERS)) {

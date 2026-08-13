@@ -177,7 +177,12 @@ receiver.router.post('/api/employee/deletion-requests', requireEmployeeAuth, exp
   } else {
     const { data } = await supabase.from('deals').select('title, customers(name)').eq('id', entity_id).single();
     if (!data) return res.status(404).json({ error: 'Deal not found' });
-    label = data.title + (data.customers?.name ? ' · ' + data.customers.name : '');
+    // A deal's title is generated as "<customer> — <car>", so appending the customer
+    // again read "Ahmed Ali — BMW X5 · Ahmed Ali" on every deal approval card. Only
+    // add it when the title does not already carry it.
+    const who = data.customers && data.customers.name;
+    const already = who && String(data.title || '').toLowerCase().includes(String(who).toLowerCase());
+    label = data.title + (who && !already ? ' · ' + who : '');
   }
   const { data: existing } = await supabase.from('deletion_requests').select('id').eq('entity_type', entity_type).eq('entity_id', entity_id).eq('status', 'pending').limit(1);
   if (existing && existing.length) return res.json({ ok: true, duplicate: true });

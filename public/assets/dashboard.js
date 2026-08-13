@@ -814,7 +814,7 @@ function renderTable(tasks) {
   }).join('');
 
   container.innerHTML = `
-    <div style="overflow-x:auto">
+    <div class="table-scroll">
       <table>
         <thead>
           <tr>
@@ -1362,7 +1362,7 @@ function stockCardHtml(v) {
   const unitsHtml = units.length ? `
     <div class="stock-colors">
       <div class="stock-sec-label">Units (${units.length})</div>
-      <div style="overflow-x:auto"><table class="stock-units">
+      <div class="table-scroll"><table class="stock-units">
         <thead><tr>${STOCK_UNIT_COLS.map(([, l]) => `<th>${esc(l)}</th>`).join('')}</tr></thead>
         <tbody>${units.map(u => {
           const st = poLineStatus(u.status);
@@ -1579,7 +1579,7 @@ async function loadContracts() {
     return;
   }
   body.innerHTML = `
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
         <th style="padding:8px 10px">Contract #</th><th style="padding:8px 10px">Title</th>
         <th style="padding:8px 10px">Status</th><th style="padding:8px 10px">Created</th>
@@ -1947,7 +1947,7 @@ async function loadPurchaseOrders() {
     return;
   }
   body.innerHTML = `
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
         <th style="padding:8px 10px">PO #</th><th style="padding:8px 10px">Supplier</th>
         <th style="padding:8px 10px;text-align:right">Lines</th><th style="padding:8px 10px;text-align:right">Total</th>
@@ -2346,7 +2346,7 @@ async function loadSales() {
     return;
   }
   box.innerHTML = `
-    <div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12.5px;min-width:1900px">
+    <div class="table-scroll"><table class="wide-table wide-table-xl" style="border-collapse:collapse;font-size:12.5px">
       <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
         <th style="padding:8px 10px;width:40px">No</th>
         ${SALE_COLS.map(([, l, w]) => `<th style="padding:8px 10px;min-width:${w}px">${esc(l)}</th>`).join('')}
@@ -2476,7 +2476,7 @@ async function loadRfqs() {
     return;
   }
   body.innerHTML = `
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
         <th style="padding:8px 10px">ID</th><th style="padding:8px 10px">Supplier</th>
         <th style="padding:8px 10px;text-align:right">Lines</th><th style="padding:8px 10px">Status</th>
@@ -3156,7 +3156,7 @@ async function loadSuppliers() {
     return;
   }
   body.innerHTML = `
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
         <th style="padding:8px 10px">Name</th><th style="padding:8px 10px">Contact</th>
         <th style="padding:8px 10px">Country</th><th style="padding:8px 10px">Address</th>
@@ -3512,7 +3512,7 @@ async function loadEmployees() {
       tableC.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px">No employee portal accounts yet. Click "+ Create Employee" to add one.</div>';
     } else {
       const permLabels = { requests: 'Requests', drive: 'Drive', sheets: 'Sheets', email: 'Email', viewAllRequests: 'View All Requests', quotation: 'Quotation', leads: 'Leads', deals: 'Deals' };
-      tableC.innerHTML = `<div style="overflow-x:auto"><table>
+      tableC.innerHTML = `<div class="table-scroll"><table>
         <thead><tr><th>Name</th><th>Username</th><th>Job Title</th><th>Status</th><th>Email</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>${emps.map(e => {
           const p = e.permissions || {};
@@ -3717,7 +3717,7 @@ async function loadRequests() {
 function renderRequestsTable() {
   const c = document.getElementById('requests-table-container');
   if (!allRequests.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon" style="font-size:44px">—</div><div class="empty-title">No requests yet</div></div>'; return; }
-  c.innerHTML = `<div style="overflow-x:auto"><table>
+  c.innerHTML = `<div class="table-scroll"><table>
     <thead><tr><th>ID</th><th>Title</th><th>Submitted By</th><th>Priority</th><th>Status</th><th>Assigned To</th><th>Created</th><th>Actions</th></tr></thead>
     <tbody>${allRequests.map(r => `<tr>
       <td class="task-id">#${r.id}</td>
@@ -3869,7 +3869,7 @@ function renderHoursTable() {
     <div class="hours-card"><div class="hours-card-val" style="color:var(--success)">${allHours.length}</div><div class="hours-card-lbl">Log Entries</div></div>`;
   const c = document.getElementById('hours-table-container');
   if (!allHours.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon" style="font-size:44px">—</div><div class="empty-title">No hours logged yet</div></div>'; return; }
-  c.innerHTML = `<div style="overflow-x:auto"><table>
+  c.innerHTML = `<div class="table-scroll"><table>
     <thead><tr><th>Task</th><th>Channel</th><th>User ID</th><th>Hours</th><th>Note</th><th>Date</th><th></th></tr></thead>
     <tbody>${allHours.map(h => `<tr>
       <td class="task-title">${esc(h.tasks?.title || `Task #${h.task_id}`)}</td>
@@ -5026,7 +5026,7 @@ async function loadSubmissions() {
       return;
     }
     c.innerHTML = `
-      <div style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden">
+      <div class="table-scroll" style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow)">
         <table style="width:100%;border-collapse:collapse">
           <thead><tr style="background:#f7fafc">
             <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Name</th>
@@ -5181,7 +5181,8 @@ function buildLogisticsRows() {
   LOGISTICS_LABELS.forEach((label, i) => {
     const row = document.createElement('div');
     row.id = `qt-log-${i}`;
-    row.style.cssText = 'display:grid;grid-template-columns:1fr 130px 130px;gap:8px;margin-bottom:8px;align-items:center';
+    row.className = 'qt-line-3';
+    row.style.cssText = 'margin-bottom:8px;align-items:center';
     row.innerHTML = `
       <div style="font-size:13px;color:var(--text);padding:0 4px">${esc(label)}</div>
       <input class="form-input" id="qt-log-usd-${i}" type="number" min="0" step="0.01" placeholder="0"
@@ -5196,8 +5197,8 @@ function addPricingRow(name='', unit=1, priceUsd='', isFree=false) {
   const container = document.getElementById('qt-items');
   const idx = container.children.length;
   const row = document.createElement('div');
-  row.className = 'qt-item-row';
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 80px 130px 130px 36px;gap:8px;margin-bottom:8px;align-items:center';
+  row.className = 'qt-item-row qt-line-5';
+  row.style.cssText = 'margin-bottom:8px;align-items:center';
   row.innerHTML = `
     <input class="form-input" placeholder="Item name…" value="${esc(name)}" oninput="recalcItem(this)">
     <input class="form-input" type="number" min="1" step="1" value="${unit}" placeholder="1"
@@ -5211,8 +5212,8 @@ function addPricingRow(name='', unit=1, priceUsd='', isFree=false) {
                color:${isFree?'#fff':'var(--muted)'}">FREE</span>
     </div>
     <input class="form-input" readonly placeholder="Auto" style="background:rgba(255,255,255,.03);text-align:center;font-weight:600">
-    <button onclick="this.closest('.qt-item-row').remove();recalcGrandTotal()"
-      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+    <button class="qt-remove" onclick="this.closest('.qt-item-row').remove();recalcGrandTotal()"
+      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
       <i data-lucide="x" style="width:13px;height:13px"></i>
     </button>`;
   container.appendChild(row);
@@ -5279,7 +5280,7 @@ function addCustomSpecRow(containerId) {
   row.innerHTML = `
     <input class="form-input" placeholder="e.g. Incoterms: CIF">
     <button onclick="this.closest('.qt-custom-spec-row').remove()"
-      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
       <i data-lucide="x" style="width:13px;height:13px"></i>
     </button>`;
   container.appendChild(row);
@@ -6121,7 +6122,7 @@ function saveLeadCols() {
 function renderLeadHead() {
   const tr = document.getElementById('leads-head-row');
   if (!tr || !_leadCols) return;
-  const ths = _leadCols.filter(c => c.visible && !c.deleted).map(c => `
+  const ths = visibleLeadCols().map(c => `
     <th class="lead-col" draggable="true" data-colkey="${esc(c.key)}"
         ondragstart="leadColDragStart(event)" ondragover="leadColDragOver(event)" ondragleave="this.classList.remove('drag-over')"
         ondrop="leadColDrop(event)" ondragend="leadColDragEnd()"
@@ -6181,7 +6182,7 @@ function openLeadColMenu(e, key) {
   if (!col) return;
   const m = ensureLeadMenu();
   m.dataset.mode = 'colmenu';
-  const vis = _leadCols.filter(c => c.visible && !c.deleted);
+  const vis = visibleLeadCols();
   const vi = vis.findIndex(c => c.key === key);
   const canType = col.type !== 'virtual' && !['name', 'budget_lead', 'lead_date'].includes(col.key);
   const sorted = _leadSort && _leadSort.key === key;
@@ -6243,7 +6244,7 @@ function leadColRename(key) {
 }
 function leadColMove(key, dir) {
   closeLeadMenu();
-  const vis = _leadCols.filter(c => c.visible && !c.deleted);
+  const vis = visibleLeadCols();
   const vi = vis.findIndex(c => c.key === key);
   const nb = vis[vi + dir];
   if (!nb) return;
@@ -6407,6 +6408,9 @@ let _editingLeadCell = false;
 function leadCellClick(e, id, key) {
   e.stopPropagation();
   if (_editingLeadCell) return;
+  // Cards put every field under a thumb; inline editing on touch is an accident
+  // waiting to happen. Open the record instead and edit it there.
+  if (typeof mlIsMobile === 'function' && mlIsMobile()) return openLeadProfile(id);
   const col = leadCol(key);
   const c = _allCustomers.find(x => x.id === id);
   if (!col || !c) return;
@@ -6688,6 +6692,7 @@ lfInit({
 });
 
 function filterCustomers() {
+  _leadsShown = LEADS_PAGE;                 // a new result set starts from the top
   const q    = (document.getElementById('customer-search')?.value || '').toLowerCase();
   const from = document.getElementById('lead-date-from')?.value || '';
   const to   = document.getElementById('lead-date-to')?.value || '';
@@ -6718,7 +6723,7 @@ function leadCellText(c, col) {
 }
 // Export the table exactly as shown: visible columns only, current filters + sort.
 function exportLeadsTable() {
-  const vis = (_leadCols || []).filter(c => c.visible && !c.deleted);
+  const vis = visibleLeadCols();
   const list = _lastRenderedLeads || [];
   if (!list.length) { alert('No leads to export (adjust your filters).'); return; }
   const cell = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -6732,13 +6737,21 @@ function exportLeadsTable() {
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
 
+// How many rows are on screen. Filters and sort still run over every lead — only the
+// rendering is capped, because ~800 rows meant ~4,000 controls in the DOM and, once
+// each row becomes a card on a phone, a page tens of thousands of pixels tall.
+const LEADS_PAGE = 50;
+let _leadsShown = LEADS_PAGE;
+function leadsShowMore() { _leadsShown += LEADS_PAGE; renderCustomers(_lastRenderedLeads); }
+
 function renderCustomers(list) {
   _lastRenderedLeads = list;
   const tbody = document.getElementById('customers-tbody');
-  const vis = (_leadCols || []).filter(c => c.visible && !c.deleted);
+  const vis = visibleLeadCols();
   const span = vis.length + 3; // select-all + add-column + actions
   if (!list.length) { tbody.innerHTML = `<tr><td colspan="${span}" style="text-align:center;color:var(--muted);padding:32px">No leads yet. Click "Add Lead" to get started.</td></tr>`; return; }
-  tbody.innerHTML = list.map(c => `<tr>
+  const shown = list.slice(0, _leadsShown);
+  tbody.innerHTML = shown.map(c => `<tr data-id="${c.id}">
       <td style="padding:8px 6px"><input type="checkbox" ${_selectedLeads.has(c.id) ? 'checked' : ''} onchange="toggleLeadSelect(${c.id})" onclick="event.stopPropagation()"></td>
       ${vis.map(col => leadCellHtml(c, col)).join('')}
       <td></td>
@@ -6748,7 +6761,10 @@ function renderCustomers(list) {
         <button class="btn btn-sm btn-outline" onclick="navigate('deals');filterDealsByCustomer(${c.id})" title="View Deals"><i data-lucide="kanban-square" style="width:12px;height:12px"></i></button>
         <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--danger);border:none" onclick="deleteCustomer(${c.id})" title="Delete"><i data-lucide="trash-2" style="width:12px;height:12px"></i></button>
       </td>
-    </tr>`).join('');
+    </tr>`).join('')
+    + (list.length > shown.length ? `<tr><td colspan="${span}" style="text-align:center;padding:14px">
+        <button class="btn btn-outline" onclick="leadsShowMore()">Load more · ${shown.length} of ${list.length}</button>
+      </td></tr>` : '');
   // sync select-all checkbox state
   const allCb = document.getElementById('select-all-leads');
   if (allCb) allCb.checked = list.length > 0 && list.every(c => _selectedLeads.has(c.id));

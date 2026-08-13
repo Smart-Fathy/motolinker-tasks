@@ -342,6 +342,13 @@ function homeFileList(files) {
 
 // ── Edit mode ──
 function homeToggleEdit() {
+  // Dragging tiles around a 12-column grid is not a touch interaction, and the size
+  // and height controls are meaningless once every widget is full width. The button
+  // is hidden at this width too; this guards the function itself.
+  if (typeof mlIsMobile === 'function' && mlIsMobile() && !_home.editing) {
+    HOMECFG.toast('Rearranging your Home needs a wider screen.');
+    return;
+  }
   _home.editing = !_home.editing;
   if (!_home.editing) homeSaveLayout();
   homeRender();

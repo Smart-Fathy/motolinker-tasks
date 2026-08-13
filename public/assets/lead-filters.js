@@ -20,6 +20,13 @@ function lfInit(cfg) {
   catch (_) { _leadFilters = []; }
 }
 
+// The columns currently on screen, in order. This was written out ten times across the
+// two bundles — five of them as a bare `_leadCols.filter(...)` that throws before the
+// config loads, five with the `|| []` guard. One definition, with the guard.
+function visibleLeadCols() {
+  return (_leadCols || LEAD_DEFAULT_COLS || []).filter(c => c && c.visible && !c.deleted);
+}
+
 function leadFilterableCols() {
   return (_leadCols || LEAD_DEFAULT_COLS).filter(c => c && !c.deleted && c.key !== 'select');
 }

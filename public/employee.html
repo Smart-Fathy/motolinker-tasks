@@ -387,7 +387,7 @@
         <i data-lucide="plus" style="width:13px;height:13px"></i> Add widget</button>
       <button class="btn btn-outline btn-sm" id="home-reset-btn" style="display:none" onclick="homeReset()">
         <i data-lucide="rotate-ccw" style="width:13px;height:13px"></i> Reset</button>
-      <button class="btn btn-primary btn-sm" onclick="homeToggleEdit()">
+      <button class="btn btn-primary btn-sm" id="home-edit-btn" onclick="homeToggleEdit()">
         <i data-lucide="layout-grid" style="width:13px;height:13px"></i> <span id="home-edit-label">Edit layout</span></button>
     </div>
     <div class="home-grid" id="home-grid"></div>
@@ -558,7 +558,7 @@
         <div id="emp-lead-filter-chips" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
         <div class="card" style="padding:0;overflow:hidden">
           <div class="table-scroll">
-            <table style="width:100%;border-collapse:collapse;min-width:980px" id="emp-leads-table">
+            <table class="wide-table" style="width:100%;border-collapse:collapse" id="emp-leads-table">
               <thead><tr id="emp-leads-head"></tr></thead>
               <tbody id="emp-leads-tbody">
                 <tr><td colspan="11" style="text-align:center;color:var(--muted);padding:28px">Loading…</td></tr>
@@ -983,7 +983,7 @@
         <!-- Section 1: Document Info -->
         <div class="card" style="margin-bottom:20px">
           <div class="table-header"><span class="table-title">① Document Info</span></div>
-          <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+          <div class="qt-grid-3" style="padding:20px">
             <div>
               <label class="form-label">Quotation ID</label>
               <div style="display:flex;gap:8px;align-items:center">
@@ -1041,7 +1041,7 @@
             </button>
           </div>
           <div style="padding:16px 20px">
-            <div style="display:grid;grid-template-columns:1fr 80px 130px 130px 36px;gap:8px;margin-bottom:8px;padding:0 4px">
+            <div class="qt-line-5" style="margin-bottom:8px;padding:0 4px">
               <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Item</div>
               <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Unit</div>
               <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Price USD</div>
@@ -1059,13 +1059,13 @@
         <div class="card" style="margin-bottom:20px">
           <div class="table-header"><span class="table-title">③ Logistics Pricing Breakdown</span></div>
           <div style="padding:16px 20px">
-            <div style="display:grid;grid-template-columns:1fr 130px 130px;gap:8px;margin-bottom:8px;padding:0 4px">
+            <div class="qt-line-3" style="margin-bottom:8px;padding:0 4px">
               <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Item</div>
               <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Price USD</div>
               <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Total EGP</div>
             </div>
             <div id="emp-qt-logistics"></div>
-            <div style="display:grid;grid-template-columns:1fr 130px 130px;gap:8px;margin-top:12px;padding:10px;background:rgba(124,106,255,.06);border-radius:8px;border:1px solid rgba(124,106,255,.15)">
+            <div class="qt-line-3" style="margin-top:12px;padding:10px;background:rgba(124,106,255,.06);border-radius:8px;border:1px solid rgba(124,106,255,.15)">
               <div style="font-size:13px;font-weight:700;color:var(--text)">Total Price Breakdown in EGP</div>
               <div></div>
               <div id="emp-qt-grand-total" style="font-size:14px;font-weight:800;color:var(--primary);text-align:center">0</div>
@@ -1076,7 +1076,7 @@
         <!-- Section 4: Key Specs -->
         <div class="card" style="margin-bottom:24px">
           <div class="table-header"><span class="table-title">④ Key Specs</span></div>
-          <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+          <div class="qt-grid-3" style="padding:20px">
             <div>
               <label class="form-label">Currency</label>
               <select class="form-input" id="emp-qt-currency">
@@ -1314,6 +1314,7 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
+<script src="/assets/mobile.js"></script>
 <script src="/assets/lead-filters.js"></script>
 <script src="/assets/chat-extras.js"></script>
 <script src="/assets/home.js"></script>

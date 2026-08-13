@@ -664,7 +664,7 @@ async function loadMyHours() {
       <div class="stat-box"><div class="stat-val" style="color:var(--success)">${thisWeek.toFixed(1)}h</div><div class="stat-lbl">This Week</div></div>`;
 
     if (!myHours.length) { c.innerHTML = '<div class="empty">No hours logged yet.</div>'; return; }
-    c.innerHTML = `<div style="overflow-x:auto"><table>
+    c.innerHTML = `<div class="table-scroll"><table>
       <thead><tr><th>Date</th><th>Task</th><th>Hours</th><th>Notes</th></tr></thead>
       <tbody>${myHours.map(h => {
         const taskName = h.tasks?.title || h.task_description || '—';
@@ -875,7 +875,7 @@ async function loadDriveSection(statusUrl, filesUrl, connectUrl, disconnectUrl, 
           <span style="font-size:14px;font-weight:600">${icon} ${title}</span>
           <span style="font-size:12px;color:var(--muted)">${files.length} file${files.length!==1?'s':''}</span>
         </div>
-        ${files.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:460px">
+        ${files.length ? `<div class="table-scroll"><table class="wide-table wide-table-sm" style="width:100%;border-collapse:collapse">
           <thead><tr>
             <th style="padding:9px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Name</th>
             <th style="padding:9px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Modified</th>
@@ -1045,6 +1045,7 @@ lfInit({
 });
 
 function empFilterLeads() {
+  _leadsShown = LEADS_PAGE;                 // a new result set starts from the top
   const q = (document.getElementById('emp-lead-search')?.value || '').toLowerCase();
   const from = document.getElementById('emp-lead-date-from')?.value || '';
   const to   = document.getElementById('emp-lead-date-to')?.value || '';
@@ -1069,7 +1070,7 @@ function leadCellText(c, col) {
 }
 // Export the table exactly as shown: visible columns only, current search + sort.
 function exportLeadsTable() {
-  const vis = (_leadCols || []).filter(c => c.visible && !c.deleted);
+  const vis = visibleLeadCols();
   const list = _lastRenderedLeads || [];
   if (!list.length) { showToast('No leads to export.'); return; }
   const cell = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -1082,20 +1083,30 @@ function exportLeadsTable() {
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
 
+// Only the rendering is capped; filters and sort still see every lead. See the same
+// note in dashboard.js — a full list is thousands of controls, and far worse as cards.
+const LEADS_PAGE = 50;
+let _leadsShown = LEADS_PAGE;
+function leadsShowMore() { _leadsShown += LEADS_PAGE; empRenderLeads(_lastRenderedLeads); }
+
 function empRenderLeads(list) {
   _lastRenderedLeads = list;
   const tbody = document.getElementById('emp-leads-tbody');
-  const vis = (_leadCols || []).filter(c => c.visible && !c.deleted);
+  const vis = visibleLeadCols();
   const span = vis.length + 2; // add-column + actions
   if (!list.length) { tbody.innerHTML = `<tr><td colspan="${span}" style="text-align:center;color:var(--muted);padding:28px">No leads found.</td></tr>`; return; }
-  tbody.innerHTML = list.map(c => `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+  const shown = list.slice(0, _leadsShown);
+  tbody.innerHTML = shown.map(c => `<tr data-id="${c.id}" style="border-bottom:1px solid rgba(255,255,255,.04)">
       ${vis.map(col => leadCellHtml(c, col)).join('')}
       <td></td>
       <td style="padding:10px 14px;white-space:nowrap;text-align:right">
         ${empCan('leads','edit') ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEmpLeadModal(${c.id})" title="Edit" style="padding:4px 8px"><i data-lucide="pencil" style="width:13px;height:13px"></i></button>` : ''}
         ${empCan('leads','delete') ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();empRequestDeleteLead(${c.id})" title="Request deletion" style="padding:4px 8px;color:var(--danger);border-color:var(--danger)"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>` : ''}
       </td>
-    </tr>`).join('');
+    </tr>`).join('')
+    + (list.length > shown.length ? `<tr><td colspan="${span}" style="text-align:center;padding:14px">
+        <button class="btn btn-outline" onclick="leadsShowMore()">Load more · ${shown.length} of ${list.length}</button>
+      </td></tr>` : '');
   requestAnimationFrame(() => lucide.createIcons());
 }
 
@@ -1189,7 +1200,7 @@ function renderLeadHead() {
   const tr = document.getElementById('emp-leads-head');
   if (!tr || !_leadCols) return;
   const thStyle = 'padding:9px 14px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap';
-  const ths = _leadCols.filter(c => c.visible && !c.deleted).map(c => `
+  const ths = visibleLeadCols().map(c => `
     <th class="lead-col" draggable="true" data-colkey="${esc(c.key)}" style="${thStyle}"
         ondragstart="leadColDragStart(event)" ondragover="leadColDragOver(event)" ondragleave="this.classList.remove('drag-over')"
         ondrop="leadColDrop(event)" ondragend="leadColDragEnd()"
@@ -1236,7 +1247,7 @@ function openLeadColMenu(e, key) {
   e.stopPropagation();
   const col = leadCol(key); if (!col) return;
   const m = ensureLeadMenu(); m.dataset.mode = 'colmenu';
-  const vis = _leadCols.filter(c => c.visible && !c.deleted); const vi = vis.findIndex(c => c.key === key);
+  const vis = visibleLeadCols(); const vi = vis.findIndex(c => c.key === key);
   const canType = col.type !== 'virtual' && !['name', 'budget_lead', 'lead_date'].includes(col.key);
   const sorted = _leadSort && _leadSort.key === key;
   m.innerHTML = `
@@ -1291,7 +1302,7 @@ function leadColRename(key) {
 }
 function leadColMove(key, dir) {
   closeLeadMenu();
-  const vis = _leadCols.filter(c => c.visible && !c.deleted);
+  const vis = visibleLeadCols();
   const vi = vis.findIndex(c => c.key === key);
   const nb = vis[vi + dir]; if (!nb) return;
   const from = _leadCols.findIndex(c => c.key === key); const to = _leadCols.findIndex(c => c.key === nb.key);
@@ -1418,6 +1429,9 @@ function saveLeadOpts() {
 function leadCellClick(e, id, key) {
   e.stopPropagation();
   if (_editingLeadCell) return;
+  // See dashboard.js: on a phone every field is under a thumb, so a tap opens the
+  // record rather than starting an edit nobody meant to start.
+  if (typeof mlIsMobile === 'function' && mlIsMobile()) return openLeadProfile(id);
   const col = leadCol(key);
   const c = _empLeads.find(x => x.id === id);
   if (!col || !c) return;
@@ -2808,7 +2822,8 @@ function empBuildLogisticsRows() {
   EMP_LOGISTICS_LABELS.forEach((label, i) => {
     const row = document.createElement('div');
     row.id = `emp-qt-log-${i}`;
-    row.style.cssText = 'display:grid;grid-template-columns:1fr 130px 130px;gap:8px;margin-bottom:8px;align-items:center';
+    row.className = 'qt-line-3';
+    row.style.cssText = 'margin-bottom:8px;align-items:center';
     row.innerHTML = `
       <div style="font-size:13px;color:var(--text);padding:0 4px">${label}</div>
       <input class="form-input" id="emp-qt-log-usd-${i}" type="number" min="0" step="0.01" placeholder="0"
@@ -2822,8 +2837,8 @@ function empBuildLogisticsRows() {
 function empAddPricingRow(name='', unit=1, priceUsd='', isFree=false) {
   const container = document.getElementById('emp-qt-items');
   const row = document.createElement('div');
-  row.className = 'emp-qt-item-row';
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 80px 130px 130px 36px;gap:8px;margin-bottom:8px;align-items:center';
+  row.className = 'emp-qt-item-row qt-line-5';
+  row.style.cssText = 'margin-bottom:8px;align-items:center';
   row.innerHTML = `
     <input class="form-input" placeholder="Item name…" value="${name}" oninput="empRecalcItem(this)">
     <input class="form-input" type="number" min="1" step="1" value="${unit}" placeholder="1"
@@ -2837,8 +2852,8 @@ function empAddPricingRow(name='', unit=1, priceUsd='', isFree=false) {
                color:${isFree?'#fff':'var(--muted)'}">FREE</span>
     </div>
     <input class="form-input" readonly placeholder="Auto" style="background:rgba(255,255,255,.03);text-align:center;font-weight:600">
-    <button onclick="this.closest('.emp-qt-item-row').remove();empRecalcGrandTotal()"
-      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+    <button class="qt-remove" onclick="this.closest('.emp-qt-item-row').remove();empRecalcGrandTotal()"
+      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
       <i data-lucide="x" style="width:13px;height:13px"></i>
     </button>`;
   container.appendChild(row);
@@ -3051,7 +3066,7 @@ function addCustomSpecRow(containerId) {
   row.innerHTML = `
     <input class="form-input" placeholder="e.g. Incoterms: CIF">
     <button onclick="this.closest('.qt-custom-spec-row').remove()"
-      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
       <i data-lucide="x" style="width:13px;height:13px"></i>
     </button>`;
   container.appendChild(row);
