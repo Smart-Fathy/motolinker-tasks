@@ -210,6 +210,32 @@ const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', perm
       .every(([k, v]) => new RegExp(`${k}:${v}`).test(PORTAL_JS.replace(/\s/g, ''))));
 }
 
+// ── Which admin sections have no employee-facing permission, and why ──────────
+// Suppliers, RFQ, Purchase Orders, Sales Contracts and Website Submissions exist
+// in the admin dashboard only: no page in the team portal, no /api/employee route,
+// and their Home widgets are gated 'admin'. A permission for them would be a
+// checkbox governing nothing. This asserts the reason rather than the absence, so
+// the day a team-portal page appears for one of them, this goes red and says so.
+{
+  const ADMIN_ONLY = ['suppliers', 'rfqs', 'purchase-orders', 'contracts', 'submissions'];
+  const leaked = ADMIN_ONLY.filter(a =>
+    new RegExp(`'/api/employee/${a}`).test(SERVER_FILES)
+    || new RegExp(`id="page-${a.replace('-', '')}"`).test(PORTAL_HTML));
+  c('the admin-only sections still have no team-portal surface to grant',
+    leaked.length === 0, leaked.join(', ') + ' now reachable by employees — give it a permission');
+  c('…and their Home widgets stay admin-gated',
+    ['suppliers_top', 'rfq_open', 'po_status', 'contracts_recent', 'submissions_recent']
+      .every(id => new RegExp(`${id}:\\s+\\{ gate: 'admin'`).test(HOME)));
+  // Inventory is the exception: the vehicle picker and two Home widgets are real
+  // employee surface, and the widgets used to be open to everyone.
+  c('inventory is a permission, because the portal really can read it',
+    !!M.PERM_ACTIONS.stock && /requirePerm\('stock', 'view'\)/.test(EMP));
+  c('…and the stock widgets are no longer open to every employee',
+    /stock_summary:\s+\{ gate: 'stock'/.test(HOME) && /stock_models:\s+\{ gate: 'stock'/.test(HOME));
+  c('…while staying on by default, so nobody loses it',
+    M.DEFAULT_PERMISSIONS.stock === true);
+}
+
 // ── Home widgets are gated by the same sections ───────────────────────────────
 {
   const gates = [...HOME.matchAll(/^  ([a-z_]+):\s+\{ gate: (.*?),\s+src:/gm)]

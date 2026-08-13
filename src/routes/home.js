@@ -38,8 +38,8 @@ const HOME_WIDGETS = {
   // Hours
   hours_week:          { gate: { section: 'hours', action: 'view' }, src: ['hours'] },
   // Inventory
-  stock_summary:       { gate: null,        src: ['stock'] },
-  stock_models:        { gate: null,        src: ['stock'] },
+  stock_summary:       { gate: 'stock',     src: ['stock'] },
+  stock_models:        { gate: 'stock',     src: ['stock'] },
   // Requests and approvals
   my_requests:         { gate: 'requests',  src: ['requests'] },
   approvals:           { gate: 'admin',     src: ['deletions'] },

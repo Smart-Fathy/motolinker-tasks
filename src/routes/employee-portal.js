@@ -79,6 +79,8 @@ const DEFAULT_PERMISSIONS = {
   drive: true, sheets: true, calendar: true, meet: true, email: false, gchat: false,
   // Talking to each other
   chat: true,
+  // Inventory
+  stock: true,
   // Tools and CRM
   pdfscraper: false, quotation: false, leads: false, deals: false, reports: false,
   // System
@@ -115,6 +117,10 @@ const PERM_ACTIONS = {
   // In-app chat. `edit`/`delete` are for one's own messages; huddles and uploads
   // are the two things a chat member can do that cost bandwidth or leave files.
   chat: ['view', 'send', 'edit', 'delete', 'upload', 'huddle'],
+  // Inventory. Read-only from the portal: there is no stock page there, only the
+  // vehicle picker in the lead and quotation forms and two Home widgets — which
+  // were ungated, so every employee saw the company's stock counts on Home.
+  stock: ['view'],
   // CRM
   leads: ['view', 'create', 'edit', 'delete', 'import', 'export'],
   deals: ['view', 'create', 'edit', 'delete', 'move'],
@@ -179,6 +185,7 @@ const PERM_GROUPS = [
   { group: 'Day to day', sections: ['requests', 'tasks', 'hours'] },
   { group: 'Google',     sections: ['drive', 'sheets', 'email', 'calendar', 'meet', 'gchat'] },
   { group: 'Chat',       sections: ['chat'] },
+  { group: 'Inventory',  sections: ['stock'] },
   { group: 'Tools',      sections: ['quotation'] },
   { group: 'CRM',        sections: ['leads', 'deals', 'reports'] },
   { group: 'System',     sections: ['issues'] },
@@ -187,7 +194,7 @@ const PERM_SECTION_LABELS = {
   requests: 'Requests', tasks: 'My Tasks', hours: 'Hours',
   drive: 'My Drive', sheets: 'My Sheets', email: 'My Email',
   calendar: 'Calendar', meet: 'Meet', gchat: 'Google Chat',
-  chat: 'Team chat', quotation: 'Quotation',
+  chat: 'Team chat', quotation: 'Quotation', stock: 'Inventory',
   leads: 'Leads', deals: 'Deals', reports: 'Reports', issues: 'Issues centre',
 };
 // Keyed "section.action" where the plain word would mislead, and by the bare word
@@ -206,6 +213,7 @@ const PERM_ACTION_LABELS = {
   'reports.export': 'Export report data',
   'quotation.delete': 'Delete quotations',
   'issues.view': 'Open the issues centre',
+  'stock.view': 'See stock levels and look vehicles up',
 };
 function permCatalogue() {
   return PERM_GROUPS.map(g => ({
@@ -491,7 +499,7 @@ receiver.router.get('/api/dashboard/employees-for-tasks', requireAuth, async (_r
 receiver.router.get('/api/dashboard/inventory/search', requireAuth, async (req, res) => {
   res.json(await inventorySearch(req.query.q, 20));
 });
-receiver.router.get('/api/employee/inventory/search', requireEmployeeAuth, async (req, res) => {
+receiver.router.get('/api/employee/inventory/search', requireEmployeeAuth, requirePerm('stock', 'view'), async (req, res) => {
   const emp = req.employee;
   if (!(empCan(emp, 'leads', 'create') || empCan(emp, 'leads', 'edit') || empCan(emp, 'quotation', 'draft') || empCan(emp, 'quotation', 'attachLead'))) {
     return res.status(403).json({ error: 'Not permitted' });

@@ -100,7 +100,7 @@ function applyActionPerms() {
 const PERM_DEFAULTS = {
   requests:true, tasks:true, hours:true,
   drive:true, sheets:true, calendar:true, meet:true, email:false, gchat:false,
-  chat:true, quotation:false, leads:false, deals:false, reports:false, issues:false,
+  chat:true, stock:true, quotation:false, leads:false, deals:false, reports:false, issues:false,
 };
 function applyPermissions(permissions) {
   const p = { ...PERM_DEFAULTS, ...(permissions || {}) };

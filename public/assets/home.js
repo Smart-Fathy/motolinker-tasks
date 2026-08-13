@@ -33,8 +33,8 @@ const HOME_WIDGETS = {
   won_month:          { title: 'Won this month',      icon: 'trophy',          w: 3, h: 1, perm: 'deals' },
   // Hours and inventory
   hours_week:         { title: 'Hours this week',     icon: 'timer',           w: 3, h: 1, perm: 'hours' },
-  stock_summary:      { title: 'Stock',               icon: 'car-front',       w: 3, h: 1, perm: null },
-  stock_models:       { title: 'Stock by model',      icon: 'layers',          w: 4, h: 2, perm: null },
+  stock_summary:      { title: 'Stock',               icon: 'car-front',       w: 3, h: 1, perm: 'stock' },
+  stock_models:       { title: 'Stock by model',      icon: 'layers',          w: 4, h: 2, perm: 'stock' },
   // Requests and approvals
   my_requests:        { title: 'My requests',         icon: 'inbox',           w: 3, h: 1, perm: 'requests' },
   approvals:          { title: 'Pending approvals',   icon: 'shield-check',    w: 4, h: 2, perm: 'admin' },
