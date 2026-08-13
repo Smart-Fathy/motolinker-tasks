@@ -33,21 +33,21 @@ const HOME_WIDGETS = {
   won_month:          { title: 'Won this month',      icon: 'trophy',          w: 3, h: 1, perm: 'deals' },
   // Hours and inventory
   hours_week:         { title: 'Hours this week',     icon: 'timer',           w: 3, h: 1, perm: 'hours' },
-  stock_summary:      { title: 'Stock',               icon: 'car-front',       w: 3, h: 1, perm: null },
-  stock_models:       { title: 'Stock by model',      icon: 'layers',          w: 4, h: 2, perm: null },
+  stock_summary:      { title: 'Stock',               icon: 'car-front',       w: 3, h: 1, perm: 'stock' },
+  stock_models:       { title: 'Stock by model',      icon: 'layers',          w: 4, h: 2, perm: 'stock' },
   // Requests and approvals
   my_requests:        { title: 'My requests',         icon: 'inbox',           w: 3, h: 1, perm: 'requests' },
   approvals:          { title: 'Pending approvals',   icon: 'shield-check',    w: 4, h: 2, perm: 'admin' },
   // Paperwork
   quotation_recent:   { title: 'Recent quotations',   icon: 'file-text',       w: 4, h: 2, perm: 'quotation' },
-  contracts_recent:   { title: 'Recent contracts',    icon: 'file-signature',  w: 4, h: 2, perm: 'admin' },
+  contracts_recent:   { title: 'Recent contracts',    icon: 'file-signature',  w: 4, h: 2, perm: 'contracts' },
   sales_month:        { title: 'Sales this month',    icon: 'banknote',        w: 3, h: 1, perm: 'reports' },
   // Purchasing
-  suppliers_top:      { title: 'Top suppliers',       icon: 'factory',         w: 4, h: 2, perm: 'admin' },
-  rfq_open:           { title: 'Open RFQs',           icon: 'send',            w: 4, h: 2, perm: 'admin' },
-  po_status:          { title: 'Purchase orders',     icon: 'shopping-cart',   w: 4, h: 1, perm: 'admin' },
+  suppliers_top:      { title: 'Top suppliers',       icon: 'factory',         w: 4, h: 2, perm: 'suppliers' },
+  rfq_open:           { title: 'Open RFQs',           icon: 'send',            w: 4, h: 2, perm: 'rfq' },
+  po_status:          { title: 'Purchase orders',     icon: 'shopping-cart',   w: 4, h: 1, perm: 'purchaseorders' },
   // Company
-  submissions_recent: { title: 'Recent submissions',  icon: 'clipboard-check', w: 4, h: 2, perm: 'admin' },
+  submissions_recent: { title: 'Recent submissions',  icon: 'clipboard-check', w: 4, h: 2, perm: 'submissions' },
   automations_active: { title: 'Automations',         icon: 'workflow',        w: 3, h: 1, perm: 'admin' },
   team_roster:        { title: 'Team',                icon: 'users-round',     w: 4, h: 2, perm: 'admin' },
   whatsapp_recent:    { title: 'WhatsApp',            icon: 'message-circle',  w: 4, h: 2, perm: 'admin' },

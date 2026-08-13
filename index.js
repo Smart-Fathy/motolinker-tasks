@@ -322,7 +322,7 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
 });
 
 // Sales & revenue analytics  → src/routes/reports.js
-Object.assign(ctx, { GOOGLE_CLIENT_ID, crypto, driveCanUpload: (...a) => driveCanUpload(...a), driveTokens, express, getCalendarToken, getDriveToken, getEmployeeCalendarToken, multer, parseCSV, receiver, requireAuth, supabase, syncTaskToCalendar, upload });
+Object.assign(ctx, { GOOGLE_CLIENT_ID, crypto, driveCanUpload: (...a) => driveCanUpload(...a), driveTokens, express, getCalendarToken, getDriveToken, getEmployeeCalendarToken, multer, parseCSV, receiver, requireAuth, requireEmployeeAuth, supabase, syncTaskToCalendar, upload });
 Object.assign(ctx, require('./src/routes/reports'));
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Sales (one sold car; the Deals → Sales tab) ───────────────────────────────
@@ -1614,10 +1614,15 @@ function chatBroadcast(memberKeys, eventName, payload) {
   });
 }
 
+// Who is making this request, in the one shape the whole app uses for authorship:
+// 'admin' or 'employee_<id>'. Named for chat because that is where it started; it
+// answers the same question for anything mounted in both portals, so the general
+// name is on the context too and new code should use that.
 function chatCallerIdentity(req) {
   if (req.employee) return { key: `employee_${req.employee.id}`, name: req.employee.name };
   return { key: 'admin', name: 'Admin' };
 }
+ctx.callerIdentity = chatCallerIdentity;
 
 async function sendPushToOfflineMembers(memberKeys, payload) {
   if (!vapidKeys) return;

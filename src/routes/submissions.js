@@ -1,13 +1,14 @@
 // Form Submissions
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
-const { express, logLeadActivity, normalizePhone, receiver, requireAuth, supabase } = ctx.need('express', 'logLeadActivity', 'normalizePhone', 'receiver', 'requireAuth', 'supabase');
+const { express, logLeadActivity, normalizePhone, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('express', 'logLeadActivity', 'normalizePhone', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
 const createNotification = (...a) => ctx.createNotification(...a);
 const memberKeyForAssignee = (...a) => ctx.memberKeyForAssignee(...a);
 const runAutomations = (...a) => ctx.runAutomations(...a);
 const submissionCtx = (...a) => ctx.submissionCtx(...a);
+const requirePerm = (...a) => ctx.requirePerm(...a);
 const taskAssigneeList = (...a) => ctx.taskAssigneeList(...a);
 // Reassigned at runtime (Drive connect/disconnect, VAPID boot), so these are
 // read from the context on use — capturing them here would pin the boot value.
@@ -79,20 +80,28 @@ receiver.router.post('/api/submissions', express.json(), async (req, res) => {
   }
 });
 
-// Admin — list all submissions (with the linked lead name)
-receiver.router.get('/api/submissions', requireAuth, async (_req, res) => {
-  const { data, error } = await supabase.from('form_submissions')
-    .select('*, customers(name)').order('created_at', { ascending: false }).limit(200);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json((data || []).map(s => ({ ...s, submitted_at: s.created_at, lead_name: s.customers?.name || '' })));
-});
+// Reading and clearing what the website sent us. Mounted for both portals over one
+// set of handlers — see contracts.js for why. POST /api/submissions above stays
+// where it is: that one is the public website form and has no session at all.
+//
+// There is no create or edit action, because nobody here writes a submission —
+// the website does, and the only thing a person does to one is read it or bin it.
+function mountSubmissionRoutes(base, guard) {
+  receiver.router.get(base, guard, requirePerm('submissions', 'view'), async (_req, res) => {
+    const { data, error } = await supabase.from('form_submissions')
+      .select('*, customers(name)').order('created_at', { ascending: false }).limit(200);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json((data || []).map(s => ({ ...s, submitted_at: s.created_at, lead_name: s.customers?.name || '' })));
+  });
 
-// Admin — delete a submission
-receiver.router.delete('/api/submissions/:id', requireAuth, async (req, res) => {
-  const { error } = await supabase.from('form_submissions').delete().eq('id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
-});
+  receiver.router.delete(`${base}/:id`, guard, requirePerm('submissions', 'delete'), async (req, res) => {
+    const { error } = await supabase.from('form_submissions').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
+}
+mountSubmissionRoutes('/api/submissions', requireAuth);
+mountSubmissionRoutes('/api/employee/submissions', requireEmployeeAuth);
 
 async function sendDueDateReminders() {
   if (!ctx.vapidKeys) return;

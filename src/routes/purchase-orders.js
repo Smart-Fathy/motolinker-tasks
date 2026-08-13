@@ -1,13 +1,15 @@
 // Purchase Orders
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
-const { escHtml, express, logLeadActivity, receiver, requireAuth, supabase } = ctx.need('escHtml', 'express', 'logLeadActivity', 'receiver', 'requireAuth', 'supabase');
+const { escHtml, express, logLeadActivity, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('escHtml', 'express', 'logLeadActivity', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
 // Registered on the context by a module that loads later, so these are looked
 // up when called rather than when required.
 const quoteTheme = (...a) => ctx.quoteTheme(...a);
 const renderQuotationPdf = (...a) => ctx.renderQuotationPdf(...a);
+const requirePerm = (...a) => ctx.requirePerm(...a);
+const callerIdentity = (...a) => ctx.callerIdentity(...a);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Purchase Orders ───────────────────────────────────────────────────────────
@@ -85,108 +87,114 @@ function poTotal(items) {
   return (items || []).reduce((s, it) => s + (Number(it.pi_price) || 0) * (Number(it.units) || 1), 0);
 }
 
-receiver.router.get('/api/dashboard/purchase-orders', requireAuth, async (_req, res) => {
-  const { data, error } = await supabase.from('purchase_orders')
-    .select('id,po_number,title,supplier,po_date,currency,status,customer_id,items,created_by,created_at')
-    .order('created_at', { ascending: false }).limit(200);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
-});
+// Mounted for both portals over one set of handlers — see contracts.js for why.
+function mountPurchaseOrderRoutes(base, guard) {
+  receiver.router.get(base, guard, requirePerm('purchaseorders', 'view'), async (_req, res) => {
+    const { data, error } = await supabase.from('purchase_orders')
+      .select('id,po_number,title,supplier,po_date,currency,status,customer_id,items,created_by,created_at')
+      .order('created_at', { ascending: false }).limit(200);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
 
-receiver.router.get('/api/dashboard/purchase-orders/new/defaults', requireAuth, async (req, res) => {
-  try {
-    const customerId = req.query.customer_id ? parseInt(req.query.customer_id) : null;
-    const cust = customerId
-      ? await supabase.from('customers').select('*').eq('id', customerId).single().then(r => r.data)
-      : null;
-    // Seed the first line from the lead so the sheet opens partly filled.
-    const item = poBuildItem({});
-    if (cust) {
-      const cf = cust.custom_fields || {};
-      const car = String(cf.cf_vehicle_offered || cf.cf_vehicle_requested || cust.car_in_question || '').trim();
-      const bits = car.split(/\s+/).filter(Boolean);
-      item.client = cust.name || '';
-      item.consignee = cust.name || '';
-      item.brand = bits[0] || '';
-      item.model = bits.slice(1).join(' ') || '';
-      item.color = cf.cf_color || '';
-      item.year = cf.cf_year || '';
+  receiver.router.get(`${base}/new/defaults`, guard, requirePerm('purchaseorders', 'create'), async (req, res) => {
+    try {
+      const customerId = req.query.customer_id ? parseInt(req.query.customer_id) : null;
+      const cust = customerId
+        ? await supabase.from('customers').select('*').eq('id', customerId).single().then(r => r.data)
+        : null;
+      // Seed the first line from the lead so the sheet opens partly filled.
+      const item = poBuildItem({});
+      if (cust) {
+        const cf = cust.custom_fields || {};
+        const car = String(cf.cf_vehicle_offered || cf.cf_vehicle_requested || cust.car_in_question || '').trim();
+        const bits = car.split(/\s+/).filter(Boolean);
+        item.client = cust.name || '';
+        item.consignee = cust.name || '';
+        item.brand = bits[0] || '';
+        item.model = bits.slice(1).join(' ') || '';
+        item.color = cf.cf_color || '';
+        item.year = cf.cf_year || '';
+      }
+      res.json({
+        po_number: generatePoNumber(),
+        po_date: new Date().toISOString().slice(0, 10),
+        currency: 'USD',
+        items: [item],
+        customer_id: customerId || null,
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  receiver.router.get(`${base}/:id`, guard, requirePerm('purchaseorders', 'view'), async (req, res) => {
+    const { data, error } = await supabase.from('purchase_orders').select('*').eq('id', req.params.id).single();
+    if (error) return res.status(404).json({ error: 'Purchase order not found' });
+    res.json(data);
+  });
+
+  receiver.router.post(base, guard, requirePerm('purchaseorders', 'create'), express.json({ limit: '2mb' }), async (req, res) => {
+    const who = callerIdentity(req);
+    const row = poBuildRow(req.body);
+    row.created_by = who.key;
+    const { data, error } = await supabase.from('purchase_orders').insert(row).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+    if (data.customer_id) {
+      logLeadActivity(data.customer_id, {
+        type: 'note', body: `Purchase order created — ${data.po_number}`,
+        meta: { purchase_order_id: data.id, po_number: data.po_number },
+        authorKey: who.key, authorName: who.name,
+      });
     }
-    res.json({
-      po_number: generatePoNumber(),
-      po_date: new Date().toISOString().slice(0, 10),
-      currency: 'USD',
-      items: [item],
-      customer_id: customerId || null,
-    });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+  });
 
-receiver.router.get('/api/dashboard/purchase-orders/:id', requireAuth, async (req, res) => {
-  const { data, error } = await supabase.from('purchase_orders').select('*').eq('id', req.params.id).single();
-  if (error) return res.status(404).json({ error: 'Purchase order not found' });
-  res.json(data);
-});
+  receiver.router.put(`${base}/:id`, guard, requirePerm('purchaseorders', 'edit'), express.json({ limit: '2mb' }), async (req, res) => {
+    const row = poBuildRow(req.body);
+    row.updated_at = new Date().toISOString();
+    delete row.po_number; // immutable once issued
+    const { data, error } = await supabase.from('purchase_orders').update(row).eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
 
-receiver.router.post('/api/dashboard/purchase-orders', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
-  const row = poBuildRow(req.body);
-  row.created_by = 'dashboard';
-  const { data, error } = await supabase.from('purchase_orders').insert(row).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-  if (data.customer_id) {
-    logLeadActivity(data.customer_id, {
-      type: 'note', body: `Purchase order created — ${data.po_number}`,
-      meta: { purchase_order_id: data.id, po_number: data.po_number },
-      authorKey: 'admin', authorName: 'Admin',
-    });
-  }
-});
+  receiver.router.delete(`${base}/:id`, guard, requirePerm('purchaseorders', 'delete'), async (req, res) => {
+    const { error } = await supabase.from('purchase_orders').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
 
-receiver.router.put('/api/dashboard/purchase-orders/:id', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
-  const row = poBuildRow(req.body);
-  row.updated_at = new Date().toISOString();
-  delete row.po_number; // immutable once issued
-  const { data, error } = await supabase.from('purchase_orders').update(row).eq('id', req.params.id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+  receiver.router.post(`${base}/pdf`, guard, requirePerm('purchaseorders', 'export'), express.json({ limit: '2mb' }), async (req, res) => {
+    try {
+      const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
+      const settings = {};
+      for (const r of settingsRows || []) settings[r.key] = r.value;
+      const html = buildPurchaseOrderHtml({ ...req.body, ...poBuildRow(req.body), settings });
+      const pdf = await renderQuotationPdf(html);   // portrait A4, like the paper form
+      res.json({ pdf: Buffer.from(pdf).toString('base64') });
+    } catch (e) {
+      console.error('[po-pdf]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
 
-receiver.router.delete('/api/dashboard/purchase-orders/:id', requireAuth, async (req, res) => {
-  const { error } = await supabase.from('purchase_orders').delete().eq('id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
-});
-
-receiver.router.post('/api/dashboard/purchase-orders/pdf', requireAuth, express.json({ limit: '2mb' }), async (req, res) => {
-  try {
-    const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
-    const settings = {};
-    for (const r of settingsRows || []) settings[r.key] = r.value;
-    const html = buildPurchaseOrderHtml({ ...req.body, ...poBuildRow(req.body), settings });
-    const pdf = await renderQuotationPdf(html);   // portrait A4, like the paper form
-    res.json({ pdf: Buffer.from(pdf).toString('base64') });
-  } catch (e) {
-    console.error('[po-pdf]', e);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Render a saved purchase order by id (used by the lead profile's document viewer).
-receiver.router.post('/api/dashboard/purchase-orders/:id/pdf', requireAuth, async (req, res) => {
-  try {
-    const { data: row, error } = await supabase.from('purchase_orders').select('*').eq('id', req.params.id).single();
-    if (error || !row) return res.status(404).json({ error: 'Purchase order not found' });
-    const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
-    const settings = {};
-    for (const s of settingsRows || []) settings[s.key] = s.value;
-    const pdf = await renderQuotationPdf(buildPurchaseOrderHtml({ ...row, settings }));
-    res.json({ pdf: Buffer.from(pdf).toString('base64'), name: row.po_number || 'purchase-order' });
-  } catch (e) {
-    console.error('[po-pdf-id]', e);
-    res.status(500).json({ error: e.message });
-  }
-});
+  // Render a saved purchase order by id (used by the lead profile's document viewer).
+  receiver.router.post(`${base}/:id/pdf`, guard, requirePerm('purchaseorders', 'export'), async (req, res) => {
+    try {
+      const { data: row, error } = await supabase.from('purchase_orders').select('*').eq('id', req.params.id).single();
+      if (error || !row) return res.status(404).json({ error: 'Purchase order not found' });
+      const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
+      const settings = {};
+      for (const s of settingsRows || []) settings[s.key] = s.value;
+      const pdf = await renderQuotationPdf(buildPurchaseOrderHtml({ ...row, settings }));
+      res.json({ pdf: Buffer.from(pdf).toString('base64'), name: row.po_number || 'purchase-order' });
+    } catch (e) {
+      console.error('[po-pdf-id]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+}
+mountPurchaseOrderRoutes('/api/dashboard/purchase-orders', requireAuth);
+mountPurchaseOrderRoutes('/api/employee/purchase-orders', requireEmployeeAuth);
 
 // ── Shared letterhead chrome for supplier-facing documents (RFQ + PO) ─────────
 // Both reproduce the company's real forms: logo, title, ID/Date/Issuer box, a

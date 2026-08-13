@@ -1,6 +1,7 @@
 // Supplier catalogue, documents and purchase history
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
+const requirePerm = (...a) => ctx.requirePerm(...a);
 const { driveUpload, driveUploadGuard, express, handleDriveUpload, receiver, requireAuth, supabase } = ctx.need('driveUpload', 'driveUploadGuard', 'express', 'handleDriveUpload', 'receiver', 'requireAuth', 'supabase');
 
 // ─── Supplier catalogue, documents and purchase history ───────────────────────
@@ -91,76 +92,79 @@ async function supplierPurchases(supplierId) {
   };
 }
 
-// ── Catalogue ──
-receiver.router.get('/api/dashboard/suppliers/:id/vehicles', requireAuth, async (req, res) => {
-  const { data, error } = await supabase.from('supplier_vehicles').select('*')
-    .eq('supplier_id', req.params.id).order('brand').order('model');
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
-});
-receiver.router.post('/api/dashboard/suppliers/:id/vehicles', requireAuth, express.json(), async (req, res) => {
-  const { row, error: verr } = supplierVehicleRow(req.body, parseInt(req.params.id));
-  if (verr) return res.status(400).json({ error: verr });
-  const { data, error } = await supabase.from('supplier_vehicles').insert(row).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-receiver.router.put('/api/dashboard/suppliers/:id/vehicles/:vid', requireAuth, express.json(), async (req, res) => {
-  const { row, error: verr } = supplierVehicleRow(req.body, parseInt(req.params.id));
-  if (verr) return res.status(400).json({ error: verr });
-  row.updated_at = new Date().toISOString();
-  const { data, error } = await supabase.from('supplier_vehicles').update(row)
-    .eq('id', req.params.vid).eq('supplier_id', req.params.id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-receiver.router.delete('/api/dashboard/suppliers/:id/vehicles/:vid', requireAuth, async (req, res) => {
-  const { error } = await supabase.from('supplier_vehicles').delete()
-    .eq('id', req.params.vid).eq('supplier_id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
-});
-
-// Every vehicle any supplier offers — feeds the RFQ and PO item pickers, so those
-// stop being free text.
-receiver.router.get('/api/dashboard/supplier-vehicles', requireAuth, async (_req, res) => {
-  const { data, error } = await supabase.from('supplier_vehicles')
-    .select('*, suppliers(name)').order('brand').order('model').limit(1000);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json((data || []).map(v => ({ ...v, supplier_name: v.suppliers?.name || '' })));
-});
-
-// ── Documents (Drive-backed) ──
-receiver.router.get('/api/dashboard/suppliers/:id/docs', requireAuth, async (req, res) => {
-  const { data, error } = await supabase.from('supplier_docs').select('*')
-    .eq('supplier_id', req.params.id).order('created_at', { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
-});
-receiver.router.post('/api/dashboard/suppliers/:id/docs', requireAuth,
-  driveUpload.single('file'), driveUploadGuard, async (req, res) => {
-    const meta = await handleDriveUpload(req, res, 'Suppliers');
-    if (!meta) return;
-    const { data, error } = await supabase.from('supplier_docs').insert({
-      supplier_id: parseInt(req.params.id), name: meta.name, drive_file_id: meta.fileId,
-      web_link: meta.webViewLink, mime_type: meta.mimeType, size_bytes: meta.size,
-    }).select().single();
+// Mounted from suppliers.js, once per portal, so the catalogue, the documents and
+// the purchase history hang off whichever base the register itself is on.
+ctx.mountSupplierCatalogueRoutes = function mountSupplierCatalogueRoutes(base, guard) {
+  // ── Catalogue ──
+  receiver.router.get(`${base}/:id/vehicles`, guard, requirePerm('suppliers', 'view'), async (req, res) => {
+    const { data, error } = await supabase.from('supplier_vehicles').select('*')
+      .eq('supplier_id', req.params.id).order('brand').order('model');
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+  receiver.router.post(`${base}/:id/vehicles`, guard, requirePerm('suppliers', 'catalogue'), express.json(), async (req, res) => {
+    const { row, error: verr } = supplierVehicleRow(req.body, parseInt(req.params.id));
+    if (verr) return res.status(400).json({ error: verr });
+    const { data, error } = await supabase.from('supplier_vehicles').insert(row).select().single();
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
-receiver.router.delete('/api/dashboard/suppliers/:id/docs/:docId', requireAuth, async (req, res) => {
-  // The row goes; the file stays in Drive on purpose, so a mis-click is recoverable.
-  const { error } = await supabase.from('supplier_docs').delete()
-    .eq('id', req.params.docId).eq('supplier_id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
-});
+  receiver.router.put(`${base}/:id/vehicles/:vid`, guard, requirePerm('suppliers', 'catalogue'), express.json(), async (req, res) => {
+    const { row, error: verr } = supplierVehicleRow(req.body, parseInt(req.params.id));
+    if (verr) return res.status(400).json({ error: verr });
+    row.updated_at = new Date().toISOString();
+    const { data, error } = await supabase.from('supplier_vehicles').update(row)
+      .eq('id', req.params.vid).eq('supplier_id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+  receiver.router.delete(`${base}/:id/vehicles/:vid`, guard, requirePerm('suppliers', 'catalogue'), async (req, res) => {
+    const { error } = await supabase.from('supplier_vehicles').delete()
+      .eq('id', req.params.vid).eq('supplier_id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
 
-// ── What we actually bought ──
-receiver.router.get('/api/dashboard/suppliers/:id/purchases', requireAuth, async (req, res) => {
-  try { res.json(await supplierPurchases(req.params.id)); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
+  // Every vehicle any supplier offers — feeds the RFQ and PO item pickers, so those
+  // stop being free text.
+  receiver.router.get(`${base.replace(/suppliers$/, 'supplier-vehicles')}`, guard, requirePerm('suppliers', 'view'), async (_req, res) => {
+    const { data, error } = await supabase.from('supplier_vehicles')
+      .select('*, suppliers(name)').order('brand').order('model').limit(1000);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json((data || []).map(v => ({ ...v, supplier_name: v.suppliers?.name || '' })));
+  });
 
+  // ── Documents (Drive-backed) ──
+  receiver.router.get(`${base}/:id/docs`, guard, requirePerm('suppliers', 'docs'), async (req, res) => {
+    const { data, error } = await supabase.from('supplier_docs').select('*')
+      .eq('supplier_id', req.params.id).order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+  receiver.router.post(`${base}/:id/docs`, guard, requirePerm('suppliers', 'docs'),
+    driveUpload.single('file'), driveUploadGuard, async (req, res) => {
+      const meta = await handleDriveUpload(req, res, 'Suppliers');
+      if (!meta) return;
+      const { data, error } = await supabase.from('supplier_docs').insert({
+        supplier_id: parseInt(req.params.id), name: meta.name, drive_file_id: meta.fileId,
+        web_link: meta.webViewLink, mime_type: meta.mimeType, size_bytes: meta.size,
+      }).select().single();
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data);
+    });
+  receiver.router.delete(`${base}/:id/docs/:docId`, guard, requirePerm('suppliers', 'docs'), async (req, res) => {
+    // The row goes; the file stays in Drive on purpose, so a mis-click is recoverable.
+    const { error } = await supabase.from('supplier_docs').delete()
+      .eq('id', req.params.docId).eq('supplier_id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
+
+  // ── What we actually bought ──
+  receiver.router.get(`${base}/:id/purchases`, guard, requirePerm('suppliers', 'view'), async (req, res) => {
+    try { res.json(await supplierPurchases(req.params.id)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+};
 
 module.exports = {};

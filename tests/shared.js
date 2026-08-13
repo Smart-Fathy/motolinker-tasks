@@ -14,6 +14,7 @@ const huddle  = read('public/assets/huddle.js');
 const filters = read('public/assets/lead-filters.js');
 const mobile  = read('public/assets/mobile.css');
 const mobjs   = read('public/assets/mobile.js');
+const proc    = read('public/assets/procurement.js');
 const bundles = { dashboard: read('public/assets/dashboard.js'), employee: read('public/assets/employee.js') };
 const pages   = { dashboard: read('public/dashboard.html'),      employee: read('public/employee.html') };
 const workers = { dashboard: read('public/sw-dashboard.js'),     employee: read('public/sw-employee.js') };
@@ -25,6 +26,7 @@ const MARKERS = {
   '/assets/huddle.js':       { src: huddle,  re: /let _hd = \{ roomId: null/ },
   '/assets/lead-filters.js': { src: filters, re: /function leadFilterMatch\(/ },
   '/assets/mobile.js':       { src: mobjs,   re: /function labelTable\(/ },
+  '/assets/procurement.js':  { src: proc,    re: /function procPath\(/ },
 };
 
 for (const [path, { src, re }] of Object.entries(MARKERS)) {
@@ -41,8 +43,18 @@ for (const portal of ['dashboard', 'employee']) {
   check(`${portal} still defines its HOMECFG adapter`, /const HOMECFG = \{/.test(bundles[portal]));
   check(`${portal} still defines its HDCFG adapter`,   /const HDCFG = \{/.test(bundles[portal]));
 }
+for (const portal of ['dashboard', 'employee']) {
+  check(`${portal} still defines its PROCFG adapter`, /const PROCFG = \{/.test(bundles[portal]));
+}
 check('the shared files define no adapter of their own',
-  !/const H(OME)?CFG = \{/.test(home) && !/const HDCFG = \{/.test(huddle));
+  !/const H(OME)?CFG = \{/.test(home) && !/const HDCFG = \{/.test(huddle)
+  && !/^const PROCFG = \{/m.test(proc));
+
+// The operations module reaches its portal's API through PROCFG.base rather than
+// the dashboard paths it was written with, and that mapping is the single place it
+// happens — a stray '/api/dashboard' left in a fetch would 404 for the team portal.
+check('the operations module routes every call through the base mapping',
+  !/PROCFG\.fetch\(['\`]\/api/.test(proc) && /procPath\(url\)/.test(proc));
 // The filter engine takes its adapter at runtime rather than declaring one.
 for (const portal of ['dashboard', 'employee']) {
   check(`${portal} binds the filter engine with lfInit`, /lfInit\(\{/.test(bundles[portal]));
