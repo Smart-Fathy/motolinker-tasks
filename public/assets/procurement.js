@@ -491,6 +491,17 @@
   ];
   let _poCache = [];
   let _poEditing = null;
+  function poItemsEngine() {
+    return procColsEngine('po_items', tupleCols(PO_COLS, {
+      units: 'number', pi_price: 'number',
+      status: 'select', 'options:status': PO_LINE_STATUSES.map(o => ({ key: o.key, label: o.label, color: o.fg })),
+    }), () => {});
+  }
+  // The grid's visible columns, engine-ordered; falls back to the tuples until load().
+  function poGridCols() {
+    const eng = CE('po_items');
+    return eng && eng.loaded ? eng.visible() : tupleCols(PO_COLS, {});
+  }
 
   function poLineStatus(key) { return PO_LINE_STATUSES.find(s => s.key === key) || PO_LINE_STATUSES[0]; }
   function poLineTotal(items) {
@@ -539,6 +550,7 @@
   }
 
   async function openPoForm(id, seedCustomerId) {
+    await poItemsEngine().load();
     let rec;
     if (id) {
       rec = await apiFetch(`/api/dashboard/purchase-orders/${id}`).then(r => r.json());
@@ -570,14 +582,14 @@
             <table id="po-grid" style="border-collapse:collapse;font-size:12px;min-width:1500px">
               <thead><tr>
                 <th class="po-th" style="width:38px">No</th>
-                ${PO_COLS.map(([, label, w]) => `<th class="po-th" style="min-width:${w}px">${esc(label)}</th>`).join('')}
+                ${poGridCols().map(c => `<th class="po-th" style="min-width:${c.width || 90}px">${esc(c.label)}</th>`).join('')}
                 <th class="po-th" style="width:38px"></th>
               </tr></thead>
               <tbody id="po-rows"></tbody>
             </table>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:10px;flex-wrap:wrap">
-            <button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="poAddRow()">+ Add vehicle line</button>
+            <button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="poAddRow()">+ Add vehicle line</button> ${procColsBtn('po_items')}
             <button class="btn btn-outline" style="padding:5px 10px;font-size:12px;margin-left:6px" onclick="openCataloguePicker('po')">
               <i data-lucide="list-plus" style="width:13px;height:13px"></i> From supplier catalogue</button>
             <div id="po-total" style="font-size:13px;font-weight:700;color:var(--primary)"></div>
@@ -638,7 +650,7 @@
       return `<td class="po-td"><input class="form-input po-f" data-k="${key}" ${type ? `type="${type}" min="0"` : ''} value="${esc(val == null ? '' : String(val))}" style="font-size:12px;padding:5px 6px"></td>`;
     };
     tr.innerHTML = `<td class="po-td po-no" style="text-align:center;color:var(--muted)"></td>` +
-      PO_COLS.map(([k]) => cell(k, v[k], k === 'units' || k === 'pi_price' ? 'number' : '')).join('') +
+      poGridCols().map(c => cell(c.key, v[c.key], c.key === 'units' || c.key === 'pi_price' || c.type === 'number' ? 'number' : '')).join('') +
       `<td class="po-td" style="text-align:center"><button class="btn btn-outline" style="padding:2px 7px;font-size:14px;color:var(--danger);border-color:var(--danger)" title="Remove line">×</button></td>`;
     tr.querySelector('button').onclick = () => { tr.remove(); poRenumber(); };
     tr.querySelectorAll('.po-f').forEach(el => el.addEventListener('input', poRenumber));
@@ -790,6 +802,13 @@
     ['fob_price', 'FOB PRICE', 90], ['cif_price', 'CIF PRICE (RoRo)', 100],
   ];
   let _rfqCache = [], _rfqEditing = null;
+  function rfqItemsEngine() {
+    return procColsEngine('rfq_items', tupleCols(RFQ_COLS, { fob_price: 'number', cif_price: 'number' }), () => {});
+  }
+  function rfqGridCols() {
+    const eng = CE('rfq_items');
+    return eng && eng.loaded ? eng.visible() : tupleCols(RFQ_COLS, {});
+  }
 
   async function loadRfqs() {
     const body = document.getElementById('rfqs-list');
@@ -829,6 +848,7 @@
   }
 
   async function openRfqForm(id, seedCustomerId) {
+    await rfqItemsEngine().load();
     let rec;
     if (id) rec = await apiFetch(`/api/dashboard/rfqs/${id}`).then(r => r.json());
     else {
@@ -867,13 +887,13 @@
             <table style="border-collapse:collapse;font-size:12px;min-width:1080px">
               <thead><tr>
                 <th class="po-th" style="width:34px">#</th>
-                ${RFQ_COLS.map(([, l, w]) => `<th class="po-th" style="min-width:${w}px">${esc(l)}</th>`).join('')}
+                ${rfqGridCols().map(c => `<th class="po-th" style="min-width:${c.width || 90}px">${esc(c.label)}</th>`).join('')}
                 <th class="po-th" style="width:38px"></th>
               </tr></thead>
               <tbody id="rfq-rows"></tbody>
             </table>
           </div>
-          <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="rfqAddRow()">+ Add line</button>
+          <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="rfqAddRow()">+ Add line</button> ${procColsBtn('rfq_items')}
           <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px;margin-left:6px" onclick="openCataloguePicker('rfq')">
             <i data-lucide="list-plus" style="width:13px;height:13px"></i> From supplier catalogue</button>
         </div>
@@ -907,7 +927,7 @@
       ? `<td class="po-td"><textarea class="form-input rfq-f" data-k="accessories" rows="2" style="font-size:11.5px;padding:5px 6px;resize:vertical">${esc(v.accessories || '')}</textarea></td>`
       : `<td class="po-td"><input class="form-input rfq-f" data-k="${k}" ${k.endsWith('_price') ? 'type="number" min="0"' : ''} value="${esc(v[k] == null ? '' : String(v[k]))}" style="font-size:12px;padding:5px 6px"></td>`;
     tr.innerHTML = `<td class="po-td rfq-no-cell" style="text-align:center;color:var(--muted)"></td>` +
-      RFQ_COLS.map(([k]) => cell(k)).join('') +
+      rfqGridCols().map(c => cell(c.key)).join('') +
       `<td class="po-td" style="text-align:center"><button class="btn btn-outline" style="padding:2px 7px;font-size:14px;color:var(--danger);border-color:var(--danger)" title="Remove">×</button></td>`;
     tr.querySelector('button').onclick = () => { tr.remove(); rfqRenumber(); };
     tbody.appendChild(tr);
@@ -992,18 +1012,23 @@
       body.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No suppliers yet.</div>';
       return;
     }
+    const eng = suppliersEngine();
+    await eng.load();
+    const cols = eng.visible();
     body.innerHTML = `
+      <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px">${procColsBtn('suppliers')}</div>
       <div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
-          <th style="padding:8px 10px">Name</th><th style="padding:8px 10px">Contact</th>
-          <th style="padding:8px 10px">Country</th><th style="padding:8px 10px">Address</th>
+          ${cols.map(c => `<th style="padding:8px 10px${c.width ? `;min-width:${c.width}px` : ''}">${esc(c.label)}</th>`).join('')}
           <th style="padding:8px 10px;text-align:right">Actions</th></tr></thead>
         <tbody>${_suppliersCache.map(x => `
           <tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:8px 10px;font-weight:600">${esc(x.name)}</td>
-            <td style="padding:8px 10px">${esc(x.contact || '—')}</td>
-            <td style="padding:8px 10px">${esc(x.country || '—')}</td>
-            <td style="padding:8px 10px;color:var(--muted)">${esc(x.address || '')}</td>
+            ${cols.map(c => {
+              if (!c.builtin) return procCfCell(eng, c, x);
+              if (c.key === 'name') return `<td style="padding:8px 10px;font-weight:600">${esc(x.name)}</td>`;
+              if (c.key === 'notes' || c.key === 'address') return `<td style="padding:8px 10px;color:var(--muted)">${esc(x[c.key] || '')}</td>`;
+              return `<td style="padding:8px 10px">${esc(x[c.key] || '—')}</td>`;
+            }).join('')}
             <td style="padding:8px 10px;text-align:right;white-space:nowrap">
               <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openSupplierDetail(${x.id})">Open</button>
               ${procCan('suppliers', 'edit') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openSupplierForm(${x.id})">Edit</button>` : ''}
@@ -1181,31 +1206,34 @@
         </table></div>` : '<div style="color:var(--muted);font-size:12.5px;padding:10px 0">No purchase orders yet.</div>'}`;
   }
 
+  function suppliersEngine() {
+    return procColsEngine('suppliers', tupleCols([
+      ['name', 'Name', 140], ['contact', 'Contact', 120],
+      ['country', 'Country', 90], ['address', 'Address', 160], ['notes', 'Notes', 160],
+    ], {}), () => loadSuppliers());
+  }
+
   function openSupplierForm(id) {
     const x = id ? _suppliersCache.find(v => v.id === id) : null;
-    showModal(x ? 'Edit supplier' : 'Add supplier', `
-      <div style="display:grid;gap:12px">
-        <div><label class="form-label">Name *</label><input id="sup-name" class="form-input" value="${esc(x?.name || '')}"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div><label class="form-label">Contact</label><input id="sup-contact" class="form-input" value="${esc(x?.contact || '')}"></div>
-          <div><label class="form-label">Country of origin</label><input id="sup-country" class="form-input" value="${esc(x?.country || '')}"></div>
-        </div>
-        <div><label class="form-label">Address</label><input id="sup-address" class="form-input" value="${esc(x?.address || '')}"></div>
-        <div><label class="form-label">Notes</label><input id="sup-notes" class="form-input" value="${esc(x?.notes || '')}"></div>
-        <div id="sup-err" class="error-msg" style="display:none"></div>
-      </div>`,
+    const eng = suppliersEngine();
+    const builtinField = c => `<div class="form-group"><label class="form-label">${esc(c.label)}</label>
+      <input class="form-control" id="sup-${c.key}" value="${esc(x ? (x[c.key] || '') : '')}"></div>`;
+    showModal(id ? 'Edit supplier' : 'Add supplier', `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px">
+        ${eng.visible().map(c => c.builtin ? builtinField(c) : eng.inputHtml(c, (x && x.custom_fields || {})[c.key])).join('')}
+      </div>
+      <div id="sup-err" class="error-msg" style="display:none"></div>`,
       `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
        <button class="btn btn-primary" onclick="saveSupplier(${id || 'null'})">Save</button>`);
   }
   async function saveSupplier(id) {
-    const payload = {
-      name: document.getElementById('sup-name').value.trim(),
-      contact: document.getElementById('sup-contact').value.trim(),
-      country: document.getElementById('sup-country').value.trim(),
-      address: document.getElementById('sup-address').value.trim(),
-      notes: document.getElementById('sup-notes').value.trim(),
-    };
+    const eng = suppliersEngine();
+    const g = k => { const el = document.getElementById('sup-' + k); return el ? el.value.trim() : ''; };
+    const payload = { name: g('name'), contact: g('contact'), country: g('country'), address: g('address'), notes: g('notes') };
+    payload.custom_fields = eng.collect(document.getElementById('modal-body'));
     const err = document.getElementById('sup-err');
+    const missing = eng.validateRequired(document.getElementById('modal-body'));
+    if (missing.length) { err.textContent = 'Required: ' + missing.join(', '); err.style.display = 'block'; return; }
     if (!payload.name) { err.textContent = 'Supplier name is required.'; err.style.display = 'block'; return; }
     const r = await apiFetch(id ? `/api/dashboard/suppliers/${id}` : '/api/dashboard/suppliers',
       { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
@@ -1292,6 +1320,43 @@
   }
 
 
+  // ── Column-engine adoption ───────────────────────────────────────────────────
+  // Sales, the PO/RFQ line-item grids and the supplier register read their
+  // columns from the shared engine now (columns.js) — rename, reorder, hide,
+  // add cf_ fields, option colors, required — the same editor leads have.
+  // Editing the layout is the ADMIN's: the server refuses employee writes for
+  // these entities, so canEdit mirrors that instead of offering a doomed save.
+  function procColsEngine(entity, builtins, onChange) {
+    return CE(entity) || ColumnsEngine(entity, {
+      base: PROCFG.base,
+      fetch: (url, opts) => PROCFG.fetch(url, opts),
+      modal: (...a) => PROCFG.modal(...a),
+      closeModal: () => PROCFG.closeModal(),
+      builtins,
+      canEdit: () => PROCFG.base === '/api/dashboard',
+      onChange,
+    });
+  }
+  const tupleCols = (tuples, types) => tuples.map(([key, label, width]) => ({
+    key, label, width, builtin: true, visible: true,
+    type: (types && types[key]) || 'text',
+    ...(types && types['options:' + key] ? { options: types['options:' + key] } : {}),
+  }));
+  // A "Columns" affordance for the tables that adopted the engine.
+  function procColsBtn(entity) {
+    const eng = CE(entity);
+    if (!eng || !eng.cfg.canEdit()) return '';
+    return `<button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="CE('${entity}').openPicker(event)">Columns</button>
+      <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="CE('${entity}').openAddModal()">+ Field</button>`;
+  }
+  // Render one custom-field cell for a record whose extras live in custom_fields.
+  function procCfCell(eng, col, rec) {
+    const raw = (rec.custom_fields || {})[col.key];
+    if ((col.type === 'select' || col.type === 'radio')) return `<td style="padding:8px 10px">${eng.badgeHtml(col, raw)}</td>`;
+    if (col.type === 'checkbox') return `<td style="padding:8px 10px;text-align:center">${raw === true || raw === 'true' ? '✓' : '—'}</td>`;
+    return `<td style="padding:8px 10px">${esc(raw == null ? '' : String(raw))}</td>`;
+  }
+
   // ── Sales (the Deals page's Sales tab) ───────────────────────────────────────
   // Moved here from dashboard.js when the tab became a permission of its own
   // (deals.sales to read, deals.salesEdit to write): both portals render it now,
@@ -1312,10 +1377,20 @@
   ];
   const SALE_DATE_KEYS = ['remaining_due', 'reservation_date', 'delivery_date'];
   const SALE_NUM_KEYS  = ['price_list', 'down_payment', 'discounted', 'remaining'];
+  function salesEngine() {
+    const types = {};
+    SALE_DATE_KEYS.forEach(k => { types[k] = 'date'; });
+    SALE_NUM_KEYS.forEach(k => { types[k] = 'number'; });
+    types.status = 'select';
+    types['options:status'] = SALE_STATUS_OPTS.map(o => ({ key: o.key, label: o.label, color: o.fg }));
+    return procColsEngine('sales', tupleCols(SALE_COLS, types), () => loadSales());
+  }
 
   async function loadSales() {
     const box = document.getElementById('deals-sales-table');
     if (box) box.innerHTML = '<div class="loading"><div class="spinner"></div> Loading sales…</div>';
+    const eng = salesEngine();
+    await eng.load();
     let list = [];
     try { list = await apiFetch('/api/dashboard/sales').then(r => r.json()); }
     catch (_) { box.innerHTML = '<div class="error-msg">Failed to load sales.</div>'; return; }
@@ -1328,17 +1403,21 @@
       box.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No sales yet — a row opens automatically when a deal is Won.</div>';
       return;
     }
+    const cols = eng.visible();
     box.innerHTML = `
+      <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px">${procColsBtn('sales')}</div>
       <div class="table-scroll"><table class="wide-table wide-table-xl" style="border-collapse:collapse;font-size:12.5px">
         <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
           <th style="padding:8px 10px;width:40px">No</th>
-          ${SALE_COLS.map(([, l, w]) => `<th style="padding:8px 10px;min-width:${w}px">${esc(l)}</th>`).join('')}
+          ${cols.map(c => `<th style="padding:8px 10px;min-width:${c.width || 90}px">${esc(c.label)}</th>`).join('')}
           <th style="padding:8px 10px;text-align:right"></th></tr></thead>
         <tbody>${_salesCache.map((x, i) => {
           const st = SALE_STATUS_OPTS.find(o => o.key === x.status) || SALE_STATUS_OPTS[0];
           return `<tr style="border-bottom:1px solid var(--border)">
             <td style="padding:8px 10px;color:var(--muted)">${i + 1}</td>
-            ${SALE_COLS.map(([k]) => {
+            ${cols.map(c => {
+              const k = c.key;
+              if (!c.builtin) return procCfCell(eng, c, x);
               if (k === 'status') return `<td style="padding:8px 10px"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${st.bg};color:${st.fg}">${esc(st.label)}</span></td>`;
               if (SALE_NUM_KEYS.includes(k)) return `<td style="padding:8px 10px;text-align:right">${Number(x[k]) ? Number(x[k]).toLocaleString() : '—'}</td>`;
               if (k === 'client_file' && x[k]) return `<td style="padding:8px 10px"><a href="${esc(x[k])}" target="_blank" rel="noopener" style="color:var(--primary)">file</a></td>`;
@@ -1381,9 +1460,10 @@
       const type = SALE_DATE_KEYS.includes(k) ? 'date' : SALE_NUM_KEYS.includes(k) ? 'number' : 'text';
       return `<div><div class="po-lbl">${esc(label)}</div><input id="sale-${k}" class="form-input" type="${type}" value="${esc(x?.[k] == null ? '' : String(x[k]))}"></div>`;
     };
+    const eng = salesEngine();
     showModal(id ? 'Edit sale' : 'Add sale', `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;max-height:66vh;overflow-y:auto;padding-right:4px">
-        ${SALE_COLS.map(field).join('')}
+        ${eng.visible().map(c => c.builtin ? field([c.key, c.label]) : eng.inputHtml(c, (x && x.custom_fields || {})[c.key])).join('')}
         <div id="sale-err" class="error-msg" style="display:none;grid-column:1/-1"></div>
       </div>`,
       `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
@@ -1419,9 +1499,13 @@
   }
 
   async function saveSale(id) {
+    const eng = salesEngine();
     const payload = {};
-    SALE_COLS.forEach(([k]) => { payload[k] = document.getElementById('sale-' + k).value; });
+    SALE_COLS.forEach(([k]) => { const el = document.getElementById('sale-' + k); if (el) payload[k] = el.value; });
+    payload.custom_fields = eng.collect(document.getElementById('modal-body'));
     const err = document.getElementById('sale-err');
+    const missing = eng.validateRequired(document.getElementById('modal-body'));
+    if (missing.length) { err.textContent = 'Required: ' + missing.join(', '); err.style.display = 'block'; return; }
     if (!payload.client && !payload.vin && !payload.model) {
       err.textContent = 'Enter at least a client, model or VIN.'; err.style.display = 'block'; return;
     }

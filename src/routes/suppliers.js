@@ -15,13 +15,16 @@ function supplierBuildRow(body) {
   const b = body || {};
   const name = String(b.name || '').trim();
   if (!name) return { error: 'Supplier name is required' };
-  return { row: {
+  const row = {
     name,
     contact: String(b.contact || '').trim(),
     address: String(b.address || '').trim(),
     country: String(b.country || '').trim(),
     notes:   String(b.notes || '').trim(),
-  } };
+  };
+  // Custom columns (the shared column engine) ride a JSONB blob, like leads.
+  if (b.custom_fields && typeof b.custom_fields === 'object') row.custom_fields = b.custom_fields;
+  return { row };
 }
 
 // Mounted for both portals over one set of handlers — see contracts.js for why.
