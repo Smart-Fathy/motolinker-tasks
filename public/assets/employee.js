@@ -1041,6 +1041,7 @@ function empParseBudget(raw) { const str = String(raw == null ? '' : raw).trim()
 function empFmtBudget(min, max) { const f = n => Number(n).toLocaleString(); if (min != null && min !== '' && max != null && max !== '') return f(min) + ' – ' + f(max) + ' EGP'; if (min != null && min !== '') return f(min) + ' EGP'; return '—'; }
 
 async function loadEmpLeads() {
+  const ps = document.getElementById('leads-pagesize'); if (ps) ps.value = String(leadsPageSize());
   const tbody = document.getElementById('emp-leads-tbody');
   try {
     await loadLeadCols();
@@ -1132,7 +1133,7 @@ lfInit({
 });
 
 function empFilterLeads() {
-  _leadsShown = LEADS_PAGE;                 // a new result set starts from the top
+  _leadsShown = leadsPageSize();            // a new result set starts from the top
   const q = (document.getElementById('emp-lead-search')?.value || '').toLowerCase();
   const from = document.getElementById('emp-lead-date-from')?.value || '';
   const to   = document.getElementById('emp-lead-date-to')?.value || '';
@@ -1173,10 +1174,23 @@ function exportLeadsTable() {
 // Only the rendering is capped; filters and sort still see every lead. See the same
 // note in dashboard.js — a full list is thousands of controls, and far worse as cards.
 const LEADS_PAGE = 50;
-let _leadsShown = LEADS_PAGE;
-function leadsShowMore() { _leadsShown += LEADS_PAGE; empRenderLeads(_lastRenderedLeads); }
+// The user picks the page size (25/50/100/500/1000) and it sticks per browser.
+// Search, filters, sort and export still run over EVERY lead — the choice caps
+// rendering only, so nothing else changes with it.
+function leadsPageSize() {
+  const n = parseInt(localStorage.getItem('ml_emp_leads_pagesize'));
+  return [25, 50, 100, 500, 1000].includes(n) ? n : LEADS_PAGE;
+}
+function setLeadsPageSize(v) {
+  try { localStorage.setItem('ml_emp_leads_pagesize', String(parseInt(v) || LEADS_PAGE)); } catch (_) {}
+  _leadsShown = leadsPageSize();
+  empRenderLeads(_lastRenderedLeads);
+}
+let _leadsShown = leadsPageSize();
+function leadsShowMore() { _leadsShown += leadsPageSize(); empRenderLeads(_lastRenderedLeads); }
 
 function empRenderLeads(list) {
+  if (typeof mlTopScrollbar === 'function') mlTopScrollbar('leads-scroll');
   _lastRenderedLeads = list;
   const tbody = document.getElementById('emp-leads-tbody');
   const vis = visibleLeadCols();

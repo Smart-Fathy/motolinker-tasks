@@ -283,3 +283,14 @@
   .refresh-indicator { display: none; }
   .topbar-hours { display: none; }
 }
+
+/* ── Top scrollbar proxy (mounted by mlTopScrollbar in mobile.js) ─────────────
+   The global *::-webkit-scrollbar{display:none} in both portal sheets would hide
+   this bar's whole reason to exist, so it re-enables one the same way
+   .table-scroll does. Under the card breakpoint the JS hides the bar — the
+   wrapper stops scrolling sideways there. */
+.table-scroll-top { overflow-x: auto; overflow-y: hidden; height: 14px; margin-bottom: 2px; scrollbar-width: thin; }
+.table-scroll-top::-webkit-scrollbar { display: block; height: 10px; }
+.table-scroll-top::-webkit-scrollbar-track { background: transparent; }
+.table-scroll-top::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+.table-scroll-top::-webkit-scrollbar-thumb:hover { background: var(--muted); }

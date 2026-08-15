@@ -10,11 +10,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const results = [];
 const check = (n, ok, x) => { results.push(ok); console.log((ok ? '  ok  ' : ' FAIL ') + n + (x ? '  ' + x : '')); };
 
-const LEADS = Array.from({ length: 8 }, (_, i) => ({
+// 60 rows: enough to exercise the 50-row default page and Load more; the three
+// "Hot" ones are the filtered set the select-all case works with.
+const LEADS = Array.from({ length: 60 }, (_, i) => ({
   id: i + 1,
   name: i < 3 ? `Hot Lead ${i + 1}` : `Cold Lead ${i + 1}`,
   phone: '010' + i, lead_status: i < 3 ? 'hot' : 'cold',
-  source: 'fb_ad', car_in_question: 'Seal', lead_date: '2026-08-0' + ((i % 8) + 1),
+  source: 'fb_ad', car_in_question: 'Seal', lead_date: '2026-08-' + String((i % 28) + 1).padStart(2, '0'),
 }));
 
 // The admin's arrangement: chat group renamed to the marketing label and carrying
@@ -94,7 +96,7 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
                bar: document.getElementById('leads-bulk-count')?.textContent || '' };
     });
     check('select-all under a filter selects only the filtered leads',
-      picked.selected.length === 3 && picked.all === 8, JSON.stringify(picked));
+      picked.selected.length === 3 && picked.all === 60, JSON.stringify(picked));
     check('…and the bulk bar says what it is out of', /of 3 filtered/.test(picked.bar), picked.bar);
     const cleared = await page.evaluate(async () => {
       const cb = document.getElementById('select-all-leads');
@@ -103,6 +105,71 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
       return _selectedLeads.size;
     });
     check('unticking clears the same scope', cleared === 0, String(cleared));
+    // ── Page size: a cap on RENDERING only ──────────────────────────────────
+    const paging = await page.evaluate(async () => {
+      localStorage.removeItem('ml_leads_pagesize');
+      document.getElementById('customer-search').value = '';
+      filterCustomers();
+      await new Promise(r => setTimeout(r, 100));
+      const rows = () => document.querySelectorAll('#customers-tbody tr[data-id], #customers-tbody tr').length;
+      const out = { def: document.querySelectorAll('#customers-tbody tr').length };
+      setLeadsPageSize('25');
+      out.at25 = document.querySelectorAll('#customers-tbody tr').length;
+      out.stored = localStorage.getItem('ml_leads_pagesize');
+      setLeadsPageSize('1000');
+      out.at1000 = document.querySelectorAll('#customers-tbody tr').length;
+      // Search must still see rows beyond the render cap.
+      setLeadsPageSize('25');
+      document.getElementById('customer-search').value = 'Cold Lead 59';
+      filterCustomers();
+      await new Promise(r => setTimeout(r, 100));
+      out.found = document.querySelectorAll('#customers-tbody tr').length;
+      out.foundName = (document.querySelector('#customers-tbody tr td') || {}).textContent || document.querySelector('#customers-tbody tr')?.textContent || '';
+      document.getElementById('customer-search').value = '';
+      // A re-filter must respect the chosen size, not snap back to the default —
+      // this is the line every search and chip toggle goes through.
+      filterCustomers();
+      await new Promise(r => setTimeout(r, 100));
+      out.afterRefilter = document.querySelectorAll('#customers-tbody tr').length;
+      return out;
+    });
+    // Rendered rows = page + the "Load more" footer row when the list overflows.
+    check('the default page renders 50 rows of 60', paging.def === 51, JSON.stringify(paging));
+    check('25 renders 25', paging.at25 === 26, String(paging.at25));
+    check('1000 renders all 60, no footer', paging.at1000 === 60, String(paging.at1000));
+    check('the choice persists', paging.stored === '25', String(paging.stored));
+    check('re-filtering keeps the chosen size', paging.afterRefilter === 26, String(paging.afterRefilter));
+    check('search still reaches a lead beyond the render cap',
+      paging.found === 1 && /Cold Lead 59/.test(paging.foundName), JSON.stringify({ n: paging.found, name: paging.foundName.slice(0, 30) }));
+    check('the selector exists in both portals',
+      /id="leads-pagesize"/.test(fs.readFileSync('public/dashboard.html', 'utf8'))
+      && /id="leads-pagesize"/.test(fs.readFileSync('public/employee.html', 'utf8')));
+
+    // ── Top scrollbar: a live proxy above the table ─────────────────────────
+    const bar = await page.evaluate(() => {
+      const wrap = document.getElementById('leads-scroll');
+      const bar = wrap && wrap._mlTopBar;
+      if (!wrap || !bar) return { missing: true };
+      const before = wrap.scrollLeft;
+      bar.scrollLeft = 120;
+      bar.dispatchEvent(new Event('scroll'));
+      return {
+        above: bar.nextElementSibling === wrap,
+        ghostWide: bar.firstChild.offsetWidth === wrap.scrollWidth,
+        mirrored: wrap.scrollLeft !== before && Math.abs(wrap.scrollLeft - bar.scrollLeft) <= 1,
+      };
+    });
+    check('a scrollbar proxy sits directly ABOVE the leads table', bar.above === true, JSON.stringify(bar));
+    check('…sized to the table', bar.ghostWide === true, JSON.stringify(bar));
+    check('…and dragging it scrolls the table', bar.mirrored === true, JSON.stringify(bar));
+
+    // ── The client-file upload names its destination ────────────────────────
+    const dashSrc = fs.readFileSync('public/assets/dashboard.js', 'utf8');
+    check('the upload hint names the Drive folder',
+      /MotoLinker \/ Client Files<\/strong> · up to 25 MB/.test(dashSrc));
+    check('…and the success message links the uploaded file',
+      /Saved to Drive → MotoLinker \/ Client Files/.test(dashSrc) && /meta\.name \|\| 'open the file'/.test(dashSrc));
+
     check('admin: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
     await page.close();
   }
