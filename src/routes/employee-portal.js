@@ -307,7 +307,9 @@ receiver.router.post('/api/employee/login', express.json(), async (req, res) => 
   if (!emp || !verifyPassword(password, emp.password_hash)) return res.status(401).json({ error: 'Invalid username or password' });
   const token = generateToken();
   const permissions = normEmpPerms(emp.permissions);
-  employeeSessions.set(token, { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions });
+  const sess = { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions };
+  employeeSessions.set(token, sess);
+  ctx.saveSession(token, 'employee', sess);
   res.json({ token, name: emp.name, username: emp.username, id: emp.id, job_title: emp.job_title || '', permissions, avatar_url: emp.avatar_url || '', status_text: emp.status_text || '', status_emoji: emp.status_emoji || '' });
 });
 receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res) => {
@@ -332,6 +334,7 @@ receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res)
 receiver.router.post('/api/employee/logout', requireEmployeeAuth, (req, res) => {
   const token = (req.headers['authorization'] || '').slice(7);
   employeeSessions.delete(token);
+  ctx.dropSession(token);
   res.json({ ok: true });
 });
 
