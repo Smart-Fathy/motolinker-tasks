@@ -263,17 +263,21 @@ async function sweep(browser, o) {
   // with closest(); overwriting rather than appending it would have left the button
   // silently doing nothing, which no layout assertion would have noticed.
   if (o.quotePage) {
+    // The quotation is a modal sheet now (shared quote.js, PO idiom) — open it
+    // first; the row class and its remove button live inside the sheet.
     await page.evaluate(p => { try { navigate(p); } catch (_) {} }, o.quotePage);
     await sleep(400);
-    const line = await page.evaluate(sel => {
-      const add = [...document.querySelectorAll('button')]
-        .find(b => /add item|\+ item/i.test(b.textContent));
-      if (add) { add.click(); add.click(); }
+    const line = await page.evaluate(async sel => {
+      try { await openQuoteForm(null); } catch (e) { return { err: String(e) }; }
+      await new Promise(r => setTimeout(r, 200));
+      addPricingRow(); addPricingRow();
       const before = document.querySelectorAll(sel).length;
       const rm = document.querySelector(sel + ' button.qt-remove');
       const reachable = !!(rm && rm.closest(sel));
       if (rm) rm.click();
-      return { before, after: document.querySelectorAll(sel).length, reachable };
+      const after = document.querySelectorAll(sel).length;
+      try { PROCFG.closeModal(); } catch (_) {}
+      return { before, after, reachable };
     }, o.quoteRowSel);
     t('a line-item row keeps the class its remove button looks for', line.reachable, JSON.stringify(line));
     t('removing a line item actually removes it',
@@ -380,7 +384,7 @@ async function sweep(browser, o) {
     },
     tablePages: ['tasks', 'hours', 'requests', 'leads', 'drive', 'sheets'],
     leadsPage: 'leads', leadsBody: '#emp-leads-tbody',
-    quotePage: 'quotation', quoteRowSel: '.emp-qt-item-row',
+    quotePage: 'quotation', quoteRowSel: '.qt-item-row',
     openModal: { page: 'leads', fn: 'openEmpLeadModal', sel: '#emp-lead-modal' },
     pages: ['home', 'log', 'tasks', 'hours', 'requests', 'leads', 'deals', 'reports',
             'quotation', 'chat', 'notif', 'calendar', 'meet', 'email', 'drive', 'sheets',

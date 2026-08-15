@@ -2108,7 +2108,7 @@ async function calendarSyncToggle() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { home: loadHome, tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: loadQuotation, calendar: loadCalendarSync, gchat: loadGChat, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
+const pageLoaders = { home: loadHome, tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: () => initQuotationPage(), calendar: loadCalendarSync, gchat: loadGChat, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
@@ -3887,365 +3887,6 @@ function updateDeletionBadge(n) {
   if (n > 0) { b.textContent = n; b.style.display = 'inline-flex'; } else { b.style.display = 'none'; }
 }
 
-// ── Quotation Draft ────────────────────────────────────────────────────────────
-let qtImages    = []; // newly-uploaded File objects
-let qtExistingImages = []; // data-URL strings restored from a saved quote (edit/duplicate)
-let qtEditingPk = null; // DB id of the quotation being edited in place (null = new)
-let qtPdfBase64 = null;
-
-const LOGISTICS_LABELS = [
-  'Ocean Freight',
-  'THC, Documentation & Clearances',
-  'Customs Vat & Tax',
-  'Last Mile Wench to Door',
-  'Service Fees',
-];
-
-async function loadQuotation() {
-  // Load employees for the issuer dropdown
-  try {
-    await preloadEmployeesForTasks();
-    const sel = document.getElementById('qt-issuer');
-    if (sel && (employeesForTasks || []).length) {
-      sel.innerHTML = '<option value="">— Select issuer —</option>' +
-        employeesForTasks.map(e => `<option value="${esc(e.name)}">${esc(e.name)}</option>`).join('');
-    }
-  } catch (_) {}
-
-  // Populate the lead picker (attaches the quotation to a lead's 360° profile)
-  try {
-    const pick = document.getElementById('qt-customer-id');
-    if (pick) {
-      const cur = pick.value;
-      const leads = _allCustomers.length ? _allCustomers : await apiFetch('/api/dashboard/customers').then(r => r.json());
-      if (Array.isArray(leads)) {
-        if (!_allCustomers.length) _allCustomers = leads;
-        pick.innerHTML = '<option value="">— No lead —</option>' +
-          [...leads].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(l => `<option value="${l.id}">${esc(l.name)}${l.phone ? ' · ' + esc(l.phone) : ''}</option>`).join('');
-        if (cur && [...pick.options].some(o => o.value === cur)) pick.value = cur;
-      }
-    }
-  } catch (_) {}
-
-  // Generate ID if empty
-  if (!document.getElementById('qt-id').value) await refreshQuoteId();
-
-  // Set today + 7 days as defaults
-  const today = new Date();
-  const valid = new Date(today); valid.setDate(valid.getDate() + 7);
-  const fmt = d => d.toISOString().split('T')[0];
-  if (!document.getElementById('qt-date').value)     document.getElementById('qt-date').value     = fmt(today);
-  if (!document.getElementById('qt-valid-to').value) document.getElementById('qt-valid-to').value = fmt(valid);
-
-  // Build logistics rows if empty
-  if (!document.getElementById('qt-logistics').children.length) buildLogisticsRows();
-
-  // Build one default pricing row if empty
-  if (!document.getElementById('qt-items').children.length) addPricingRow();
-
-  requestAnimationFrame(() => lucide.createIcons());
-}
-
-async function refreshQuoteId() {
-  try {
-    const d = await apiFetch('/api/dashboard/quotation/newid').then(r => r.json());
-    document.getElementById('qt-id').value = d.id;
-  } catch (_) {}
-}
-
-function buildLogisticsRows() {
-  const container = document.getElementById('qt-logistics');
-  container.innerHTML = '';
-  LOGISTICS_LABELS.forEach((label, i) => {
-    const row = document.createElement('div');
-    row.id = `qt-log-${i}`;
-    row.className = 'qt-line-3';
-    row.style.cssText = 'margin-bottom:8px;align-items:center';
-    row.innerHTML = `
-      <div style="font-size:13px;color:var(--text);padding:0 4px">${esc(label)}</div>
-      <input class="form-input" id="qt-log-usd-${i}" type="number" min="0" step="0.01" placeholder="0"
-        oninput="recalcLogistics(${i})" style="text-align:center">
-      <input class="form-input" id="qt-log-egp-${i}" readonly placeholder="0"
-        style="background:rgba(255,255,255,.03);text-align:center;font-weight:600">`;
-    container.appendChild(row);
-  });
-}
-
-function addPricingRow(name='', unit=1, priceUsd='', isFree=false) {
-  const container = document.getElementById('qt-items');
-  const idx = container.children.length;
-  const row = document.createElement('div');
-  row.className = 'qt-item-row qt-line-5';
-  row.style.cssText = 'margin-bottom:8px;align-items:center';
-  row.innerHTML = `
-    <input class="form-input" placeholder="Item name…" value="${esc(name)}" oninput="recalcItem(this)">
-    <input class="form-input" type="number" min="1" step="1" value="${unit}" placeholder="1"
-      style="text-align:center" oninput="recalcItem(this)">
-    <div style="position:relative">
-      <input class="form-input" placeholder="e.g. 22500 or Free" value="${esc(priceUsd)}"
-        oninput="recalcItem(this)" style="padding-right:50px">
-      <span onclick="toggleFreeItem(this)" title="Mark as Free"
-        style="position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;
-               cursor:pointer;padding:2px 6px;border-radius:4px;background:${isFree?'var(--primary)':'rgba(255,255,255,.08)'};
-               color:${isFree?'#fff':'var(--muted)'}">FREE</span>
-    </div>
-    <input class="form-input" readonly placeholder="Auto" style="background:rgba(255,255,255,.03);text-align:center;font-weight:600">
-    <button class="qt-remove" onclick="this.closest('.qt-item-row').remove();recalcGrandTotal()"
-      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-      <i data-lucide="x" style="width:13px;height:13px"></i>
-    </button>`;
-  container.appendChild(row);
-  requestAnimationFrame(() => lucide.createIcons());
-  recalcGrandTotal();
-}
-
-function toggleFreeItem(btn) {
-  const isNowFree = btn.style.background !== 'var(--primary)' && !btn.style.background.includes('124,106,255');
-  btn.style.background = isNowFree ? 'var(--primary)' : 'rgba(255,255,255,.08)';
-  btn.style.color       = isNowFree ? '#fff' : 'var(--muted)';
-  const input = btn.closest('div').querySelector('input');
-  if (isNowFree) { input.value = 'Free'; input.readOnly = true; }
-  else           { input.value = '';     input.readOnly = false; }
-  recalcItem(input);
-}
-
-function getExchange() { return parseFloat(document.getElementById('qt-exchange').value) || 0; }
-
-function recalcItem(inputEl) {
-  const row    = inputEl.closest('.qt-item-row');
-  const inputs = row.querySelectorAll('input');
-  const priceRaw  = inputs[2].value.trim();
-  const unitVal   = parseFloat(inputs[1].value) || 1;
-  const isFree    = priceRaw.toLowerCase() === 'free' || priceRaw === '';
-  const egpInput  = inputs[3];
-  if (isFree) { egpInput.value = priceRaw.toLowerCase() === 'free' ? 'Free' : ''; }
-  else {
-    const price  = parseFloat(priceRaw);
-    const exRate = getExchange();
-    egpInput.value = (isFinite(price) && exRate > 0)
-      ? Math.round(price * unitVal * exRate).toLocaleString()
-      : '';
-  }
-  recalcGrandTotal();
-}
-
-function recalcLogistics(i) {
-  const usdEl = document.getElementById(`qt-log-usd-${i}`);
-  const egpEl = document.getElementById(`qt-log-egp-${i}`);
-  if (!usdEl || !egpEl) return;
-  const usd    = parseFloat(usdEl.value) || 0;
-  const exRate = getExchange();
-  egpEl.value  = exRate > 0 ? Math.round(usd * exRate).toLocaleString() : '';
-  recalcGrandTotal();
-}
-
-function recalcAll() {
-  // Recalc all item rows
-  document.querySelectorAll('.qt-item-row').forEach(row => {
-    const inputs = row.querySelectorAll('input');
-    recalcItem(inputs[0]);
-  });
-  // Recalc all logistics rows
-  LOGISTICS_LABELS.forEach((_, i) => recalcLogistics(i));
-}
-
-function addCustomSpecRow(containerId) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  const row = document.createElement('div');
-  row.className = 'qt-custom-spec-row';
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 36px;gap:8px;margin-bottom:8px;align-items:center';
-  row.innerHTML = `
-    <input class="form-input" placeholder="e.g. Incoterms: CIF">
-    <button onclick="this.closest('.qt-custom-spec-row').remove()"
-      style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-      <i data-lucide="x" style="width:13px;height:13px"></i>
-    </button>`;
-  container.appendChild(row);
-  requestAnimationFrame(() => lucide.createIcons());
-}
-
-function recalcGrandTotal() {
-  let total = 0;
-  // Items
-  document.querySelectorAll('.qt-item-row').forEach(row => {
-    const inputs = row.querySelectorAll('input');
-    const val = inputs[3].value.replace(/,/g, '');
-    const n   = parseFloat(val);
-    if (isFinite(n)) total += n;
-  });
-  // Logistics
-  LOGISTICS_LABELS.forEach((_, i) => {
-    const egpEl = document.getElementById(`qt-log-egp-${i}`);
-    if (egpEl) {
-      const val = (egpEl.value || '').replace(/,/g, '');
-      const n   = parseFloat(val);
-      if (isFinite(n)) total += n;
-    }
-  });
-  const el = document.getElementById('qt-grand-total');
-  if (el) el.textContent = total.toLocaleString();
-}
-
-// Image handling
-function handleImgSelect(files) {
-  addImages(Array.from(files));
-}
-function handleImgDrop(e) {
-  addImages(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
-}
-function addImages(newFiles) {
-  const remaining = 5 - (qtImages.length + qtExistingImages.length);
-  qtImages = qtImages.concat(newFiles.slice(0, Math.max(0, remaining)));
-  renderImgPreviews();
-}
-function imgPreviewWrap(src, onRemove) {
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'position:relative;display:inline-block';
-  wrap.innerHTML = `<img src="${src}" style="height:90px;width:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
-    <button onclick="${onRemove}"
-      style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);border:none;border-radius:50%;width:20px;height:20px;color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0">×</button>`;
-  return wrap;
-}
-function renderImgPreviews() {
-  const container = document.getElementById('qt-img-preview');
-  container.innerHTML = '';
-  qtExistingImages.forEach((src, i) => container.appendChild(imgPreviewWrap(src, `removeExistingImg(${i})`)));
-  qtImages.forEach((file, i) => container.appendChild(imgPreviewWrap(URL.createObjectURL(file), `removeImg(${i})`)));
-  const drop = document.getElementById('qt-img-drop');
-  if (drop) drop.style.display = (qtImages.length + qtExistingImages.length) >= 5 ? 'none' : '';
-  requestAnimationFrame(() => lucide.createIcons());
-}
-function removeImg(i) { qtImages.splice(i, 1); renderImgPreviews(); }
-function removeExistingImg(i) { qtExistingImages.splice(i, 1); renderImgPreviews(); }
-
-// Build payload and generate PDF
-async function generateQuotation() {
-  const btn = document.getElementById('qt-generate-btn');
-  const err = document.getElementById('qt-error');
-  err.style.display = 'none';
-
-  const id       = document.getElementById('qt-id').value.trim();
-  const date     = document.getElementById('qt-date').value;
-  const validTo  = document.getElementById('qt-valid-to').value;
-  const name     = document.getElementById('qt-name').value.trim();
-  const vehicle  = document.getElementById('qt-vehicle').value.trim();
-  const exchange = document.getElementById('qt-exchange').value;
-  const currency = document.getElementById('qt-currency').value;
-  const issuer   = document.getElementById('qt-issuer').value;
-
-  if (!id || !date || !name) {
-    err.textContent = 'Please fill in ID, Date and Customer Name.';
-    err.style.display = 'block';
-    return;
-  }
-  if (!exchange || parseFloat(exchange) <= 0) {
-    err.textContent = 'Please enter a valid Exchange Rate.';
-    err.style.display = 'block';
-    return;
-  }
-
-  // Collect pricing items
-  const items = [];
-  document.querySelectorAll('.qt-item-row').forEach(row => {
-    const inputs = row.querySelectorAll('input');
-    const itemName = inputs[0].value.trim();
-    if (!itemName) return;
-    items.push({
-      name:     itemName,
-      unit:     inputs[1].value || '1',
-      priceUsd: inputs[2].value.trim(),
-    });
-  });
-
-  // Collect logistics
-  const logistics = LOGISTICS_LABELS.map((label, i) => ({
-    label,
-    priceUsd: document.getElementById(`qt-log-usd-${i}`)?.value || '0',
-  }));
-
-  // Collect custom specs
-  const customSpecs = [];
-  document.querySelectorAll('#qt-custom-specs .qt-custom-spec-row').forEach(row => {
-    const val = row.querySelector('input')?.value.trim();
-    if (val) customSpecs.push({ key: '', val });
-  });
-
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Generating…';
-
-  try {
-    const formData = new FormData();
-    formData.append('id',          id);
-    formData.append('date',        date);
-    formData.append('validTo',     validTo);
-    formData.append('name',        name);
-    formData.append('vehicleModel', vehicle);
-    formData.append('currency',    currency);
-    formData.append('exchange',    exchange);
-    formData.append('issuer',      issuer);
-    formData.append('items',       JSON.stringify(items));
-    formData.append('logistics',   JSON.stringify(logistics));
-    formData.append('customSpecs', JSON.stringify(customSpecs));
-    const qtLeadId = document.getElementById('qt-customer-id')?.value || '';
-    if (qtLeadId) formData.append('customer_id', qtLeadId);
-    formData.append('template', document.getElementById('qt-template')?.value || 'classic');
-    formData.append('existingImages', JSON.stringify(qtExistingImages));
-    if (qtEditingPk) formData.append('quotation_pk', String(qtEditingPk));
-    qtImages.forEach(f => formData.append('images', f));
-
-    const res = await fetch('/api/dashboard/quotation/generate', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + authToken },
-      body: formData,
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-
-    qtPdfBase64 = data.pdf;
-    // Build a Blob URL (Chrome blocks data: URLs for PDFs in iframes)
-    const bytes = Uint8Array.from(atob(qtPdfBase64), c => c.charCodeAt(0));
-    const blob  = new Blob([bytes], { type: 'application/pdf' });
-    const blobUrl = URL.createObjectURL(blob);
-    const frame = document.getElementById('qt-preview-frame');
-    if (frame._blobUrl) URL.revokeObjectURL(frame._blobUrl);
-    frame._blobUrl = blobUrl;
-    frame.src = blobUrl;
-    const modal = document.getElementById('qt-modal');
-    modal.style.display = 'flex';
-    requestAnimationFrame(() => lucide.createIcons());
-  } catch (e) {
-    err.textContent = 'Error: ' + e.message;
-    err.style.display = 'block';
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="file-badge" style="width:15px;height:15px"></i> Generate PDF';
-    lucide.createIcons({ nodes: [btn] });
-  }
-}
-
-function downloadQuotationPdf() {
-  if (!qtPdfBase64) return;
-  const id    = document.getElementById('qt-id').value || 'quotation';
-  const frame = document.getElementById('qt-preview-frame');
-  // Reuse the already-created blob URL if available
-  const blobUrl = frame?._blobUrl;
-  if (blobUrl) {
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = `Quotation_${id}.pdf`;
-    a.click();
-    return;
-  }
-  // Fallback: rebuild blob from base64
-  const bytes = Uint8Array.from(atob(qtPdfBase64), c => c.charCodeAt(0));
-  const blob  = new Blob([bytes], { type: 'application/pdf' });
-  const url   = URL.createObjectURL(blob);
-  const a     = document.createElement('a');
-  a.href = url; a.download = `Quotation_${id}.pdf`; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
-
 // ── Help Bot (bilingual EN/AR support assistant) ────────────────────────────
 const HELP_API = '/api/dashboard/help/chat';
 let _helpHistory = [];
@@ -4643,161 +4284,6 @@ function dismissAdminInstallBanner() {
 }
 
 // ── Quotation Tabs ────────────────────────────────────────────────────────
-function switchQtTab(tab) {
-  ['draft','history','settings'].forEach(t => {
-    document.getElementById('qt-tab-' + t).classList.toggle('active', t === tab);
-    document.getElementById('qt-panel-' + t).style.display = t === tab ? '' : 'none';
-  });
-  document.getElementById('qt-generate-btn').style.display = tab === 'draft' ? '' : 'none';
-  if (tab === 'history')  loadQtHistory();
-  if (tab === 'settings') loadQtSettings();
-}
-
-async function loadQtHistory() {
-  const body = document.getElementById('qt-history-body');
-  body.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px">Loading…</div>';
-  try {
-    const rows = await apiFetch('/api/dashboard/quotations').then(r => r.json());
-    if (!rows.length) { body.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px">No saved quotations yet.</div>'; return; }
-    body.innerHTML = `<table class="table"><thead><tr><th>ID</th><th>Title</th><th>Created By</th><th>Date</th><th></th></tr></thead>
-      <tbody>${rows.map(q => `<tr>
-        <td><code style="font-size:11px">${esc(q.quote_id)}</code></td>
-        <td>${esc(q.title||'—')}</td>
-        <td>${esc(q.created_by||'—')}</td>
-        <td>${new Date(q.created_at).toLocaleDateString()}</td>
-        <td style="white-space:nowrap;text-align:right">
-          <button class="btn btn-sm btn-outline" onclick="editQuotation(${q.id})"><i data-lucide="pencil" style="width:12px;height:12px"></i> Edit</button>
-          <button class="btn btn-sm btn-outline" onclick="duplicateQuotation(${q.id})"><i data-lucide="copy" style="width:12px;height:12px"></i> Duplicate</button>
-          <button class="btn btn-sm btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="deleteQuotation(${q.id})"><i data-lucide="trash-2" style="width:12px;height:12px"></i> Delete</button>
-        </td>
-      </tr>`).join('')}</tbody></table>`;
-    requestAnimationFrame(() => lucide.createIcons());
-  } catch (e) { body.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:16px">${esc(e.message)}</div>`; }
-}
-
-async function deleteQuotation(id) {
-  if (!confirm('Delete this quotation from history? This cannot be undone.')) return;
-  try {
-    const r = await apiFetch(`/api/dashboard/quotations/${id}`, { method: 'DELETE' });
-    if (!r.ok) { const e = await r.json().catch(() => ({})); return alert('Error: ' + (e.error || r.status)); }
-    loadQtHistory();
-  } catch (e) { alert('Error: ' + e.message); }
-}
-
-// Load a saved quotation into the draft. editing=true → update the same record on Generate;
-// editing=false (duplicate) → fresh quote id, saves as a new record. Restores ALL fields + images.
-async function populateQuoteDraft(q, editing) {
-  const d = q.data || {};
-  switchQtTab('draft');
-  qtEditingPk = editing ? q.id : null;
-  if (editing && d.id) document.getElementById('qt-id').value = d.id;
-  else await refreshQuoteId();
-  renderQtEditBanner();
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v != null ? v : ''); };
-  set('qt-date', d.date); set('qt-valid-to', d.validTo);
-  set('qt-name', d.name); set('qt-vehicle', d.vehicleModel);
-  set('qt-currency', d.currency); set('qt-exchange', d.exchange);
-  const iss = document.getElementById('qt-issuer'); if (iss && d.issuer) iss.value = d.issuer;
-  const pick = document.getElementById('qt-customer-id'); if (pick) pick.value = q.customer_id ? String(q.customer_id) : '';
-  const tpl = document.getElementById('qt-template'); if (tpl) tpl.value = d.template === 'brand' ? 'brand' : 'classic';
-  // Items
-  document.getElementById('qt-items').innerHTML = '';
-  (d.items || []).forEach(it => addPricingRow(it.name, it.unit, it.priceUsd === 'Free' ? 'Free' : it.priceUsd, it.priceUsd === 'Free'));
-  if (!document.getElementById('qt-items').children.length) addPricingRow();
-  // Logistics
-  if (!document.getElementById('qt-logistics').children.length) buildLogisticsRows();
-  (d.logistics || []).forEach((lg, i) => { const el = document.getElementById(`qt-log-usd-${i}`); if (el) el.value = (lg && lg.priceUsd && lg.priceUsd !== '0') ? lg.priceUsd : ''; });
-  // Custom specs
-  const cs = document.getElementById('qt-custom-specs');
-  if (cs) { cs.innerHTML = ''; (d.customSpecs || []).forEach(s => { addCustomSpecRow('qt-custom-specs'); const rows = cs.querySelectorAll('.qt-custom-spec-row'); const inp = rows[rows.length - 1]?.querySelector('input'); if (inp) inp.value = s.val || s.key || ''; }); }
-  // Images (restored data-URLs) + reset any pending uploads
-  qtImages = [];
-  qtExistingImages = Array.isArray(d.imageDataUrls) ? [...d.imageDataUrls] : [];
-  renderImgPreviews();
-  recalcAll();
-}
-function renderQtEditBanner() {
-  let b = document.getElementById('qt-edit-banner');
-  if (!b) {
-    b = document.createElement('div');
-    b.id = 'qt-edit-banner';
-    b.style.cssText = 'align-items:center;justify-content:space-between;gap:10px;background:rgba(201,163,94,.12);border:1px solid var(--primary);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--primary)';
-    const idField = document.getElementById('qt-id');
-    const host = idField ? (idField.closest('.card') || idField.parentElement) : null;
-    if (host && host.parentElement) host.parentElement.insertBefore(b, host);
-  }
-  if (qtEditingPk) {
-    b.style.display = 'flex';
-    b.innerHTML = `<span><i data-lucide="pencil" style="width:13px;height:13px;vertical-align:-2px"></i> Editing this quotation — <strong>Generate</strong> will update it (same ID).</span><button class="btn btn-sm btn-outline" onclick="cancelQtEdit()">Cancel edit</button>`;
-    requestAnimationFrame(() => lucide.createIcons());
-  } else { b.style.display = 'none'; b.innerHTML = ''; }
-}
-async function cancelQtEdit() { qtEditingPk = null; renderQtEditBanner(); await refreshQuoteId(); }
-async function duplicateQuotation(id) {
-  try {
-    const q = await apiFetch(`/api/dashboard/quotations/${id}`).then(r => r.json());
-    if (!q || !q.data) return;
-    await populateQuoteDraft(q, false);
-  } catch (e) { alert('Could not load quotation: ' + e.message); }
-}
-async function editQuotation(id) {
-  try {
-    const q = await apiFetch(`/api/dashboard/quotations/${id}`).then(r => r.json());
-    if (!q || !q.data) return;
-    await populateQuoteDraft(q, true);
-  } catch (e) { alert('Could not load quotation: ' + e.message); }
-}
-
-async function loadQtSettings() {
-  try {
-    const [settings, emps] = await Promise.all([
-      apiFetch('/api/dashboard/quotation/settings').then(r => r.json()),
-      apiFetch('/api/dashboard/employees-for-tasks').then(r => r.json()).catch(() => []),
-    ]);
-    document.getElementById('qts-company-name').value    = settings.company_name    || '';
-    document.getElementById('qts-company-phone').value   = settings.company_phone   || '';
-    document.getElementById('qts-company-email').value   = settings.company_email   || '';
-    document.getElementById('qts-company-website').value = settings.company_website  || '';
-    document.getElementById('qts-company-address').value = settings.company_address  || '';
-    document.getElementById('qts-company-tax-id').value  = settings.company_tax_id   || '';
-    document.getElementById('qts-payment-terms').value   = settings.payment_terms    || '';
-    document.getElementById('qts-footer-note').value     = settings.footer_note      || '';
-    // Populate notify dropdown
-    const sel = document.getElementById('qts-contact-notify-id');
-    if (sel) {
-      sel.innerHTML = '<option value="">— Nobody —</option>' + emps.map(e => `<option value="${esc(String(e.id))}"${String(settings.contact_notify_employee_id) === String(e.id) ? ' selected' : ''}>${esc(e.name)}</option>`).join('');
-    }
-  } catch (e) { console.error('loadQtSettings', e); }
-}
-
-async function saveQtSettings() {
-  const msg = document.getElementById('qts-msg');
-  const payload = {
-    company_name:    document.getElementById('qts-company-name').value,
-    company_phone:   document.getElementById('qts-company-phone').value,
-    company_email:   document.getElementById('qts-company-email').value,
-    company_website: document.getElementById('qts-company-website').value,
-    company_address: document.getElementById('qts-company-address').value,
-    company_tax_id:  document.getElementById('qts-company-tax-id').value,
-    payment_terms:   document.getElementById('qts-payment-terms').value,
-    footer_note:     document.getElementById('qts-footer-note').value,
-    contact_notify_employee_id: document.getElementById('qts-contact-notify-id')?.value || '',
-  };
-  try {
-    await apiFetch('/api/dashboard/quotation/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-    msg.style.display = 'block';
-    msg.style.background = 'rgba(138,154,134,.1)';
-    msg.style.color = '#9fb59a';
-    msg.textContent = 'Settings saved successfully.';
-    setTimeout(() => { msg.style.display = 'none'; }, 3000);
-  } catch (e) {
-    msg.style.display = 'block';
-    msg.style.background = 'rgba(239,68,68,.08)';
-    msg.style.color = '#f87171';
-    msg.textContent = 'Error: ' + e.message;
-  }
-}
-
 // ── Leads (Customers) ─────────────────────────────────────────────────────
 let _allCustomers = [];
 let _selectedLeads = new Set();
@@ -5387,7 +4873,7 @@ function renderLeadDrawer() {
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
         <button class="btn btn-sm btn-outline" onclick="viewDocPdf('quotation',${q.id},'${escJs(q.quote_id || 'Quotation')}')"><i data-lucide="file-text" style="width:12px;height:12px"></i> PDF</button>
-        <button class="btn btn-sm btn-outline" onclick="closeLeadProfile();navigate('quotation');duplicateQuotation(${q.id})">Open in draft</button>
+        <button class="btn btn-sm btn-outline" onclick="closeLeadProfile();duplicateQuotation(${q.id})">Open in draft</button>
       </div>
     </div>`).join('') : '<div style="color:var(--muted);font-size:12px">No quotations yet — use "Generate Quotation" above.</div>';
 
@@ -5545,29 +5031,9 @@ function ldGenerateQuote() {
   if (!_ldProfile) return;
   const c = _ldProfile.customer;
   closeLeadProfile();
-  navigate('quotation');
-  if (typeof switchQtTab === 'function') switchQtTab('draft');
-  setTimeout(() => {
-    const nameEl = document.getElementById('qt-name');
-    const vehEl = document.getElementById('qt-vehicle');
-    if (nameEl && !nameEl.value) nameEl.value = c.name || '';
-    if (nameEl && c.name) nameEl.value = c.name;
-    // Quote the vehicle we OFFER; fall back to what the customer asked for.
-    const cfq = c.custom_fields || {};
-    const vehName = cfq.cf_vehicle_offered || c.car_in_question || cfq.cf_vehicle_requested || '';
-    if (vehEl && vehName) vehEl.value = vehName;
-    // Prefill the quotation's images from the attached inventory vehicle.
-    const vehImgs = (c.custom_fields && Array.isArray(c.custom_fields.cf_vehicle_images)) ? c.custom_fields.cf_vehicle_images : [];
-    if (vehImgs.length && typeof renderImgPreviews === 'function') { qtExistingImages = vehImgs.slice(0, 5); renderImgPreviews(); }
-    const pick = document.getElementById('qt-customer-id');
-    if (pick) pick.value = String(c.id);
-    // Prefill a pricing line from the attached inventory vehicle's price (EGP → USD via exchange).
-    const vp = Number(c.custom_fields?.cf_vehicle_price) || 0;
-    if (vp > 0 && typeof addPricingRow === 'function') {
-      const ex = (typeof getExchange === 'function' ? getExchange() : 0);
-      addPricingRow(vehName || 'Vehicle', 1, ex > 0 ? Math.round(vp / ex) : vp);
-    }
-  }, 350);
+  // The quotation is a sheet now (same idiom as POs/RFQs) — open it directly
+  // with the lead's name, vehicle, photos and price prefilled.
+  openQuoteForm(null, { lead: c });
 }
 
 function toggleSelectAllLeads(cb) {
@@ -6443,6 +5909,19 @@ const HOMECFG = {
 // Portal binding for the shared huddle / group-admin module below.
 // Portal binding for the shared operations module (Suppliers, RFQ, POs, Contracts,
 // Submissions). The admin is not subject to employee permissions, so `can` is true.
+// Portal binding for the shared quotation sheet (quote.js). Who may issue,
+// which leads are pickable, and who the settings can notify — the three lists
+// that genuinely differ between the portals.
+const QTCFG = {
+  issuers: async () => { await preloadEmployeesForTasks(); return (employeesForTasks || []).map(e => e.name); },
+  leads: async () => {
+    const leads = _allCustomers.length ? _allCustomers : await apiFetch('/api/dashboard/customers').then(r => r.json());
+    if (Array.isArray(leads) && !_allCustomers.length) _allCustomers = leads;
+    return [...(Array.isArray(leads) ? leads : [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  },
+  people: async () => apiFetch('/api/dashboard/employees-for-tasks').then(r => r.json()).catch(() => []),
+};
+
 const PROCFG = {
   base: '/api/dashboard',
   fetch: (url, opts) => apiFetch(url, opts),
