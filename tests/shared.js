@@ -32,8 +32,10 @@ const MARKERS = {
 for (const [path, { src, re }] of Object.entries(MARKERS)) {
   check(`${path} holds the real module`, re.test(src));
   for (const portal of ['dashboard', 'employee']) {
-    check(`${portal} loads ${path}`, pages[portal].includes(`src="${path}"`));
-    check(`${portal} service worker caches ${path}`, workers[portal].includes(`'${path}'`));
+    // Asset URLs carry the deploy stamp now (?v=N) — accept it in both places.
+    check(`${portal} loads ${path}`, new RegExp(`src="${path}(\\?v=\\d+)?"`).test(pages[portal]));
+    check(`${portal} service worker caches ${path}`,
+      workers[portal].includes(`'${path}'`) || workers[portal].includes(`'${path}?v=' + V`));
     check(`${portal} bundle has no second copy of ${path}`, !re.test(bundles[portal]));
   }
 }
@@ -61,6 +63,28 @@ for (const portal of ['dashboard', 'employee']) {
 }
 check('the filter engine declares no adapter of its own', !/^const LFCFG = \{/m.test(filters));
 
+// ── Deploy atomicity ──────────────────────────────────────────────────────────
+// The HTML is network-first but the assets are cache-first, so without a version
+// stamp a deploy paired NEW markup with the OLD bundle out of the service-worker
+// cache — the "blank page until several refreshes" report. The stamp is the SW
+// cache version riding every asset URL; these keep the two in agreement.
+for (const portal of ['dashboard', 'employee']) {
+  const swVer = (workers[portal].match(/-v(\d+)';/) || [])[1];
+  check(`${portal} service worker declares a version`, !!swVer, String(swVer));
+  const refs = [...pages[portal].matchAll(/(?:href|src)="(\/(?:assets\/[a-z-]+\.(?:js|css)|help-docs\.js))(?:\?v=(\d+))?"/g)];
+  const unstamped = refs.filter(m => !m[2]).map(m => m[1]);
+  const wrong = refs.filter(m => m[2] && m[2] !== swVer).map(m => `${m[1]}?v=${m[2]}`);
+  check(`${portal} stamps every asset URL`, refs.length >= 8 && unstamped.length === 0, unstamped.join(', '));
+  check(`${portal} asset stamps match the service worker version (v${swVer})`, wrong.length === 0, wrong.join(', '));
+  check(`${portal} service worker shell carries the same stamp`,
+    /\?v=' \+ V/.test(workers[portal]) && /const V = CACHE\.split\('-v'\)\[1\]/.test(workers[portal]));
+  check(`${portal} service worker installs per-URL, tolerating a missing file`,
+    !/c\.addAll\(SHELL\)/.test(workers[portal]) && /c\.add\(u\)\.catch/.test(workers[portal]));
+  check(`${portal} service worker never answers a navigation with undefined`,
+    !/\.catch\(\(\) => caches\.match\('\/(dashboard|employee)'\)\)/.test(workers[portal])
+    && /hit \|\| new Response\(/.test(workers[portal]));
+}
+
 // The mobile layer has to load LAST: several of its rules exist only to beat later
 // same-specificity rules in the portal sheets, and it uses no !important to do it.
 for (const portal of ['dashboard', 'employee']) {
@@ -68,7 +92,8 @@ for (const portal of ['dashboard', 'employee']) {
   const own = html.indexOf(`/assets/${portal}.css`);
   const mob = html.indexOf('/assets/mobile.css');
   check(`${portal} loads mobile.css after its own stylesheet`, own >= 0 && mob > own, `own@${own} mobile@${mob}`);
-  check(`${portal} service worker caches mobile.css`, workers[portal].includes("'/assets/mobile.css'"));
+  check(`${portal} service worker caches mobile.css`,
+    workers[portal].includes("'/assets/mobile.css'") || workers[portal].includes("'/assets/mobile.css?v=' + V"));
 }
 // Comments stripped first — the file explains twice why it avoids !important, and
 // matching that prose would be the test failing on its own documentation.

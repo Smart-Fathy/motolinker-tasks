@@ -12,7 +12,12 @@ function apiFetch(path, opts = {}) {
   // Don't set Content-Type for FormData — browser sets multipart boundary automatically
   if (!(opts.body instanceof FormData)) headers['Content-Type'] = headers['Content-Type'] || 'application/json';
   if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
-  return fetch(path, { ...opts, headers });
+  // One central 401 check: a server restart wipes the in-memory session, and the
+  // scattered per-call checks missed enough places that the page just went quiet.
+  return fetch(path, { ...opts, headers }).then(r => {
+    if (r.status === 401 && authToken) showAuthScreen();
+    return r;
+  });
 }
 
 async function checkAuth() {
@@ -20,9 +25,44 @@ async function checkAuth() {
   try {
     const r = await apiFetch('/api/auth/check');
     if (r.status === 401) { showAuthScreen(); return false; }
-  } catch (_) { /* network issue — show dashboard and let calls fail naturally */ }
+  } catch (_) {
+    // Network down or server restarting. Showing the app anyway — the old
+    // behaviour — meant every panel silently failed and the page looked blank.
+    // Land somewhere visible and keep retrying until the server answers.
+    bootRetryScreen();
+    return false;
+  }
   document.getElementById('app').style.display = 'block';
   return true;
+}
+
+// A visible floor for boot failures. Independent of the app markup on purpose:
+// both #app and #auth-screen start display:none, so any unhandled throw during
+// init used to leave the page entirely blank until the user refreshed enough
+// times to win the service-worker race.
+function bootRetryScreen(message) {
+  let el = document.getElementById('boot-retry');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'boot-retry';
+    el.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;background:var(--bg,#0f1117);color:var(--text,#e7e3da);z-index:9998;text-align:center;padding:20px';
+    el.innerHTML = `<div>
+      <div style="font-size:17px;font-weight:700;margin-bottom:8px">Can’t reach MotoLinker</div>
+      <div id="boot-retry-msg" style="font-size:13px;color:var(--muted,#889);margin-bottom:16px">Retrying automatically…</div>
+      <button class="btn btn-primary" onclick="location.reload()">Retry now</button>
+    </div>`;
+    document.body.appendChild(el);
+  }
+  if (message) { const m = document.getElementById('boot-retry-msg'); if (m) m.textContent = message; }
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('auth-screen').style.display = 'none';
+  clearTimeout(bootRetryScreen._t);
+  bootRetryScreen._t = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/auth/check', { headers: authToken ? { Authorization: 'Bearer ' + authToken } : {} });
+      if (r.status > 0) location.reload();   // any HTTP answer means the server is back
+    } catch (_) { bootRetryScreen(); }       // still down — keep waiting
+  }, 5000);
 }
 
 function showAuthScreen() {
@@ -2210,10 +2250,15 @@ function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
   if (currentPage === 'whatsapp' && page !== 'whatsapp') waCloseSse();
   if (currentPage === 'gchat' && page !== 'gchat') gchatStopPoll();
+  // A page id that doesn't exist — a stale hash, or a cached bundle whose page
+  // list disagrees with the HTML mid-deploy — used to throw here, which killed
+  // init and left the whole app blank. Fall back to home like the team portal.
+  if (!document.getElementById('page-' + page)) page = 'home';
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
-  document.getElementById('nav-' + page).classList.add('active');
+  const navEl = document.getElementById('nav-' + page);
+  if (navEl) navEl.classList.add('active');
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
   const bnav = document.getElementById('bnav-' + page);
   if (bnav) bnav.classList.add('active');
@@ -3044,18 +3089,29 @@ let notifItems  = [];
 let notifUnread = 0;
 
 // ── Init ─────────────────────────────────────────────────────────────────────
+// The whole sequence sits in one try/catch because both #app and #auth-screen
+// start hidden: any unhandled throw in here used to leave the page with nothing
+// visible at all — the "blank page until I refresh a few times" report.
 (async () => {
-  lucide.createIcons();
-  const ok = await checkAuth();
-  if (!ok) return;
-  adminStartPresenceHeartbeat();
-  loadNotifs();
-  openNotifStream();
-  initSidebarState();
-  await loadNavConfig();   // apply the admin's saved section order + names
-  gchatInitNav();          // Google Chat nav appears only when it's configured
-  const validPages = ['home','tasks','employees','requests','submissions','hours','email','drive','sheets','chat','calendar','meet','quotation','customers','deals','stock','suppliers','rfqs','contracts','purchaseorders','reports','automations','deletions','whatsapp','gchat','notif'];
-  navigate(lastPage(validPages, 'home'));
+  try {
+    lucide.createIcons();
+    const ok = await checkAuth();
+    if (!ok) return;
+    adminStartPresenceHeartbeat();
+    loadNotifs();
+    openNotifStream();
+    initSidebarState();
+    // Cosmetic — a failure here must not stop the app from opening.
+    try { await loadNavConfig(); } catch (_) {}
+    gchatInitNav();          // Google Chat nav appears only when it's configured
+    const validPages = ['home','tasks','employees','requests','submissions','hours','email','drive','sheets','chat','calendar','meet','quotation','customers','deals','stock','suppliers','rfqs','contracts','purchaseorders','reports','automations','deletions','whatsapp','gchat','notif'];
+    navigate(lastPage(validPages, 'home'));
+  } catch (e) {
+    console.error('[boot]', e);
+    // Whatever happened, land somewhere visible with a way out.
+    try { navigate('home'); document.getElementById('app').style.display = 'block'; }
+    catch (_) { bootRetryScreen('Something went wrong while opening the dashboard.'); }
+  }
 })();
 
 // ── Notification center (bell + counter) ──────────────────────────────────────
@@ -3063,15 +3119,15 @@ let notifUnread = 0;
 function openNotifStream() {
   if (notifSse) { notifSse.close(); notifSse = null; }
   if (!authToken) return;
-  notifSse = new EventSource(`/api/dashboard/notifications/stream?_t=${encodeURIComponent(authToken)}`);
+  notifSse = chatStream(() => `/api/dashboard/notifications/stream?_t=${encodeURIComponent(authToken)}`, es => {
   // Huddle invites also arrive here, because the chat stream only exists while the
   // chat page is open — off that page an invite used to be dropped server-side with
   // nothing to show it. Only invites come this way; the signalling itself stays on
   // the chat stream.
-  notifSse.addEventListener('huddle', e => {
+  es.addEventListener('huddle', e => {
     try { hdRingOnce(JSON.parse(e.data)); } catch (_) {}
   });
-  notifSse.addEventListener('notification', e => {
+  es.addEventListener('notification', e => {
     try {
       const n = JSON.parse(e.data);
       notifItems.unshift(n);
@@ -3080,6 +3136,7 @@ function openNotifStream() {
       renderNotifs();
       showAdminToast(`${n.title}${n.body ? ' · ' + n.body : ''}`);
     } catch (_) {}
+  });
   });
 }
 function closeNotifStream() { if (notifSse) { notifSse.close(); notifSse = null; } }
@@ -3250,8 +3307,8 @@ let adminChatVoiceSeconds     = 0;
 
 function adminOpenChatSse() {
   if (adminChatSse) { adminChatSse.close(); adminChatSse = null; }
-  adminChatSse = new EventSource(`/api/dashboard/chat/events?_t=${encodeURIComponent(authToken)}`);
-  adminChatSse.addEventListener('message', e => {
+  adminChatSse = chatStream(() => `/api/dashboard/chat/events?_t=${encodeURIComponent(authToken)}`, es => {
+  es.addEventListener('message', e => {
     try {
       const { roomId, message } = JSON.parse(e.data);
       if (roomId === adminActiveChatRoom) {
@@ -3267,7 +3324,7 @@ function adminOpenChatSse() {
       adminChatUpdatePreview(roomId, message);
     } catch (_) {}
   });
-  adminChatSse.addEventListener('edit', e => {
+  es.addEventListener('edit', e => {
     try {
       const { roomId, message } = JSON.parse(e.data);
       if (roomId === adminActiveChatRoom) {
@@ -3279,7 +3336,7 @@ function adminOpenChatSse() {
       }
     } catch (_) {}
   });
-  adminChatSse.addEventListener('delete', e => {
+  es.addEventListener('delete', e => {
     try {
       const { roomId, msgId } = JSON.parse(e.data);
       if (roomId === adminActiveChatRoom) {
@@ -3288,7 +3345,7 @@ function adminOpenChatSse() {
       }
     } catch (_) {}
   });
-  adminChatSse.addEventListener('typing', e => {
+  es.addEventListener('typing', e => {
     try {
       const { roomId, senderName } = JSON.parse(e.data);
       if (roomId !== adminActiveChatRoom) return;
@@ -3299,11 +3356,11 @@ function adminOpenChatSse() {
     } catch (_) {}
   });
   // WebRTC signalling for huddles rides this same stream
-  adminChatSse.addEventListener('huddle', e => {
+  es.addEventListener('huddle', e => {
     try { huddleOnSignal(JSON.parse(e.data)); } catch (_) {}
   });
   // Membership or name changed — refresh the list, and the header if it's open
-  adminChatSse.addEventListener('room', e => {
+  es.addEventListener('room', e => {
     try {
       const { roomId } = JSON.parse(e.data);
       HDCFG.refreshRooms().then(() => {
@@ -3312,6 +3369,7 @@ function adminOpenChatSse() {
         else adminChatBackToRooms();   // we were removed from it
       });
     } catch (_) {}
+  });
   });
 }
 
@@ -5860,7 +5918,12 @@ function ldGenerateQuote() {
 }
 
 function toggleSelectAllLeads(cb) {
-  _allCustomers.forEach(c => { if (cb.checked) _selectedLeads.add(c.id); else _selectedLeads.delete(c.id); });
+  // The FILTERED list, never _allCustomers: with a filter active, "select all"
+  // used to quietly select every lead in the database — and the only bulk action
+  // is Delete, so one confident click could have removed the whole leads pool.
+  // _lastRenderedLeads is the same list the header checkbox's own state is
+  // computed from, so behaviour and display finally agree.
+  (_lastRenderedLeads || []).forEach(c => { if (cb.checked) _selectedLeads.add(c.id); else _selectedLeads.delete(c.id); });
   filterCustomers();
   updateLeadsBulkBar();
 }
@@ -5875,7 +5938,10 @@ function updateLeadsBulkBar() {
   const n = _selectedLeads.size;
   if (bar) { bar.style.display = n > 0 ? 'flex' : 'none'; }
   const cnt = document.getElementById('leads-bulk-count');
-  if (cnt) cnt.textContent = n + ' selected';
+  // Say what the selection is out of, so "select all" under a filter reads as
+  // what it now is — all of the filtered leads, not all leads.
+  const total = (_lastRenderedLeads || []).length;
+  if (cnt) cnt.textContent = n + ' selected' + (total && total < _allCustomers.length ? ` of ${total} filtered` : '');
 }
 
 function clearLeadSelection() {
@@ -6426,12 +6492,12 @@ function waApplyStatus(status, qr, enabled) {
 
 function waOpenSse() {
   waCloseSse();
-  waSse = new EventSource(`/api/dashboard/whatsapp/events?_t=${encodeURIComponent(authToken)}`);
-  waSse.addEventListener('whatsapp_status', e => {
+  waSse = chatStream(() => `/api/dashboard/whatsapp/events?_t=${encodeURIComponent(authToken)}`, es => {
+  es.addEventListener('whatsapp_status', e => {
     const d = JSON.parse(e.data);
     waApplyStatus(d.status, d.qr);
   });
-  waSse.addEventListener('whatsapp_message', e => {
+  es.addEventListener('whatsapp_message', e => {
     const d = JSON.parse(e.data);
     // Update contact list ordering/preview
     const idx = waContacts.findIndex(c => c.id === d.contact.id);
@@ -6444,6 +6510,7 @@ function waOpenSse() {
       apiFetch(`/api/dashboard/whatsapp/contacts/${waActiveContact.id}/read`, { method: 'POST' }).catch(()=>{});
     }
     waRenderContacts();
+  });
   });
 }
 

@@ -217,23 +217,23 @@ async function chatDeleteMsg(req, res, callerKey) {
 
 // SSE — Admin
 receiver.router.get('/api/dashboard/chat/events', requireAuth, (req, res) => {
-  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.set(ctx.SSE_HEADERS);
   res.flushHeaders();
   res.write(':ok\n\n');
   chatSseClients.set('admin', res);
   const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
-  req.on('close', () => { clearInterval(ka); chatSseClients.delete('admin'); });
+  req.on('close', () => { clearInterval(ka); if (chatSseClients.get('admin') === res) chatSseClients.delete('admin'); });
 });
 
 // SSE — Employee chat
 receiver.router.get('/api/employee/chat/events', requireEmployeeAuth, requirePerm('chat', 'view'), (req, res) => {
   const key = `employee_${req.employee.id}`;
-  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.set(ctx.SSE_HEADERS);
   res.flushHeaders();
   res.write(':ok\n\n');
   chatSseClients.set(key, res);
   const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
-  req.on('close', () => { clearInterval(ka); chatSseClients.delete(key); });
+  req.on('close', () => { clearInterval(ka); if (chatSseClients.get(key) === res) chatSseClients.delete(key); });
 });
 
 

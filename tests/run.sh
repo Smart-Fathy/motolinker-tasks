@@ -32,6 +32,10 @@ run leadstest   node tests/leadstest.js
 run permstest   node tests/permstest.js
 run permlive    node tests/permlive.js
 run proctest    node tests/proctest.js
+run boottest    node tests/boottest.js
+run sessions    node tests/sessiontest.js
+run ssetest     node tests/ssetest.js
+run navtest     node tests/navtest.js
 run mobiletest  node tests/mobiletest.js
 run homecache   node tests/homecache.js
 # needs a local coturn on 127.0.0.1:3478 for the success path; skips it otherwise

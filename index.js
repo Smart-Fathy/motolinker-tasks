@@ -150,6 +150,9 @@ async function loadGoogleTokens() {
     if (!data) return;
     for (const row of data) {
       const t = row.tokens;
+      // A disconnect persists as a nulled row; restoring it would put a dead
+      // entry in the Maps that reads as "connected" to the status routes.
+      if (!t) continue;
       if (row.user_key === 'admin_gmail') gmailTokens = t;
       else if (row.user_key === 'admin_calendar') calendarTokens = t;
       else if (row.user_key === 'admin_drive') driveTokens = ctx.driveTokens = t;
@@ -179,6 +182,43 @@ async function saveGoogleToken(userKey, tokens) {
   } catch (e) { console.warn('[tokens] Could not save to DB:', e.message); }
 }
 
+// ── Persisted sessions ─────────────────────────────────────────────────────────
+// The Maps stay the working set; this table is what survives a restart. Before
+// it existed every deploy logged the whole company out at once — and since the
+// portals keep the token in localStorage, the symptom was not "please log in"
+// but raw 401 bodies and blank pages everywhere.
+//
+// Writes are best-effort: a down database must never block a login the Map can
+// serve. Reads happen once per unknown token (see the auth guards), after which
+// the Map answers as before.
+const SESSION_MAX_AGE_MS = 30 * 864e5;   // persisted sessions expire after 30 days
+
+function saveSession(token, kind, payload) {
+  supabase.from('sessions')
+    .upsert({ token, kind, payload, created_at: new Date().toISOString() }, { onConflict: 'token' })
+    .then(({ error }) => { if (error && !/sessions/.test(String(error.message))) console.warn('[sessions] save:', error.message); },
+          e => console.warn('[sessions] save:', e.message));
+}
+function dropSession(token) {
+  supabase.from('sessions').delete().eq('token', token).then(() => {}, () => {});
+}
+async function restoreSession(token, kind) {
+  try {
+    const { data } = await supabase.from('sessions').select('kind,payload,created_at').eq('token', token).single();
+    if (!data || data.kind !== kind || !data.payload) return null;
+    if (Date.now() - new Date(data.created_at).getTime() > SESSION_MAX_AGE_MS) { dropSession(token); return null; }
+    return data.payload;
+  } catch (_) { return null; }
+}
+ctx.saveSession = saveSession;
+ctx.dropSession = dropSession;
+
+// One header set for every SSE endpoint. Deliberately NO `Connection` header:
+// connection-specific fields are illegal in HTTP/2 (RFC 9113 §8.2.2), and
+// Railway's h2 edge answered ours by resetting the stream — which Chrome
+// reported as net::ERR_HTTP2_PROTOCOL_ERROR on every notification stream.
+ctx.SSE_HEADERS = { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' };
+
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
 function hashPassword(password) {
@@ -193,17 +233,32 @@ function verifyPassword(password, stored) {
   } catch { return false; }
 }
 
-function requireAuth(req, res, next) {
+// Both guards read the Map first and fall back to the sessions table exactly
+// once per unknown token — that read-through is what makes a server restart
+// invisible to logged-in users instead of a company-wide logout.
+async function requireAuth(req, res, next) {
   const auth  = req.headers['authorization'] || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query._t;
-  if (!token || !sessions.has(token)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  if (!sessions.has(token)) {
+    const p = await restoreSession(token, 'admin');
+    if (p) sessions.set(token, p);
+  }
+  if (!sessions.has(token)) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
 
-function requireEmployeeAuth(req, res, next) {
+async function requireEmployeeAuth(req, res, next) {
   const auth  = req.headers['authorization'] || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query._t;
-  if (!token || !employeeSessions.has(token)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  if (!employeeSessions.has(token)) {
+    const p = await restoreSession(token, 'employee');
+    // Permissions in the stored payload may be stale; the /check every portal
+    // load makes refreshes them from the employees table (see employee-portal).
+    if (p) employeeSessions.set(token, p);
+  }
+  if (!employeeSessions.has(token)) return res.status(401).json({ error: 'Unauthorized' });
   req.employee = employeeSessions.get(token);
   next();
 }
@@ -267,6 +322,7 @@ receiver.router.post('/api/auth/login', express.json(), (req, res) => {
   if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
     const token = generateToken();
     sessions.set(token, { username, createdAt: Date.now() });
+    saveSession(token, 'admin', { username, createdAt: Date.now() });
     return res.json({ token, username });
   }
   res.status(401).json({ error: 'Invalid username or password' });
@@ -274,7 +330,9 @@ receiver.router.post('/api/auth/login', express.json(), (req, res) => {
 
 receiver.router.post('/api/auth/logout', requireAuth, (req, res) => {
   const auth = req.headers['authorization'] || '';
-  sessions.delete(auth.startsWith('Bearer ') ? auth.slice(7) : req.query._t);
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query._t;
+  sessions.delete(token);
+  dropSession(token);
   res.json({ ok: true });
 });
 
@@ -819,7 +877,9 @@ receiver.router.get('/api/email/callback', async (req, res) => {
         if (!emp) return res.redirect('/employee?google_login_error=' + encodeURIComponent('No account linked to this Google address. Contact your admin.'));
         const sessionToken = generateToken();
         const permissions = ctx.normEmpPerms(emp.permissions);
-        employeeSessions.set(sessionToken, { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions });
+        const sess = { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions };
+        employeeSessions.set(sessionToken, sess);
+        saveSession(sessionToken, 'employee', sess);
         return res.redirect('/employee?emp_token=' + sessionToken);
       }
       if (pending.type === 'employee' && pending.employeeId) {
@@ -911,6 +971,7 @@ receiver.router.get('/api/email/messages', requireAuth, async (_req, res) => {
 
 receiver.router.post('/api/email/disconnect', requireAuth, (_req, res) => {
   gmailTokens = null;
+  saveGoogleToken('admin_gmail', null);
   res.json({ ok: true });
 });
 
@@ -1043,7 +1104,9 @@ receiver.router.get('/api/drive/connect', requireAuth, (req, res) => {
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
 
-receiver.router.post('/api/drive/disconnect', requireAuth, (_req, res) => { driveTokens = ctx.driveTokens = null; res.json({ ok: true }); });
+// Persist the disconnect, or a restart resurrects the revoked grant and every
+// Drive call after that 401s against Google — 'it says not authorized'.
+receiver.router.post('/api/drive/disconnect', requireAuth, (_req, res) => { driveTokens = ctx.driveTokens = null; saveGoogleToken('admin_drive', null); res.json({ ok: true }); });
 
 receiver.router.get('/api/drive/files',  requireAuth, async (_req, res) => { try { res.json(await listDriveFiles(driveTokens)); } catch (e) { res.status(500).json({ error: e.message }); } });
 receiver.router.get('/api/drive/sheets', requireAuth, async (_req, res) => { try { res.json(await listDriveFiles(driveTokens, 'application/vnd.google-apps.spreadsheet')); } catch (e) { res.status(500).json({ error: e.message }); } });
@@ -1514,7 +1577,7 @@ receiver.router.get('/api/employee/drive/connect', requireEmployeeAuth, requireP
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
 
-receiver.router.post('/api/employee/drive/disconnect', requireEmployeeAuth, requirePerm('drive', 'connect'), (req, res) => { employeeDriveTokens.delete(req.employee.id); res.json({ ok: true }); });
+receiver.router.post('/api/employee/drive/disconnect', requireEmployeeAuth, requirePerm('drive', 'connect'), (req, res) => { employeeDriveTokens.delete(req.employee.id); saveGoogleToken(`${req.employee.id}_drive`, null); res.json({ ok: true }); });
 
 receiver.router.get('/api/employee/drive/files',  requireEmployeeAuth, requirePerm('drive', 'view'), async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id), null, `${req.employee.id}_drive`)); } catch (e) { res.status(500).json({ error: e.message }); } });
 receiver.router.get('/api/employee/drive/sheets', requireEmployeeAuth, requirePerm('sheets', 'view'), async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id), 'application/vnd.google-apps.spreadsheet', `${req.employee.id}_drive`)); } catch (e) { res.status(500).json({ error: e.message }); } });
@@ -1538,7 +1601,7 @@ receiver.router.get('/api/employee/email/connect', requireEmployeeAuth, requireP
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
 
-receiver.router.post('/api/employee/email/disconnect', requireEmployeeAuth, requirePerm('email', 'connect'), (req, res) => { employeeEmailTokens.delete(req.employee.id); res.json({ ok: true }); });
+receiver.router.post('/api/employee/email/disconnect', requireEmployeeAuth, requirePerm('email', 'connect'), (req, res) => { employeeEmailTokens.delete(req.employee.id); saveGoogleToken(`${req.employee.id}_gmail`, null); res.json({ ok: true }); });
 
 async function getEmployeeGmailToken(employeeId) {
   const t = employeeEmailTokens.get(employeeId);
@@ -1791,9 +1854,18 @@ function scheduleFollowupReminders() {
   setTimeout(() => ctx.backfillHotLeadDeals().catch(console.error), 15 * 1000); // one-time: deals for pre-existing Hot leads
   if (process.env.WHATSAPP_ENABLED === 'true') ctx.initWhatsApp().catch(console.error);
   const port = process.env.PORT || 3000;
-  receiver.app.listen(port, () => {
+  const server = receiver.app.listen(port, () => {
     console.log(`⚡️  MotoLinker running on port ${port}`);
   });
+  // Node ≥18 destroys any request older than 5 minutes (requestTimeout measures
+  // total duration, not idle time — heartbeats don't help), which cut every SSE
+  // stream mid-flight; through Railway's HTTP/2 edge that surfaced as
+  // ERR_HTTP2_PROTOCOL_ERROR rather than a clean close. 0 = no ceiling; the
+  // per-connection keepalive stays above the edge's idle window.
+  server.requestTimeout = 0;
+  server.headersTimeout = 60_000;
+  server.keepAliveTimeout = 75_000;
+  ctx.httpServer = server;
   console.log(`📊  Admin dashboard → http://localhost:${port}/dashboard`);
   if (!ADMIN_PASSWORD) console.warn('⚠️   ADMIN_PASSWORD is not set — dashboard login will fail!');
 })();

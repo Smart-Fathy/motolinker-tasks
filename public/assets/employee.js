@@ -7,10 +7,36 @@ let totalHrs  = 0;
 let activeTab = 'current';
 
 /* ── API helper ── */
+
+/* One gate in front of every Google-connect navigation. These are top-level
+   browser navigations carrying the session in the query string — if the session
+   died (server restart), the browser used to render the raw {"error":
+   "Unauthorized"} body. Ping the session first; ef() bounces a dead one to
+   login, and we only navigate when the server still knows us. */
+async function empConnectNav(url) {
+  try {
+    const r = await ef('/api/employee/check');
+    if (!r.ok) return;   // ef() already sent the user to the login screen
+  } catch (_) { showToast('Cannot reach the server — try again in a moment.'); return; }
+  window.location.href = url + (url.includes('?') ? '&' : '?') + '_t=' + encodeURIComponent(empToken || '');
+}
+
 async function ef(path, opts = {}) {
-  const h = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  const h = { ...(opts.headers || {}) };
+  // FormData sets its own multipart boundary; forcing JSON here would corrupt it.
+  if (!(opts.body instanceof FormData)) h['Content-Type'] = h['Content-Type'] || 'application/json';
   if (empToken) h['Authorization'] = 'Bearer ' + empToken;
-  return fetch(path, { ...opts, headers: h });
+  const r = await fetch(path, { ...opts, headers: h });
+  // A server restart wipes the in-memory session while localStorage keeps the
+  // token. Without this, every 401 body was parsed as data and each page invented
+  // its own wrong explanation ("not configured", "contact your admin") instead of
+  // sending the user back to log in.
+  if (r.status === 401 && empToken) {
+    localStorage.removeItem('ml_emp_token');
+    empToken = null;
+    showLogin();
+  }
+  return r;
 }
 
 /* ── Auth ── */
@@ -918,7 +944,7 @@ async function loadDriveSection(statusUrl, filesUrl, connectUrl, disconnectUrl, 
         <div style="font-size:40px;margin-bottom:12px">${icon}</div>
         <div style="font-size:16px;font-weight:600;margin-bottom:8px">${title}</div>
         <div style="font-size:13px;color:var(--muted);margin-bottom:20px">Connect your Google account to access your files.</div>
-        <a href="${connectUrl}?_t=${encodeURIComponent(empToken||'')}" class="btn btn-primary" style="text-decoration:none">Connect Google Drive</a>
+        <a href="#" onclick="empConnectNav('${connectUrl}');return false" class="btn btn-primary" style="text-decoration:none">Connect Google Drive</a>
       </div>`; return;
     }
     const files = await ef(filesUrl).then(r => r.json());
@@ -2022,7 +2048,7 @@ function gchatConnectBtn(label) {
   return `<button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="gchatConnect()">${esc(label)}</button>`;
 }
 function gchatConnect() {
-  window.location.href = GCHAT_BASE + '/connect' + (empToken ? '?_t=' + encodeURIComponent(empToken) : '');
+  empConnectNav(GCHAT_BASE + '/connect');
 }
 async function gchatDisconnect() {
   if (!confirm('Disconnect Google Chat?')) return;
@@ -2225,20 +2251,41 @@ function applyNavConfig(cfg) {
     const el = byKey.get(g.key);
     if (!el) return;                       // section this portal doesn't have (e.g. logistics)
     placedGroups.add(g.key);
-    const lbl = el.querySelector('.nav-group-label');
-    if (g.label && lbl) lbl.textContent = g.label;
-    nav.appendChild(el);
     const wrap = el.querySelector('.nav-group-items');
+    // Adopt the admin's group NAME only when the two portals agree on what the
+    // group contains. The admin's "chat" group also holds WhatsApp; renaming it
+    // "MRK & REACH" there used to retitle the portal's Chat group for anyone
+    // whose permissions showed it — "some employees see sections others don't",
+    // when the section never existed here at all, only the borrowed heading.
+    const portalIds = wrap ? new Set([...wrap.querySelectorAll('.nav-item')].map(i => i.id)) : new Set();
+    const sameShape = (g.items || []).every(it => {
+      const iel = navItemEl(it.id);
+      return iel && portalIds.has(iel.id);
+    });
+    const lbl = el.querySelector('.nav-group-label');
+    if (g.label && lbl && sameShape) lbl.textContent = g.label;
+    nav.appendChild(el);
     if (!wrap) return;
     const placedItems = new Set();
     (g.items || []).forEach(it => {
       const iel = navItemEl(it.id);
       if (!iel || !iel.classList.contains('nav-item')) return;
+      // Only reorder within the item's OWN portal group. The admin files
+      // Contracts under Tools, but here Tools is gated on the quotation
+      // permission — moving the item across groups parked it under a heading
+      // its own permission doesn't govern, visible or hidden by someone else's
+      // grant. Ordering is shared; group membership is the portal's.
+      if (!portalIds.has(iel.id)) return;
       // Never override the permission gate — only reorder/rename what's visible.
       if (it.label) navSetItemLabel(iel, it.label);
+      // The admin's hidden flag may only NARROW what shows: display is written
+      // solely for hidden===true, so an unhidden item keeps whatever
+      // applyPermissions decided and this can never resurrect a gated section.
+      if (it.hidden === true) iel.style.display = 'none';
       wrap.appendChild(iel);
       placedItems.add(iel.id);
     });
+    if (g.hidden === true) el.style.display = 'none';
     // An item that shipped after this arrangement was saved isn't in the config,
     // so the appends above leave it sitting at the top of its group. Push it to
     // the end instead — new entries join the list, they don't jump the queue.
@@ -2283,7 +2330,7 @@ async function empCalendarToggle() {
     loadEmpCalendar();
     return;
   }
-  window.location.href = '/api/employee/calendar/connect' + (empToken ? '?_t=' + encodeURIComponent(empToken) : '');
+  empConnectNav('/api/employee/calendar/connect');
 }
 
 /* ── Reports (only the ones this employee is granted) ── */
@@ -2534,7 +2581,7 @@ async function loadEmail() {
         <i data-lucide="mail" style="width:40px;height:40px;color:var(--muted);margin-bottom:12px"></i>
         <div style="font-size:16px;font-weight:600;margin-bottom:8px">Connect Your Gmail</div>
         <div style="font-size:13px;color:var(--muted);margin-bottom:20px">Connect your Google account to access your personal inbox.</div>
-        <a href="/api/employee/email/connect?_t=${encodeURIComponent(empToken||'')}" class="btn btn-primary" style="text-decoration:none">
+        <a href="#" onclick="empConnectNav('/api/employee/email/connect');return false" class="btn btn-primary" style="text-decoration:none">
           <i data-lucide="mail" style="width:15px;height:15px"></i> Connect Gmail
         </a>
       </div>`;
@@ -3337,8 +3384,8 @@ function myChatKey() { return `employee_${empInfo.id}`; }
 
 function openChatSse() {
   if (chatSse) { chatSse.close(); chatSse = null; }
-  chatSse = new EventSource(`/api/employee/chat/events?_t=${encodeURIComponent(empToken)}`);
-  chatSse.addEventListener('message', e => {
+  chatSse = chatStream(() => `/api/employee/chat/events?_t=${encodeURIComponent(empToken)}`, es => {
+  es.addEventListener('message', e => {
     try {
       const { roomId, message } = JSON.parse(e.data);
       if (roomId === activeChatRoomId) {
@@ -3354,7 +3401,7 @@ function openChatSse() {
       chatUpdatePreview(roomId, message);
     } catch (_) {}
   });
-  chatSse.addEventListener('edit', e => {
+  es.addEventListener('edit', e => {
     try {
       const { message } = JSON.parse(e.data);
       const el = document.querySelector(`[data-msg-id="${message.id}"]`);
@@ -3365,7 +3412,7 @@ function openChatSse() {
       if (idx >= 0) chatMessages[idx] = message;
     } catch (_) {}
   });
-  chatSse.addEventListener('delete', e => {
+  es.addEventListener('delete', e => {
     try {
       const { msgId } = JSON.parse(e.data);
       const el = document.querySelector(`[data-msg-id="${msgId}"]`);
@@ -3374,7 +3421,7 @@ function openChatSse() {
       if (idx >= 0) chatMessages.splice(idx, 1);
     } catch (_) {}
   });
-  chatSse.addEventListener('typing', e => {
+  es.addEventListener('typing', e => {
     try {
       const { roomId, senderName } = JSON.parse(e.data);
       if (roomId !== activeChatRoomId) return;
@@ -3385,11 +3432,11 @@ function openChatSse() {
     } catch (_) {}
   });
   // WebRTC signalling for huddles rides this same stream
-  chatSse.addEventListener('huddle', e => {
+  es.addEventListener('huddle', e => {
     try { huddleOnSignal(JSON.parse(e.data)); } catch (_) {}
   });
   // Membership or name changed — refresh the list, and the header if it's open
-  chatSse.addEventListener('room', e => {
+  es.addEventListener('room', e => {
     try {
       const { roomId } = JSON.parse(e.data);
       HDCFG.refreshRooms().then(() => {
@@ -3398,6 +3445,7 @@ function openChatSse() {
         else chatBackToRooms();   // we were removed from it
       });
     } catch (_) {}
+  });
   });
 }
 
@@ -3413,15 +3461,15 @@ let notifUnread  = 0;
 
 function openNotifStream() {
   if (notifSse) { notifSse.close(); notifSse = null; }
-  notifSse = new EventSource(`/api/employee/notifications/stream?_t=${encodeURIComponent(empToken)}`);
+  notifSse = chatStream(() => `/api/employee/notifications/stream?_t=${encodeURIComponent(empToken)}`, es => {
   // Huddle invites also arrive here, because the chat stream only exists while the
   // chat page is open — off that page an invite used to be dropped server-side with
   // nothing to show it. Only invites come this way; the signalling itself stays on
   // the chat stream.
-  notifSse.addEventListener('huddle', e => {
+  es.addEventListener('huddle', e => {
     try { hdRingOnce(JSON.parse(e.data)); } catch (_) {}
   });
-  notifSse.addEventListener('notification', e => {
+  es.addEventListener('notification', e => {
     try {
       const n = JSON.parse(e.data);
       notifItems.unshift(n);
@@ -3431,6 +3479,7 @@ function openNotifStream() {
       showToast(`${n.title}${n.body ? ' · ' + n.body : ''}`);
       if (n.type === 'task' || n.type === 'reminder') { loadMyTasks(); loadDropdownTasks(); }
     } catch (_) {}
+  });
   });
 }
 function closeNotifStream() {

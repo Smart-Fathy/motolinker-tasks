@@ -135,3 +135,39 @@ function chatImageFromDrop(e) {
   for (const f of files) if (String(f.type || '').startsWith('image/')) return f;
   return files.length ? files[0] : null;
 }
+
+// ── Self-healing EventSource ──────────────────────────────────────────────────
+// None of the five live streams in either portal had an error handler, so the
+// app leaned entirely on the browser's built-in retry — which is abandoned
+// permanently the moment a reconnect gets a non-2xx answer. After every server
+// restart the streams therefore died silently: chat and notifications simply
+// stopped for the rest of the session with the EventSource object still there.
+//
+// This wrapper recreates the source with exponential backoff when the browser
+// gives up, and rebuilds the URL each attempt so a refreshed token is picked up.
+// `wire` receives every new EventSource and attaches the listeners; callers keep
+// a handle and call .close() where they used to call es.close().
+function chatStream(makeUrl, wire) {
+  let es = null, timer = null, dead = false, delay = 3000;
+  const open = () => {
+    if (dead) return;
+    let url = '';
+    try { url = makeUrl(); } catch (_) {}
+    if (!url) { timer = setTimeout(open, delay); return; }
+    es = new EventSource(url);
+    wire(es);
+    es.onopen = () => { delay = 3000; };
+    es.onerror = () => {
+      if (dead) return;
+      // CONNECTING means the browser is retrying by itself — leave it alone.
+      if (es.readyState !== EventSource.CLOSED) return;
+      try { es.close(); } catch (_) {}
+      timer = setTimeout(open, delay);
+      delay = Math.min(delay * 2, 60000);
+    };
+  };
+  open();
+  return {
+    close() { dead = true; clearTimeout(timer); try { es && es.close(); } catch (_) {} },
+  };
+}

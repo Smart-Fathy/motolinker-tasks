@@ -10,13 +10,17 @@ const chatListRooms = (...a) => ctx.chatListRooms(...a);
 
 // ─── Notification Center streams + REST (both portals) ────────────────────────
 function openNotifStream(key, res, reqObj) {
-  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.set(ctx.SSE_HEADERS);
   res.flushHeaders();
   res.write(':ok\n\n');
   ctx.notifSseClients.set(key, res);
   console.log('[notif-sse] connected', key);
   const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
-  reqObj.on('close', () => { clearInterval(ka); ctx.notifSseClients.delete(key); });
+  // Two tabs, or a reconnect racing the old socket's close, share one slot per
+  // key. Deleting unconditionally evicted the LIVE stream when the stale one
+  // finally closed — notifications then stopped silently behind an apparently
+  // open EventSource. Only the current owner may clear the slot.
+  reqObj.on('close', () => { clearInterval(ka); if (ctx.notifSseClients.get(key) === res) ctx.notifSseClients.delete(key); });
 }
 
 async function listNotifications(memberKey, res) {

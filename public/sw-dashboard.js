@@ -1,12 +1,22 @@
-const CACHE = 'motolinker-dash-v84';
-const SHELL = ['/dashboard', '/manifest-dashboard.json', '/help-docs.js', '/assets/dashboard.css', '/assets/mobile.css', '/assets/dashboard.js', '/assets/home.js', '/assets/huddle.js',
-  '/assets/procurement.js', '/assets/chat-extras.js', '/assets/lead-filters.js', '/assets/mobile.js'];
+const CACHE = 'motolinker-dash-v85';
+// The version rides every asset URL (?v=N). The HTML references assets with the
+// SAME stamp, so a deploy changes the cache key: new HTML can never be paired
+// with the previous bundle out of this cache, which is what used to blank the
+// page until enough refreshes let the new worker take over. tests/shared.js
+// asserts the HTML and this file agree on N.
+const V = CACHE.split('-v')[1];
+const SHELL = ['/dashboard', '/manifest-dashboard.json', '/help-docs.js?v=' + V, '/assets/dashboard.css?v=' + V, '/assets/mobile.css?v=' + V, '/assets/dashboard.js?v=' + V, '/assets/home.js?v=' + V, '/assets/huddle.js?v=' + V,
+  '/assets/procurement.js?v=' + V, '/assets/chat-extras.js?v=' + V, '/assets/lead-filters.js?v=' + V, '/assets/mobile.js?v=' + V];
 const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com', 'cdn.jsdelivr.net'];
 
 self.addEventListener('install', e => {
+  // Per-URL, tolerating failures — addAll is all-or-nothing, so one 404 during a
+  // deploy window meant install failed, the new worker never activated, and the
+  // OLD cache kept serving stale assets forever. A miss here just means that URL
+  // is fetched from the network on first use instead.
   e.waitUntil(
     caches.open(CACHE)
-      .then(c => c.addAll(SHELL))
+      .then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => null))))
       .then(() => self.skipWaiting())
   );
 });
@@ -50,7 +60,11 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(c => c.put(request, clone));
           return res;
         })
-        .catch(() => caches.match('/dashboard'))
+        .catch(() => caches.match('/dashboard').then(hit =>
+          // caches.match resolves undefined on a miss, and respondWith(undefined)
+          // is a TypeError the browser renders as a blank document — the worst
+          // possible offline behaviour. Say what happened instead.
+          hit || new Response('<meta http-equiv="refresh" content="3"><body style="background:#0f1117;color:#889;font-family:sans-serif;display:grid;place-items:center;height:100vh">Reconnecting…</body>', { status: 503, headers: { 'Content-Type': 'text/html' } })))
     );
     return;
   }

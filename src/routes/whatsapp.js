@@ -130,7 +130,7 @@ async function sendWaMessage(waId, body) {
 
 // ── WhatsApp routes (admin only) ──
 receiver.router.get('/api/dashboard/whatsapp/events', requireAuth, (req, res) => {
-  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.set(ctx.SSE_HEADERS);
   res.flushHeaders();
   res.write(':ok\n\n');
   waSseClients.add(res);
