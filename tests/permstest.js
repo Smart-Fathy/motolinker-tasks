@@ -23,7 +23,7 @@ const STREAMS     = fs.readFileSync('src/routes/notif-streams.js', 'utf8');
 const NOTIFS      = fs.readFileSync('src/routes/notifications.js', 'utf8');
 // The procurement modules serve both portals from one set of handlers, so their
 // guards count as enforcement the same as anything in index.js.
-const PROC = ['suppliers', 'supplier-catalogue', 'rfq', 'purchase-orders', 'contracts', 'submissions']
+const PROC = ['suppliers', 'supplier-catalogue', 'rfq', 'purchase-orders', 'contracts', 'submissions', 'meetings', 'columns']
   .map(f => fs.readFileSync(`src/routes/${f}.js`, 'utf8'));
 const SERVER_FILES = [IDX, EMP, HUDDLES, STREAMS, NOTIFS, ...PROC].join('\n');
 
@@ -98,6 +98,13 @@ const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', perm
   const sup = M.normEmpPerms({ suppliers: true, suppliersActions: { view: true, docs: true } });
   c('suppliers.purchases follows view for pre-existing shapes',
     sup.suppliersActions.purchases === true);
+  // Meet had NO actions when older employees were saved: whoever has the master
+  // keeps the whole page, including the new schedule ability.
+  const meetOld = M.normEmpPerms({ meet: true, meetActions: {} });
+  c('a pre-actions Meet grant keeps view and gains schedule',
+    meetOld.meetActions.view === true && meetOld.meetActions.schedule === true);
+  c('…but only with the master on',
+    M.normEmpPerms({ meet: false, meetActions: {} }).meet === false);
   // The fallback must never invent a grant where the saved object explicitly
   // denies everything the fallback is keyed on.
   c('a fully-denied rich shape stays fully denied',

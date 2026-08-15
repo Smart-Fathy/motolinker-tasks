@@ -502,7 +502,7 @@ const pageLoaders = { home: loadHome, requests: loadMyRequests, drive: loadDrive
   // Operations: the renderers live in the shared procurement.js, which both
   // portals load, so these are the same functions the dashboard calls.
   suppliers: () => loadSuppliers(), rfq: () => loadRfqs(), purchaseorders: () => loadPurchaseOrders(),
-  contracts: () => loadContracts(), submissions: () => loadSubmissions() };
+  contracts: () => loadContracts(), submissions: () => loadSubmissions(), meet: () => loadMeetings() };
 let _currentEmpPage = 'log';
 function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
@@ -2511,6 +2511,13 @@ async function empEmailDisconnect() {
 // The whole builder lives in the shared quote.js now (one sheet, both portals,
 // the PO/RFQ idiom). The ~450-line duplicate that sat here is gone; this
 // binding provides the three portal-specific lists the sheet needs.
+const MEETCFG = {
+  people: async () => {
+    const r = await ef('/api/employee/coworkers');
+    const d = await r.json();
+    return Array.isArray(d) ? d : [];
+  },
+};
 const QTCFG = {
   issuers: async () => [empInfo && empInfo.name].filter(Boolean),
   leads: async () => {
