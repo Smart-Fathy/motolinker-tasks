@@ -1600,8 +1600,6 @@ async function importStockCsv() {
 
 // ── Deals tabs: Pipeline · Inquiry · Sales ──────────────────────────────────────
 let _dealsTab = 'pipeline';
-let _salesCache = [];
-const SALE_STATUS_OPTS = PO_LINE_STATUSES;
 
 function dealsTab(tab) {
   _dealsTab = tab;
@@ -1612,144 +1610,6 @@ function dealsTab(tab) {
   });
   if (tab === 'sales') loadSales();
   requestAnimationFrame(() => lucide.createIcons());
-}
-
-// Sales is its own table — a row per sold car, opened when a deal is Won.
-const SALE_COLS = [
-  ['client', 'Client', 130], ['consignee', 'Consignee', 130], ['brand', 'Brand', 80],
-  ['model', 'Model', 90], ['trim', 'Trim', 90], ['colour', 'Colour EXT / INT', 130],
-  ['vin', 'VIN', 140], ['status', 'Status', 150], ['sales_name', 'Sales Name', 110],
-  ['price_list', 'Price List', 100], ['down_payment', 'D payment', 100],
-  ['discounted', 'Discounted', 100], ['remaining', 'Remaining', 100],
-  ['remaining_due', 'Remaining due', 130], ['reservation_date', 'Reservation Date', 140],
-  ['payment_type', 'Payment type', 120], ['delivery_date', 'Delivery Date', 130],
-  ['client_file', 'Client File', 110],
-];
-const SALE_DATE_KEYS = ['remaining_due', 'reservation_date', 'delivery_date'];
-const SALE_NUM_KEYS  = ['price_list', 'down_payment', 'discounted', 'remaining'];
-
-async function loadSales() {
-  const box = document.getElementById('deals-sales-table');
-  if (box) box.innerHTML = '<div class="loading"><div class="spinner"></div> Loading sales…</div>';
-  let list = [];
-  try { list = await apiFetch('/api/dashboard/sales').then(r => r.json()); }
-  catch (_) { box.innerHTML = '<div class="error-msg">Failed to load sales.</div>'; return; }
-  if (list && list.error) {
-    box.innerHTML = `<div class="error-msg">${esc(list.error)}<br><span style="font-size:12px">If this mentions a missing <code>sales</code> table, run <code>migrations/003_logistics_deals_docs.sql</code>.</span></div>`;
-    return;
-  }
-  _salesCache = Array.isArray(list) ? list : [];
-  if (!_salesCache.length) {
-    box.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No sales yet — a row opens automatically when a deal is Won.</div>';
-    return;
-  }
-  box.innerHTML = `
-    <div class="table-scroll"><table class="wide-table wide-table-xl" style="border-collapse:collapse;font-size:12.5px">
-      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
-        <th style="padding:8px 10px;width:40px">No</th>
-        ${SALE_COLS.map(([, l, w]) => `<th style="padding:8px 10px;min-width:${w}px">${esc(l)}</th>`).join('')}
-        <th style="padding:8px 10px;text-align:right"></th></tr></thead>
-      <tbody>${_salesCache.map((x, i) => {
-        const st = SALE_STATUS_OPTS.find(o => o.key === x.status) || SALE_STATUS_OPTS[0];
-        return `<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:8px 10px;color:var(--muted)">${i + 1}</td>
-          ${SALE_COLS.map(([k]) => {
-            if (k === 'status') return `<td style="padding:8px 10px"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${st.bg};color:${st.fg}">${esc(st.label)}</span></td>`;
-            if (SALE_NUM_KEYS.includes(k)) return `<td style="padding:8px 10px;text-align:right">${Number(x[k]) ? Number(x[k]).toLocaleString() : '—'}</td>`;
-            if (k === 'client_file' && x[k]) return `<td style="padding:8px 10px"><a href="${esc(x[k])}" target="_blank" rel="noopener" style="color:var(--primary)">file</a></td>`;
-            return `<td style="padding:8px 10px">${esc(x[k] || '')}</td>`;
-          }).join('')}
-          <td style="padding:8px 10px;text-align:right;white-space:nowrap">
-            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openSaleForm(${x.id})">Edit</button>
-            <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteSale(${x.id})">Delete</button>
-          </td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table></div>`;
-}
-
-function openSaleForm(id) {
-  const x = id ? _salesCache.find(v => v.id === id) : null;
-  const field = ([k, label]) => {
-    if (k === 'status') {
-      return `<div><div class="po-lbl">${esc(label)}</div><select id="sale-${k}" class="form-input">
-        ${SALE_STATUS_OPTS.map(o => `<option value="${o.key}" ${(x?.status || 'send_to_supplier') === o.key ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
-      </select></div>`;
-    }
-    if (k === 'client_file') {
-      // Client paperwork is scans and can be large, so it goes to Google Drive
-      // rather than the 1 GB Supabase tier. Upload needs a saved row to attach to.
-      const meta = x?.client_file_meta || null;
-      return `<div style="grid-column:1/-1"><div class="po-lbl">${esc(label)}</div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          ${x?.client_file ? `<a href="${esc(x.client_file)}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">
-            <i data-lucide="file-text" style="width:13px;height:13px"></i> ${esc(meta?.name || 'Open current file')}</a>` : ''}
-          <input type="file" id="sale-file-input" style="display:none" onchange="saleUploadFile(${id || 'null'}, this)">
-          <button class="btn btn-outline btn-sm" ${id ? '' : 'disabled title="Save the sale first"'}
-            onclick="document.getElementById('sale-file-input').click()">
-            <i data-lucide="upload" style="width:13px;height:13px"></i> ${x?.client_file ? 'Replace file' : 'Upload file'}</button>
-          <span style="font-size:11px;color:var(--muted)">Stored in your Google Drive → <strong>MotoLinker / Client Files</strong> · up to 25 MB</span>
-        </div>
-        <div id="sale-file-msg" style="font-size:12px;margin-top:6px"></div>
-        <input type="hidden" id="sale-client_file" value="${esc(x?.client_file || '')}"></div>`;
-    }
-    const type = SALE_DATE_KEYS.includes(k) ? 'date' : SALE_NUM_KEYS.includes(k) ? 'number' : 'text';
-    return `<div><div class="po-lbl">${esc(label)}</div><input id="sale-${k}" class="form-input" type="${type}" value="${esc(x?.[k] == null ? '' : String(x[k]))}"></div>`;
-  };
-  showModal(id ? 'Edit sale' : 'Add sale', `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;max-height:66vh;overflow-y:auto;padding-right:4px">
-      ${SALE_COLS.map(field).join('')}
-      <div id="sale-err" class="error-msg" style="display:none;grid-column:1/-1"></div>
-    </div>`,
-    `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
-     <button class="btn btn-primary" onclick="saveSale(${id || 'null'})">Save</button>`,
-    { wide: true });
-}
-// Upload straight to Drive. Refuses rather than falling back to Supabase, so a
-// disconnected Drive is loud instead of quietly eating the free tier.
-async function saleUploadFile(id, input) {
-  const f = input.files && input.files[0];
-  const msg = document.getElementById('sale-file-msg');
-  if (!f || !id) return;
-  msg.style.color = 'var(--muted)';
-  msg.textContent = 'Uploading to Drive…';
-  const fd = new FormData();
-  fd.append('file', f);
-  const r = await apiFetch(`/api/dashboard/sales/${id}/file`, { method: 'POST', body: fd });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    msg.style.color = 'var(--danger)';
-    msg.innerHTML = esc(d.error || 'Upload failed.')
-      + (r.status === 409 ? ' <a href="#" onclick="hideModal();navigate(\'drive\');return false" style="color:var(--primary)">Connect Drive</a>' : '');
-    return;
-  }
-  msg.style.color = 'var(--success)';
-  // Name the destination and link the file — "Uploaded." answered none of the
-  // questions people actually had ("uploaded WHERE?").
-  const meta = d.client_file_meta || {};
-  msg.innerHTML = `Saved to Drive → MotoLinker / Client Files` +
-    (d.client_file ? ` · <a href="${esc(d.client_file)}" target="_blank" rel="noopener" style="color:var(--primary)">${esc(meta.name || 'open the file')}</a>` : '');
-  document.getElementById('sale-client_file').value = d.client_file || '';
-  loadSales();
-}
-
-async function saveSale(id) {
-  const payload = {};
-  SALE_COLS.forEach(([k]) => { payload[k] = document.getElementById('sale-' + k).value; });
-  const err = document.getElementById('sale-err');
-  if (!payload.client && !payload.vin && !payload.model) {
-    err.textContent = 'Enter at least a client, model or VIN.'; err.style.display = 'block'; return;
-  }
-  const r = await apiFetch(id ? `/api/dashboard/sales/${id}` : '/api/dashboard/sales',
-    { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
-  const d = await r.json();
-  if (!r.ok) { err.textContent = d.error || 'Failed to save.'; err.style.display = 'block'; return; }
-  hideModal(); loadSales();
-}
-async function deleteSale(id) {
-  if (!confirm('Delete this sale record?')) return;
-  await apiFetch(`/api/dashboard/sales/${id}`, { method: 'DELETE' });
-  loadSales();
 }
 
 // ── Sidebar layout: admin drag-and-drop ordering + renaming ─────────────────────
@@ -2370,7 +2230,7 @@ async function loadEmployees() {
     } else {
       const permLabels = { requests: 'Requests', drive: 'Drive', sheets: 'Sheets', email: 'Email', viewAllRequests: 'View All Requests', quotation: 'Quotation', leads: 'Leads', deals: 'Deals' };
       tableC.innerHTML = `<div class="table-scroll"><table>
-        <thead><tr><th>Name</th><th>Username</th><th>Job Title</th><th>Status</th><th>Email</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr><th style="width:34px"><input type="checkbox" id="emp-select-all" onchange="empToggleSelectAll(this)"></th><th>Name</th><th>Username</th><th>Job Title</th><th>Status</th><th>Email</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>${emps.map(e => {
           const p = e.permissions || {};
           const sc = p.scope || {};
@@ -2382,6 +2242,7 @@ async function loadEmployees() {
           const avatar = e.avatar_url ? `<img src="${esc(e.avatar_url)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;font-size:10px;font-weight:700;vertical-align:middle;margin-right:8px">${initials}</span>`;
           const statusStr = (e.status_emoji || e.status_text) ? `${e.status_emoji||''} ${esc(e.status_text||'')}`.trim() : '—';
           return `<tr>
+            <td><input type="checkbox" class="emp-pick" value="${e.id}" ${_empPicked.has(e.id) ? 'checked' : ''} onchange="empTogglePick(${e.id})"></td>
             <td class="task-title">${avatar}${esc(e.name)}</td>
             <td><code style="font-size:12px">${esc(e.username)}</code></td>
             <td style="font-size:12px;color:var(--muted)">${esc(e.job_title || '—')}</td>
@@ -2401,6 +2262,67 @@ async function loadEmployees() {
     tableC.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`;
   }
   requestAnimationFrame(() => lucide.createIcons());
+}
+
+// ── Bulk permissions ──────────────────────────────────────────────────────────
+// Tick employees in the list (or none, meaning everyone) and apply ONE
+// permission set to all of them. The form is the same catalogue-generated one
+// the per-employee modal uses, so the two can never drift apart.
+let _empPicked = new Set();
+function empTogglePick(id) {
+  if (_empPicked.has(id)) _empPicked.delete(id); else _empPicked.add(id);
+  empUpdateBulkBtn();
+}
+function empToggleSelectAll(cb) {
+  _empPicked = cb.checked ? new Set(allEmployees.map(e => e.id)) : new Set();
+  document.querySelectorAll('.emp-pick').forEach(x => { x.checked = cb.checked; });
+  empUpdateBulkBtn();
+}
+function empUpdateBulkBtn() {
+  const btn = document.getElementById('emp-bulk-btn');
+  if (btn) btn.textContent = _empPicked.size ? `Apply permissions to ${_empPicked.size} selected…` : 'Apply permissions to all…';
+}
+async function openBulkPermsModal() {
+  const cat = await permCatalogue();
+  const targets = _empPicked.size ? [..._empPicked] : 'all';
+  const who = targets === 'all' ? `ALL ${allEmployees.length} employees` : `${targets.length} selected employee(s)`;
+  _empModalPerms = {};
+  showModal('Apply permissions', `
+    <div class="error-msg" style="display:block;margin-bottom:14px">
+      This <strong>replaces</strong> the permissions of ${who} with what you set below — it does not add to what they have.
+    </div>
+    <div class="form-group">
+      <label class="form-label">Start from</label>
+      <select class="form-control" onchange="bulkPermsPrefill(this.value)">
+        <option value="">Everything off</option>
+        ${allEmployees.map(e => `<option value="${e.id}">Copy from ${esc(e.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div id="bulk-perms-form">
+      ${cat.failed
+        ? `<div class="error-msg" style="display:block">Could not load the permission list — try again.</div>`
+        : cat.groups.map(empPermGroup).join('')}
+    </div>
+  `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="applyBulkPerms()">Apply to ${who}</button>`);
+}
+function bulkPermsPrefill(empId) {
+  const e = allEmployees.find(x => String(x.id) === String(empId));
+  _empModalPerms = e ? { ...(e.permissions || {}) } : {};
+  const wrap = document.getElementById('bulk-perms-form');
+  if (wrap && _permCatalogue) wrap.innerHTML = _permCatalogue.groups.map(empPermGroup).join('');
+}
+async function applyBulkPerms() {
+  const targets = _empPicked.size ? [..._empPicked] : 'all';
+  const perms = empBuildPerms();
+  const r = await apiFetch('/api/dashboard/employees/permissions/bulk', {
+    method: 'POST', body: JSON.stringify({ employee_ids: targets, permissions: perms }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.error) { alert('Error: ' + (d.error || r.status)); return; }
+  hideModal();
+  _empPicked = new Set();
+  showAdminToast(`Permissions applied to ${d.updated} employee(s).`);
+  loadEmployees();
 }
 
 // ── Advanced employee permissions editor ──────────────────────────────────────

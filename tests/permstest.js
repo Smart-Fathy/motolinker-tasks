@@ -75,6 +75,50 @@ const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', perm
     && explicit.requestsActions.create === false);
 }
 
+// ── Adding an action to a section must not strip anyone of anything ──────────
+// The editor writes explicit true/false for every action it knows, so a key
+// MISSING from a saved actions object can only mean "saved before the action
+// existed". Turning that into false would hide the Sales tab from the whole
+// team the day it gained a checkbox.
+{
+  // An employee saved before deals.sales existed: rich shape, no 'sales' key.
+  const before = M.normEmpPerms({ deals: true, dealsActions: { view: true, create: false, edit: true, delete: false, move: true } });
+  c('a pre-existing rich shape keeps the Sales tab (follows view)',
+    before.dealsActions.sales === true, JSON.stringify(before.dealsActions));
+  c('…and salesEdit follows edit', before.dealsActions.salesEdit === true);
+  const noView = M.normEmpPerms({ deals: true, dealsActions: { view: false, edit: false } });
+  c('…but not for someone who could not see deals rows anyway',
+    noView.dealsActions.sales === false && noView.dealsActions.salesEdit === false);
+  const explicit = M.normEmpPerms({ deals: true, dealsActions: { view: true, sales: false, salesEdit: false } });
+  c('an explicit false wins over the fallback',
+    explicit.dealsActions.sales === false && explicit.dealsActions.salesEdit === false);
+  const legacyFlat = M.normEmpPerms({ deals: true });
+  c('a legacy flat shape still grants every action including the new ones',
+    legacyFlat.dealsActions.sales === true && legacyFlat.dealsActions.salesEdit === true);
+  const sup = M.normEmpPerms({ suppliers: true, suppliersActions: { view: true, docs: true } });
+  c('suppliers.purchases follows view for pre-existing shapes',
+    sup.suppliersActions.purchases === true);
+  // The fallback must never invent a grant where the saved object explicitly
+  // denies everything the fallback is keyed on.
+  c('a fully-denied rich shape stays fully denied',
+    M.normEmpPerms({ deals: true, dealsActions: {} }).dealsActions.sales === false);
+}
+
+// ── Bulk apply ────────────────────────────────────────────────────────────────
+{
+  c('the bulk route replaces rather than merges, through normEmpPerms',
+    /permissions\/bulk[\s\S]{0,400}normEmpPerms\(b\.permissions/.test(EMP)
+    && /update\(\{ permissions: perms/.test(EMP));
+  c('…and nudges the sessions it holds in memory',
+    /employeeSessions\.set\(token, \{ \.\.\.sess, permissions: perms \}\)/.test(EMP));
+  c('the employees list offers the selection UI',
+    /emp-select-all/.test(DASH_JS) && /openBulkPermsModal/.test(DASH_JS));
+  c('the bulk modal reuses the catalogue-generated form, not a copy',
+    /bulk-perms-form[\s\S]{0,400}cat\.groups\.map\(empPermGroup\)/.test(DASH_JS));
+  c('and says in words that it REPLACES',
+    /<strong>replaces<\/strong> the permissions/.test(DASH_JS));
+}
+
 // ── The CTO keeps the Issues centre ───────────────────────────────────────────
 {
   c('a CTO reaches Issues with no permission set',

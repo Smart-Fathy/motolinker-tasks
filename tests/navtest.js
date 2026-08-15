@@ -164,11 +164,13 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
     check('…and dragging it scrolls the table', bar.mirrored === true, JSON.stringify(bar));
 
     // ── The client-file upload names its destination ────────────────────────
-    const dashSrc = fs.readFileSync('public/assets/dashboard.js', 'utf8');
+    // The sales UI lives in the shared procurement.js now (the Sales tab became
+    // a permission and both portals render it).
+    const procSrc = fs.readFileSync('public/assets/procurement.js', 'utf8');
     check('the upload hint names the Drive folder',
-      /MotoLinker \/ Client Files<\/strong> · up to 25 MB/.test(dashSrc));
+      /MotoLinker \/ Client Files<\/strong> · up to 25 MB/.test(procSrc));
     check('…and the success message links the uploaded file',
-      /Saved to Drive → MotoLinker \/ Client Files/.test(dashSrc) && /meta\.name \|\| 'open the file'/.test(dashSrc));
+      /Saved to Drive → MotoLinker \/ Client Files/.test(procSrc) && /meta\.name \|\| 'open the file'/.test(procSrc));
 
     check('admin: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
     await page.close();

@@ -2038,6 +2038,21 @@ async function empRequestDeleteLead(id) {
 
 /* ── CRM: Deals (actionable kanban) ── */
 const EMP_DEAL_STAGES = ['lead','inquiry','quoted','negotiating','won','lost'];
+// The Deals page tabs. Pipeline is deals.view (the page itself); the Sales tab
+// is its own grant, deals.sales, and renders through the shared procurement.js.
+let _empDealsTab = 'pipeline';
+function empDealsTab(tab) {
+  if (tab === 'sales' && !empCan('deals', 'sales')) tab = 'pipeline';
+  _empDealsTab = tab;
+  document.querySelectorAll('#page-deals .deal-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  ['pipeline', 'sales'].forEach(t => {
+    const el = document.getElementById('deals-pane-' + t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+  if (tab === 'sales') loadSales();
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
 const EMP_DEAL_STAGE_LABELS = { lead:'Lead', inquiry:'Inquiry', quoted:'Quoted', negotiating:'Negotiating', won:'Won', lost:'Lost' };
 let _empDeals = [];
 let _empDragDealId = null;

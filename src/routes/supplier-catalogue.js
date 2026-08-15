@@ -161,7 +161,7 @@ ctx.mountSupplierCatalogueRoutes = function mountSupplierCatalogueRoutes(base, g
   });
 
   // ── What we actually bought ──
-  receiver.router.get(`${base}/:id/purchases`, guard, requirePerm('suppliers', 'view'), async (req, res) => {
+  receiver.router.get(`${base}/:id/purchases`, guard, requirePerm('suppliers', 'purchases'), async (req, res) => {
     try { res.json(await supplierPurchases(req.params.id)); }
     catch (e) { res.status(500).json({ error: e.message }); }
   });

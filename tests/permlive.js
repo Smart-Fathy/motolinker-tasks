@@ -70,6 +70,9 @@ const CASES = [
   ['submissions',    'DELETE', '/api/employee/submissions/1',        'delete'],
   ['stock',          'GET',  '/api/employee/inventory/search?q=bmw', 'view'],
   ['tasks',          'GET',  '/api/employee/my-tasks',               'view'],
+  ['deals',          'GET',  '/api/employee/sales',                  'sales'],
+  ['deals',          'POST', '/api/employee/sales',                  'salesEdit'],
+  ['suppliers',      'GET',  '/api/employee/suppliers/1/purchases',  'purchases'],
   ['hours',          'GET',  '/api/employee/hours',                  'view'],
   ['hours',          'POST', '/api/employee/hours',                  'log'],
   ['chat',           'GET',  '/api/employee/chat/rooms',             'view'],
@@ -92,7 +95,7 @@ setTimeout(async () => {
     if (refused(granted)) refusedWith.push(`${method} ${path} (${section}.${action})`);
     // The default employee has every one of these off — except the ones that are on
     // for the whole team, which are checked separately below.
-    if (['suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions', 'issues'].includes(section)) {
+    if (['suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions', 'issues', 'deals'].includes(section)) {
       const denied = await hit(method, path, no);
       if (!refused(denied)) reachedWithout.push(`${method} ${path} → ${denied.status}`);
     }
@@ -117,12 +120,41 @@ setTimeout(async () => {
     c('…and cannot delete', refused(d), String(d.status));
   }
 
+  // ── A tab permission slices inside a section ────────────────────────────────
+  // deals.view on, deals.sales explicitly off: the pipeline answers, the Sales
+  // tab's endpoint refuses. This is the "sales tab in sales pipeline" grant.
+  {
+    const tabbed = mint('perm-live-tab', {
+      deals: true,
+      dealsActions: { view: true, create: true, edit: true, delete: false, move: true, sales: false, salesEdit: false },
+    });
+    const pipeline = await hit('GET', '/api/employee/deals', tabbed);
+    const salesTab = await hit('GET', '/api/employee/sales', tabbed);
+    c('deals.view alone still answers the pipeline', !refused(pipeline), String(pipeline.status));
+    c('…but the Sales tab endpoint refuses without deals.sales', refused(salesTab), String(salesTab.status));
+  }
+
+  // ── Bulk apply, live ────────────────────────────────────────────────────────
+  {
+    const r = await fetch(base + '/api/dashboard/employees/permissions/bulk', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + adminToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employee_ids: [7], permissions: { leads: true } }) });
+    const d = await r.json();
+    c('the bulk endpoint answers and normalizes', r.status === 200 && d.updated === 1, JSON.stringify(d));
+    const empty = await fetch(base + '/api/dashboard/employees/permissions/bulk', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + adminToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employee_ids: [], permissions: {} }) });
+    c('…and refuses an empty target list', empty.status === 400, String(empty.status));
+    const asEmp = await hit('POST', '/api/dashboard/employees/permissions/bulk', yes);
+    c('…and an employee token cannot reach it', asEmp.status === 401, String(asEmp.status));
+  }
+
   // ── The admin is never subject to employee permissions ──────────────────────
   // Both portals run the same handlers now. If requirePerm read a missing
   // req.employee as "no permissions", the dashboard would lose these outright.
   {
     const bad = [];
-    for (const p of ['/api/dashboard/suppliers', '/api/dashboard/rfqs',
+    for (const p of ['/api/dashboard/suppliers', '/api/dashboard/rfqs', '/api/dashboard/sales',
                      '/api/dashboard/purchase-orders', '/api/dashboard/contracts', '/api/submissions']) {
       const r = await hit('GET', p, adminToken);
       if (refused(r) || r.status === 401) bad.push(`${p} → ${r.status}`);

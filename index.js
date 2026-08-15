@@ -403,33 +403,41 @@ function saleBuildRow(body) {
   return { row };
 }
 
-receiver.router.get('/api/dashboard/sales', requireAuth, async (_req, res) => {
-  const { data, error } = await supabase.from('sales').select('*').order('created_at', { ascending: false }).limit(500);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
-});
+// Mounted for both portals over one set of handlers (the contracts.js pattern).
+// The Sales tab of the Deals page is a permission of its own now — deals.sales
+// to read it, deals.salesEdit to write — which is what makes "the sales tab in
+// sales pipeline" a real checkbox rather than a label.
+function mountSaleRoutes(base, guard) {
+  receiver.router.get(base, guard, requirePerm('deals', 'sales'), async (_req, res) => {
+    const { data, error } = await supabase.from('sales').select('*').order('created_at', { ascending: false }).limit(500);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
 
-receiver.router.post('/api/dashboard/sales', requireAuth, express.json(), async (req, res) => {
-  const { row } = saleBuildRow(req.body);
-  row.created_by = 'dashboard';
-  const { data, error } = await supabase.from('sales').insert(row).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+  receiver.router.post(base, guard, requirePerm('deals', 'salesEdit'), express.json(), async (req, res) => {
+    const { row } = saleBuildRow(req.body);
+    row.created_by = chatCallerIdentity(req).key;
+    const { data, error } = await supabase.from('sales').insert(row).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
 
-receiver.router.put('/api/dashboard/sales/:id', requireAuth, express.json(), async (req, res) => {
-  const { row } = saleBuildRow(req.body);
-  row.updated_at = new Date().toISOString();
-  const { data, error } = await supabase.from('sales').update(row).eq('id', req.params.id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+  receiver.router.put(`${base}/:id`, guard, requirePerm('deals', 'salesEdit'), express.json(), async (req, res) => {
+    const { row } = saleBuildRow(req.body);
+    row.updated_at = new Date().toISOString();
+    const { data, error } = await supabase.from('sales').update(row).eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
 
-receiver.router.delete('/api/dashboard/sales/:id', requireAuth, async (req, res) => {
-  const { error } = await supabase.from('sales').delete().eq('id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
-});
+  receiver.router.delete(`${base}/:id`, guard, requirePerm('deals', 'salesEdit'), async (req, res) => {
+    const { error } = await supabase.from('sales').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
+}
+mountSaleRoutes('/api/dashboard/sales', requireAuth);
+mountSaleRoutes('/api/employee/sales', requireEmployeeAuth);
 
 // Won deal → open a sales record. Idempotent: one row per deal.
 async function autoCreateSaleForWonDeal(deal) {

@@ -199,8 +199,10 @@ function driveUploadGuard(err, _req, res, next) {
   next();
 }
 
-// Attach a client file to a sale
-receiver.router.post('/api/dashboard/sales/:id/file', requireAuth,
+// Attach a client file to a sale — mounted for both portals; writing to a sale
+// is the deals.salesEdit action either way.
+function mountSaleFileRoute(base, guard) {
+  receiver.router.post(`${base}/:id/file`, guard, requirePerm('deals', 'salesEdit'),
   driveUpload.single('file'), driveUploadGuard, async (req, res) => {
     const meta = await handleDriveUpload(req, res, 'Client Files');
     if (!meta) return;
@@ -210,6 +212,9 @@ receiver.router.post('/api/dashboard/sales/:id/file', requireAuth,
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
+}
+mountSaleFileRoute('/api/dashboard/sales', requireAuth);
+mountSaleFileRoute('/api/employee/sales', requireEmployeeAuth);
 
 // Supplier catalogue, documents and purchase history  → src/routes/supplier-catalogue.js
 Object.assign(ctx, { driveUpload, driveUploadGuard, express, handleDriveUpload, receiver, requireAuth, supabase });

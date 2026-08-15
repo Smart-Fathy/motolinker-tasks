@@ -125,7 +125,7 @@ const PERM_ACTIONS = {
   // Operations and procurement. The handlers are the dashboard's own, mounted a
   // second time under /api/employee — so these actions are the only difference
   // between what an employee may do here and what the admin may.
-  suppliers: ['view', 'create', 'edit', 'delete', 'catalogue', 'docs'],
+  suppliers: ['view', 'create', 'edit', 'delete', 'catalogue', 'docs', 'purchases'],
   rfq: ['view', 'create', 'edit', 'delete', 'export'],
   purchaseorders: ['view', 'create', 'edit', 'delete', 'export'],
   contracts: ['view', 'create', 'edit', 'delete', 'export'],
@@ -133,7 +133,9 @@ const PERM_ACTIONS = {
   submissions: ['view', 'delete'],
   // CRM
   leads: ['view', 'create', 'edit', 'delete', 'import', 'export'],
-  deals: ['view', 'create', 'edit', 'delete', 'move'],
+  // The Deals page's Sales tab is its own grant: `sales` opens the tab,
+  // `salesEdit` writes to it. The Pipeline tab is simply deals.view.
+  deals: ['view', 'create', 'edit', 'delete', 'move', 'sales', 'salesEdit'],
   quotation: ['draft', 'history', 'settings', 'delete', 'attachLead'],
   // Each report is granted individually, so an employee can be given the leads
   // report without the revenue figures (or vice-versa). Reports always obey the
@@ -151,6 +153,19 @@ const PERM_LEGACY = {
   'requests.viewAll': p => p.viewAllRequests === true,
 };
 
+// What a saved actions object that LACKS a key means. The admin editor always
+// writes explicit true/false for every action it knows, so a missing key can
+// only mean "this employee was saved before the action existed" — and turning
+// that into `false` would silently strip the whole team of a tab they use the
+// day a new action ships. Each new action added to an existing section
+// registers its inheritance here; most follow `view`, because a new sub-ability
+// of a section someone could already see should stay visible to them.
+const PERM_ACTION_FALLBACK = {
+  'deals.sales': acts => acts.view === true,
+  'deals.salesEdit': acts => acts.edit === true,
+  'suppliers.purchases': acts => acts.view === true,
+};
+
 function normEmpPerms(raw) {
   const p = { ...DEFAULT_PERMISSIONS, ...(raw || {}) };
   for (const [section, actions] of Object.entries(PERM_ACTIONS)) {
@@ -159,8 +174,12 @@ function normEmpPerms(raw) {
     const out = {};
     for (const a of actions) {
       const legacy = PERM_LEGACY[section + '.' + a];
-      // legacy: master on ⇒ all actions, except where an older flag said otherwise
-      out[a] = given ? given[a] === true : (legacy ? master && legacy(p) : master);
+      const fallback = PERM_ACTION_FALLBACK[section + '.' + a];
+      out[a] = given
+        // An explicit answer always wins; a MISSING key predates the action.
+        ? (a in given ? given[a] === true : (fallback ? fallback(given, p) : false))
+        // No actions object at all: master on ⇒ all, except older flat flags.
+        : (legacy ? master && legacy(p) : master);
     }
     p[section + 'Actions'] = out;
   }
@@ -228,6 +247,8 @@ const PERM_ACTION_LABELS = {
   'issues.view': 'Open the issues centre',
   'stock.view': 'See stock levels and look vehicles up',
   'suppliers.catalogue': 'Manage the vehicle catalogue',
+  'suppliers.purchases': 'Purchases tab',
+  'deals.sales': 'Sales tab', 'deals.salesEdit': 'Edit sales records',
   'suppliers.docs': 'Supplier documents',
   'rfq.export': 'Generate the PDF',
   'purchaseorders.export': 'Generate the PDF',
@@ -495,6 +516,35 @@ receiver.router.post('/api/dashboard/employees', requireAuth, express.json(), as
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
+// Apply ONE permission set to many employees at once. REPLACE, not merge —
+// merging two permission trees is unexplainable in a UI, and the admin modal
+// says so in as many words. Sessions already open pick the change up on their
+// next /check, which every portal load performs.
+receiver.router.post('/api/dashboard/employees/permissions/bulk', requireAuth, express.json(), async (req, res) => {
+  const b = req.body || {};
+  const perms = normEmpPerms(b.permissions || {});
+  let ids = [];
+  if (b.employee_ids === 'all') {
+    const { data } = await supabase.from('employees').select('id');
+    ids = (data || []).map(e => e.id);
+  } else if (Array.isArray(b.employee_ids)) {
+    ids = b.employee_ids.map(n => parseInt(n)).filter(n => !isNaN(n));
+  }
+  if (!ids.length) return res.status(400).json({ error: 'employee_ids must be a non-empty array or "all"' });
+  const results = [];
+  for (const id of ids) {
+    const { error } = await supabase.from('employees')
+      .update({ permissions: perms, updated_at: new Date().toISOString() }).eq('id', id);
+    results.push({ id, ok: !error, error: error ? error.message : undefined });
+  }
+  // Live sessions keep their old permissions until the next /check; nudge the
+  // ones we hold in memory so the change is immediate rather than next-load.
+  for (const [token, sess] of employeeSessions) {
+    if (ids.includes(sess.id)) employeeSessions.set(token, { ...sess, permissions: perms });
+  }
+  res.json({ ok: results.every(r => r.ok), updated: results.filter(r => r.ok).length, results });
+});
+
 receiver.router.put('/api/dashboard/employees/:id', requireAuth, express.json(), async (req, res) => {
   const { name, username, password, email, job_title, slack_user_id, permissions } = req.body;
   const updates = { name, username, email: (email || '').toLowerCase().trim(), job_title: job_title || '', slack_user_id: slack_user_id || '', updated_at: new Date().toISOString() };
