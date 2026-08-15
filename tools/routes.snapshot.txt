@@ -28,6 +28,7 @@ DELETE /api/dashboard/stock/:id
 GET /api/dashboard/stock/template.csv
 POST /api/dashboard/stock/bulk
 POST /api/dashboard/sales/:id/file
+POST /api/employee/sales/:id/file
 GET /api/dashboard/suppliers
 POST /api/dashboard/suppliers
 PUT /api/dashboard/suppliers/:id
@@ -58,6 +59,10 @@ GET /api/dashboard/sales
 POST /api/dashboard/sales
 PUT /api/dashboard/sales/:id
 DELETE /api/dashboard/sales/:id
+GET /api/employee/sales
+POST /api/employee/sales
+PUT /api/employee/sales/:id
+DELETE /api/employee/sales/:id
 POST /api/dashboard/tasks/bulk
 GET /api/dashboard/tasks/:id/comments
 POST /api/dashboard/tasks/:id/comments
@@ -153,6 +158,7 @@ GET /api/employee/hours
 POST /api/employee/hours
 GET /api/dashboard/employees
 POST /api/dashboard/employees
+POST /api/dashboard/employees/permissions/bulk
 PUT /api/dashboard/employees/:id
 DELETE /api/dashboard/employees/:id
 GET /api/dashboard/employees-for-tasks

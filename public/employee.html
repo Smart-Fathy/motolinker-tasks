@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=67">
+  <link rel="stylesheet" href="/assets/employee.css?v=68">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=67">
+  <link rel="stylesheet" href="/assets/mobile.css?v=68">
 </head>
 <body>
 
@@ -602,8 +602,20 @@
           </div>
           <button class="btn btn-primary" data-perm="deals.create" onclick="openEmpDealModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> Add Deal</button>
         </div>
+        <div class="deal-tabs" style="display:flex;gap:8px;margin-bottom:14px">
+          <button class="deal-tab tab active" data-tab="pipeline" onclick="empDealsTab('pipeline')" style="font-size:13px;padding:8px 18px">Pipeline</button>
+          <button class="deal-tab tab" data-tab="sales" data-perm="deals.sales" onclick="empDealsTab('sales')" style="font-size:13px;padding:8px 18px">Sales</button>
+        </div>
+        <div id="deals-pane-pipeline">
         <div id="emp-deals-kanban" style="display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:12px;align-items:start;overflow-x:auto">
           <div class="loading"><span class="spinner"></span> Loading…</div>
+        </div>
+        </div>
+        <div id="deals-pane-sales" style="display:none">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+            <button class="btn btn-outline" data-perm="deals.salesEdit" style="padding:5px 10px;font-size:12px" onclick="openSaleForm(null)">+ Add sale</button>
+          </div>
+          <div id="deals-sales-table"></div>
         </div>
       </div>
     </div>
@@ -1412,10 +1424,10 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=67"></script>
-<script src="/assets/lead-filters.js?v=67"></script>
-<script src="/assets/chat-extras.js?v=67"></script>
-<script src="/assets/home.js?v=67"></script>
+<script src="/assets/mobile.js?v=68"></script>
+<script src="/assets/lead-filters.js?v=68"></script>
+<script src="/assets/chat-extras.js?v=68"></script>
+<script src="/assets/home.js?v=68"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1453,9 +1465,9 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=67"></script>
-<script src="/assets/procurement.js?v=67"></script>
-<script src="/assets/employee.js?v=67"></script>
+<script src="/assets/huddle.js?v=68"></script>
+<script src="/assets/procurement.js?v=68"></script>
+<script src="/assets/employee.js?v=68"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1517,6 +1529,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=67"></script>
+<script src="/help-docs.js?v=68"></script>
 </body>
 </html>
