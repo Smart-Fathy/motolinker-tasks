@@ -1688,7 +1688,7 @@ function openSaleForm(id) {
           <button class="btn btn-outline btn-sm" ${id ? '' : 'disabled title="Save the sale first"'}
             onclick="document.getElementById('sale-file-input').click()">
             <i data-lucide="upload" style="width:13px;height:13px"></i> ${x?.client_file ? 'Replace file' : 'Upload file'}</button>
-          <span style="font-size:11px;color:var(--muted)">Google Drive · up to 25 MB</span>
+          <span style="font-size:11px;color:var(--muted)">Stored in your Google Drive → <strong>MotoLinker / Client Files</strong> · up to 25 MB</span>
         </div>
         <div id="sale-file-msg" style="font-size:12px;margin-top:6px"></div>
         <input type="hidden" id="sale-client_file" value="${esc(x?.client_file || '')}"></div>`;
@@ -1724,7 +1724,11 @@ async function saleUploadFile(id, input) {
     return;
   }
   msg.style.color = 'var(--success)';
-  msg.textContent = 'Uploaded.';
+  // Name the destination and link the file — "Uploaded." answered none of the
+  // questions people actually had ("uploaded WHERE?").
+  const meta = d.client_file_meta || {};
+  msg.innerHTML = `Saved to Drive → MotoLinker / Client Files` +
+    (d.client_file ? ` · <a href="${esc(d.client_file)}" target="_blank" rel="noopener" style="color:var(--primary)">${esc(meta.name || 'open the file')}</a>` : '');
   document.getElementById('sale-client_file').value = d.client_file || '';
   loadSales();
 }
@@ -5389,6 +5393,7 @@ let _pendingFollowups = {}; // customer_id -> earliest pending due_at (ISO)
 let _fuFilterOn = false;
 
 async function loadCustomers() {
+  const ps = document.getElementById('leads-pagesize'); if (ps) ps.value = String(leadsPageSize());
   try {
     await loadLeadCols();
     renderLeadHead();
@@ -5544,7 +5549,7 @@ lfInit({
 });
 
 function filterCustomers() {
-  _leadsShown = LEADS_PAGE;                 // a new result set starts from the top
+  _leadsShown = leadsPageSize();            // a new result set starts from the top
   const q    = (document.getElementById('customer-search')?.value || '').toLowerCase();
   const from = document.getElementById('lead-date-from')?.value || '';
   const to   = document.getElementById('lead-date-to')?.value || '';
@@ -5593,10 +5598,23 @@ function exportLeadsTable() {
 // rendering is capped, because ~800 rows meant ~4,000 controls in the DOM and, once
 // each row becomes a card on a phone, a page tens of thousands of pixels tall.
 const LEADS_PAGE = 50;
-let _leadsShown = LEADS_PAGE;
-function leadsShowMore() { _leadsShown += LEADS_PAGE; renderCustomers(_lastRenderedLeads); }
+// The user picks the page size (25/50/100/500/1000) and it sticks per browser.
+// Search, filters, sort and export still run over EVERY lead — the choice caps
+// rendering only, so nothing else changes with it.
+function leadsPageSize() {
+  const n = parseInt(localStorage.getItem('ml_leads_pagesize'));
+  return [25, 50, 100, 500, 1000].includes(n) ? n : LEADS_PAGE;
+}
+function setLeadsPageSize(v) {
+  try { localStorage.setItem('ml_leads_pagesize', String(parseInt(v) || LEADS_PAGE)); } catch (_) {}
+  _leadsShown = leadsPageSize();
+  renderCustomers(_lastRenderedLeads);
+}
+let _leadsShown = leadsPageSize();
+function leadsShowMore() { _leadsShown += leadsPageSize(); renderCustomers(_lastRenderedLeads); }
 
 function renderCustomers(list) {
+  if (typeof mlTopScrollbar === 'function') mlTopScrollbar('leads-scroll');
   _lastRenderedLeads = list;
   const tbody = document.getElementById('customers-tbody');
   const vis = visibleLeadCols();

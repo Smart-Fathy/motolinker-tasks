@@ -136,3 +136,38 @@ function mlCalendarMode() {
 function mlIsMobile() {
   return window.matchMedia('(max-width: 700px)').matches;
 }
+
+// ── Top scrollbar for wide tables ────────────────────────────────────────────
+// The Leads table is wider than any screen, and its only scrollbar sat at the
+// BOTTOM of a 50-row table — to scroll sideways you first had to scroll to the
+// end. This mounts a slim proxy bar above the wrapper, kept in both-way sync
+// with the real one; a ghost div gives it the table's true width. Desktop-only
+// by construction: below the card breakpoint the wrapper stops scrolling
+// horizontally, scrollWidth collapses to clientWidth, and the bar hides itself.
+function mlTopScrollbar(wrapId) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap || wrap._mlTopBar) return;
+  const bar = document.createElement('div');
+  bar.className = 'table-scroll-top';
+  const ghost = document.createElement('div');
+  ghost.style.height = '1px';
+  bar.appendChild(ghost);
+  wrap.parentNode.insertBefore(bar, wrap);
+  wrap._mlTopBar = bar;
+  let lock = false;   // reflecting a scroll re-fires the other side's listener
+  const mirror = (from, to) => () => {
+    if (lock) return;
+    lock = true; to.scrollLeft = from.scrollLeft; lock = false;
+  };
+  bar.addEventListener('scroll', mirror(bar, wrap));
+  wrap.addEventListener('scroll', mirror(wrap, bar));
+  const sync = () => {
+    ghost.style.width = wrap.scrollWidth + 'px';
+    bar.style.display = wrap.scrollWidth > wrap.clientWidth + 2 ? '' : 'none';
+    bar.scrollLeft = wrap.scrollLeft;
+  };
+  if (typeof ResizeObserver === 'function') new ResizeObserver(sync).observe(wrap);
+  // Column changes swap the table wholesale; width changes arrive as mutations.
+  new MutationObserver(sync).observe(wrap, { childList: true, subtree: true });
+  sync();
+}

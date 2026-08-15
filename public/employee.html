@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=66">
+  <link rel="stylesheet" href="/assets/employee.css?v=67">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=66">
+  <link rel="stylesheet" href="/assets/mobile.css?v=67">
 </head>
 <body>
 
@@ -569,6 +569,9 @@
             </div>
             <button class="btn btn-outline" onclick="openLeadFilterPicker()"><i data-lucide="filter" style="width:13px;height:13px"></i> Add filter</button>
             <button class="btn btn-outline" onclick="clearLeadFilters()">Clear</button>
+            <select class="form-control" id="leads-pagesize" onchange="setLeadsPageSize(this.value)" title="Rows per page — filters and export still cover every lead" style="max-width:120px">
+          <option value="25">25 rows</option><option value="50" selected>50 rows</option><option value="100">100 rows</option><option value="500">500 rows</option><option value="1000">1000 rows</option>
+        </select>
             <button class="btn btn-outline" id="lead-cols-btn" data-perm="leads.edit" onclick="openLeadColsPicker(event)"><i data-lucide="columns-3" style="width:15px;height:15px"></i> Columns</button>
             <button class="btn btn-outline" data-perm="leads.export" onclick="exportLeadsTable()" title="Export the table as CSV — visible columns only"><i data-lucide="download" style="width:15px;height:15px"></i> Export</button>
             <button class="btn btn-outline" data-perm="leads.import" onclick="openEmpCsvModal()"><i data-lucide="upload" style="width:15px;height:15px"></i> Import CSV</button>
@@ -577,7 +580,7 @@
         </div>
         <div id="emp-lead-filter-chips" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
         <div class="card" style="padding:0;overflow:hidden">
-          <div class="table-scroll">
+          <div class="table-scroll" id="leads-scroll">
             <table class="wide-table" style="width:100%;border-collapse:collapse" id="emp-leads-table">
               <thead><tr id="emp-leads-head"></tr></thead>
               <tbody id="emp-leads-tbody">
@@ -1409,10 +1412,10 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=66"></script>
-<script src="/assets/lead-filters.js?v=66"></script>
-<script src="/assets/chat-extras.js?v=66"></script>
-<script src="/assets/home.js?v=66"></script>
+<script src="/assets/mobile.js?v=67"></script>
+<script src="/assets/lead-filters.js?v=67"></script>
+<script src="/assets/chat-extras.js?v=67"></script>
+<script src="/assets/home.js?v=67"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1450,9 +1453,9 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=66"></script>
-<script src="/assets/procurement.js?v=66"></script>
-<script src="/assets/employee.js?v=66"></script>
+<script src="/assets/huddle.js?v=67"></script>
+<script src="/assets/procurement.js?v=67"></script>
+<script src="/assets/employee.js?v=67"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1514,6 +1517,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=66"></script>
+<script src="/help-docs.js?v=67"></script>
 </body>
 </html>
