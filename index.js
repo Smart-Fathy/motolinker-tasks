@@ -1327,6 +1327,7 @@ receiver.router.delete('/api/dashboard/nav-config', requireAuth, async (_req, re
 // Home dashboards  → src/routes/home.js
 Object.assign(ctx, { express, receiver, requireAuth, requireEmployeeAuth, supabase });
 require('./src/routes/home');
+Object.assign(ctx, require('./src/routes/columns'));
 // ─── Google Calendar (task events) ────────────────────────────────────────────
 // One company account creates task events and invites the assignee, so nothing
 // has to be set up per employee. Everything here is best-effort: a Calendar

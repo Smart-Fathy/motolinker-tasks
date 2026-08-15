@@ -48,7 +48,7 @@ const GENERIC = Array.from({ length: 20 }, (_, i) => ({
 }));
 
 function api(pathname) {
-  if (/leads\/columns$/.test(pathname)) return {};
+  if (/(leads\/columns|columns\/leads)$/.test(pathname)) return {};
   if (/\/customers$|\/employee\/leads$/.test(pathname)) return LEADS;
   if (/\/tasks$/.test(pathname)) return TASKS;
   if (/\/employees$|coworkers/.test(pathname)) return EMPLOYEES;

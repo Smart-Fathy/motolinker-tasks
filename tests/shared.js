@@ -15,6 +15,7 @@ const filters = read('public/assets/lead-filters.js');
 const mobile  = read('public/assets/mobile.css');
 const mobjs   = read('public/assets/mobile.js');
 const proc    = read('public/assets/procurement.js');
+const colsjs  = read('public/assets/columns.js');
 const bundles = { dashboard: read('public/assets/dashboard.js'), employee: read('public/assets/employee.js') };
 const pages   = { dashboard: read('public/dashboard.html'),      employee: read('public/employee.html') };
 const workers = { dashboard: read('public/sw-dashboard.js'),     employee: read('public/sw-employee.js') };
@@ -27,6 +28,7 @@ const MARKERS = {
   '/assets/lead-filters.js': { src: filters, re: /function leadFilterMatch\(/ },
   '/assets/mobile.js':       { src: mobjs,   re: /function labelTable\(/ },
   '/assets/procurement.js':  { src: proc,    re: /function procPath\(/ },
+  '/assets/columns.js':      { src: colsjs,  re: /function ColumnsEngine\(/ },
 };
 
 for (const [path, { src, re }] of Object.entries(MARKERS)) {

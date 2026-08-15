@@ -272,14 +272,15 @@ receiver.router.get('/api/employee/followups/pending', requireEmployeeAuth, asyn
 });
 
 // Write the shared leads column config (gated by the leads permission; config is global)
-receiver.router.put('/api/employee/leads/columns', requireEmployeeAuth, express.json(), async (req, res) => {
+receiver.router.put('/api/employee/leads/columns', requireEmployeeAuth, express.json({ limit: '256kb' }), async (req, res) => {
+  // Legacy path, kept for clients still running the previous bundle.
   if (!empCan(req.employee, 'leads', 'edit')) return res.status(403).json({ error: 'Not permitted' });
-  const columns = req.body?.columns;
-  if (!Array.isArray(columns)) return res.status(400).json({ error: 'columns array required' });
+  const columns = ctx.sanitizeColumns(req.body && req.body.columns);
+  if (!columns) return res.status(400).json({ error: 'columns must be an array' });
   const { error } = await supabase.from('quotation_settings')
     .upsert({ key: 'leads_columns_config', value: JSON.stringify(columns) }, { onConflict: 'key' });
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
+  res.json({ ok: true, columns });
 });
 
 // CSV / Google-Sheets import (mirrors the admin importer; deduped on normalized phone)

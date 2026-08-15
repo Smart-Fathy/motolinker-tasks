@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=68">
+  <link rel="stylesheet" href="/assets/employee.css?v=69">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=68">
+  <link rel="stylesheet" href="/assets/mobile.css?v=69">
 </head>
 <body>
 
@@ -725,73 +725,11 @@
       </div>
     </div>
 
-    <div id="lead-col-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px">
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:420px;margin:auto">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-          <div style="font-size:16px;font-weight:800">Add Column</div>
-          <button onclick="document.getElementById('lead-col-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
-        </div>
-        <div style="display:grid;gap:14px">
-          <div><label class="form-label">Column name</label><input class="form-control" id="lc-name" placeholder="e.g. Deposit, Branch, Test Drive"></div>
-          <div><label class="form-label">Type</label>
-            <select class="form-control" id="lc-type" onchange="lcTypeChanged()">
-              <option value="text">Text</option><option value="number">Number</option><option value="date">Date</option>
-              <option value="select">Dropdown</option><option value="radio">Radio (single choice)</option><option value="checkbox">Checkbox</option>
-            </select>
-          </div>
-          <div id="lc-options-wrap" style="display:none"><label class="form-label">Options (one per line)</label>
-            <textarea class="form-control" id="lc-options" rows="4" placeholder="Option A&#10;Option B" style="resize:vertical"></textarea>
-          </div>
-        </div>
-        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
-          <button class="btn btn-outline" onclick="document.getElementById('lead-col-modal').style.display='none'">Cancel</button>
-          <button class="btn btn-primary" onclick="saveNewLeadCol()">Add Column</button>
-        </div>
-      </div>
-    </div>
+    
 
-    <!-- ── Change Column Type Modal ── -->
-    <div id="lead-type-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px">
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:420px;margin:auto">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-          <div style="font-size:16px;font-weight:800">Change type — <span id="lt-col-name"></span></div>
-          <button onclick="document.getElementById('lead-type-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
-        </div>
-        <div style="display:grid;gap:14px">
-          <div><label class="form-label">Column type</label>
-            <select class="form-control" id="lt-type" onchange="ltTypeChanged()">
-              <option value="text">Text</option><option value="select">Dropdown</option>
-              <option value="radio">Radio (single choice)</option><option value="checkbox">Checkbox</option>
-            </select>
-          </div>
-          <div id="lt-options-wrap" style="display:none"><label class="form-label">Options (one per line)</label>
-            <textarea class="form-control" id="lt-options" rows="4" placeholder="Option A&#10;Option B" style="resize:vertical"></textarea>
-          </div>
-        </div>
-        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
-          <button class="btn btn-outline" onclick="document.getElementById('lead-type-modal').style.display='none'">Cancel</button>
-          <button class="btn btn-primary" onclick="saveLeadType()">Save</button>
-        </div>
-      </div>
-    </div>
+    
 
-    <!-- ── Edit Dropdown Options Modal ── -->
-    <div id="lead-opts-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px">
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:420px;margin:auto">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-          <div style="font-size:16px;font-weight:800" id="lo-title">Edit Options</div>
-          <button onclick="document.getElementById('lead-opts-modal').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1">×</button>
-        </div>
-        <input type="hidden" id="lo-key">
-        <div id="lo-list"></div>
-        <button class="btn btn-outline btn-sm" onclick="loAddOption()" style="margin-top:4px"><i data-lucide="plus" style="width:13px;height:13px"></i> Add option</button>
-        <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">Renaming an option keeps existing leads linked to it. Deleting an option doesn't change saved leads — their old value still shows as text.</div>
-        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
-          <button class="btn btn-outline" onclick="document.getElementById('lead-opts-modal').style.display='none'">Cancel</button>
-          <button class="btn btn-primary" onclick="saveLeadOpts()">Save Options</button>
-        </div>
-      </div>
-    </div>
+    
 
     <!-- ── CSV Import Modal ── -->
     <div id="emp-csv-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px">
@@ -1424,10 +1362,11 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=68"></script>
-<script src="/assets/lead-filters.js?v=68"></script>
-<script src="/assets/chat-extras.js?v=68"></script>
-<script src="/assets/home.js?v=68"></script>
+<script src="/assets/mobile.js?v=69"></script>
+<script src="/assets/columns.js?v=69"></script>
+<script src="/assets/lead-filters.js?v=69"></script>
+<script src="/assets/chat-extras.js?v=69"></script>
+<script src="/assets/home.js?v=69"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1465,9 +1404,9 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=68"></script>
-<script src="/assets/procurement.js?v=68"></script>
-<script src="/assets/employee.js?v=68"></script>
+<script src="/assets/huddle.js?v=69"></script>
+<script src="/assets/procurement.js?v=69"></script>
+<script src="/assets/employee.js?v=69"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1529,6 +1468,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=68"></script>
+<script src="/help-docs.js?v=69"></script>
 </body>
 </html>
