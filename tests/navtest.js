@@ -34,7 +34,7 @@ const NAV_CFG = { groups: [
 
 function api(pathname) {
   if (/nav-config$/.test(pathname)) return NAV_CFG;
-  if (/leads\/columns$/.test(pathname)) return { columns: [
+  if (/(leads\/columns|columns\/leads)$/.test(pathname)) return { columns: [
     { key: 'name', label: 'Name', type: 'text', builtin: true, visible: true },
     { key: 'phone', label: 'Phone', type: 'text', builtin: true, visible: true },
     { key: 'lead_status', label: 'Status', type: 'select', builtin: true, visible: true,

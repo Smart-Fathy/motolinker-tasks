@@ -1211,44 +1211,17 @@ function empRenderLeads(list) {
   requestAnimationFrame(() => lucide.createIcons());
 }
 
-// ── Leads: ClickUp-style configurable columns (order, visibility, labels, options,
-//    custom columns). Config is shared with the admin dashboard via the same store. ──
-const LEAD_STATUS_COLORS = { cold:'rgba(255,255,255,.06)', warm:'rgba(230,150,80,.18)', hot:'rgba(239,68,68,.14)', immediate_delivery:'rgba(100,180,120,.14)', not_interested:'rgba(150,150,150,.1)', blacklist:'rgba(60,0,0,.35)' };
-const LEAD_STATUS_TEXT   = { cold:'#b9b3a4', warm:'#e6a850', hot:'#f87171', immediate_delivery:'#6dd8a4', not_interested:'#888', blacklist:'#f87171' };
-const LEAD_DEFAULT_COLS = [
-  { key:'lead_date',       label:'Date',        type:'date',     builtin:true, visible:true },
-  { key:'lead_time',       label:'Time',        type:'text',     builtin:true, visible:true },
-  { key:'name',            label:'Name',        type:'text',     builtin:true, visible:true },
-  { key:'phone',           label:'Phone',       type:'text',     builtin:true, visible:true },
-  { key:'lead_status',     label:'Status',      type:'select',   builtin:true, visible:true, options:[
-    { key:'cold', label:'Cold' }, { key:'warm', label:'Warm' }, { key:'hot', label:'Hot' },
-    { key:'immediate_delivery', label:'Immediate Delivery' }, { key:'not_interested', label:'Not Interested' }, { key:'blacklist', label:'Blacklist' }] },
-  { key:'source',          label:'Origin',      type:'select',   builtin:true, visible:true, options:[
-    { key:'fb_ad', label:'FB Ad.' }, { key:'whatsapp', label:'Whatsapp' }, { key:'messenger', label:'Messenger' },
-    { key:'direct_call', label:'Direct Call' }, { key:'ig_ads', label:'IG ads' },
-    { key:'website', label:'Website' }, { key:'walk_in', label:'Walk-in' }, { key:'marketplace', label:'Marketplace' }] },
-  { key:'car_in_question', label:'Car',         type:'text',     builtin:true, visible:true },
-  { key:'budget_lead',     label:'Budget',      type:'number',   builtin:true, visible:true },
-  { key:'next_action',     label:'Next Action', type:'select',   builtin:true, visible:true, options:[
-    { key:'followed_by_sales', label:'Followed By Sales' }, { key:'need_follow_up', label:'Need Follow Up' },
-    { key:'closed', label:'Closed' }, { key:'no_answer', label:'No Answer' }] },
-  { key:'been_contacted',  label:'Contacted',   type:'checkbox', builtin:true, visible:true },
-  { key:'notes',           label:'Notes',       type:'text',     builtin:true, visible:true },
-  { key:'sales_feedback',  label:'Sales Feedback', type:'text',  builtin:true, visible:true },
-  { key:'inquiry',         label:'Inquiry',     type:'text',     builtin:true, visible:true },
-  { key:'next_followup',   label:'Follow-up',   type:'virtual',  builtin:true, visible:true },
-  { key:'owner',           label:'Owner',       type:'virtual',  builtin:true, visible:true },
-];
+// ── Leads: ClickUp-style configurable columns ─────────────────────────────────
+// The editor lives in the shared columns.js now (one engine, both portals —
+// the ~260-line copy that used to sit here is gone). This bundle keeps only its
+// own renderLeadHead and the thin lookups the row renderers use.
 let _leadCols = null;
-let _leadColsLoaded = false;
-let _pendingFollowups = {}; // customer_id -> earliest pending due_at (ISO)
 let _editingLeadCell = false;
-let _dragColKey = null;
-let _leadColDidDrag = false; // swallow the click that can trail a header drag
-let _leadMenuEl = null;
-let _typeColKey = null;
+let _pendingFollowups = {}; // customer_id -> earliest pending due_at (ISO)
+function leadCol(key) { return CE('leads') ? CE('leads').col(key) : null; }
+function colOptMap(col) { return CE('leads').optMap(col); }
+function isChecked(raw) { return raw === true || raw === 'true' || raw === 1 || raw === '1'; }
 
-function leadCol(key) { return (_leadCols || LEAD_DEFAULT_COLS).find(c => c.key === key); }
 // Rebuild a built-in select from the live column config. The Add Lead form used to
 // carry its Status, Origin and Next Action options hardcoded in the HTML while the
 // table read them from the config, so renaming or adding an option left the two
@@ -1262,9 +1235,18 @@ function fillLeadSelect(id, colKey, emptyLabel, rawValue) {
   const k = normKey(rawValue, colOptMap(col));
   sel.value = [...sel.options].some(o => o.value === k) ? k : (emptyLabel != null ? '' : (col.options?.[0]?.key || ''));
 }
-function colOptMap(col) { const m = {}; (col?.options || []).forEach(o => { m[o.key] = o.label; }); return m; }
-function slugKey(label) { return String(label).toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'col'; }
-function isChecked(raw) { return raw === true || raw === 'true' || raw === 1 || raw === '1'; }
+
+// Canonicalize a stored value (key OR human label, any casing) to its option key.
+function normKey(v, labels) {
+  if (v == null || v === '') return '';
+  const low = String(v).trim().toLowerCase();
+  if (labels[low]) return low;
+  const snake = low.replace(/\s+/g, '_');
+  if (labels[snake]) return snake;
+  for (const k in labels) if (labels[k].toLowerCase() === low) return k;
+  return snake;
+}
+
 function fmtBudget(min, max) { return empFmtBudget(min, max); }
 // Canonicalize a stored value (key OR human label, any casing) to its option key.
 function normKey(v, labels) {
@@ -1278,24 +1260,21 @@ function normKey(v, labels) {
 }
 
 async function loadLeadCols() {
-  if (_leadColsLoaded) return;
-  let saved = null;
-  try { const d = await ef('/api/employee/leads/columns').then(r => r.json()); saved = d.columns; } catch (_) {}
-  _leadCols = mergeLeadCols(saved);
-  _leadColsLoaded = true;
+  const eng = CE('leads') || ColumnsEngine('leads', {
+    base: '/api/employee',
+    fetch: (url, opts) => ef(url, opts),
+    modal: (...a) => showModal(...a),
+    closeModal: () => hideModal(),
+    builtins: LEADS_BUILTIN_COLS,
+    fixedKeys: ['name', 'budget_lead', 'lead_date'],
+    // Arranging columns is the leads.edit action, same as the server enforces.
+    canEdit: () => empCan('leads', 'edit'),
+    sort: { get: () => _leadSort, set: (k, d) => setLeadSort(k, d) },
+    onChange: () => { renderLeadHead(); empFilterLeads(); },
+  });
+  _leadCols = await eng.load();
 }
-function mergeLeadCols(saved) {
-  if (!Array.isArray(saved) || !saved.length) return JSON.parse(JSON.stringify(LEAD_DEFAULT_COLS));
-  const cols = saved
-    .filter(c => c && c.key && (!c.builtin || LEAD_DEFAULT_COLS.some(d => d.key === c.key)))
-    .map(c => ({ ...c, visible: c.visible !== false }));
-  LEAD_DEFAULT_COLS.forEach(d => { if (!cols.some(c => c.key === d.key)) cols.push(JSON.parse(JSON.stringify(d))); });
-  cols.forEach(c => { const d = LEAD_DEFAULT_COLS.find(x => x.key === c.key); if (d?.options && !Array.isArray(c.options)) c.options = JSON.parse(JSON.stringify(d.options)); });
-  return cols;
-}
-function saveLeadCols() {
-  ef('/api/employee/leads/columns', { method:'PUT', body: JSON.stringify({ columns: _leadCols }) }).catch(() => {});
-}
+function saveLeadCols() { CE('leads').save(); }
 
 function renderLeadHead() {
   const tr = document.getElementById('emp-leads-head');
@@ -1310,220 +1289,6 @@ function renderLeadHead() {
     `<th style="${thStyle};width:34px;text-align:center"><button onclick="openAddLeadColModal()" title="Add column" style="background:none;border:1px dashed var(--border);border-radius:6px;color:var(--muted);cursor:pointer;width:24px;height:24px;font-size:15px;line-height:1">+</button></th>` +
     `<th style="${thStyle};text-align:right">Actions</th>`;
   requestAnimationFrame(() => lucide.createIcons());
-}
-
-function leadColDragStart(e) { _dragColKey = e.currentTarget.dataset.colkey; _leadColDidDrag = true; e.dataTransfer.effectAllowed = 'move'; }
-function leadColDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
-function leadColDragEnd() { document.querySelectorAll('#emp-leads-head th.drag-over').forEach(t => t.classList.remove('drag-over')); _dragColKey = null; setTimeout(() => { _leadColDidDrag = false; }, 0); }
-function leadColDrop(e) {
-  e.preventDefault();
-  const target = e.currentTarget.dataset.colkey; const src = _dragColKey; leadColDragEnd();
-  if (!src || src === target) return;
-  const from = _leadCols.findIndex(c => c.key === src); const to = _leadCols.findIndex(c => c.key === target);
-  if (from < 0 || to < 0) return;
-  const [moved] = _leadCols.splice(from, 1); _leadCols.splice(to, 0, moved);
-  saveLeadCols(); renderLeadHead(); empFilterLeads();
-}
-
-function ensureLeadMenu() {
-  if (!_leadMenuEl) {
-    _leadMenuEl = document.createElement('div');
-    _leadMenuEl.className = 'lead-menu';
-    document.body.appendChild(_leadMenuEl);
-    document.addEventListener('click', e => {
-      if (_leadMenuEl.classList.contains('open') && !_leadMenuEl.contains(e.target)
-          && !e.target.closest?.('th.lead-col') && !e.target.closest?.('#lead-cols-btn')) closeLeadMenu();
-    });
-  }
-  return _leadMenuEl;
-}
-function closeLeadMenu() { if (_leadMenuEl) _leadMenuEl.classList.remove('open'); }
-function positionLeadMenu(e) {
-  const m = _leadMenuEl;
-  m.style.left = Math.min(e.clientX, window.innerWidth - 230) + 'px';
-  m.style.top  = Math.min(e.clientY + 6, window.innerHeight - 60) + 'px';
-  m.classList.add('open');
-}
-function openLeadColMenu(e, key) {
-  e.stopPropagation();
-  const col = leadCol(key); if (!col) return;
-  const m = ensureLeadMenu(); m.dataset.mode = 'colmenu';
-  const vis = visibleLeadCols(); const vi = vis.findIndex(c => c.key === key);
-  const canType = col.type !== 'virtual' && !['name', 'budget_lead', 'lead_date'].includes(col.key);
-  const sorted = _leadSort && _leadSort.key === key;
-  m.innerHTML = `
-    <button onclick="setLeadSort('${esc(key)}','asc')"${sorted && _leadSort.dir === 'asc' ? ' class="active"' : ''}><i data-lucide="arrow-up-narrow-wide" style="width:13px;height:13px"></i> Sort ascending</button>
-    <button onclick="setLeadSort('${esc(key)}','desc')"${sorted && _leadSort.dir === 'desc' ? ' class="active"' : ''}><i data-lucide="arrow-down-wide-narrow" style="width:13px;height:13px"></i> Sort descending</button>
-    ${sorted ? `<button onclick="setLeadSort(null)"><i data-lucide="x" style="width:13px;height:13px"></i> Clear sort</button>` : ''}
-    <div class="lead-menu-sep"></div>
-    <button onclick="leadColRename('${esc(key)}')"><i data-lucide="pencil" style="width:13px;height:13px"></i> Rename</button>
-    ${canType ? `<button onclick="openLeadTypeModal('${esc(key)}')"><i data-lucide="shuffle" style="width:13px;height:13px"></i> Change type</button>` : ''}
-    ${(col.type === 'select' || col.type === 'radio') ? `<button onclick="openLeadOptsModal('${esc(key)}')"><i data-lucide="list" style="width:13px;height:13px"></i> Edit options</button>` : ''}
-    <div class="lead-menu-sep"></div>
-    <button onclick="leadColMove('${esc(key)}',-1)" ${vi <= 0 ? 'disabled' : ''}><i data-lucide="arrow-left" style="width:13px;height:13px"></i> Move left</button>
-    <button onclick="leadColMove('${esc(key)}',1)" ${vi >= vis.length - 1 ? 'disabled' : ''}><i data-lucide="arrow-right" style="width:13px;height:13px"></i> Move right</button>
-    <div class="lead-menu-sep"></div>
-    <button onclick="leadColHide('${esc(key)}')"><i data-lucide="eye-off" style="width:13px;height:13px"></i> Hide column</button>
-    <button class="danger" onclick="leadColDelete('${esc(key)}')"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete column</button>`;
-  positionLeadMenu(e);
-  requestAnimationFrame(() => lucide.createIcons());
-}
-function leadColsPickerHtml() {
-  return `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:6px 10px 4px">Show columns</div>` +
-    _leadCols.filter(c => !c.deleted).map(c => `
-      <button type="button" class="lead-col-eye ${c.visible ? '' : 'col-hidden'}" onclick="event.stopPropagation();toggleLeadColVis('${esc(c.key)}', ${c.visible ? 'false' : 'true'});openLeadColsPickerRefresh()">
-        <i data-lucide="${c.visible ? 'eye' : 'eye-off'}" style="width:14px;height:14px"></i> ${esc(c.label)}
-      </button>`).join('');
-}
-function openLeadColsPicker(e) {
-  e.stopPropagation();
-  if (!_leadCols) return;
-  const m = ensureLeadMenu();
-  if (m.classList.contains('open') && m.dataset.mode === 'picker') return closeLeadMenu();
-  m.dataset.mode = 'picker';
-  m.innerHTML = leadColsPickerHtml();
-  positionLeadMenu(e);
-  requestAnimationFrame(() => lucide.createIcons());
-}
-function openLeadColsPickerRefresh() {
-  const m = _leadMenuEl;
-  if (!m || !m.classList.contains('open')) return;
-  m.innerHTML = leadColsPickerHtml();
-  requestAnimationFrame(() => lucide.createIcons());
-}
-function toggleLeadColVis(key, on) {
-  const col = leadCol(key); if (!col) return;
-  col.visible = !!on; saveLeadCols(); renderLeadHead(); empFilterLeads();
-}
-function leadColRename(key) {
-  closeLeadMenu();
-  const col = leadCol(key);
-  const v = prompt('Column name', col.label);
-  if (v && v.trim()) { col.label = v.trim(); saveLeadCols(); renderLeadHead(); }
-}
-function leadColMove(key, dir) {
-  closeLeadMenu();
-  const vis = visibleLeadCols();
-  const vi = vis.findIndex(c => c.key === key);
-  const nb = vis[vi + dir]; if (!nb) return;
-  const from = _leadCols.findIndex(c => c.key === key); const to = _leadCols.findIndex(c => c.key === nb.key);
-  const [moved] = _leadCols.splice(from, 1); _leadCols.splice(to, 0, moved);
-  saveLeadCols(); renderLeadHead(); empFilterLeads();
-}
-function leadColHide(key) {
-  closeLeadMenu();
-  const col = leadCol(key);
-  if (col) { col.visible = false; saveLeadCols(); renderLeadHead(); empFilterLeads(); }
-}
-function leadColDelete(key) {
-  closeLeadMenu();
-  const col = leadCol(key);
-  if (!col) return;
-  if (!confirm(`Delete column "${col.label}"? Saved values stay on the leads but won't be shown.`)) return;
-  // Builtins are soft-deleted (kept with deleted:true) so mergeLeadCols won't re-add them on reload.
-  if (col.builtin) { col.deleted = true; col.visible = false; }
-  else _leadCols = _leadCols.filter(c => c.key !== key);
-  saveLeadCols(); renderLeadHead(); empFilterLeads();
-}
-
-function typeHasOptions(t) { return t === 'select' || t === 'radio'; }
-function parseOptLines(text, existing) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  const prev = existing || []; const opts = [];
-  lines.forEach(l => {
-    const match = prev.find(o => o.label === l);
-    let k = match ? match.key : slugKey(l);
-    const b = k; let m = 2; while (opts.some(o => o.key === k)) k = b + '_' + (m++);
-    opts.push({ key: k, label: l });
-  });
-  return opts;
-}
-function openAddLeadColModal() {
-  if (!_leadCols) return showToast('Leads are still loading…');
-  document.getElementById('lc-name').value = '';
-  document.getElementById('lc-type').value = 'text';
-  document.getElementById('lc-options').value = '';
-  lcTypeChanged();
-  document.getElementById('lead-col-modal').style.display = 'flex';
-}
-function lcTypeChanged() {
-  document.getElementById('lc-options-wrap').style.display = typeHasOptions(document.getElementById('lc-type').value) ? '' : 'none';
-}
-function saveNewLeadCol() {
-  const label = document.getElementById('lc-name').value.trim();
-  if (!label) return showToast('Column name is required.');
-  const type = document.getElementById('lc-type').value;
-  let key = 'cf_' + slugKey(label);
-  const base = key; let n = 2; while (_leadCols.some(c => c.key === key)) key = base + '_' + (n++);
-  const col = { key, label, type, builtin: false, visible: true };
-  if (typeHasOptions(type)) {
-    const opts = parseOptLines(document.getElementById('lc-options').value);
-    if (!opts.length) return showToast('Add at least one option (one per line).');
-    col.options = opts;
-  }
-  _leadCols.push(col); saveLeadCols();
-  document.getElementById('lead-col-modal').style.display = 'none';
-  renderLeadHead(); empFilterLeads();
-}
-function openLeadTypeModal(key) {
-  closeLeadMenu();
-  const col = leadCol(key); if (!col) return;
-  _typeColKey = key;
-  document.getElementById('lt-col-name').textContent = col.label;
-  document.getElementById('lt-type').value = typeHasOptions(col.type) ? col.type : (col.type === 'checkbox' ? 'checkbox' : 'text');
-  document.getElementById('lt-options').value = (col.options || []).map(o => o.label).join('\n');
-  ltTypeChanged();
-  document.getElementById('lead-type-modal').style.display = 'flex';
-}
-function ltTypeChanged() {
-  document.getElementById('lt-options-wrap').style.display = typeHasOptions(document.getElementById('lt-type').value) ? '' : 'none';
-}
-function saveLeadType() {
-  const col = leadCol(_typeColKey); if (!col) return;
-  const type = document.getElementById('lt-type').value;
-  if (typeHasOptions(type)) {
-    const opts = parseOptLines(document.getElementById('lt-options').value, col.options);
-    if (!opts.length) return showToast('Add at least one option (one per line).');
-    col.options = opts;
-  } else { delete col.options; }
-  col.type = type; saveLeadCols();
-  document.getElementById('lead-type-modal').style.display = 'none';
-  renderLeadHead(); empFilterLeads();
-}
-function openLeadOptsModal(key) {
-  closeLeadMenu();
-  const col = leadCol(key); if (!col) return;
-  document.getElementById('lo-key').value = key;
-  document.getElementById('lo-title').textContent = 'Edit Options — ' + col.label;
-  document.getElementById('lo-list').innerHTML = (col.options || []).map(o => loRowHtml(o.key, o.label)).join('');
-  document.getElementById('lead-opts-modal').style.display = 'flex';
-  requestAnimationFrame(() => lucide.createIcons());
-}
-function loRowHtml(key, label) {
-  return `<div class="lo-row" data-optkey="${esc(key)}" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
-    <input class="form-control" value="${esc(label)}" placeholder="Option label" style="flex:1">
-    <button onclick="this.closest('.lo-row').remove()" title="Remove" style="background:rgba(239,68,68,.1);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:30px;height:30px;flex-shrink:0">✕</button>
-  </div>`;
-}
-function loAddOption() {
-  document.getElementById('lo-list').insertAdjacentHTML('beforeend', loRowHtml('', ''));
-  const rows = document.querySelectorAll('#lo-list .lo-row');
-  rows[rows.length - 1]?.querySelector('input')?.focus();
-}
-function saveLeadOpts() {
-  const key = document.getElementById('lo-key').value;
-  const col = leadCol(key); if (!col) return;
-  const opts = [];
-  document.querySelectorAll('#lo-list .lo-row').forEach(r => {
-    const label = r.querySelector('input').value.trim(); if (!label) return;
-    let k = r.dataset.optkey;
-    if (!k) { k = slugKey(label); const b = k; let m = 2; while (opts.some(o => o.key === k)) k = b + '_' + (m++); }
-    if (!opts.some(o => o.key === k)) opts.push({ key: k, label });
-  });
-  if (!opts.length) return showToast('Keep at least one option.');
-  col.options = opts; saveLeadCols();
-  document.getElementById('lead-opts-modal').style.display = 'none';
-  empFilterLeads();
 }
 
 // ── Inline cell editing (click a cell to edit, ClickUp-style) ──
@@ -1620,12 +1385,15 @@ function leadCellHtml(c, col) {
   }
   if (col.key === 'lead_status') {
     const m = colOptMap(col); const k = normKey(raw || 'cold', m);
-    const bg = LEAD_STATUS_COLORS[k] || 'rgba(255,255,255,.06)'; const tc = LEAD_STATUS_TEXT[k] || '#b9b3a4';
-    return `<td ${attrs}><span style="background:${bg};color:${tc};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap">${esc(m[k] || raw || k)}</span></td>`;
+    return `<td ${attrs}>${CE('leads').badgeHtml(col, k, m[k] || raw || k)}</td>`;
   }
   if (col.key === 'budget_lead') return `<td ${attrs} style="${base};white-space:nowrap">${empFmtBudget(c.budget_lead, c.budget_max)}</td>`;
   if (col.type === 'checkbox') return `<td class="lead-cell" style="${base};text-align:center;font-size:15px" onclick="leadCellClick(event, ${c.id}, '${esc(col.key)}')">${isChecked(raw) ? '<i data-lucide="check-square" style="width:15px;height:15px"></i>' : '<i data-lucide="square" style="width:15px;height:15px"></i>'}</td>`;
-  if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); const k = normKey(raw, m); return `<td ${attrs} style="${base};white-space:nowrap">${esc(m[k] || raw || '—')}</td>`; }
+  if (col.type === 'select' || col.type === 'radio') {
+    const m = colOptMap(col); const k = normKey(raw, m);
+    if (CE('leads').optionColor(col, k)) return `<td ${attrs}>${CE('leads').badgeHtml(col, k, m[k] || raw || '—')}</td>`;
+    return `<td ${attrs} style="${base};white-space:nowrap">${esc(m[k] || raw || '—')}</td>`;
+  }
   if (['notes', 'car_in_question', 'sales_feedback', 'inquiry'].includes(col.key)) return `<td ${attrs} style="${base};max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(raw || '')}">${esc(raw || '—')}</td>`;
   if (col.type === 'number') return `<td ${attrs} style="${base};white-space:nowrap">${raw != null && raw !== '' ? Number(raw).toLocaleString() : '—'}</td>`;
   return `<td ${attrs} style="${base};white-space:nowrap">${esc(raw || '—')}</td>`;
@@ -1700,8 +1468,9 @@ function renderLeadDrawer() {
   document.getElementById('ld-name').textContent = c.name || '—';
   const badge = document.getElementById('ld-status');
   badge.textContent = (stMap[stKey] || c.lead_status || 'Cold') + ' ▾';
-  badge.style.background = LEAD_STATUS_COLORS[stKey] || 'rgba(255,255,255,.06)';
-  badge.style.color = LEAD_STATUS_TEXT[stKey] || '#b9b3a4';
+  const stHex = CE('leads').optionColor(leadCol('lead_status'), stKey);
+  badge.style.background = stHex ? hexA(stHex, 0.16) : 'rgba(255,255,255,.06)';
+  badge.style.color = stHex || '#b9b3a4';
   document.getElementById('ld-phone').textContent = c.phone || '';
   document.getElementById('ld-call').href = c.phone ? 'tel:' + c.phone : '#';
   document.getElementById('ld-wa').href = c.phone ? 'https://wa.me/' + ldWaDigits(c.phone) : '#';
@@ -1739,7 +1508,8 @@ function renderLeadDrawer() {
     let bodyHtml = esc(a.body || '');
     if (a.type === 'status_change' && a.meta?.to) {
       const fk = normKey(a.meta.from, stMap), tk = normKey(a.meta.to, stMap);
-      bodyHtml = `Status: <span class="ld-stage-pill" style="background:${LEAD_STATUS_COLORS[fk] || 'rgba(255,255,255,.06)'};color:${LEAD_STATUS_TEXT[fk] || '#b9b3a4'}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="background:${LEAD_STATUS_COLORS[tk] || 'rgba(255,255,255,.06)'};color:${LEAD_STATUS_TEXT[tk] || '#b9b3a4'}">${esc(stMap[tk] || a.meta.to)}</span>`;
+      const pill = k => { const h = CE('leads').optionColor(leadCol('lead_status'), k); return `background:${h ? hexA(h, 0.16) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
+      bodyHtml = `Status: <span class="ld-stage-pill" style="${pill(fk)}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="${pill(tk)}">${esc(stMap[tk] || a.meta.to)}</span>`;
     }
     return `<div class="ld-tl-item">
       <div class="ld-tl-icon"><i data-lucide="${LD_ACT_ICONS[a.type] || 'circle'}"></i></div>

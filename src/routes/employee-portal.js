@@ -1152,13 +1152,15 @@ receiver.router.get('/api/dashboard/leads/columns', requireAuth, async (_req, re
   res.json({ columns });
 });
 
-receiver.router.put('/api/dashboard/leads/columns', requireAuth, express.json(), async (req, res) => {
-  const columns = req.body?.columns;
-  if (!Array.isArray(columns)) return res.status(400).json({ error: 'columns array required' });
+receiver.router.put('/api/dashboard/leads/columns', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
+  // Legacy path, kept for clients still running the previous bundle. Same
+  // sanitizer as the generic /columns/:entity route.
+  const columns = ctx.sanitizeColumns(req.body && req.body.columns);
+  if (!columns) return res.status(400).json({ error: 'columns must be an array' });
   const { error } = await supabase.from('quotation_settings')
     .upsert({ key: 'leads_columns_config', value: JSON.stringify(columns) }, { onConflict: 'key' });
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
+  res.json({ ok: true, columns });
 });
 
 // ── Deals ─────────────────────────────────────────────────────────────────────

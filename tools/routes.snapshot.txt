@@ -122,6 +122,10 @@ GET /api/employee/home/layout
 PUT /api/employee/home/layout
 GET /api/employee/home/summary
 GET /api/employee/home/calendar
+GET /api/dashboard/columns/:entity
+PUT /api/dashboard/columns/:entity
+GET /api/employee/columns/:entity
+PUT /api/employee/columns/:entity
 GET /api/calendar/status
 GET /api/calendar/connect
 POST /api/calendar/disconnect

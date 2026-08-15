@@ -4804,43 +4804,16 @@ let _selectedLeads = new Set();
 // Sort state: { key, dir:'asc'|'desc' } — persisted so the choice sticks.
 let _leadSort = (() => { try { return JSON.parse(localStorage.getItem('ml_leads_sort')) || { key: null, dir: 'asc' }; } catch (_) { return { key: null, dir: 'asc' }; } })();
 
-const LEAD_STATUS_COLORS = { cold:'rgba(255,255,255,.06)', warm:'rgba(230,150,80,.18)', hot:'rgba(239,68,68,.14)', immediate_delivery:'rgba(100,180,120,.14)', not_interested:'rgba(150,150,150,.1)', blacklist:'rgba(60,0,0,.35)' };
-const LEAD_STATUS_TEXT   = { cold:'#b9b3a4', warm:'var(--gold)', hot:'#f87171', immediate_delivery:'#6dd8a4', not_interested:'#888', blacklist:'#f87171' };
 
 // ── Leads: ClickUp-style configurable columns ─────────────────────────────────
 // Column config (order, visibility, labels, dropdown options, custom columns) is
 // persisted server-side via /api/dashboard/leads/columns. Custom column values
 // live in customers.custom_fields (JSONB) keyed by column key.
-const LEAD_DEFAULT_COLS = [
-  { key:'lead_date',       label:'Date',        type:'date',     builtin:true, visible:true },
-  { key:'lead_time',       label:'Time',        type:'text',     builtin:true, visible:true },
-  { key:'name',            label:'Name',        type:'text',     builtin:true, visible:true },
-  { key:'phone',           label:'Phone',       type:'text',     builtin:true, visible:true },
-  { key:'lead_status',     label:'Status',      type:'select',   builtin:true, visible:true, options:[
-    { key:'cold', label:'Cold' }, { key:'warm', label:'Warm' }, { key:'hot', label:'Hot' },
-    { key:'immediate_delivery', label:'Immediate Delivery' }, { key:'not_interested', label:'Not Interested' }, { key:'blacklist', label:'Blacklist' }] },
-  { key:'source',          label:'Origin',      type:'select',   builtin:true, visible:true, options:[
-    { key:'fb_ad', label:'FB Ad.' }, { key:'whatsapp', label:'Whatsapp' }, { key:'messenger', label:'Messenger' },
-    { key:'direct_call', label:'Direct Call' }, { key:'ig_ads', label:'IG ads' },
-    { key:'website', label:'Website' }, { key:'walk_in', label:'Walk-in' }, { key:'marketplace', label:'Marketplace' }] },
-  { key:'car_in_question', label:'Car',         type:'text',     builtin:true, visible:true },
-  { key:'budget_lead',     label:'Budget',      type:'number',   builtin:true, visible:true },
-  { key:'next_action',     label:'Next Action', type:'select',   builtin:true, visible:true, options:[
-    { key:'followed_by_sales', label:'Followed By Sales' }, { key:'need_follow_up', label:'Need Follow Up' },
-    { key:'closed', label:'Closed' }, { key:'no_answer', label:'No Answer' }] },
-  { key:'been_contacted',  label:'Contacted',   type:'checkbox', builtin:true, visible:true },
-  { key:'notes',           label:'Notes',       type:'text',     builtin:true, visible:true },
-  { key:'sales_feedback',  label:'Sales Feedback', type:'text',  builtin:true, visible:true },
-  { key:'inquiry',         label:'Inquiry',     type:'text',     builtin:true, visible:true },
-  { key:'next_followup',   label:'Follow-up',   type:'virtual',  builtin:true, visible:true },
-  { key:'owner',           label:'Owner',       type:'virtual',  builtin:true, visible:true },
-];
+// The engine (public/assets/columns.js) owns the config now; this bundle keeps
+// a live reference to its array plus the same thin lookups every call site used.
 let _leadCols = null;
-let _leadColsLoaded = false;
-
-function leadCol(key) { return (_leadCols || LEAD_DEFAULT_COLS).find(c => c.key === key); }
-function colOptMap(col) { const m = {}; (col?.options || []).forEach(o => { m[o.key] = o.label; }); return m; }
-function slugKey(label) { return String(label).toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'col'; }
+function leadCol(key) { return CE('leads') ? CE('leads').col(key) : null; }
+function colOptMap(col) { return CE('leads').optMap(col); }
 function isChecked(raw) { return raw === true || raw === 'true' || raw === 1 || raw === '1'; }
 // Budget: parse a single number OR a range ("1700000-2000000", "1.7M to 2M") into {min,max}.
 function parseBudgetPart(s) {
@@ -4870,31 +4843,20 @@ function fmtBudget(min, max) {
 }
 
 async function loadLeadCols() {
-  if (_leadColsLoaded) return;
-  let saved = null;
-  try { const d = await apiFetch('/api/dashboard/leads/columns').then(r => r.json()); saved = d.columns; } catch (_) {}
-  _leadCols = mergeLeadCols(saved);
-  _leadColsLoaded = true;
-}
-
-function mergeLeadCols(saved) {
-  if (!Array.isArray(saved) || !saved.length) return JSON.parse(JSON.stringify(LEAD_DEFAULT_COLS));
-  const cols = saved
-    .filter(c => c && c.key && (!c.builtin || LEAD_DEFAULT_COLS.some(d => d.key === c.key)))
-    .map(c => ({ ...c, visible: c.visible !== false }));
-  // Builtins introduced after the config was saved get appended
-  LEAD_DEFAULT_COLS.forEach(d => { if (!cols.some(c => c.key === d.key)) cols.push(JSON.parse(JSON.stringify(d))); });
-  // Select builtins must always carry an options list
-  cols.forEach(c => {
-    const d = LEAD_DEFAULT_COLS.find(x => x.key === c.key);
-    if (d?.options && !Array.isArray(c.options)) c.options = JSON.parse(JSON.stringify(d.options));
+  const eng = CE('leads') || ColumnsEngine('leads', {
+    base: '/api/dashboard',
+    fetch: (url, opts) => apiFetch(url, opts),
+    modal: (...a) => showModal(...a),
+    closeModal: () => hideModal(),
+    builtins: LEADS_BUILTIN_COLS,
+    fixedKeys: ['name', 'budget_lead', 'lead_date'],
+    canEdit: () => true,
+    sort: { get: () => _leadSort, set: (k, d) => setLeadSort(k, d) },
+    onChange: () => { renderLeadHead(); renderLeadFilterOptions(); filterCustomers(); },
   });
-  return cols;
+  _leadCols = await eng.load();
 }
-
-function saveLeadCols() {
-  apiFetch('/api/dashboard/leads/columns', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ columns: _leadCols }) }).catch(() => {});
-}
+function saveLeadCols() { CE('leads').save(); }
 
 // ── Header rendering + drag-to-reorder ──
 function renderLeadHead() {
@@ -4913,260 +4875,6 @@ function renderLeadHead() {
   requestAnimationFrame(() => lucide.createIcons());
 }
 
-let _dragColKey = null;
-let _leadColDidDrag = false; // swallow the click that can trail a header drag
-function leadColDragStart(e) { _dragColKey = e.currentTarget.dataset.colkey; _leadColDidDrag = true; e.dataTransfer.effectAllowed = 'move'; }
-function leadColDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
-function leadColDragEnd() { document.querySelectorAll('#leads-head-row th.drag-over').forEach(t => t.classList.remove('drag-over')); _dragColKey = null; setTimeout(() => { _leadColDidDrag = false; }, 0); }
-function leadColDrop(e) {
-  e.preventDefault();
-  const target = e.currentTarget.dataset.colkey;
-  const src = _dragColKey;
-  leadColDragEnd();
-  if (!src || src === target) return;
-  const from = _leadCols.findIndex(c => c.key === src);
-  const to = _leadCols.findIndex(c => c.key === target);
-  if (from < 0 || to < 0) return;
-  const [moved] = _leadCols.splice(from, 1);
-  _leadCols.splice(to, 0, moved);
-  saveLeadCols(); renderLeadHead(); filterCustomers();
-}
-
-// ── Column menu (rename / options / move / hide / delete) + visibility picker ──
-let _leadMenuEl = null;
-function ensureLeadMenu() {
-  if (!_leadMenuEl) {
-    _leadMenuEl = document.createElement('div');
-    _leadMenuEl.className = 'lead-menu';
-    document.body.appendChild(_leadMenuEl);
-    document.addEventListener('click', e => {
-      if (_leadMenuEl.classList.contains('open') && !_leadMenuEl.contains(e.target)
-          && !e.target.closest?.('th.lead-col') && !e.target.closest?.('#lead-cols-btn')) closeLeadMenu();
-    });
-  }
-  return _leadMenuEl;
-}
-function closeLeadMenu() { if (_leadMenuEl) _leadMenuEl.classList.remove('open'); }
-function positionLeadMenu(e) {
-  const m = _leadMenuEl;
-  m.style.left = Math.min(e.clientX, window.innerWidth - 230) + 'px';
-  m.style.top  = Math.min(e.clientY + 6, window.innerHeight - 60) + 'px';
-  m.classList.add('open');
-}
-
-function openLeadColMenu(e, key) {
-  e.stopPropagation();
-  const col = leadCol(key);
-  if (!col) return;
-  const m = ensureLeadMenu();
-  m.dataset.mode = 'colmenu';
-  const vis = visibleLeadCols();
-  const vi = vis.findIndex(c => c.key === key);
-  const canType = col.type !== 'virtual' && !['name', 'budget_lead', 'lead_date'].includes(col.key);
-  const sorted = _leadSort && _leadSort.key === key;
-  m.innerHTML = `
-    <button onclick="setLeadSort('${esc(key)}','asc')"${sorted && _leadSort.dir === 'asc' ? ' class="active"' : ''}><i data-lucide="arrow-up-narrow-wide" style="width:13px;height:13px"></i> Sort ascending</button>
-    <button onclick="setLeadSort('${esc(key)}','desc')"${sorted && _leadSort.dir === 'desc' ? ' class="active"' : ''}><i data-lucide="arrow-down-wide-narrow" style="width:13px;height:13px"></i> Sort descending</button>
-    ${sorted ? `<button onclick="setLeadSort(null)"><i data-lucide="x" style="width:13px;height:13px"></i> Clear sort</button>` : ''}
-    <div class="lead-menu-sep"></div>
-    <button onclick="leadColRename('${esc(key)}')"><i data-lucide="pencil" style="width:13px;height:13px"></i> Rename</button>
-    ${canType ? `<button onclick="openLeadTypeModal('${esc(key)}')"><i data-lucide="shuffle" style="width:13px;height:13px"></i> Change type</button>` : ''}
-    ${(col.type === 'select' || col.type === 'radio') ? `<button onclick="openLeadOptsModal('${esc(key)}')"><i data-lucide="list" style="width:13px;height:13px"></i> Edit options</button>` : ''}
-    <div class="lead-menu-sep"></div>
-    <button onclick="leadColMove('${esc(key)}',-1)" ${vi <= 0 ? 'disabled' : ''}><i data-lucide="arrow-left" style="width:13px;height:13px"></i> Move left</button>
-    <button onclick="leadColMove('${esc(key)}',1)" ${vi >= vis.length - 1 ? 'disabled' : ''}><i data-lucide="arrow-right" style="width:13px;height:13px"></i> Move right</button>
-    <div class="lead-menu-sep"></div>
-    <button onclick="leadColHide('${esc(key)}')"><i data-lucide="eye-off" style="width:13px;height:13px"></i> Hide column</button>
-    <button class="danger" onclick="leadColDelete('${esc(key)}')"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete column</button>`;
-  positionLeadMenu(e);
-  requestAnimationFrame(() => lucide.createIcons());
-}
-
-function openLeadColsPicker(e) {
-  e.stopPropagation();
-  const m = ensureLeadMenu();
-  if (m.classList.contains('open') && m.dataset.mode === 'picker') return closeLeadMenu();
-  m.dataset.mode = 'picker';
-  m.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:6px 10px 4px">Show columns</div>` +
-    _leadCols.filter(c => !c.deleted).map(c => `
-      <button type="button" class="lead-col-eye ${c.visible ? '' : 'col-hidden'}" onclick="event.stopPropagation();toggleLeadColVis('${esc(c.key)}', ${c.visible ? 'false' : 'true'});openLeadColsPickerRefresh()">
-        <i data-lucide="${c.visible ? 'eye' : 'eye-off'}" style="width:14px;height:14px"></i> ${esc(c.label)}
-      </button>`).join('');
-  positionLeadMenu(e);
-  requestAnimationFrame(() => lucide.createIcons());
-}
-// Re-render the picker in place (keeps it open) after an eye toggle
-function openLeadColsPickerRefresh() {
-  const m = _leadMenuEl;
-  if (!m || !m.classList.contains('open')) return;
-  m.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:6px 10px 4px">Show columns</div>` +
-    _leadCols.filter(c => !c.deleted).map(c => `
-      <button type="button" class="lead-col-eye ${c.visible ? '' : 'col-hidden'}" onclick="event.stopPropagation();toggleLeadColVis('${esc(c.key)}', ${c.visible ? 'false' : 'true'});openLeadColsPickerRefresh()">
-        <i data-lucide="${c.visible ? 'eye' : 'eye-off'}" style="width:14px;height:14px"></i> ${esc(c.label)}
-      </button>`).join('');
-  requestAnimationFrame(() => lucide.createIcons());
-}
-
-function toggleLeadColVis(key, on) {
-  const col = leadCol(key);
-  if (!col) return;
-  col.visible = !!on;
-  saveLeadCols(); renderLeadHead(); filterCustomers();
-}
-
-function leadColRename(key) {
-  closeLeadMenu();
-  const col = leadCol(key);
-  const v = prompt('Column name', col.label);
-  if (v && v.trim()) { col.label = v.trim(); saveLeadCols(); renderLeadHead(); renderLeadFilterOptions(); }
-}
-function leadColMove(key, dir) {
-  closeLeadMenu();
-  const vis = visibleLeadCols();
-  const vi = vis.findIndex(c => c.key === key);
-  const nb = vis[vi + dir];
-  if (!nb) return;
-  const from = _leadCols.findIndex(c => c.key === key);
-  const to = _leadCols.findIndex(c => c.key === nb.key);
-  const [moved] = _leadCols.splice(from, 1);
-  _leadCols.splice(to, 0, moved);
-  saveLeadCols(); renderLeadHead(); filterCustomers();
-}
-function leadColHide(key) {
-  closeLeadMenu();
-  const col = leadCol(key);
-  if (col) { col.visible = false; saveLeadCols(); renderLeadHead(); filterCustomers(); }
-}
-function leadColDelete(key) {
-  closeLeadMenu();
-  const col = leadCol(key);
-  if (!col) return;
-  if (!confirm(`Delete column "${col.label}"? Saved values stay on the leads but won't be shown.`)) return;
-  // Builtins are soft-deleted (kept with deleted:true) so mergeLeadCols won't re-add them on reload.
-  if (col.builtin) { col.deleted = true; col.visible = false; }
-  else _leadCols = _leadCols.filter(c => c.key !== key);
-  saveLeadCols(); renderLeadHead(); filterCustomers();
-}
-
-// ── Add-column modal ──
-function openAddLeadColModal() {
-  document.getElementById('lc-name').value = '';
-  document.getElementById('lc-type').value = 'text';
-  document.getElementById('lc-options').value = '';
-  lcTypeChanged();
-  document.getElementById('lead-col-modal').style.display = 'flex';
-}
-function typeHasOptions(t) { return t === 'select' || t === 'radio'; }
-// Parse an options textarea into [{key,label}], reusing existing keys when a label matches.
-function parseOptLines(text, existing) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  const prev = existing || [];
-  const opts = [];
-  lines.forEach(l => {
-    const match = prev.find(o => o.label === l);
-    let k = match ? match.key : slugKey(l);
-    const b = k; let m = 2;
-    while (opts.some(o => o.key === k)) k = b + '_' + (m++);
-    opts.push({ key: k, label: l });
-  });
-  return opts;
-}
-function lcTypeChanged() {
-  document.getElementById('lc-options-wrap').style.display = typeHasOptions(document.getElementById('lc-type').value) ? '' : 'none';
-}
-function saveNewLeadCol() {
-  const label = document.getElementById('lc-name').value.trim();
-  if (!label) return alert('Column name is required.');
-  const type = document.getElementById('lc-type').value;
-  let key = 'cf_' + slugKey(label);
-  const base = key; let n = 2;
-  while (_leadCols.some(c => c.key === key)) key = base + '_' + (n++);
-  const col = { key, label, type, builtin: false, visible: true };
-  if (typeHasOptions(type)) {
-    const opts = parseOptLines(document.getElementById('lc-options').value);
-    if (!opts.length) return alert('Add at least one option (one per line).');
-    col.options = opts;
-  }
-  _leadCols.push(col);
-  saveLeadCols();
-  document.getElementById('lead-col-modal').style.display = 'none';
-  renderLeadHead(); filterCustomers();
-}
-
-// ── Change column type ──
-let _typeColKey = null;
-function openLeadTypeModal(key) {
-  closeLeadMenu();
-  const col = leadCol(key);
-  if (!col) return;
-  _typeColKey = key;
-  document.getElementById('lt-col-name').textContent = col.label;
-  // Map current type to the modal's offered set (Text / Dropdown / Radio / Checkbox)
-  document.getElementById('lt-type').value = typeHasOptions(col.type) ? col.type : (col.type === 'checkbox' ? 'checkbox' : 'text');
-  document.getElementById('lt-options').value = (col.options || []).map(o => o.label).join('\n');
-  ltTypeChanged();
-  document.getElementById('lead-type-modal').style.display = 'flex';
-}
-function ltTypeChanged() {
-  document.getElementById('lt-options-wrap').style.display = typeHasOptions(document.getElementById('lt-type').value) ? '' : 'none';
-}
-function saveLeadType() {
-  const col = leadCol(_typeColKey);
-  if (!col) return;
-  const type = document.getElementById('lt-type').value;
-  if (typeHasOptions(type)) {
-    const opts = parseOptLines(document.getElementById('lt-options').value, col.options);
-    if (!opts.length) return alert('Add at least one option (one per line).');
-    col.options = opts;
-  } else {
-    delete col.options;
-  }
-  col.type = type;
-  saveLeadCols();
-  document.getElementById('lead-type-modal').style.display = 'none';
-  renderLeadHead(); filterCustomers();
-}
-
-// ── Dropdown-options editor ──
-function openLeadOptsModal(key) {
-  closeLeadMenu();
-  const col = leadCol(key);
-  if (!col) return;
-  document.getElementById('lo-key').value = key;
-  document.getElementById('lo-title').textContent = 'Edit Options — ' + col.label;
-  document.getElementById('lo-list').innerHTML = (col.options || []).map(o => loRowHtml(o.key, o.label)).join('');
-  document.getElementById('lead-opts-modal').style.display = 'flex';
-  requestAnimationFrame(() => lucide.createIcons());
-}
-function loRowHtml(key, label) {
-  return `<div class="lo-row" data-optkey="${esc(key)}" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
-    <input class="form-input" value="${esc(label)}" placeholder="Option label" style="flex:1">
-    <button onclick="this.closest('.lo-row').remove()" title="Remove" style="background:rgba(239,68,68,.1);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:30px;height:30px;flex-shrink:0">✕</button>
-  </div>`;
-}
-function loAddOption() {
-  document.getElementById('lo-list').insertAdjacentHTML('beforeend', loRowHtml('', ''));
-  const rows = document.querySelectorAll('#lo-list .lo-row');
-  rows[rows.length - 1]?.querySelector('input')?.focus();
-}
-function saveLeadOpts() {
-  const key = document.getElementById('lo-key').value;
-  const col = leadCol(key);
-  if (!col) return;
-  const opts = [];
-  document.querySelectorAll('#lo-list .lo-row').forEach(r => {
-    const label = r.querySelector('input').value.trim();
-    if (!label) return;
-    let k = r.dataset.optkey;
-    if (!k) { k = slugKey(label); const b = k; let m = 2; while (opts.some(o => o.key === k)) k = b + '_' + (m++); }
-    if (!opts.some(o => o.key === k)) opts.push({ key: k, label });
-  });
-  if (!opts.length) return alert('Keep at least one option.');
-  col.options = opts;
-  saveLeadCols();
-  document.getElementById('lead-opts-modal').style.display = 'none';
-  renderLeadFilterOptions(); filterCustomers();
-}
 
 // Rebuild the status/origin filter dropdowns from the current column options
 function renderLeadFilterOptions() {
@@ -5299,13 +5007,16 @@ function leadCellHtml(c, col) {
   if (col.key === 'lead_status') {
     const m = colOptMap(col);
     const k = normKey(raw || 'cold', m);
-    const bg = LEAD_STATUS_COLORS[k] || 'rgba(255,255,255,.06)';
-    const tc = LEAD_STATUS_TEXT[k] || '#b9b3a4';
-    return `<td ${attrs}><span style="background:${bg};color:${tc};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap">${esc(m[k] || raw || k)}</span></td>`;
+    return `<td ${attrs}>${CE('leads').badgeHtml(col, k, m[k] || raw || k)}</td>`;
   }
   if (col.key === 'budget_lead') return `<td ${attrs} style="font-size:12px;white-space:nowrap">${fmtBudget(c.budget_lead, c.budget_max)}</td>`;
   if (col.type === 'checkbox') return `<td ${attrs} style="text-align:center;font-size:16px">${isChecked(raw) ? '<i data-lucide="check-square" style="width:15px;height:15px"></i>' : '<i data-lucide="square" style="width:15px;height:15px"></i>'}</td>`;
-  if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); const k = normKey(raw, m); return `<td ${attrs} style="font-size:12px;white-space:nowrap">${esc(m[k] || raw || '—')}</td>`; }
+  if (col.type === 'select' || col.type === 'radio') {
+    const m = colOptMap(col); const k = normKey(raw, m);
+    // Colored like the status column when the option carries a color; plain otherwise.
+    if (CE('leads').optionColor(col, k)) return `<td ${attrs}>${CE('leads').badgeHtml(col, k, m[k] || raw || '—')}</td>`;
+    return `<td ${attrs} style="font-size:12px;white-space:nowrap">${esc(m[k] || raw || '—')}</td>`;
+  }
   if (col.key === 'notes' || col.key === 'car_in_question' || col.key === 'sales_feedback' || col.key === 'inquiry') return `<td ${attrs} style="font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(raw || '')}">${esc(raw || '—')}</td>`;
   if (col.type === 'number') return `<td ${attrs} style="font-size:12px;white-space:nowrap">${raw != null && raw !== '' ? Number(raw).toLocaleString() : '—'}</td>`;
   return `<td ${attrs} style="font-size:12px;white-space:nowrap">${esc(raw || '—')}</td>`;
@@ -5611,8 +5322,9 @@ function renderLeadDrawer() {
   document.getElementById('ld-name').textContent = c.name || '—';
   const badge = document.getElementById('ld-status');
   badge.textContent = (stMap[stKey] || c.lead_status || 'Cold') + ' ▾';
-  badge.style.background = LEAD_STATUS_COLORS[stKey] || 'rgba(255,255,255,.06)';
-  badge.style.color = LEAD_STATUS_TEXT[stKey] || '#b9b3a4';
+  const stHex = CE('leads').optionColor(stCol, stKey);
+  badge.style.background = stHex ? hexA(stHex, 0.16) : 'rgba(255,255,255,.06)';
+  badge.style.color = stHex || '#b9b3a4';
   document.getElementById('ld-phone').textContent = c.phone || '';
   document.getElementById('ld-call').href = c.phone ? 'tel:' + c.phone : '#';
   document.getElementById('ld-wa').href = c.phone ? 'https://wa.me/' + ldWaDigits(c.phone) : '#';
@@ -5653,7 +5365,8 @@ function renderLeadDrawer() {
     let bodyHtml = esc(a.body || '');
     if (a.type === 'status_change' && a.meta?.to) {
       const fk = normKey(a.meta.from, stMap), tk = normKey(a.meta.to, stMap);
-      bodyHtml = `Status: <span class="ld-stage-pill" style="background:${LEAD_STATUS_COLORS[fk] || 'rgba(255,255,255,.06)'};color:${LEAD_STATUS_TEXT[fk] || '#b9b3a4'}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="background:${LEAD_STATUS_COLORS[tk] || 'rgba(255,255,255,.06)'};color:${LEAD_STATUS_TEXT[tk] || '#b9b3a4'}">${esc(stMap[tk] || a.meta.to)}</span>`;
+      const pill = k => { const h = CE('leads').optionColor(stCol, k); return `background:${h ? hexA(h, 0.16) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
+      bodyHtml = `Status: <span class="ld-stage-pill" style="${pill(fk)}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="${pill(tk)}">${esc(stMap[tk] || a.meta.to)}</span>`;
     }
     return `<div class="ld-tl-item">
       <div class="ld-tl-icon"><i data-lucide="${LD_ACT_ICONS[a.type] || 'circle'}"></i></div>

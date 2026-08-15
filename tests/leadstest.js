@@ -37,7 +37,7 @@ const LEADS = [
 ];
 
 function api(pathname) {
-  if (/leads\/columns$/.test(pathname)) return { columns: COLS };
+  if (/(leads\/columns|columns\/leads)$/.test(pathname)) return { columns: COLS };
   if (/employee\/leads$/.test(pathname)) return LEADS;
   if (/employee\/check$/.test(pathname)) return { id: 2, name: 'Sara', permissions: { leads: true } };
   if (/coworkers|employees$/.test(pathname)) return [{ id: 2, name: 'Sara' }];
