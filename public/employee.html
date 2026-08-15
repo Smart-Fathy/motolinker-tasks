@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=69">
+  <link rel="stylesheet" href="/assets/employee.css?v=70">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=69">
+  <link rel="stylesheet" href="/assets/mobile.css?v=70">
 </head>
 <body>
 
@@ -1006,227 +1006,44 @@
 
     <!-- ── Quotation Draft Page ── -->
     <div class="page" id="page-quotation">
-      <div class="page-body" style="max-width:860px">
-
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+      <div style="padding:28px;max-width:980px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
           <div>
-            <div style="font-size:20px;font-weight:700">Quotation</div>
-            <div style="font-size:13px;color:var(--muted);margin-top:4px">Fill in the details to generate a professional PDF quotation</div>
+            <div class="card-title" style="margin:0">Quotation</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">Drafted in a sheet, like POs and RFQs — same entry, same preview</div>
           </div>
-          <button class="btn btn-primary" onclick="empGenerateQuotation()" id="emp-qt-generate-btn">
-            <i data-lucide="file-badge" style="width:15px;height:15px"></i> Generate PDF
+          <button class="btn btn-primary" data-perm="quotation.draft" onclick="openQuoteForm(null)">
+            <i data-lucide="plus" style="width:15px;height:15px"></i> New quotation
           </button>
         </div>
-
-        <!-- Tabs -->
         <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:24px">
-          <button id="emp-qt-tab-draft"    class="tab active" data-perm="quotation.draft"    onclick="empSwitchQtTab('draft')"    style="font-size:13px;padding:8px 18px">Draft</button>
-          <button id="emp-qt-tab-history"  class="tab"        data-perm="quotation.history"  onclick="empSwitchQtTab('history')"  style="font-size:13px;padding:8px 18px">History</button>
-          <button id="emp-qt-tab-settings" class="tab"        data-perm="quotation.settings" onclick="empSwitchQtTab('settings')" style="font-size:13px;padding:8px 18px">Settings</button>
+          <button id="qt-tab-draft"    class="tab active" data-perm="quotation.draft"    onclick="switchQtTab('draft')"    style="font-size:13px;padding:8px 18px">Draft</button>
+          <button id="qt-tab-history"  class="tab"        data-perm="quotation.history"  onclick="switchQtTab('history')"  style="font-size:13px;padding:8px 18px">History</button>
+          <button id="qt-tab-settings" class="tab"        data-perm="quotation.settings" onclick="switchQtTab('settings')" style="font-size:13px;padding:8px 18px">Settings</button>
         </div>
-
-        <!-- ══ TAB: Draft ══ -->
-        <div id="emp-qt-panel-draft">
-
-        <!-- Section 1: Document Info -->
-        <div class="card" style="margin-bottom:20px">
-          <div class="table-header"><span class="table-title">① Document Info</span></div>
-          <div class="qt-grid-3" style="padding:20px">
-            <div>
-              <label class="form-label">Quotation ID</label>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input class="form-input" id="emp-qt-id" readonly style="flex:1;background:rgba(255,255,255,.03);font-family:monospace">
-                <button class="btn btn-sm btn-outline" onclick="empRefreshQuoteId()" title="Generate new ID">
-                  <i data-lucide="refresh-cw" style="width:13px;height:13px"></i>
-                </button>
-              </div>
+        <div id="qt-panel-draft">
+          <div class="card" style="text-align:center;padding:44px 24px">
+            <i data-lucide="file-badge" style="width:36px;height:36px;opacity:.35"></i>
+            <div style="font-weight:600;margin-top:10px">Draft a quotation</div>
+            <div style="font-size:12.5px;color:var(--muted);margin:6px auto 16px;max-width:420px">
+              The sheet opens like a purchase order: header details, priced lines with running totals,
+              logistics, photos — then Generate previews the PDF.
             </div>
-            <div>
-              <label class="form-label">Date</label>
-              <input class="form-input" id="emp-qt-date" type="date">
-            </div>
-            <div>
-              <label class="form-label">Valid To</label>
-              <input class="form-input" id="emp-qt-valid-to" type="date">
-            </div>
-            <div>
-              <label class="form-label">Customer Name</label>
-              <input class="form-input" id="emp-qt-name" placeholder="e.g. Hesham Dorghamy">
-            </div>
-            <div>
-              <label class="form-label">Lead <span style="color:var(--muted);font-weight:400">(attach to profile)</span></label>
-              <select class="form-input" id="emp-qt-customer-id">
-                <option value="">— No lead —</option>
-              </select>
-            </div>
-            <div>
-              <label class="form-label">Vehicle Model</label>
-              <input class="form-input" id="emp-qt-vehicle" placeholder="e.g. Deepal S05 620 Plus">
-            </div>
-          </div>
-          <div style="padding:0 20px 20px">
-            <label class="form-label">Vehicle Images <span style="color:var(--muted);font-weight:400">(max 5)</span></label>
-            <div id="emp-qt-img-drop"
-              style="border:2px dashed var(--border);border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:border-color .2s"
-              onclick="document.getElementById('emp-qt-img-input').click()"
-              ondragover="event.preventDefault();this.style.borderColor='var(--primary)'"
-              ondragleave="this.style.borderColor=''"
-              ondrop="event.preventDefault();this.style.borderColor='';empHandleImgDrop(event)">
-              <i data-lucide="image" style="width:28px;height:28px;color:var(--muted);margin-bottom:8px"></i>
-              <div style="font-size:13px;color:var(--muted)">Drag & drop images or click to browse</div>
-              <input type="file" id="emp-qt-img-input" accept="image/*" multiple style="display:none" onchange="empHandleImgSelect(this.files)">
-            </div>
-            <div id="emp-qt-img-preview" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"></div>
-          </div>
-        </div>
-
-        <!-- Section 2: Pricing Breakdown -->
-        <div class="card" style="margin-bottom:20px">
-          <div class="table-header" style="display:flex;align-items:center;justify-content:space-between">
-            <span class="table-title">② Pricing Breakdown</span>
-            <button class="btn btn-sm btn-outline" onclick="empAddPricingRow()">
-              <i data-lucide="plus" style="width:13px;height:13px"></i> Add Item
-            </button>
-          </div>
-          <div style="padding:16px 20px">
-            <div class="qt-line-5" style="margin-bottom:8px;padding:0 4px">
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Item</div>
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Unit</div>
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Price USD</div>
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Total EGP</div>
-              <div></div>
-            </div>
-            <div id="emp-qt-items"></div>
-            <button class="btn btn-sm btn-outline" style="margin-top:8px;width:100%;justify-content:center" onclick="empAddPricingRow()">
-              <i data-lucide="plus" style="width:13px;height:13px"></i> Add Row
+            <button class="btn btn-primary" data-perm="quotation.draft" onclick="openQuoteForm(null)">
+              <i data-lucide="plus" style="width:15px;height:15px"></i> New quotation
             </button>
           </div>
         </div>
-
-        <!-- Section 3: Logistics Pricing -->
-        <div class="card" style="margin-bottom:20px">
-          <div class="table-header"><span class="table-title">③ Logistics Pricing Breakdown</span></div>
-          <div style="padding:16px 20px">
-            <div class="qt-line-3" style="margin-bottom:8px;padding:0 4px">
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Item</div>
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Price USD</div>
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Total EGP</div>
-            </div>
-            <div id="emp-qt-logistics"></div>
-            <div class="qt-line-3" style="margin-top:12px;padding:10px;background:rgba(124,106,255,.06);border-radius:8px;border:1px solid rgba(124,106,255,.15)">
-              <div style="font-size:13px;font-weight:700;color:var(--text)">Total Price Breakdown in EGP</div>
-              <div></div>
-              <div id="emp-qt-grand-total" style="font-size:14px;font-weight:800;color:var(--primary);text-align:center">0</div>
-            </div>
+        <div id="qt-panel-history" style="display:none">
+          <div class="card" style="padding:0;overflow:hidden">
+            <div id="qt-history-body" style="padding:16px 20px"></div>
           </div>
         </div>
-
-        <!-- Section 4: Key Specs -->
-        <div class="card" style="margin-bottom:24px">
-          <div class="table-header"><span class="table-title">④ Key Specs</span></div>
-          <div class="qt-grid-3" style="padding:20px">
-            <div>
-              <label class="form-label">Currency</label>
-              <select class="form-input" id="emp-qt-currency">
-                <option value="EGP">EGP — Egyptian Pound</option>
-                <option value="USD">USD — US Dollar</option>
-              </select>
-            </div>
-            <div>
-              <label class="form-label">Exchange Rate (1 USD = ? EGP)</label>
-              <input class="form-input" id="emp-qt-exchange" type="number" min="1" step="0.01" placeholder="e.g. 55" oninput="empRecalcAll()">
-            </div>
-            <div>
-              <label class="form-label">Issued By</label>
-              <select class="form-input" id="emp-qt-issuer">
-                <option value="">— Select issuer —</option>
-              </select>
-            </div>
-          </div>
-          <div style="padding:0 20px 20px">
-            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Custom Specs</div>
-            <div id="emp-qt-custom-specs"></div>
-            <button class="btn btn-outline btn-sm" style="margin-top:4px" onclick="addCustomSpecRow('emp-qt-custom-specs')">
-              <i data-lucide="plus" style="width:13px;height:13px"></i> Add Custom Spec
-            </button>
-          </div>
-        </div>
-
-        <div id="emp-qt-error" style="display:none;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:#f87171;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px"></div>
-
-        </div><!-- /emp-qt-panel-draft -->
-
-        <!-- ══ TAB: History ══ -->
-        <div id="emp-qt-panel-history" style="display:none">
-          <div class="card">
-            <div class="table-header" style="display:flex;align-items:center;justify-content:space-between">
-              <span class="table-title">Saved Quotations</span>
-              <button class="btn btn-sm btn-outline" onclick="loadEmpQtHistory()"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i> Refresh</button>
-            </div>
-            <div id="emp-qt-history-body" style="padding:16px 20px">
-              <div style="color:var(--muted);font-size:13px;text-align:center;padding:24px">Loading…</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ══ TAB: Settings ══ -->
-        <div id="emp-qt-panel-settings" style="display:none">
-          <div class="card">
-            <div class="table-header"><span class="table-title">Company Info</span></div>
-            <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
-              <div><label class="form-label">Company Name</label><input class="form-input" id="emp-qts-company-name" placeholder="MotoLinkers"></div>
-              <div><label class="form-label">Phone</label><input class="form-input" id="emp-qts-company-phone" placeholder="+20 xxx xxx xxxx"></div>
-              <div><label class="form-label">Email</label><input class="form-input" id="emp-qts-company-email" placeholder="info@motolinkers.com"></div>
-              <div><label class="form-label">Website</label><input class="form-input" id="emp-qts-company-website" placeholder="www.motolinkers.com"></div>
-              <div style="grid-column:span 2"><label class="form-label">Address</label><input class="form-input" id="emp-qts-company-address" placeholder="Cairo, Egypt"></div>
-              <div><label class="form-label">Tax ID (optional)</label><input class="form-input" id="emp-qts-company-tax-id" placeholder="TAX-XXXXXXX"></div>
-            </div>
-          </div>
-          <div class="card" style="margin-top:16px">
-            <div class="table-header"><span class="table-title">Document Defaults</span></div>
-            <div style="padding:20px;display:grid;gap:16px">
-              <div><label class="form-label">Payment Terms</label><input class="form-input" id="emp-qts-payment-terms" placeholder="50% deposit / 30% on arrival / 20% on delivery"></div>
-              <div><label class="form-label">Footer Note</label><input class="form-input" id="emp-qts-footer-note" placeholder="Confidential"></div>
-            </div>
-          </div>
-          <div class="card" style="margin-top:16px">
-            <div class="table-header"><span class="table-title">Notification Settings</span></div>
-            <div style="padding:20px;display:grid;gap:16px">
-              <div>
-                <label class="form-label">Notify on Deal → Contacted</label>
-                <div style="font-size:12px;color:var(--muted);margin-bottom:8px">When a deal stage changes to "Contacted", notify this employee to create a quotation.</div>
-                <select class="form-input" id="emp-qts-contact-notify-id"><option value="">— Nobody —</option></select>
-              </div>
-            </div>
-          </div>
-          <div style="margin-top:16px;display:flex;justify-content:flex-end">
-            <button class="btn btn-primary" onclick="saveEmpQtSettings()"><i data-lucide="save" style="width:14px;height:14px"></i> Save Settings</button>
-          </div>
-          <div id="emp-qts-msg" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:13px"></div>
-        </div>
-
+        <!-- Built by quote.js on first open -->
+        <div id="qt-panel-settings" style="display:none"></div>
       </div>
     </div>
 
-    <!-- ── EMPLOYEE QUOTATION PREVIEW MODAL ── -->
-    <div id="emp-qt-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto">
-      <div style="background:#1a1d35;border:1px solid rgba(255,255,255,.08);border-radius:16px;width:100%;max-width:900px;overflow:hidden">
-        <div style="padding:18px 24px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between">
-          <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
-            <i data-lucide="file-badge" style="width:18px;height:18px"></i> Quotation Preview
-          </div>
-          <div style="display:flex;gap:10px">
-            <button class="btn btn-primary btn-sm" id="emp-qt-download-btn" onclick="empDownloadQuotationPdf()">
-              <i data-lucide="download" style="width:14px;height:14px"></i> Download PDF
-            </button>
-            <button class="btn btn-outline btn-sm" onclick="document.getElementById('emp-qt-modal').style.display='none'">Close</button>
-          </div>
-        </div>
-        <div style="padding:20px;background:#f0f0f0;min-height:500px">
-          <iframe id="emp-qt-preview-frame" style="width:100%;min-height:700px;border:none;border-radius:8px;background:#fff"></iframe>
-        </div>
-      </div>
-    </div>
 
     <!-- ── Chat Page ── -->
 
@@ -1362,11 +1179,11 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=69"></script>
-<script src="/assets/columns.js?v=69"></script>
-<script src="/assets/lead-filters.js?v=69"></script>
-<script src="/assets/chat-extras.js?v=69"></script>
-<script src="/assets/home.js?v=69"></script>
+<script src="/assets/mobile.js?v=70"></script>
+<script src="/assets/columns.js?v=70"></script>
+<script src="/assets/lead-filters.js?v=70"></script>
+<script src="/assets/chat-extras.js?v=70"></script>
+<script src="/assets/home.js?v=70"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1404,9 +1221,10 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=69"></script>
-<script src="/assets/procurement.js?v=69"></script>
-<script src="/assets/employee.js?v=69"></script>
+<script src="/assets/huddle.js?v=70"></script>
+<script src="/assets/procurement.js?v=70"></script>
+<script src="/assets/quote.js?v=70"></script>
+<script src="/assets/employee.js?v=70"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1468,6 +1286,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=69"></script>
+<script src="/help-docs.js?v=70"></script>
 </body>
 </html>
