@@ -31,12 +31,44 @@ const LEADS = [
   { id: 2, name: 'Mona', lead_status: 'hot', custom_fields: { cf_priority: 'p2' } },
 ];
 
+const SALES_COLS_CFG = [
+  { key: 'client', label: 'Client', type: 'text', builtin: true, visible: true },
+  { key: 'status', label: 'Status', type: 'select', builtin: true, visible: true },
+  { key: 'cf_bank', label: 'Bank', type: 'select', builtin: false, visible: true,
+    options: [{ key: 'cib', label: 'CIB', color: '#3b82f6' }, { key: 'cash', label: 'Cash' }] },
+];
+const SUP_COLS_CFG = [
+  { key: 'name', label: 'Name', type: 'text', builtin: true, visible: true },
+  { key: 'cf_rating', label: 'Rating', type: 'select', builtin: false, visible: true,
+    options: [{ key: 'a', label: 'Grade A', color: '#22c55e' }] },
+];
+const PO_COLS_CFG = [
+  { key: 'brand', label: 'MARQUE', type: 'text', builtin: true, visible: true },   // renamed
+  { key: 'model', label: 'MODEL', type: 'text', builtin: true, visible: true },
+  { key: 'cf_port', label: 'PORT', type: 'text', builtin: false, visible: true },
+];
+const SALES = [{ id: 4, client: 'Mona', status: 'delivered', custom_fields: { cf_bank: 'cib' } }];
+const SUPPLIERS = [{ id: 7, name: 'Yu Motors', contact: '', country: 'CN', address: '', notes: '', custom_fields: { cf_rating: 'a' } }];
+
 let savedPuts = [];
+let savedWrites = [];
 function api(pathname, method, body) {
   if (method === 'PUT' && /columns\/leads$|leads\/columns$/.test(pathname)) {
     savedPuts.push({ pathname, body: JSON.parse(body) });
     return { ok: true };
   }
+  if ((method === 'POST' || method === 'PUT') && /\/sales(\/\d+)?$|\/suppliers(\/\d+)?$/.test(pathname)) {
+    savedWrites.push({ pathname, method, body: JSON.parse(body || '{}') });
+    return { ok: true, id: 99 };
+  }
+  if (/columns\/sales$/.test(pathname)) return { columns: SALES_COLS_CFG };
+  if (/columns\/suppliers$/.test(pathname)) return { columns: SUP_COLS_CFG };
+  if (/columns\/po_items$/.test(pathname)) return { columns: PO_COLS_CFG };
+  if (/columns\/rfq_items$/.test(pathname)) return { columns: null };
+  if (/\/sales$/.test(pathname)) return SALES;
+  if (/\/suppliers$/.test(pathname)) return SUPPLIERS;
+  if (/suppliers\/\d+\/(vehicles|docs)$/.test(pathname)) return [];
+  if (/purchase-orders\/new\/defaults$/.test(pathname)) return { po_number: 'PO-1', po_date: '2026-08-15', currency: 'USD', items: [{}] };
   if (/columns\/leads$|leads\/columns$/.test(pathname)) return { columns: COLS };
   if (/customers$|employee\/leads$/.test(pathname)) return LEADS;
   if (/auth\/check$/.test(pathname)) return { ok: true };
@@ -176,6 +208,68 @@ const CELL = sel => `(() => {
     check('a view-only rep sees sort in the column menu but no mutations',
       menu.canEdit === false && menu.buttons.some(b => /Sort/.test(b)) && !menu.buttons.some(b => /Rename|Delete|Hide/.test(b)),
       JSON.stringify(menu));
+    await page.close();
+  }
+
+  // ── Adoption: sales, suppliers and the PO grid read the same engine ─────────
+  {
+    const { page, errs } = await openPortal(browser, {
+      route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token', port });
+    // Sales tab
+    await page.evaluate(() => { navigate('deals'); dealsTab('sales'); });
+    await sleep(600);
+    const sales = await page.evaluate(() => {
+      const box = document.getElementById('deals-sales-table');
+      const heads = [...box.querySelectorAll('thead th')].map(t => t.textContent.trim());
+      const badge = [...box.querySelectorAll('tbody span')].find(x => x.textContent.trim() === 'CIB');
+      return { heads, cib: badge ? getComputedStyle(badge).color : null };
+    });
+    check('sales: the table renders the configured columns including a custom one',
+      sales.heads.includes('Bank') && sales.heads.includes('Client'), JSON.stringify(sales.heads));
+    check('sales: the custom select renders a colored badge',
+      !!sales.cib && /59, 130, 246/.test(sales.cib), String(sales.cib));
+    // The form carries the custom field and the save carries custom_fields.
+    savedWrites.length = 0;
+    const saved = await page.evaluate(async () => {
+      openSaleForm(4);
+      await new Promise(r => setTimeout(r, 150));
+      const sel = document.querySelector('#modal-body [data-cek="cf_bank"]');
+      if (sel) sel.value = 'cash';
+      await saveSale(4);
+      await new Promise(r => setTimeout(r, 200));
+      return { hadInput: !!sel };
+    });
+    check('sales: the form includes the custom field', saved.hadInput === true);
+    check('sales: saving sends custom_fields to the server',
+      savedWrites.length === 1 && savedWrites[0].body.custom_fields && savedWrites[0].body.custom_fields.cf_bank === 'cash',
+      JSON.stringify(savedWrites[0] && savedWrites[0].body.custom_fields));
+
+    // Suppliers register
+    await page.evaluate(() => navigate('suppliers'));
+    await sleep(600);
+    const sup = await page.evaluate(() => {
+      const box = document.getElementById('suppliers-list');
+      return { heads: [...box.querySelectorAll('thead th')].map(t => t.textContent.trim()),
+               gradeA: !![...box.querySelectorAll('tbody span')].find(x => x.textContent.trim() === 'Grade A') };
+    });
+    check('suppliers: the register renders configured + custom columns',
+      sup.heads.includes('Rating') && sup.gradeA, JSON.stringify(sup));
+
+    // PO sheet grid: renamed builtin + custom column, honored in the grid.
+    const po = await page.evaluate(async () => {
+      await openPoForm(null);
+      await new Promise(r => setTimeout(r, 250));
+      const heads = [...document.querySelectorAll('#po-grid thead th')].map(t => t.textContent.trim());
+      const cf = document.querySelector('#po-rows .po-f[data-k="cf_port"]');
+      if (cf) cf.value = 'Alexandria';
+      const items = poCollectItems();
+      PROCFG.closeModal();
+      return { heads, collected: items[0] && items[0].cf_port };
+    });
+    check('PO grid: a renamed builtin shows its configured label', po.heads.includes('MARQUE'), JSON.stringify(po.heads.slice(0, 6)));
+    check('PO grid: a custom column exists and collects into the items JSON',
+      po.collected === 'Alexandria', String(po.collected));
+    check('adoption: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
     await page.close();
   }
 

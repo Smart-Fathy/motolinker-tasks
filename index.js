@@ -400,6 +400,8 @@ function saleBuildRow(body) {
   if (b.deal_id !== undefined) row.deal_id = b.deal_id ? parseInt(b.deal_id) : null;
   // Remaining defaults to what's actually left when the user hasn't typed one.
   if (!row.remaining) row.remaining = Math.max(0, (row.discounted || row.price_list) - row.down_payment);
+  // Custom columns (the shared column engine) ride a JSONB blob, like leads.
+  if (b.custom_fields && typeof b.custom_fields === 'object') row.custom_fields = b.custom_fields;
   return { row };
 }
 
