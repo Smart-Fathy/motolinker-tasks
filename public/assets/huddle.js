@@ -913,7 +913,19 @@ function chatHeaderActions(room) {
 function chatHeaderStatus(room) {
   if (!room || room.type !== 'direct') return '';
   const other = (room.members || []).find(m => m.member_key !== hdMe());
-  return other ? statusChip(other.member_status_emoji, other.member_status) : '';
+  if (!other) return '';
+  // Today's availability rides along when the board has been loaded this
+  // session — "partial 14:00–18:00" answers "can I call?" before the call.
+  let avail = '';
+  try {
+    const d = typeof availabilityToday === 'function' ? availabilityToday(other.member_key) : null;
+    if (d) {
+      const color = d.status === 'available' ? '#22c55e' : d.status === 'partial' ? '#eab308' : '#6b7280';
+      const hours = d.status !== 'off' && d.from && d.to ? ` ${d.from}–${d.to}` : '';
+      avail = ` <span style="font-size:10px;font-weight:600;color:${color}">· ${d.status}${hours}</span>`;
+    }
+  } catch (_) {}
+  return statusChip(other.member_status_emoji, other.member_status) + avail;
 }
 
 // ── Status ────────────────────────────────────────────────────────────────────

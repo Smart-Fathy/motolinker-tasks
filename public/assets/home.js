@@ -58,6 +58,7 @@ const HOME_WIDGETS = {
   notifications:      { title: 'Notifications',       icon: 'bell',            w: 4, h: 2, perm: null },
   calendar:           { title: 'Calendar',            icon: 'calendar-days',   w: 4, h: 2, perm: 'calendar', async: 'calendar' },
   meet_quick:         { title: 'Meet',                icon: 'video',           w: 3, h: 1, perm: 'meet' },
+  team_availability:  { title: 'Who is available today', icon: 'calendar-check', w: 4, h: 2, perm: 'availability', async: 'availability' },
   drive_recent:       { title: 'Recent Drive files',  icon: 'hard-drive',      w: 4, h: 2, perm: 'drive',   async: 'drive' },
   sheets_recent:      { title: 'Recent Sheets',       icon: 'table',           w: 4, h: 2, perm: 'sheets',  async: 'sheets' },
   email_unread:       { title: 'Unread email',        icon: 'mail',            w: 4, h: 2, perm: 'email',   async: 'email' },
@@ -123,6 +124,7 @@ const HOME_ASYNC_URL = {
   drive:    () => HOMECFG.google.drive,
   sheets:   () => HOMECFG.google.sheets,
   email:    () => HOMECFG.google.email,
+  availability: () => HOMECFG.base + '/availability',
 };
 async function homeLoadAsync() {
   const kinds = [...new Set(_home.widgets
@@ -290,6 +292,20 @@ function homeWidgetBody(id) {
         <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="navigate('calendar')">Connect</button></div>`;
       return list(c.events, e => `<li><span class="home-li-main">${esc(e.title || '')}</span>
         <span class="home-li-sub">${esc(homeWhen(e.start, e.allDay))}</span></li>`);
+    }
+    case 'team_availability': {
+      const a = _home.async.availability;
+      if (!a) return '<div class="home-none">Loading…</div>';
+      if (!Array.isArray(a.members)) return '<div class="home-none">Availability is not set up yet.</div>';
+      const i = (new Date().getDay() + 6) % 7;
+      const META = { available: '#22c55e', partial: '#eab308', off: '#6b7280' };
+      return list(a.members, m => {
+        const d = (m.days || [])[i];
+        const st = d ? d.status : null;
+        const hours = d && d.status !== 'off' && d.from && d.to ? ` ${d.from}–${d.to}` : '';
+        return `<li><span class="home-li-main">${esc(m.name)}</span>
+          <span class="home-li-sub" style="color:${META[st] || 'var(--muted)'}">${st ? esc(st + hours) : 'not set'}</span></li>`;
+      });
     }
     case 'drive_recent':  return homeFileList(_home.async.drive);
     case 'sheets_recent': return homeFileList(_home.async.sheets);

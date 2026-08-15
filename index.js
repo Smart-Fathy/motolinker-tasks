@@ -1331,6 +1331,7 @@ Object.assign(ctx, { express, receiver, requireAuth, requireEmployeeAuth, supaba
 require('./src/routes/home');
 Object.assign(ctx, require('./src/routes/columns'));
 Object.assign(ctx, require('./src/routes/meetings'));
+Object.assign(ctx, require('./src/routes/availability'));
 // ─── Google Calendar (task events) ────────────────────────────────────────────
 // One company account creates task events and invites the assignee, so nothing
 // has to be set up per employee. Everything here is best-effort: a Calendar

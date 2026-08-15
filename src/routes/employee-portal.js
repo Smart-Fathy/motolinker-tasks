@@ -74,7 +74,7 @@ receiver.router.post('/api/employee/requests', requireEmployeeAuth, requirePerm(
 // (email, CRM, reports, the issues centre) stays opt-in.
 const DEFAULT_PERMISSIONS = {
   // Day to day
-  requests: true, tasks: true, hours: true,
+  requests: true, tasks: true, hours: true, availability: true,
   // Google
   drive: true, sheets: true, calendar: true, meet: true, email: false, gchat: false,
   // Talking to each other
@@ -100,6 +100,9 @@ const DEFAULT_PERMISSIONS = {
 const PERM_ACTIONS = {
   // Day to day
   requests: ['view', 'create', 'comment', 'viewAll'],
+  // Weekly availability: seeing the team's week is the feature; setting your
+  // own is separate so a display-only account can exist.
+  availability: ['view', 'set'],
   tasks: ['view', 'create', 'edit', 'comment'],
   // Two nav items, one section: "Log Hours" writes, "Hours Log" reads. A rep who
   // must file their hours but should not read the team's gets log without view.
@@ -166,6 +169,8 @@ const PERM_ACTION_FALLBACK = {
   // empCan already refused anyone without the master).
   'meet.view': () => true,
   'meet.schedule': () => true,
+  'availability.view': () => true,
+  'availability.set': () => true,
   'deals.sales': acts => acts.view === true,
   'deals.salesEdit': acts => acts.edit === true,
   'suppliers.purchases': acts => acts.view === true,
@@ -216,7 +221,7 @@ function empCan(emp, section, action) {
 // enforces. Add a section to PERM_ACTIONS and it appears in the admin UI; it
 // cannot be forgotten there, and it cannot show up as a bare camelCase key.
 const PERM_GROUPS = [
-  { group: 'Day to day', sections: ['requests', 'tasks', 'hours'] },
+  { group: 'Day to day', sections: ['requests', 'tasks', 'hours', 'availability'] },
   { group: 'Google',     sections: ['drive', 'sheets', 'email', 'calendar', 'meet', 'gchat'] },
   { group: 'Chat',       sections: ['chat'] },
   { group: 'Inventory',  sections: ['stock'] },
@@ -226,7 +231,7 @@ const PERM_GROUPS = [
   { group: 'System',     sections: ['issues'] },
 ];
 const PERM_SECTION_LABELS = {
-  requests: 'Requests', tasks: 'My Tasks', hours: 'Hours',
+  requests: 'Requests', tasks: 'My Tasks', hours: 'Hours', availability: 'Availability',
   drive: 'My Drive', sheets: 'My Sheets', email: 'My Email',
   calendar: 'Calendar', meet: 'Meet', gchat: 'Google Chat',
   chat: 'Team chat', quotation: 'Quotation', stock: 'Inventory',
@@ -251,6 +256,7 @@ const PERM_ACTION_LABELS = {
   'quotation.delete': 'Delete quotations',
   'issues.view': 'Open the issues centre',
   'meet.view': 'See scheduled meetings', 'meet.schedule': 'Schedule meetings',
+  'availability.view': "See the team's week", 'availability.set': 'Set own availability',
   'stock.view': 'See stock levels and look vehicles up',
   'suppliers.catalogue': 'Manage the vehicle catalogue',
   'suppliers.purchases': 'Purchases tab',

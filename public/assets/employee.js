@@ -125,7 +125,7 @@ function applyActionPerms() {
 // endpoint happily answers. The server normalizes every login response, so this
 // only covers a cached shape from before a section existed.
 const PERM_DEFAULTS = {
-  requests:true, tasks:true, hours:true,
+  requests:true, tasks:true, hours:true, availability:true,
   drive:true, sheets:true, calendar:true, meet:true, email:false, gchat:false,
   chat:true, stock:true, quotation:false, leads:false, deals:false, reports:false, issues:false,
   suppliers:false, rfq:false, purchaseorders:false, contracts:false, submissions:false,
@@ -527,6 +527,7 @@ function navigate(page) {
   document.getElementById('topbar-title').textContent = pageTitles[page] || 'MotoLinker';
   rememberPage(page);
   if (pageLoaders[page]) pageLoaders[page]();
+  if (page === 'hours' && typeof renderAvailabilityBoard === 'function') renderAvailabilityBoard('availability-board');
   closeSidebar();
   // Re-init lucide icons after content change
   requestAnimationFrame(() => lucide.createIcons());

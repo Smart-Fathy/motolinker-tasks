@@ -158,6 +158,19 @@ setTimeout(async () => {
     c('…without meet.schedule, scheduling is refused', refused(wr), String(wr.status));
   }
 
+  // ── Availability writes only the caller's own row ──────────────────────────
+  {
+    const setter = mint('perm-live-avail', { availability: true, availabilityActions: { view: true, set: true } });
+    const r = await fetch(base + '/api/employee/availability', {
+      method: 'PUT', headers: { Authorization: 'Bearer perm-live-avail', 'Content-Type': 'application/json' },
+      // The body claims to be the admin — the server must ignore that entirely.
+      body: JSON.stringify({ week: '2026-08-17', member_key: 'admin', days: [{ status: 'available' }] }) });
+    c('an availability PUT is accepted for the caller', r.status === 200, String(r.status));
+    const noSet = mint('perm-live-avail-ro', { availability: true, availabilityActions: { view: true, set: false } });
+    const denied = await hit('PUT', '/api/employee/availability', noSet);
+    c('…and refused without availability.set', refused(denied), String(denied.status));
+  }
+
   // ── The admin is never subject to employee permissions ──────────────────────
   // Both portals run the same handlers now. If requirePerm read a missing
   // req.employee as "no permissions", the dashboard would lose these outright.
@@ -196,6 +209,7 @@ setTimeout(async () => {
       'tasks.create': 1, 'tasks.edit': 1, 'tasks.comment': 1,
       'chat.send': 1, 'chat.edit': 1, 'chat.delete': 1, 'chat.upload': 1, 'chat.huddle': 1,
       'issues.resolve': 1,
+      'availability.view': 1, 'availability.set': 1,
       'suppliers.edit': 1, 'suppliers.delete': 1,
       'rfq.edit': 1, 'rfq.export': 1,
       'purchaseorders.create': 1, 'purchaseorders.delete': 1, 'purchaseorders.export': 1,
