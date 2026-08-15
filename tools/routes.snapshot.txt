@@ -126,6 +126,14 @@ GET /api/dashboard/columns/:entity
 PUT /api/dashboard/columns/:entity
 GET /api/employee/columns/:entity
 PUT /api/employee/columns/:entity
+GET /api/dashboard/meetings
+POST /api/dashboard/meetings
+PUT /api/dashboard/meetings/:id
+DELETE /api/dashboard/meetings/:id
+GET /api/employee/meetings
+POST /api/employee/meetings
+PUT /api/employee/meetings/:id
+DELETE /api/employee/meetings/:id
 GET /api/calendar/status
 GET /api/calendar/connect
 POST /api/calendar/disconnect

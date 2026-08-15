@@ -38,6 +38,7 @@ run ssetest     node tests/ssetest.js
 run navtest     node tests/navtest.js
 run colengine   node tests/colengine.js
 run quotetest   node tests/quotetest.js
+run meetstest   node tests/meetstest.js
 run mobiletest  node tests/mobiletest.js
 run homecache   node tests/homecache.js
 # needs a local coturn on 127.0.0.1:3478 for the success path; skips it otherwise

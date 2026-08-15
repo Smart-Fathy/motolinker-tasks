@@ -149,6 +149,15 @@ setTimeout(async () => {
     c('…and an employee token cannot reach it', asEmp.status === 401, String(asEmp.status));
   }
 
+  // ── Meet slices too ─────────────────────────────────────────────────────────
+  {
+    const viewer = mint('perm-live-meet', { meet: true, meetActions: { view: true, schedule: false } });
+    const rd = await hit('GET', '/api/employee/meetings', viewer);
+    const wr = await hit('POST', '/api/employee/meetings', viewer);
+    c('meet.view reads the meeting list', !refused(rd), String(rd.status));
+    c('…without meet.schedule, scheduling is refused', refused(wr), String(wr.status));
+  }
+
   // ── The admin is never subject to employee permissions ──────────────────────
   // Both portals run the same handlers now. If requirePerm read a missing
   // req.employee as "no permissions", the dashboard would lose these outright.

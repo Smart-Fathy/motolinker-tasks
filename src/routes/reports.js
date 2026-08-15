@@ -378,7 +378,8 @@ receiver.router.put('/api/dashboard/tasks/:id', requireAuth, express.json(), asy
   // Keep calendars in step with due-date / title / assignee edits. Removals matter
   // too — the event has to come off the ex-assignee's calendar.
   const removed = taskAssigneeList(prev).filter(id => !taskAssigneeList(data).includes(id));
-  if (added.length || removed.length || updates.due_date !== undefined || updates.title !== undefined) syncTaskToCalendar(data);
+  // status included: completion re-titles the event with its ✓.
+  if (added.length || removed.length || updates.due_date !== undefined || updates.title !== undefined || updates.status !== undefined) syncTaskToCalendar(data);
   if (data.status === 'done' && prev?.status !== 'done') runAutomations('task.completed', taskCtx(data));
   res.json(data);
 });

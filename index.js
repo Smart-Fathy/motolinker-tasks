@@ -380,7 +380,7 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
 });
 
 // Sales & revenue analytics  → src/routes/reports.js
-Object.assign(ctx, { GOOGLE_CLIENT_ID, crypto, driveCanUpload: (...a) => driveCanUpload(...a), driveTokens, express, getCalendarToken, getDriveToken, getEmployeeCalendarToken, multer, parseCSV, receiver, requireAuth, requireEmployeeAuth, supabase, syncTaskToCalendar, upload });
+Object.assign(ctx, { GOOGLE_CLIENT_ID, crypto, driveCanUpload: (...a) => driveCanUpload(...a), driveTokens, express, getCalendarToken, getDriveToken, getEmployeeCalendarToken, multer, parseCSV, receiver, requireAuth, requireEmployeeAuth, supabase, syncTaskToCalendar, upload, upsertCalendarEvent: (...a) => upsertCalendarEvent(...a) });
 Object.assign(ctx, require('./src/routes/reports'));
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Sales (one sold car; the Deals → Sales tab) ───────────────────────────────
@@ -1330,6 +1330,7 @@ receiver.router.delete('/api/dashboard/nav-config', requireAuth, async (_req, re
 Object.assign(ctx, { express, receiver, requireAuth, requireEmployeeAuth, supabase });
 require('./src/routes/home');
 Object.assign(ctx, require('./src/routes/columns'));
+Object.assign(ctx, require('./src/routes/meetings'));
 // ─── Google Calendar (task events) ────────────────────────────────────────────
 // One company account creates task events and invites the assignee, so nothing
 // has to be set up per employee. Everything here is best-effort: a Calendar
@@ -1453,7 +1454,9 @@ function taskEventBody(task, attendees) {
   const end = new Date(day + 'T00:00:00Z');
   end.setUTCDate(end.getUTCDate() + 1);            // Google's all-day end is exclusive
   const body = {
-    summary: `[Task] ${task.title || 'Task'}`,
+    // A completed task keeps its event but wears the check, so the calendar
+    // reads as a record of the week rather than a list of stale obligations.
+    summary: `${task.status === 'done' ? '✓ ' : ''}[Task] ${task.title || 'Task'}`,
     description: [task.description || '', task.milestone ? `Milestone: ${task.milestone}` : '', `Priority: ${task.priority || 'medium'}`]
       .filter(Boolean).join('\n'),
     start: { date: day },

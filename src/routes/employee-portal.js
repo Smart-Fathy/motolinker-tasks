@@ -110,10 +110,10 @@ const PERM_ACTIONS = {
   sheets: ['view'],
   email: ['view', 'send', 'connect'],
   calendar: ['view', 'connect'],
-  // Meet has no actions on purpose. The page opens meet.google.com and touches no
-  // endpoint of ours, so access is the only thing there is to grant — and a `view`
-  // checkbox here would be one nothing enforces.
-  meet: [],
+  // `view` lists scheduled meetings; `schedule` creates, reschedules and
+  // cancels them (the calendar events follow). The page's join-a-code launcher
+  // still needs no endpoint of ours.
+  meet: ['view', 'schedule'],
   gchat: ['view', 'send'],
   // In-app chat. `edit`/`delete` are for one's own messages; huddles and uploads
   // are the two things a chat member can do that cost bandwidth or leave files.
@@ -161,6 +161,11 @@ const PERM_LEGACY = {
 // registers its inheritance here; most follow `view`, because a new sub-ability
 // of a section someone could already see should stay visible to them.
 const PERM_ACTION_FALLBACK = {
+  // Meet had no actions when these employees were saved; the section master was
+  // the whole grant, so both new actions inherit it (true — the section gate in
+  // empCan already refused anyone without the master).
+  'meet.view': () => true,
+  'meet.schedule': () => true,
   'deals.sales': acts => acts.view === true,
   'deals.salesEdit': acts => acts.edit === true,
   'suppliers.purchases': acts => acts.view === true,
@@ -245,6 +250,7 @@ const PERM_ACTION_LABELS = {
   'reports.export': 'Export report data',
   'quotation.delete': 'Delete quotations',
   'issues.view': 'Open the issues centre',
+  'meet.view': 'See scheduled meetings', 'meet.schedule': 'Schedule meetings',
   'stock.view': 'See stock levels and look vehicles up',
   'suppliers.catalogue': 'Manage the vehicle catalogue',
   'suppliers.purchases': 'Purchases tab',
@@ -453,6 +459,7 @@ receiver.router.put('/api/employee/my-tasks/:id', requireEmployeeAuth, requirePe
       .eq('id', req.params.id).select().single();
     if (error) return res.status(500).json({ error: error.message });
     if (task?.status !== 'done') runAutomations('task.completed', taskCtx(data));
+    ctx.syncTaskToCalendar(data).catch(() => {});   // the event gets its ✓
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -467,6 +474,9 @@ receiver.router.post('/api/employee/my-tasks', requireEmployeeAuth, requirePerm(
       .select().single();
     if (error) return res.status(500).json({ error: error.message });
     runAutomations('task.created', taskCtx(task));
+    // Same calendar sync the admin's task creation gets — this path never had
+    // it, so self-created tasks silently stayed off the calendar.
+    ctx.syncTaskToCalendar(task).catch(() => {});
     res.json(task);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
