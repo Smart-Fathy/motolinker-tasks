@@ -122,6 +122,7 @@ function ColumnsEngine(entity, cfg) {
       ${sorted ? `<button onclick="CE('${entity}')._sort(null)"><i data-lucide="x" style="width:13px;height:13px"></i> Clear sort</button>` : ''}` : ''}
       ${edit ? `
       ${cfg.sort ? '<div class="lead-menu-sep"></div>' : ''}
+      ${canType ? `<button onclick="CE('${entity}').openFieldModal('${esc(key)}')"><i data-lucide="settings-2" style="width:13px;height:13px"></i> Edit field…</button>` : ''}
       <button onclick="CE('${entity}').rename('${esc(key)}')"><i data-lucide="pencil" style="width:13px;height:13px"></i> Rename</button>
       ${canType ? `<button onclick="CE('${entity}').openTypeModal('${esc(key)}')"><i data-lucide="shuffle" style="width:13px;height:13px"></i> Change type</button>` : ''}
       ${(col.type === 'select' || col.type === 'radio') ? `<button onclick="CE('${entity}').openOptsModal('${esc(key)}')"><i data-lucide="list" style="width:13px;height:13px"></i> Edit options</button>` : ''}
@@ -149,12 +150,27 @@ function ColumnsEngine(entity, cfg) {
     E._pickerHtml(m);
     requestAnimationFrame(() => lucide.createIcons());
   };
+  // The picker is also the field editor's doorway. Only the leads table has room
+  // for a chevron on every header; the PO/RFQ sheets and the registers reach the
+  // same editor through the pencil on each row here, so "Columns" is one click
+  // from a field's type, its options and their colors everywhere.
   E._pickerHtml = function (m) {
-    m.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:6px 10px 4px">Show columns</div>` +
+    const edit = canEdit();
+    const pencil = c => !edit || (cfg.fixedKeys || []).includes(c.key) || c.type === 'virtual' ? '' : `
+      <button type="button" class="lead-col-edit" title="Edit field — type, options, colors"
+        onclick="event.stopPropagation();CE('${entity}').openFieldModal('${esc(c.key)}')"
+        style="background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 4px;display:inline-flex;align-items:center;border-radius:4px;flex-shrink:0">
+        <i data-lucide="settings-2" style="width:13px;height:13px"></i></button>`;
+    m.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:6px 10px 4px">Columns</div>` +
       E.cols.filter(c => !c.deleted).map(c => `
-        <button type="button" class="lead-col-eye ${c.visible ? '' : 'col-hidden'}" onclick="event.stopPropagation();CE('${entity}').setVis('${esc(c.key)}', ${c.visible ? 'false' : 'true'});CE('${entity}').refreshPicker()">
-          <i data-lucide="${c.visible ? 'eye' : 'eye-off'}" style="width:14px;height:14px"></i> ${esc(c.label)}
-        </button>`).join('');
+        <div class="lead-col-row" style="display:flex;align-items:center;gap:2px;padding-right:6px">
+          <button type="button" class="lead-col-eye ${c.visible ? '' : 'col-hidden'}" style="flex:1;min-width:0" onclick="event.stopPropagation();CE('${entity}').setVis('${esc(c.key)}', ${c.visible ? 'false' : 'true'});CE('${entity}').refreshPicker()">
+            <i data-lucide="${c.visible ? 'eye' : 'eye-off'}" style="width:14px;height:14px"></i> ${esc(c.label)}
+          </button>${pencil(c)}
+        </div>`).join('') +
+      (edit ? `<div class="lead-menu-sep"></div>
+        <button type="button" onclick="event.stopPropagation();closeLeadMenu();CE('${entity}').openAddModal()">
+          <i data-lucide="plus" style="width:13px;height:13px"></i> Add field</button>` : '');
   };
 
   // ── Mutations ─────────────────────────────────────────────────────────────
@@ -249,6 +265,68 @@ function ColumnsEngine(entity, cfg) {
     changed();
   };
 
+  // ── Edit-field modal — everything about one column in one place ───────────
+  // Type, required, width and the option list with their colors. The older
+  // single-purpose modals below still exist (the leads header menu offers them
+  // as shortcuts), but this is the one every table can reach.
+  E.openFieldModal = function (key) {
+    ceMenuClose();
+    if (!canEdit()) return;
+    const col = E.col(key); if (!col) return;
+    E._fieldKey = key;
+    const opts = ceHasOpts(col.type);
+    cfg.modal('Edit Field — ' + col.label, `
+      <div class="form-group"><label class="form-label">Field name</label>
+        <input class="form-control" id="ce-name" value="${esc(col.label)}"></div>
+      <div class="form-group"><label class="form-label">Type</label>
+        <select class="form-control" id="ce-type" onchange="CE('${entity}')._fieldTypeChanged(this.value)">
+          ${['text|Text', 'number|Number', 'date|Date', 'select|Dropdown', 'radio|Radio', 'checkbox|Checkbox']
+            .map(t => t.split('|')).map(([v, l]) => `<option value="${v}" ${col.type === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select></div>
+      <div id="ce-options-wrap" style="display:${opts ? '' : 'none'}">
+        <label class="form-label">Options</label>
+        <div id="ce-opts-list">${(col.options || []).map(o => E._optRow(o.key, o.label, o.color)).join('')}</div>
+        <button class="btn btn-outline btn-sm" onclick="CE('${entity}').addOptRow()">+ Add option</button>
+        <div style="font-size:11.5px;color:var(--muted);margin:8px 0 12px">The color paints the value's badge in tables and cards.</div>
+      </div>
+      <div class="form-group" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+        <label style="display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="ce-required" ${col.required ? 'checked' : ''} style="accent-color:var(--primary)"> Required in forms</label>
+        <label style="display:inline-flex;align-items:center;gap:7px;font-size:13px">
+          Width <input class="form-control" id="ce-width" type="number" min="40" max="800" value="${col.width || ''}" placeholder="auto" style="width:90px"> px</label>
+      </div>`,
+      `<button class="btn btn-outline" onclick="CE('${entity}')._closeModal()">Cancel</button>
+       <button class="btn btn-primary" onclick="CE('${entity}').saveField()">Save field</button>`);
+  };
+  // Switching to a dropdown with nothing to choose from is the commonest way to
+  // end up with an empty select, so the first option is seeded here.
+  E._fieldTypeChanged = function (type) {
+    const wrap = document.getElementById('ce-options-wrap');
+    if (!wrap) return;
+    wrap.style.display = ceHasOpts(type) ? '' : 'none';
+    if (ceHasOpts(type) && !document.querySelector('#ce-opts-list .lo-row')) E.addOptRow();
+  };
+  E.saveField = function () {
+    const col = E.col(E._fieldKey); if (!col) return;
+    const label = document.getElementById('ce-name').value.trim();
+    if (!label) return alert('Field name is required.');
+    const type = document.getElementById('ce-type').value;
+    if (ceHasOpts(type)) {
+      const opts = E._collectOptRows();
+      if (!opts.length) return alert('Add at least one option.');
+      col.options = opts;
+    } else {
+      delete col.options;
+    }
+    col.label = label;
+    col.type = type;
+    if (document.getElementById('ce-required').checked) col.required = true; else delete col.required;
+    const w = parseInt(document.getElementById('ce-width').value);
+    if (w >= 40 && w <= 800) col.width = w; else delete col.width;
+    E._closeModal();
+    changed();
+  };
+
   // ── Change-type modal ─────────────────────────────────────────────────────
   E.openTypeModal = function (key) {
     ceMenuClose();
@@ -308,8 +386,9 @@ function ColumnsEngine(entity, cfg) {
     const last = rows[rows.length - 1];
     if (last) last.querySelector('input').focus();
   };
-  E.saveOpts = function () {
-    const col = E.col(E._optsKey); if (!col) return;
+  // Read the option rows out of whichever modal is open. Existing keys are kept
+  // (the row carries them), so renaming an option does not orphan stored values.
+  E._collectOptRows = function () {
     const opts = [];
     document.querySelectorAll('#ce-opts-list .lo-row').forEach(r => {
       const label = r.querySelector('input').value.trim();
@@ -323,6 +402,11 @@ function ColumnsEngine(entity, cfg) {
       if (color && color !== '#8a8f98') opt.color = color;
       opts.push(opt);
     });
+    return opts;
+  };
+  E.saveOpts = function () {
+    const col = E.col(E._optsKey); if (!col) return;
+    const opts = E._collectOptRows();
     if (!opts.length) return alert('Keep at least one option.');
     col.options = opts;
     E._closeModal();

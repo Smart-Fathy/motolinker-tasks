@@ -582,7 +582,7 @@
             <table id="po-grid" style="border-collapse:collapse;font-size:12px;min-width:1500px">
               <thead><tr>
                 <th class="po-th" style="width:38px">No</th>
-                ${poGridCols().map(c => `<th class="po-th" style="min-width:${c.width || 90}px">${esc(c.label)}</th>`).join('')}
+                ${poGridCols().map(c => procTh('po_items', c, { cls: 'po-th', style: `min-width:${c.width || 90}px` })).join('')}
                 <th class="po-th" style="width:38px"></th>
               </tr></thead>
               <tbody id="po-rows"></tbody>
@@ -637,20 +637,13 @@
     const v = it || {};
     const tr = document.createElement('tr');
     tr.className = 'po-row';
-    const cell = (key, val, type) => {
-      if (key === 'status') {
-        return `<td class="po-td"><select class="form-input po-f" data-k="status" style="font-size:12px;padding:5px 6px">
-          ${PO_LINE_STATUSES.map(s => `<option value="${s.key}" ${(val || 'send_to_supplier') === s.key ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}
-        </select></td>`;
-      }
-      if (key === 'accessories') {
-        return `<td class="po-td"><textarea class="form-input po-f" data-k="accessories" rows="3" style="font-size:11.5px;padding:5px 6px;resize:vertical">${esc(val || '')}</textarea></td>`;
-      }
-      // numbers arrive as numbers from the API — esc() only handles strings
-      return `<td class="po-td"><input class="form-input po-f" data-k="${key}" ${type ? `type="${type}" min="0"` : ''} value="${esc(val == null ? '' : String(val))}" style="font-size:12px;padding:5px 6px"></td>`;
-    };
+    // The line status defaults to the first configured option rather than a
+    // hardcoded key, so an admin who renames or reorders the statuses gets what
+    // they configured on the next new line.
+    const val = c => (c.key === 'status' && v[c.key] == null
+      ? ((c.options && c.options[0] && c.options[0].key) || 'send_to_supplier') : v[c.key]);
     tr.innerHTML = `<td class="po-td po-no" style="text-align:center;color:var(--muted)"></td>` +
-      poGridCols().map(c => cell(c.key, v[c.key], c.key === 'units' || c.key === 'pi_price' || c.type === 'number' ? 'number' : '')).join('') +
+      poGridCols().map(c => procGridInput(CE('po_items'), c, val(c), 'po-f')).join('') +
       `<td class="po-td" style="text-align:center"><button class="btn btn-outline" style="padding:2px 7px;font-size:14px;color:var(--danger);border-color:var(--danger)" title="Remove line">×</button></td>`;
     tr.querySelector('button').onclick = () => { tr.remove(); poRenumber(); };
     tr.querySelectorAll('.po-f').forEach(el => el.addEventListener('input', poRenumber));
@@ -670,11 +663,7 @@
   }
 
   function poCollectItems() {
-    return [...document.querySelectorAll('.po-row')].map(r => {
-      const o = {};
-      r.querySelectorAll('.po-f').forEach(el => { o[el.dataset.k] = el.value; });
-      return o;
-    });
+    return procGridCollect('.po-row', '.po-f');
   }
 
   async function poPopulateLeadPicker(selectedId) {
@@ -887,7 +876,7 @@
             <table style="border-collapse:collapse;font-size:12px;min-width:1080px">
               <thead><tr>
                 <th class="po-th" style="width:34px">#</th>
-                ${rfqGridCols().map(c => `<th class="po-th" style="min-width:${c.width || 90}px">${esc(c.label)}</th>`).join('')}
+                ${rfqGridCols().map(c => procTh('rfq_items', c, { cls: 'po-th', style: `min-width:${c.width || 90}px` })).join('')}
                 <th class="po-th" style="width:38px"></th>
               </tr></thead>
               <tbody id="rfq-rows"></tbody>
@@ -923,11 +912,8 @@
     const v = it || {};
     const tr = document.createElement('tr');
     tr.className = 'rfq-row';
-    const cell = (k) => k === 'accessories'
-      ? `<td class="po-td"><textarea class="form-input rfq-f" data-k="accessories" rows="2" style="font-size:11.5px;padding:5px 6px;resize:vertical">${esc(v.accessories || '')}</textarea></td>`
-      : `<td class="po-td"><input class="form-input rfq-f" data-k="${k}" ${k.endsWith('_price') ? 'type="number" min="0"' : ''} value="${esc(v[k] == null ? '' : String(v[k]))}" style="font-size:12px;padding:5px 6px"></td>`;
     tr.innerHTML = `<td class="po-td rfq-no-cell" style="text-align:center;color:var(--muted)"></td>` +
-      rfqGridCols().map(c => cell(c.key)).join('') +
+      rfqGridCols().map(c => procGridInput(CE('rfq_items'), c, v[c.key], 'rfq-f')).join('') +
       `<td class="po-td" style="text-align:center"><button class="btn btn-outline" style="padding:2px 7px;font-size:14px;color:var(--danger);border-color:var(--danger)" title="Remove">×</button></td>`;
     tr.querySelector('button').onclick = () => { tr.remove(); rfqRenumber(); };
     tbody.appendChild(tr);
@@ -949,9 +935,7 @@
       payment_terms: val('rfq-payment'), delivery_location: val('rfq-delivery'),
       service_provider: val('rfq-service'), contact: val('rfq-contact'),
       documents_required: val('rfq-docs'),
-      items: [...document.querySelectorAll('.rfq-row')].map(r => {
-        const o = {}; r.querySelectorAll('.rfq-f').forEach(el => { o[el.dataset.k] = el.value; }); return o;
-      }),
+      items: procGridCollect('.rfq-row', '.rfq-f'),
     };
   }
   async function saveRfq(thenPreview) {
@@ -1019,12 +1003,13 @@
       <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px">${procColsBtn('suppliers')}</div>
       <div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
-          ${cols.map(c => `<th style="padding:8px 10px${c.width ? `;min-width:${c.width}px` : ''}">${esc(c.label)}</th>`).join('')}
+          ${cols.map(c => procTh('suppliers', c, { style: `padding:8px 10px${c.width ? `;min-width:${c.width}px` : ''}` })).join('')}
           <th style="padding:8px 10px;text-align:right">Actions</th></tr></thead>
         <tbody>${_suppliersCache.map(x => `
           <tr style="border-bottom:1px solid var(--border)">
             ${cols.map(c => {
               if (!c.builtin) return procCfCell(eng, c, x);
+              if (c.type === 'select' || c.type === 'radio') return `<td style="padding:8px 10px">${eng.badgeHtml(c, x[c.key])}</td>`;
               if (c.key === 'name') return `<td style="padding:8px 10px;font-weight:600">${esc(x.name)}</td>`;
               if (c.key === 'notes' || c.key === 'address') return `<td style="padding:8px 10px;color:var(--muted)">${esc(x[c.key] || '')}</td>`;
               return `<td style="padding:8px 10px">${esc(x[c.key] || '—')}</td>`;
@@ -1216,8 +1201,20 @@
   function openSupplierForm(id) {
     const x = id ? _suppliersCache.find(v => v.id === id) : null;
     const eng = suppliersEngine();
-    const builtinField = c => `<div class="form-group"><label class="form-label">${esc(c.label)}</label>
-      <input class="form-control" id="sup-${c.key}" value="${esc(x ? (x[c.key] || '') : '')}"></div>`;
+    // Builtin supplier fields honor their configured type too — switch Country to
+    // a dropdown in the field editor and the form draws a dropdown.
+    const builtinField = c => {
+      const v = x ? (x[c.key] == null ? '' : x[c.key]) : '';
+      if (c.type === 'select' || c.type === 'radio') {
+        return `<div class="form-group"><label class="form-label">${esc(c.label)}</label>
+          <select class="form-control" id="sup-${c.key}"><option value="">—</option>
+            ${(c.options || []).map(o => `<option value="${esc(o.key)}" ${String(v) === o.key ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+          </select></div>`;
+      }
+      const type = c.type === 'date' ? 'date' : c.type === 'number' ? 'number' : 'text';
+      return `<div class="form-group"><label class="form-label">${esc(c.label)}</label>
+        <input class="form-control" type="${type}" id="sup-${c.key}" value="${esc(v)}"></div>`;
+    };
     showModal(id ? 'Edit supplier' : 'Add supplier', `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px">
         ${eng.visible().map(c => c.builtin ? builtinField(c) : eng.inputHtml(c, (x && x.custom_fields || {})[c.key])).join('')}
@@ -1349,6 +1346,54 @@
     return `<button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="CE('${entity}').openPicker(event)">Columns</button>
       <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="CE('${entity}').openAddModal()">+ Field</button>`;
   }
+  // A header cell with the field menu behind a chevron — the affordance the leads
+  // table always had. Without it these tables offered show/hide and "+ Field" and
+  // nothing else, so a field's TYPE and its dropdown OPTIONS were unreachable
+  // once created: exactly the "I still cannot edit the fields" report.
+  function procTh(entity, col, o) {
+    const eng = CE(entity);
+    const opts = o || {};
+    const chev = eng && eng.cfg.canEdit()
+      ? `<span class="col-chev-btn" title="Field options — type, dropdown options, colors"
+           onclick="event.stopPropagation();CE('${entity}').openMenu(event,'${escJs(col.key)}')"
+           style="cursor:pointer;display:inline-flex;align-items:center;padding:0 2px;margin-left:3px;border-radius:4px;opacity:.7;vertical-align:middle"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></span>`
+      : '';
+    return `<th class="${opts.cls || ''}" style="${opts.style || ''}">${esc(col.label)}${chev}</th>`;
+  }
+  // One line-grid cell, rendered for the column's CONFIGURED type. Before this the
+  // PO/RFQ sheets hardcoded their controls by key, so a field switched to a
+  // dropdown — or added as one — still drew a plain text box.
+  function procGridInput(eng, col, val, cls) {
+    const k = escJs(col.key);
+    const base = 'font-size:12px;padding:5px 6px';
+    if (col.type === 'select' || col.type === 'radio') {
+      const opts = (col.options || []).map(op =>
+        `<option value="${esc(op.key)}" ${String(val == null ? '' : val) === op.key ? 'selected' : ''}>${esc(op.label)}</option>`).join('');
+      const known = (col.options || []).some(op => op.key === String(val == null ? '' : val));
+      return `<td class="po-td"><select class="form-input ${cls}" data-k="${k}" style="${base}">
+        <option value="" ${!val || known ? '' : 'selected'}>—</option>${opts}</select></td>`;
+    }
+    if (col.type === 'checkbox') {
+      return `<td class="po-td" style="text-align:center"><input type="checkbox" class="${cls}" data-k="${k}"
+        ${val === true || val === 'true' || val === 1 || val === '1' ? 'checked' : ''} style="accent-color:var(--primary)"></td>`;
+    }
+    // Long free text keeps the textarea it was designed with.
+    if (col.key === 'accessories') {
+      return `<td class="po-td"><textarea class="form-input ${cls}" data-k="${k}" rows="2"
+        style="font-size:11.5px;padding:5px 6px;resize:vertical">${esc(val == null ? '' : String(val))}</textarea></td>`;
+    }
+    const type = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text';
+    return `<td class="po-td"><input class="form-input ${cls}" data-k="${k}" type="${type}"
+      ${type === 'number' ? 'min="0"' : ''} value="${esc(val == null ? '' : String(val))}" style="${base}"></td>`;
+  }
+  // Line grids collect by class; a checkbox reports .checked, everything else .value.
+  function procGridCollect(rowSel, fieldSel) {
+    return [...document.querySelectorAll(rowSel)].map(r => {
+      const o = {};
+      r.querySelectorAll(fieldSel).forEach(el => { o[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; });
+      return o;
+    });
+  }
   // Render one custom-field cell for a record whose extras live in custom_fields.
   function procCfCell(eng, col, rec) {
     const raw = (rec.custom_fields || {})[col.key];
@@ -1409,16 +1454,17 @@
       <div class="table-scroll"><table class="wide-table wide-table-xl" style="border-collapse:collapse;font-size:12.5px">
         <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
           <th style="padding:8px 10px;width:40px">No</th>
-          ${cols.map(c => `<th style="padding:8px 10px;min-width:${c.width || 90}px">${esc(c.label)}</th>`).join('')}
+          ${cols.map(c => procTh('sales', c, { style: `padding:8px 10px;min-width:${c.width || 90}px` })).join('')}
           <th style="padding:8px 10px;text-align:right"></th></tr></thead>
         <tbody>${_salesCache.map((x, i) => {
-          const st = SALE_STATUS_OPTS.find(o => o.key === x.status) || SALE_STATUS_OPTS[0];
           return `<tr style="border-bottom:1px solid var(--border)">
             <td style="padding:8px 10px;color:var(--muted)">${i + 1}</td>
             ${cols.map(c => {
               const k = c.key;
               if (!c.builtin) return procCfCell(eng, c, x);
-              if (k === 'status') return `<td style="padding:8px 10px"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${st.bg};color:${st.fg}">${esc(st.label)}</span></td>`;
+              // Badges come from the column's configured options, so renaming a
+              // status or recoloring it in the field editor shows up here.
+              if (c.type === 'select' || c.type === 'radio') return `<td style="padding:8px 10px">${eng.badgeHtml(c, x[k])}</td>`;
               if (SALE_NUM_KEYS.includes(k)) return `<td style="padding:8px 10px;text-align:right">${Number(x[k]) ? Number(x[k]).toLocaleString() : '—'}</td>`;
               if (k === 'client_file' && x[k]) return `<td style="padding:8px 10px"><a href="${esc(x[k])}" target="_blank" rel="noopener" style="color:var(--primary)">file</a></td>`;
               return `<td style="padding:8px 10px">${esc(x[k] || '')}</td>`;
@@ -1434,11 +1480,19 @@
 
   function openSaleForm(id) {
     const x = id ? _salesCache.find(v => v.id === id) : null;
-    const field = ([k, label]) => {
-      if (k === 'status') {
+    const field = (col) => {
+      const k = col.key, label = col.label;
+      // Builtin dropdowns follow the configured option list, not a frozen const.
+      if (col.type === 'select' || col.type === 'radio') {
+        const opts = col.options || [];
+        const cur = x?.[k] == null ? (opts[0] && opts[0].key) : x[k];
         return `<div><div class="po-lbl">${esc(label)}</div><select id="sale-${k}" class="form-input">
-          ${SALE_STATUS_OPTS.map(o => `<option value="${o.key}" ${(x?.status || 'send_to_supplier') === o.key ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+          ${opts.map(o => `<option value="${esc(o.key)}" ${cur === o.key ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
         </select></div>`;
+      }
+      if (col.type === 'checkbox') {
+        return `<div><div class="po-lbl">${esc(label)}</div>
+          <input id="sale-${k}" type="checkbox" ${x?.[k] === true || x?.[k] === 'true' ? 'checked' : ''} style="accent-color:var(--primary)"></div>`;
       }
       if (k === 'client_file') {
         // Client paperwork is scans and can be large, so it goes to Google Drive
@@ -1457,13 +1511,13 @@
           <div id="sale-file-msg" style="font-size:12px;margin-top:6px"></div>
           <input type="hidden" id="sale-client_file" value="${esc(x?.client_file || '')}"></div>`;
       }
-      const type = SALE_DATE_KEYS.includes(k) ? 'date' : SALE_NUM_KEYS.includes(k) ? 'number' : 'text';
+      const type = col.type === 'date' ? 'date' : col.type === 'number' ? 'number' : 'text';
       return `<div><div class="po-lbl">${esc(label)}</div><input id="sale-${k}" class="form-input" type="${type}" value="${esc(x?.[k] == null ? '' : String(x[k]))}"></div>`;
     };
     const eng = salesEngine();
     showModal(id ? 'Edit sale' : 'Add sale', `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;max-height:66vh;overflow-y:auto;padding-right:4px">
-        ${eng.visible().map(c => c.builtin ? field([c.key, c.label]) : eng.inputHtml(c, (x && x.custom_fields || {})[c.key])).join('')}
+        ${eng.visible().map(c => c.builtin ? field(c) : eng.inputHtml(c, (x && x.custom_fields || {})[c.key])).join('')}
         <div id="sale-err" class="error-msg" style="display:none;grid-column:1/-1"></div>
       </div>`,
       `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
@@ -1501,7 +1555,10 @@
   async function saveSale(id) {
     const eng = salesEngine();
     const payload = {};
-    SALE_COLS.forEach(([k]) => { const el = document.getElementById('sale-' + k); if (el) payload[k] = el.value; });
+    SALE_COLS.forEach(([k]) => {
+      const el = document.getElementById('sale-' + k);
+      if (el) payload[k] = el.type === 'checkbox' ? el.checked : el.value;
+    });
     payload.custom_fields = eng.collect(document.getElementById('modal-body'));
     const err = document.getElementById('sale-err');
     const missing = eng.validateRequired(document.getElementById('modal-body'));

@@ -46,6 +46,15 @@ const PO_COLS_CFG = [
   { key: 'brand', label: 'MARQUE', type: 'text', builtin: true, visible: true },   // renamed
   { key: 'model', label: 'MODEL', type: 'text', builtin: true, visible: true },
   { key: 'cf_port', label: 'PORT', type: 'text', builtin: false, visible: true },
+  // A custom DROPDOWN on a line grid: the sheets used to draw every custom
+  // column as a text box no matter what type it was configured with.
+  { key: 'cf_ship', label: 'SHIPPING', type: 'select', builtin: false, visible: true,
+    options: [{ key: 'roro', label: 'RoRo', color: '#22c55e' }, { key: 'container', label: 'Container' }] },
+];
+const RFQ_COLS_CFG = [
+  { key: 'brand', label: 'BRAND', type: 'text', builtin: true, visible: true },
+  { key: 'cf_urgency', label: 'URGENCY', type: 'select', builtin: false, visible: true,
+    options: [{ key: 'rush', label: 'Rush', color: '#f87171' }, { key: 'normal', label: 'Normal' }] },
 ];
 const SALES = [{ id: 4, client: 'Mona', status: 'delivered', custom_fields: { cf_bank: 'cib' } }];
 const SUPPLIERS = [{ id: 7, name: 'Yu Motors', contact: '', country: 'CN', address: '', notes: '', custom_fields: { cf_rating: 'a' } }];
@@ -53,7 +62,7 @@ const SUPPLIERS = [{ id: 7, name: 'Yu Motors', contact: '', country: 'CN', addre
 let savedPuts = [];
 let savedWrites = [];
 function api(pathname, method, body) {
-  if (method === 'PUT' && /columns\/leads$|leads\/columns$/.test(pathname)) {
+  if (method === 'PUT' && /columns\/[a-z_]+$|leads\/columns$/.test(pathname)) {
     savedPuts.push({ pathname, body: JSON.parse(body) });
     return { ok: true };
   }
@@ -64,11 +73,12 @@ function api(pathname, method, body) {
   if (/columns\/sales$/.test(pathname)) return { columns: SALES_COLS_CFG };
   if (/columns\/suppliers$/.test(pathname)) return { columns: SUP_COLS_CFG };
   if (/columns\/po_items$/.test(pathname)) return { columns: PO_COLS_CFG };
-  if (/columns\/rfq_items$/.test(pathname)) return { columns: null };
+  if (/columns\/rfq_items$/.test(pathname)) return { columns: RFQ_COLS_CFG };
   if (/\/sales$/.test(pathname)) return SALES;
   if (/\/suppliers$/.test(pathname)) return SUPPLIERS;
   if (/suppliers\/\d+\/(vehicles|docs)$/.test(pathname)) return [];
   if (/purchase-orders\/new\/defaults$/.test(pathname)) return { po_number: 'PO-1', po_date: '2026-08-15', currency: 'USD', items: [{}] };
+  if (/rfqs\/new\/defaults$/.test(pathname)) return { rfq_no: 'RFQ-1', rfq_date: '2026-08-15', status: 'draft', items: [{}] };
   if (/columns\/leads$|leads\/columns$/.test(pathname)) return { columns: COLS };
   if (/customers$|employee\/leads$/.test(pathname)) return LEADS;
   if (/auth\/check$/.test(pathname)) return { ok: true };
@@ -269,7 +279,128 @@ const CELL = sel => `(() => {
     check('PO grid: a renamed builtin shows its configured label', po.heads.includes('MARQUE'), JSON.stringify(po.heads.slice(0, 6)));
     check('PO grid: a custom column exists and collects into the items JSON',
       po.collected === 'Alexandria', String(po.collected));
+
+    // ── Reaching the editor from a table that is not the leads pool ───────────
+    // The complaint: "I still cannot edit the fields type or options in the
+    // RFQs, POs, Suppliers, contract". These tables offered show/hide and
+    // "+ Field" only — nothing that opened an EXISTING field.
+    const reach = await page.evaluate(async () => {
+      await openPoForm(null);
+      await new Promise(r => setTimeout(r, 250));
+      const chevs = document.querySelectorAll('#po-grid thead .col-chev-btn').length;
+      CE('po_items').openPicker({ stopPropagation() {}, clientX: 40, clientY: 40 });
+      await new Promise(r => setTimeout(r, 80));
+      const menu = document.querySelector('.lead-menu');
+      const pencils = menu.querySelectorAll('.lead-col-edit').length;
+      const addField = [...menu.querySelectorAll('button')].some(b => /Add field/.test(b.textContent));
+      // …and the header chevron opens the per-field menu with the editor on it.
+      CE('po_items').openMenu({ stopPropagation() {}, clientX: 40, clientY: 40 }, 'cf_ship');
+      await new Promise(r => setTimeout(r, 80));
+      const items = [...document.querySelectorAll('.lead-menu button')].map(b => b.textContent.trim());
+      return { chevs, pencils, addField, items };
+    });
+    check('PO grid: every header carries the field menu chevron',
+      reach.chevs >= 4, String(reach.chevs));
+    check('the Columns picker opens the field editor and can add a field',
+      reach.pencils >= 4 && reach.addField === true, JSON.stringify({ p: reach.pencils, a: reach.addField }));
+    check('the field menu offers type and options for a non-leads entity',
+      reach.items.some(t => /Edit field/.test(t)) && reach.items.some(t => /Change type/.test(t))
+      && reach.items.some(t => /Edit options/.test(t)), JSON.stringify(reach.items));
+
+    // One modal edits name + type + options + required, and PUTs to this entity.
+    savedPuts = [];
+    const fieldEdit = await page.evaluate(async () => {
+      CE('po_items').openFieldModal('cf_ship');
+      await new Promise(r => setTimeout(r, 120));
+      document.getElementById('ce-name').value = 'Shipping mode';
+      document.getElementById('ce-required').checked = true;
+      const rowsBefore = document.querySelectorAll('#ce-opts-list .lo-row').length;
+      CE('po_items').addOptRow();
+      const rows = document.querySelectorAll('#ce-opts-list .lo-row');
+      rows[rows.length - 1].querySelector('input').value = 'Air freight';
+      rows[rows.length - 1].querySelector('input[type=color]').value = '#3b82f6';
+      CE('po_items').saveField();
+      await new Promise(r => setTimeout(r, 150));
+      const col = CE('po_items').col('cf_ship');
+      return { rowsBefore, label: col.label, required: col.required === true,
+               opts: col.options.map(o => o.key + (o.color ? ':' + o.color : '')) };
+    });
+    check('the field editor loads the existing options into one modal',
+      fieldEdit.rowsBefore === 2, String(fieldEdit.rowsBefore));
+    check('one save applies rename + a new colored option + required',
+      fieldEdit.label === 'Shipping mode' && fieldEdit.required
+      && fieldEdit.opts.join(' ') === 'roro:#22c55e container air_freight:#3b82f6',
+      JSON.stringify(fieldEdit));
+    check('the edit is PUT to the entity that owns the field',
+      savedPuts.length === 1 && /\/columns\/po_items$/.test(savedPuts[0].pathname),
+      JSON.stringify(savedPuts.map(p => p.pathname)));
+
+    // A dropdown column must DRAW as a dropdown in the sheet, and collect its key.
+    const grid = await page.evaluate(async () => {
+      PROCFG.closeModal();
+      await openPoForm(null);
+      await new Promise(r => setTimeout(r, 250));
+      const el = document.querySelector('#po-rows [data-k="cf_ship"]');
+      const tag = el ? el.tagName : null;
+      const opts = el && el.tagName === 'SELECT' ? [...el.options].map(o => o.textContent) : [];
+      if (el && el.tagName === 'SELECT') el.value = 'container';
+      const items = poCollectItems();
+      PROCFG.closeModal();
+      return { tag, opts, collected: items[0] && items[0].cf_ship };
+    });
+    check('PO grid: a dropdown field renders as a dropdown, not a text box',
+      grid.tag === 'SELECT', String(grid.tag));
+    check('PO grid: it offers the configured options and collects the chosen key',
+      grid.opts.includes('RoRo') && grid.opts.includes('Air freight') && grid.collected === 'container',
+      JSON.stringify(grid));
+
+    // The RFQ sheet — the screen in the report — gets the same treatment.
+    const rfq = await page.evaluate(async () => {
+      await openRfqForm(null);
+      await new Promise(r => setTimeout(r, 300));
+      const chevs = document.querySelectorAll('#rfq-rows') ? document.querySelectorAll('.po-th .col-chev-btn').length : 0;
+      const el = document.querySelector('#rfq-rows [data-k="cf_urgency"]');
+      const tag = el ? el.tagName : null;
+      if (el) el.value = 'rush';
+      const collected = rfqCollect().items[0].cf_urgency;
+      PROCFG.closeModal();
+      return { chevs, tag, collected };
+    });
+    check('RFQ sheet: headers carry the field menu and a dropdown field is a dropdown',
+      rfq.chevs >= 4 && rfq.tag === 'SELECT', JSON.stringify(rfq));
+    check('RFQ sheet: the chosen option is collected into the line', rfq.collected === 'rush', String(rfq.collected));
+
     check('adoption: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
+    await page.close();
+  }
+
+  // ── Configured options drive what the tables draw ───────────────────────────
+  // Sales rendered its badges from a frozen SALE_STATUS_OPTS const, so editing
+  // the Status options changed nothing on screen.
+  {
+    const { page, errs } = await openPortal(browser, {
+      route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token', port });
+    await page.evaluate(() => { navigate('deals'); dealsTab('sales'); });
+    await sleep(600);
+    const st = await page.evaluate(async () => {
+      const col = CE('sales').col('status');
+      col.options = [{ key: 'delivered', label: 'Handed over', color: '#22c55e' }];
+      CE('sales').cfg.onChange();
+      await new Promise(r => setTimeout(r, 400));
+      const badge = [...document.querySelectorAll('#deals-sales-table tbody span')]
+        .find(s => s.textContent.trim() === 'Handed over');
+      openSaleForm(4);
+      await new Promise(r => setTimeout(r, 200));
+      const sel = document.getElementById('sale-status');
+      const formOpts = sel ? [...sel.options].map(o => o.textContent) : [];
+      PROCFG.closeModal();
+      return { badge: badge ? getComputedStyle(badge).color : null, formOpts };
+    });
+    check('sales: a renamed status option renames the badge in the table',
+      !!st.badge && /34, 197, 94/.test(st.badge), String(st.badge));
+    check('sales: the form dropdown offers the configured options',
+      st.formOpts.length === 1 && st.formOpts[0] === 'Handed over', JSON.stringify(st.formOpts));
+    check('configured options: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
     await page.close();
   }
 
