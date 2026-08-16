@@ -907,7 +907,11 @@
   #customers-table th.lead-col.drag-over{ box-shadow:inset 2px 0 0 var(--primary); }
   #customers-table td.lead-cell{ cursor:pointer; }
   #customers-table td.lead-cell:hover{ box-shadow:inset 0 0 0 1px rgba(201,163,94,.4); border-radius:4px; }
-  .lead-menu{ position:fixed; z-index:900; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,.55); min-width:190px; max-height:70vh; overflow-y:auto; padding:6px; display:none; }
+  /* Above the modal overlay (1000): this menu opens from inside the RFQ and PO
+     sheets now, not only from a page-level table. At 900 it rendered UNDER the
+     modal — the button worked, the menu was simply invisible behind it. The team
+     portal has always had it at 10060; this matches. */
+  .lead-menu{ position:fixed; z-index:10060; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,.55); min-width:190px; max-height:70vh; overflow-y:auto; padding:6px; display:none; }
   .lead-menu.open{ display:block; }
   .lead-menu button{ display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:none; border:none; color:var(--text); font-size:12.5px; padding:8px 10px; border-radius:6px; cursor:pointer; }
   .lead-menu button:hover{ background:rgba(255,255,255,.06); }
@@ -1372,3 +1376,21 @@
   .perm-badge.full { background:var(--primary); color:#1b1608; font-weight:700; }
   .perm-badge.count { background:rgba(255,255,255,.07); color:var(--text); font-weight:700; }
   .perm-badge.scoped { background:rgba(230,150,80,.18); color:#e69650; font-weight:700; }
+
+  /* The field editor's own layer. It opens from inside the RFQ and PO sheets,
+     and each portal has exactly one modal element — routing it through that one
+     replaced the sheet being filled in. This stacks above it instead. */
+  .ce-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:10100;
+                      display:none; align-items:center; justify-content:center; padding:20px; }
+  .ce-modal-overlay.open { display:flex; }
+  .ce-modal-box { background:var(--surface); border:1px solid var(--border); border-radius:14px;
+                  width:min(540px,96vw); max-height:88vh; display:flex; flex-direction:column;
+                  box-shadow:0 24px 64px rgba(0,0,0,.6); }
+  .ce-modal-head { display:flex; align-items:center; justify-content:space-between; gap:10px;
+                   padding:14px 16px; border-bottom:1px solid var(--border); font-size:14px; font-weight:600; }
+  .ce-modal-x { background:none; border:none; color:var(--muted); font-size:22px; line-height:1;
+                cursor:pointer; padding:0 4px; }
+  .ce-modal-x:hover { color:var(--text); }
+  .ce-modal-body { padding:16px; overflow-y:auto; }
+  .ce-modal-foot { padding:12px 16px; border-top:1px solid var(--border); display:flex;
+                   justify-content:flex-end; gap:8px; }

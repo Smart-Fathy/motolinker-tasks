@@ -4511,8 +4511,6 @@ async function loadLeadCols() {
   const eng = CE('leads') || ColumnsEngine('leads', {
     base: '/api/dashboard',
     fetch: (url, opts) => apiFetch(url, opts),
-    modal: (...a) => showModal(...a),
-    closeModal: () => hideModal(),
     builtins: LEADS_BUILTIN_COLS,
     fixedKeys: ['name', 'budget_lead', 'lead_date'],
     canEdit: () => true,

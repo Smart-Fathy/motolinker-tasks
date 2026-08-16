@@ -1338,8 +1338,6 @@
     return CE(entity) || ColumnsEngine(entity, {
       base: PROCFG.base,
       fetch: (url, opts) => PROCFG.fetch(url, opts),
-      modal: (...a) => PROCFG.modal(...a),
-      closeModal: () => PROCFG.closeModal(),
       builtins,
       canEdit: () => PROCFG.base === '/api/dashboard',
       onChange,

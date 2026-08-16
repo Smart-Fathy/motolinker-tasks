@@ -370,6 +370,56 @@ const CELL = sel => `(() => {
       savedPuts.length === 1 && /\/columns\/po_items$/.test(savedPuts[0].pathname),
       JSON.stringify(savedPuts.map(p => p.pathname)));
 
+    // ── The menu must be ON TOP, and the sheet must survive the editor ────────
+    // Reported from production: "when I click on Columns I don't see any
+    // changes, I think it's coming under that layer". It was — the admin
+    // portal's .lead-menu sat at z-index 900, the modal overlay at 1000. And
+    // underneath that: each portal has ONE modal element, so opening the field
+    // editor through it replaced the half-typed RFQ with the editor.
+    const layering = await page.evaluate(async () => {
+      await openPoForm(null);
+      await new Promise(r => setTimeout(r, 250));
+      document.querySelector('#po-rows [data-k="brand"]').value = 'Typed by the user';
+      CE('po_items').openPicker({ stopPropagation() {}, clientX: 300, clientY: 300 });
+      await new Promise(r => setTimeout(r, 80));
+      const menu = document.querySelector('.lead-menu');
+      const r = menu.getBoundingClientRect();
+      // What the user's cursor would actually hit at the menu's own centre.
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(20, r.height / 2));
+      // elementFromPoint answers with whatever the CURSOR would hit there — the
+      // only honest way to ask "is this actually on top?".
+      const onTop = !!hit && (menu === hit || menu.contains(hit));
+      const menuZ = parseInt(getComputedStyle(menu).zIndex, 10);
+      const overlayZ = parseInt(getComputedStyle(document.getElementById('modal-overlay')).zIndex, 10);
+
+      // Now the editor itself, opened from inside the sheet.
+      CE('po_items').openFieldModal('cf_ship');
+      await new Promise(r2 => setTimeout(r2, 150));
+      const sheetAlive = !!document.querySelector('#po-rows [data-k="brand"]');
+      const typedSurvives = sheetAlive
+        && document.querySelector('#po-rows [data-k="brand"]').value === 'Typed by the user';
+      const editorUp = !!document.getElementById('ce-name');
+      const layer = document.querySelector('.ce-modal-overlay');
+      const editorZ = layer ? parseInt(getComputedStyle(layer).zIndex, 10) : -1;
+      CE('po_items')._closeModal();
+      await new Promise(r2 => setTimeout(r2, 80));
+      const backToSheet = !!document.querySelector('#po-rows [data-k="brand"]')
+        && document.getElementById('modal-overlay').style.display === 'flex'
+        && !document.getElementById('ce-name');
+      PROCFG.closeModal();
+      return { onTop, menuZ, overlayZ, sheetAlive, typedSurvives, editorUp, editorZ, backToSheet };
+    });
+    check('the Columns menu opens ABOVE the sheet, not behind it',
+      layering.onTop === true && layering.menuZ > layering.overlayZ,
+      JSON.stringify({ onTop: layering.onTop, menu: layering.menuZ, overlay: layering.overlayZ }));
+    check('the field editor stacks over the sheet instead of replacing it',
+      layering.editorUp && layering.sheetAlive && layering.editorZ > layering.overlayZ,
+      JSON.stringify({ up: layering.editorUp, sheet: layering.sheetAlive, z: layering.editorZ }));
+    check('what the user already typed into the document is still there',
+      layering.typedSurvives === true);
+    check('closing the editor returns to the sheet, not to nothing',
+      layering.backToSheet === true);
+
     // A dropdown column must DRAW as a dropdown in the sheet, and collect its key.
     const grid = await page.evaluate(async () => {
       PROCFG.closeModal();
