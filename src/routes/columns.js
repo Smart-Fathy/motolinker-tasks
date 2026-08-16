@@ -15,12 +15,21 @@ const ctx = require('../ctx');
 const { express, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('express', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
 const empCan = (...a) => ctx.empCan(...a);
 
+// Two kinds of entity live here. A `*_items` or table entity configures the
+// COLUMNS of a grid; a `*_doc` entity configures the fields in a document's own
+// header — the RFQ's Status, the PO's issuer block — which are as much "fields"
+// to the person filling the form as the line-item columns are.
 const ENTITY_COLUMNS = {
   leads:     { kvKey: 'leads_columns_config',     perm: 'leads',          empEdit: 'edit' },
   sales:     { kvKey: 'columns_config:sales',     perm: 'deals' },
   po_items:  { kvKey: 'columns_config:po_items',  perm: 'purchaseorders' },
+  po_doc:    { kvKey: 'columns_config:po_doc',    perm: 'purchaseorders' },
   rfq_items: { kvKey: 'columns_config:rfq_items', perm: 'rfq' },
+  rfq_doc:   { kvKey: 'columns_config:rfq_doc',   perm: 'rfq' },
   suppliers: { kvKey: 'columns_config:suppliers', perm: 'suppliers' },
+  contracts: { kvKey: 'columns_config:contracts', perm: 'contracts' },
+  quote_doc: { kvKey: 'columns_config:quote_doc', perm: 'quotation' },
+  stock:     { kvKey: 'columns_config:stock',     perm: 'stock' },
 };
 
 const COLUMN_TYPES = ['text', 'number', 'date', 'select', 'radio', 'checkbox', 'virtual'];

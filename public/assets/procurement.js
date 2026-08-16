@@ -130,6 +130,7 @@
   const CT_STATUS = { draft: 'Draft', signed: 'Signed', cancelled: 'Cancelled' };
 
   async function loadContracts() {
+    await docEngine('contracts').load();
     const body = document.getElementById('contracts-list');
     if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div> Loading contracts…</div>';
     let list = [];
@@ -154,7 +155,7 @@
           <tr style="border-bottom:1px solid var(--border)">
             <td style="padding:8px 10px;font-family:monospace;font-weight:600">${esc(c.contract_no)}</td>
             <td style="padding:8px 10px">${esc(c.title || '—')}${c.created_by === 'auto_won' ? ' <span style="font-size:10.5px;color:var(--primary);border:1px solid var(--primary);border-radius:8px;padding:1px 6px">auto</span>' : ''}</td>
-            <td style="padding:8px 10px">${esc(CT_STATUS[c.status] || c.status)}</td>
+            <td style="padding:8px 10px">${docStatusBadge('contracts', c.status)}</td>
             <td style="padding:8px 10px;color:var(--muted)">${c.created_at ? new Date(c.created_at).toLocaleDateString() : ''}</td>
             <td style="padding:8px 10px;text-align:right;white-space:nowrap">
               ${procCan('contracts', 'edit') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openContractForm(${c.id})">Edit</button>` : ''}
@@ -181,6 +182,7 @@
   }
 
   async function openContractForm(id, seedCustomerId) {
+    await docEngine('contracts').load();
     let rec = null, data = null, contractNo = '';
     if (id) {
       rec = await apiFetch(`/api/dashboard/contracts/${id}`).then(r => r.json());
@@ -270,11 +272,10 @@
           </div>
           <div>
             <label class="form-label">Status</label>
-            <select id="ct-status" class="form-input">
-              ${Object.entries(CT_STATUS).map(([k, l]) => `<option value="${k}" ${(rec?.status || 'draft') === k ? 'selected' : ''}>${l}</option>`).join('')}
-            </select>
+            ${docStatusHtml('contracts', 'ct-status', rec?.status)}
           </div>
         </div>
+        ${docExtrasHtml('contracts', data.custom_fields)}
         <div id="ct-err" class="error-msg" style="display:none"></div>
       </div>`,
       `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
@@ -340,6 +341,10 @@
     if (!(data.buyer && data.buyer.name)) { err.textContent = 'Buyer name is required.'; err.style.display = 'block'; return; }
     const title = `عقد — ${data.buyer.name}`;
     const status = document.getElementById('ct-status').value;
+    const missing = docRequiredMissing('contracts');
+    if (missing.length) { err.textContent = 'Required: ' + missing.join(', '); err.style.display = 'block'; return; }
+    // The contract's extras live inside its own data payload — no column needed.
+    data.custom_fields = docCollect('contracts');
     const customer_id = document.getElementById('ct-customer-id')?.value || null;
     const body = JSON.stringify({ contract_no: _ctEditing.contract_no, title, data, status, customer_id });
     const url = _ctEditing.id ? `/api/dashboard/contracts/${_ctEditing.id}` : '/api/dashboard/contracts';
@@ -509,6 +514,7 @@
   }
 
   async function loadPurchaseOrders() {
+    await docEngine('po_doc').load();
     const body = document.getElementById('po-list');
     if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div> Loading purchase orders…</div>';
     let list = [];
@@ -537,7 +543,7 @@
             <td style="padding:8px 10px">${esc(p.supplier || '—')}</td>
             <td style="padding:8px 10px;text-align:right">${items.length}</td>
             <td style="padding:8px 10px;text-align:right">${esc(p.currency || 'USD')} ${poLineTotal(items).toLocaleString()}</td>
-            <td style="padding:8px 10px">${esc(PO_STATUS[p.status] || p.status)}</td>
+            <td style="padding:8px 10px">${docStatusBadge('po_doc', p.status)}</td>
             <td style="padding:8px 10px;color:var(--muted)">${esc(p.po_date || (p.created_at ? new Date(p.created_at).toLocaleDateString() : ''))}</td>
             <td style="padding:8px 10px;text-align:right;white-space:nowrap">
               ${procCan('purchaseorders', 'edit') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openPoForm(${p.id})">Edit</button>` : ''}
@@ -550,7 +556,7 @@
   }
 
   async function openPoForm(id, seedCustomerId) {
-    await poItemsEngine().load();
+    await Promise.all([poItemsEngine().load(), docEngine('po_doc').load()]);
     let rec;
     if (id) {
       rec = await apiFetch(`/api/dashboard/purchase-orders/${id}`).then(r => r.json());
@@ -567,9 +573,7 @@
           <div><div class="po-lbl">Date</div><input id="po-date" class="form-input" type="date" value="${esc(rec.po_date || '')}"></div>
           <div><div class="po-lbl">Supplier</div><input id="po-supplier" class="form-input" value="${esc(rec.supplier || '')}" placeholder="e.g. BYD Auto Industry"></div>
           <div><div class="po-lbl">Currency</div><input id="po-currency" class="form-input" value="${esc(rec.currency || 'USD')}"></div>
-          <div><div class="po-lbl">Status</div><select id="po-status" class="form-input">
-            ${Object.entries(PO_STATUS).map(([k, l]) => `<option value="${k}" ${(rec.status || 'draft') === k ? 'selected' : ''}>${l}</option>`).join('')}
-          </select></div>
+          <div><div class="po-lbl">Status</div>${docStatusHtml('po_doc', 'po-status', rec.status)}</div>
           <div><div class="po-lbl">Lead <span style="color:var(--muted);font-weight:400">(attach to profile)</span></div>
             <select id="po-customer-id" class="form-input"><option value="">— No lead —</option></select></div>
         </div>
@@ -618,6 +622,7 @@
         <div><div class="po-lbl">Documents Required</div><textarea id="po-docs" class="form-input" rows="2" placeholder="Leave blank for the standard document list">${esc(rec.documents_required || '')}</textarea></div>
 
         <div><div class="po-lbl">Notes</div><textarea id="po-notes" class="form-input" rows="2" placeholder="Shipping instructions, remarks…">${esc(rec.notes || '')}</textarea></div>
+        ${docExtrasHtml('po_doc', rec.custom_fields)}
         <div id="po-err" class="error-msg" style="display:none"></div>
       </div>`,
       `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
@@ -696,6 +701,7 @@
       supplier: document.getElementById('po-supplier').value.trim(),
       currency: document.getElementById('po-currency').value.trim() || 'USD',
       status: document.getElementById('po-status').value,
+      custom_fields: docCollect('po_doc'),
       customer_id: document.getElementById('po-customer-id')?.value || null,
       notes: document.getElementById('po-notes').value.trim(),
       items: poCollectItems(),
@@ -719,6 +725,8 @@
     const err = document.getElementById('po-err');
     const filled = payload.items.filter(it => it.client || it.brand || it.model || it.vin);
     if (!filled.length) { err.textContent = 'Add at least one vehicle line (client, brand or model).'; err.style.display = 'block'; return; }
+    const missing = docRequiredMissing('po_doc');
+    if (missing.length) { err.textContent = 'Required: ' + missing.join(', '); err.style.display = 'block'; return; }
     payload.title = `${payload.supplier || 'PO'} — ${filled.length} vehicle(s)`;
     const url = _poEditing.id ? `/api/dashboard/purchase-orders/${_poEditing.id}` : '/api/dashboard/purchase-orders';
     const r = await apiFetch(url, { method: _poEditing.id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
@@ -800,6 +808,7 @@
   }
 
   async function loadRfqs() {
+    await docEngine('rfq_doc').load();
     const body = document.getElementById('rfqs-list');
     if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div> Loading RFQs…</div>';
     let list = [];
@@ -825,7 +834,7 @@
             <td style="padding:8px 10px;font-family:monospace;font-weight:600">${esc(r.rfq_no)}</td>
             <td style="padding:8px 10px">${esc(r.supplier_name || '—')}</td>
             <td style="padding:8px 10px;text-align:right">${(Array.isArray(r.items) ? r.items : []).length}</td>
-            <td style="padding:8px 10px">${esc(RFQ_STATUS[r.status] || r.status)}</td>
+            <td style="padding:8px 10px">${docStatusBadge('rfq_doc', r.status)}</td>
             <td style="padding:8px 10px;color:var(--muted)">${esc(r.rfq_date || (r.created_at ? new Date(r.created_at).toLocaleDateString() : ''))}</td>
             <td style="padding:8px 10px;text-align:right;white-space:nowrap">
               ${procCan('rfq', 'edit') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openRfqForm(${r.id})">Edit</button>` : ''}
@@ -837,7 +846,7 @@
   }
 
   async function openRfqForm(id, seedCustomerId) {
-    await rfqItemsEngine().load();
+    await Promise.all([rfqItemsEngine().load(), docEngine('rfq_doc').load()]);
     let rec;
     if (id) rec = await apiFetch(`/api/dashboard/rfqs/${id}`).then(r => r.json());
     else {
@@ -852,9 +861,7 @@
           <div><div class="po-lbl">ID</div><input id="rfq-no" class="form-input" value="${esc(rec.rfq_no || '')}" ${id ? 'readonly' : ''}></div>
           <div><div class="po-lbl">Date</div><input id="rfq-date" class="form-input" type="date" value="${esc(rec.rfq_date || '')}"></div>
           <div><div class="po-lbl">Issuer</div><input id="rfq-issuer" class="form-input" value="${esc(rec.issuer || '')}"></div>
-          <div><div class="po-lbl">Status</div><select id="rfq-status" class="form-input">
-            ${Object.entries(RFQ_STATUS).map(([k, l]) => `<option value="${k}" ${(rec.status || 'draft') === k ? 'selected' : ''}>${l}</option>`).join('')}
-          </select></div>
+          <div><div class="po-lbl">Status</div>${docStatusHtml('rfq_doc', 'rfq-status', rec.status)}</div>
           <div><div class="po-lbl">Lead <span style="color:var(--muted);font-weight:400">(attach)</span></div>
             <select id="rfq-customer-id" class="form-input"><option value="">— No lead —</option></select></div>
         </div>
@@ -894,6 +901,7 @@
           <div><div class="po-lbl">Contact</div><input id="rfq-contact" class="form-input" value="${esc(rec.contact || '')}"></div>
         </div>
         <div><div class="po-lbl">Documents Required</div><textarea id="rfq-docs" class="form-input" rows="2">${esc(rec.documents_required || '')}</textarea></div>
+        ${docExtrasHtml('rfq_doc', rec.custom_fields)}
         <div id="rfq-err" class="error-msg" style="display:none"></div>
       </div>`,
       `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
@@ -935,6 +943,7 @@
       payment_terms: val('rfq-payment'), delivery_location: val('rfq-delivery'),
       service_provider: val('rfq-service'), contact: val('rfq-contact'),
       documents_required: val('rfq-docs'),
+      custom_fields: docCollect('rfq_doc'),
       items: procGridCollect('.rfq-row', '.rfq-f'),
     };
   }
@@ -943,6 +952,8 @@
     const err = document.getElementById('rfq-err');
     const filled = payload.items.filter(it => it.brand || it.model || it.trim);
     if (!filled.length) { err.textContent = 'Add at least one vehicle line (brand, model or trim).'; err.style.display = 'block'; return; }
+    const missing = docRequiredMissing('rfq_doc');
+    if (missing.length) { err.textContent = 'Required: ' + missing.join(', '); err.style.display = 'block'; return; }
     payload.title = `${payload.supplier_name || 'RFQ'} — ${filled.length} vehicle(s)`;
     const r = await apiFetch(_rfqEditing.id ? `/api/dashboard/rfqs/${_rfqEditing.id}` : '/api/dashboard/rfqs',
       { method: _rfqEditing.id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
@@ -1394,6 +1405,70 @@
       return o;
     });
   }
+  // ── Document-level fields ───────────────────────────────────────────────────
+  // A document's own header is made of fields too, and the Status dropdown at the
+  // top of an RFQ was the one the report pointed at: the line-item grid had an
+  // editor, the document above it had none. These entities carry that Status —
+  // its options, their labels and their colors — plus any extra field the admin
+  // adds to the document. Extra values ride in the record's custom_fields.
+  const DOC_STATUS_COLORS = { draft: '#b9b3a4', sent: '#e69650', answered: '#6dd8a4', confirmed: '#6dd8a4',
+    signed: '#6dd8a4', closed: '#888888', cancelled: '#dc2626' };
+  const docStatusCol = pairs => ({
+    key: 'status', label: 'Status', type: 'select', builtin: true, visible: true,
+    options: pairs.map(([key, label]) => ({ key, label, ...(DOC_STATUS_COLORS[key] ? { color: DOC_STATUS_COLORS[key] } : {}) })),
+  });
+  const DOC_BUILTINS = {
+    rfq_doc:   [docStatusCol([['draft', 'Draft'], ['sent', 'Sent'], ['answered', 'Answered'], ['closed', 'Closed']])],
+    po_doc:    [docStatusCol([['draft', 'Draft'], ['sent', 'Sent'], ['confirmed', 'Confirmed'], ['closed', 'Closed']])],
+    contracts: [docStatusCol([['draft', 'Draft'], ['signed', 'Signed'], ['cancelled', 'Cancelled']])],
+    quote_doc: [docStatusCol([['draft', 'Draft'], ['sent', 'Sent'], ['accepted', 'Accepted'], ['closed', 'Closed']])],
+  };
+  function docEngine(entity) { return procColsEngine(entity, DOC_BUILTINS[entity] || [], () => {}); }
+  // The document's Status select, drawn from the configured options. The stored
+  // value survives an option being renamed (keys are stable) and is kept as an
+  // extra choice if the option was deleted, so editing a document cannot silently
+  // change its status.
+  function docStatusHtml(entity, id, value) {
+    const col = docEngine(entity).col('status') || DOC_BUILTINS[entity][0];
+    const opts = col.options || [];
+    const cur = value == null || value === '' ? (opts[0] && opts[0].key) : String(value);
+    const known = opts.some(o => o.key === cur);
+    return `<select id="${id}" class="form-input" data-doc-status="${entity}">
+      ${opts.map(o => `<option value="${esc(o.key)}" ${cur === o.key ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+      ${known || !cur ? '' : `<option value="${esc(cur)}" selected>${esc(cur)}</option>`}
+    </select>`;
+  }
+  // The extra fields an admin added to this kind of document, plus the way in.
+  function docExtrasHtml(entity, values) {
+    const eng = docEngine(entity);
+    const extras = eng.visible().filter(c => !c.builtin);
+    const btns = procColsBtn(entity);
+    if (!extras.length && !btns) return '';
+    return `<div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+        <div class="po-lbl">Additional fields</div><div style="display:flex;gap:6px">${btns}</div></div>
+      ${extras.length
+        ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0 12px" data-doc-extras="${entity}">
+            ${extras.map(c => eng.inputHtml(c, (values || {})[c.key])).join('')}</div>`
+        : '<div style="font-size:12px;color:var(--muted)">None yet — "+ Field" adds one to every document of this kind.</div>'}
+    </div>`;
+  }
+  // Collect the extras only — the container also holds the line grid, whose cells
+  // are data-k, not data-cek, so they cannot cross-contaminate.
+  function docCollect(entity) {
+    const box = document.querySelector(`[data-doc-extras="${entity}"]`);
+    return box ? docEngine(entity).collect(box) : {};
+  }
+  function docRequiredMissing(entity) {
+    const box = document.querySelector(`[data-doc-extras="${entity}"]`);
+    return box ? docEngine(entity).validateRequired(box) : [];
+  }
+  // A configured badge for a document's status, used by the list tables.
+  function docStatusBadge(entity, value) {
+    const eng = docEngine(entity);
+    return eng.badgeHtml(eng.col('status') || DOC_BUILTINS[entity][0], value);
+  }
+
   // Render one custom-field cell for a record whose extras live in custom_fields.
   function procCfCell(eng, col, rec) {
     const raw = (rec.custom_fields || {})[col.key];
@@ -1601,5 +1676,6 @@
     supTab, supUploadDoc, supVehicleRowHtml, supplierFillFields,
     supplierOptionsHtml, viewDocPdf, viewDocPdfPayload,
       SALE_COLS, SALE_STATUS_OPTS, deleteSale, loadSales, openSaleForm, saleUploadFile, saveSale,
+      docEngine, docStatusBadge, docStatusHtml,
   });
 })();

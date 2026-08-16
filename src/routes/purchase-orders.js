@@ -68,6 +68,8 @@ function poBuildRow(body) {
     items,
     customer_id: b.customer_id ? parseInt(b.customer_id) : null,
     status:    PO_STATUSES.includes(b.status) ? b.status : 'draft',
+    // Configurable document fields (the po_doc column config) ride here.
+    custom_fields: b.custom_fields && typeof b.custom_fields === 'object' ? b.custom_fields : {},
     // Letterhead fields (supplier block + delivery terms) — see buildPurchaseOrderHtml
     supplier_id:        b.supplier_id ? parseInt(b.supplier_id) : null,
     supplier_contact:   String(b.supplier_contact || '').trim(),
@@ -136,7 +138,8 @@ function mountPurchaseOrderRoutes(base, guard) {
     const who = callerIdentity(req);
     const row = poBuildRow(req.body);
     row.created_by = who.key;
-    const { data, error } = await supabase.from('purchase_orders').insert(row).select().single();
+    const { data, error } = await ctx.writeOptional(
+      p => supabase.from('purchase_orders').insert(p).select().single(), row, ['custom_fields']);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
     if (data.customer_id) {
@@ -152,7 +155,8 @@ function mountPurchaseOrderRoutes(base, guard) {
     const row = poBuildRow(req.body);
     row.updated_at = new Date().toISOString();
     delete row.po_number; // immutable once issued
-    const { data, error } = await supabase.from('purchase_orders').update(row).eq('id', req.params.id).select().single();
+    const { data, error } = await ctx.writeOptional(
+      p => supabase.from('purchase_orders').update(p).eq('id', req.params.id).select().single(), row, ['custom_fields']);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });

@@ -58,6 +58,8 @@ function rfqBuildRow(body) {
     documents_required: String(b.documents_required || '').trim(),
     customer_id: b.customer_id ? parseInt(b.customer_id) : null,
     status: RFQ_STATUSES.includes(b.status) ? b.status : 'draft',
+    // Configurable document fields (the rfq_doc column config) ride here.
+    custom_fields: b.custom_fields && typeof b.custom_fields === 'object' ? b.custom_fields : {},
   };
 }
 
@@ -118,7 +120,8 @@ function mountRfqRoutes(base, guard) {
     const who = callerIdentity(req);
     const row = rfqBuildRow(req.body);
     row.created_by = who.key;
-    const { data, error } = await supabase.from('rfqs').insert(row).select().single();
+    const { data, error } = await ctx.writeOptional(
+      p => supabase.from('rfqs').insert(p).select().single(), row, ['custom_fields']);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
     if (data.customer_id) {
@@ -133,7 +136,8 @@ function mountRfqRoutes(base, guard) {
     const row = rfqBuildRow(req.body);
     row.updated_at = new Date().toISOString();
     delete row.rfq_no;   // immutable once issued
-    const { data, error } = await supabase.from('rfqs').update(row).eq('id', req.params.id).select().single();
+    const { data, error } = await ctx.writeOptional(
+      p => supabase.from('rfqs').update(p).eq('id', req.params.id).select().single(), row, ['custom_fields']);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });

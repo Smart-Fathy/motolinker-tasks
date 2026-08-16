@@ -56,6 +56,21 @@ const RFQ_COLS_CFG = [
   { key: 'cf_urgency', label: 'URGENCY', type: 'select', builtin: false, visible: true,
     options: [{ key: 'rush', label: 'Rush', color: '#f87171' }, { key: 'normal', label: 'Normal' }] },
 ];
+// A DOCUMENT's own fields: the Status at the top of an RFQ — renamed and
+// recolored here — plus an extra field this company wants on every document.
+const DOC_CFG = [
+  { key: 'status', label: 'Status', type: 'select', builtin: true, visible: true, options: [
+    { key: 'draft', label: 'Not sent yet', color: '#b9b3a4' },
+    { key: 'sent', label: 'With supplier', color: '#e69650' },
+    { key: 'awarded', label: 'Awarded', color: '#6dd8a4' } ] },
+  { key: 'cf_agent', label: 'Shipping agent', type: 'text', builtin: false, visible: true },
+];
+const CONTRACT_CFG = [
+  { key: 'status', label: 'Status', type: 'select', builtin: true, visible: true, options: [
+    { key: 'draft', label: 'Unsigned', color: '#b9b3a4' }, { key: 'signed', label: 'Signed', color: '#6dd8a4' } ] },
+  { key: 'cf_notary', label: 'Notary', type: 'select', builtin: false, visible: true, required: true,
+    options: [{ key: 'cairo', label: 'Cairo office' }, { key: 'giza', label: 'Giza office' }] },
+];
 const SALES = [{ id: 4, client: 'Mona', status: 'delivered', custom_fields: { cf_bank: 'cib' } }];
 const SUPPLIERS = [{ id: 7, name: 'Yu Motors', contact: '', country: 'CN', address: '', notes: '', custom_fields: { cf_rating: 'a' } }];
 
@@ -66,6 +81,10 @@ function api(pathname, method, body) {
     savedPuts.push({ pathname, body: JSON.parse(body) });
     return { ok: true };
   }
+  if ((method === 'POST' || method === 'PUT') && /\/(rfqs|purchase-orders|contracts)(\/\d+)?$/.test(pathname)) {
+    savedWrites.push({ pathname, method, body: JSON.parse(body || '{}') });
+    return { ok: true, id: 5, rfq_no: 'RFQ-1', contract_no: 'CT-1' };
+  }
   if ((method === 'POST' || method === 'PUT') && /\/sales(\/\d+)?$|\/suppliers(\/\d+)?$/.test(pathname)) {
     savedWrites.push({ pathname, method, body: JSON.parse(body || '{}') });
     return { ok: true, id: 99 };
@@ -74,6 +93,10 @@ function api(pathname, method, body) {
   if (/columns\/suppliers$/.test(pathname)) return { columns: SUP_COLS_CFG };
   if (/columns\/po_items$/.test(pathname)) return { columns: PO_COLS_CFG };
   if (/columns\/rfq_items$/.test(pathname)) return { columns: RFQ_COLS_CFG };
+  if (/columns\/rfq_doc$/.test(pathname)) return { columns: DOC_CFG };
+  if (/columns\/po_doc$/.test(pathname)) return { columns: DOC_CFG };
+  if (/columns\/contracts$/.test(pathname)) return { columns: CONTRACT_CFG };
+  if (/contracts\/new\/defaults$/.test(pathname)) return { contract_no: 'CT-1', data: {} };
   if (/\/sales$/.test(pathname)) return SALES;
   if (/\/suppliers$/.test(pathname)) return SUPPLIERS;
   if (/suppliers\/\d+\/(vehicles|docs)$/.test(pathname)) return [];
@@ -404,6 +427,78 @@ const CELL = sel => `(() => {
     await page.close();
   }
 
+  // ── The document's OWN fields ────────────────────────────────────────────────
+  // The screenshot in the report had the RFQ's Status dropdown open — a document
+  // field, not a line-item column, and the one part of the form the engine did
+  // not reach. Status options, their colors, and extra document fields are
+  // configurable now, and the extras save with the record.
+  {
+    const { page, errs } = await openPortal(browser, {
+      route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token', port });
+    await page.evaluate(() => navigate('rfqs'));
+    await sleep(500);
+    savedWrites.length = 0;
+    const rfqDoc = await page.evaluate(async () => {
+      await openRfqForm(null);
+      await new Promise(r => setTimeout(r, 350));
+      const sel = document.getElementById('rfq-status');
+      const opts = sel ? [...sel.options].map(o => o.textContent.trim()) : [];
+      const extra = document.querySelector('[data-doc-extras="rfq_doc"] [data-cek="cf_agent"]');
+      const fieldsBtn = [...document.querySelectorAll('#modal-body button')]
+        .some(b => /\+ Field/.test(b.textContent));
+      if (extra) extra.value = 'Nile Freight';
+      if (sel) sel.value = 'awarded';
+      const brand = document.querySelector('#rfq-rows [data-k="brand"]');
+      if (brand) brand.value = 'Toyota';
+      await saveRfq(false);
+      await new Promise(r => setTimeout(r, 250));
+      return { opts, hadExtra: !!extra, fieldsBtn };
+    });
+    check('RFQ document: Status offers the CONFIGURED options, not the frozen map',
+      rfqDoc.opts.join('|') === 'Not sent yet|With supplier|Awarded', JSON.stringify(rfqDoc.opts));
+    check('RFQ document: an admin-added document field appears on the form',
+      rfqDoc.hadExtra === true && rfqDoc.fieldsBtn === true, JSON.stringify(rfqDoc));
+    check('RFQ document: the extra field and the status save with the record',
+      savedWrites.length === 1 && savedWrites[0].body.status === 'awarded'
+      && savedWrites[0].body.custom_fields && savedWrites[0].body.custom_fields.cf_agent === 'Nile Freight',
+      JSON.stringify(savedWrites[0] && { s: savedWrites[0].body.status, cf: savedWrites[0].body.custom_fields }));
+
+    // Contracts had no engine at all. Their extras ride in the data payload the
+    // table already has, so this one needs no migration to work.
+    savedWrites.length = 0;
+    await page.evaluate(() => navigate('contracts'));
+    await sleep(400);
+    const ct = await page.evaluate(async () => {
+      await openContractForm(null);
+      await new Promise(r => setTimeout(r, 400));
+      const sel = document.getElementById('ct-status');
+      const opts = sel ? [...sel.options].map(o => o.textContent.trim()) : [];
+      const notary = document.querySelector('[data-doc-extras="contracts"] [data-cek="cf_notary"]');
+      const buyer = document.querySelector('.ct-f[data-path="buyer.name"]');
+      if (buyer) buyer.value = 'Ahmed';
+      // Required, and left empty on purpose: the save must refuse and name it.
+      await saveContract(false);
+      await new Promise(r => setTimeout(r, 120));
+      const refusal = document.getElementById('ct-err').textContent;
+      if (notary) notary.value = 'giza';
+      await saveContract(false);
+      await new Promise(r => setTimeout(r, 200));
+      return { opts, isSelect: !!notary && notary.tagName === 'SELECT', refusal, hadBuyer: !!buyer };
+    });
+    check('contracts: a required document field blocks the save and is named',
+      /Notary/.test(ct.refusal) && ct.hadBuyer === true, JSON.stringify(ct.refusal));
+    check('contracts: Status reads its configured options', ct.opts.join('|') === 'Unsigned|Signed', JSON.stringify(ct.opts));
+    check('contracts: a document dropdown field renders as a dropdown', ct.isSelect === true);
+    check('contracts: the extra field saves inside the contract data payload',
+      savedWrites.length >= 1 && savedWrites[savedWrites.length - 1].body.data
+      && savedWrites[savedWrites.length - 1].body.data.custom_fields
+      && savedWrites[savedWrites.length - 1].body.data.custom_fields.cf_notary === 'giza',
+      JSON.stringify(savedWrites.length && savedWrites[savedWrites.length - 1].body.data
+        ? savedWrites[savedWrites.length - 1].body.data.custom_fields : null));
+    check('document fields: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
+    await page.close();
+  }
+
   // ── One engine, no corpses ───────────────────────────────────────────────────
   {
     const dash = fs.readFileSync('public/assets/dashboard.js', 'utf8');
@@ -422,6 +517,21 @@ const CELL = sel => `(() => {
       && /leads_columns_config/.test(srvCols));
     check('employee column WRITES stay leads-only on the generic route',
       /ent\.empEdit \|\| !empCan\(req\.employee, ent\.perm, ent\.empEdit\)/.test(srvCols));
+    check('the registry covers the documents, not just their line items',
+      ['rfq_doc', 'po_doc', 'contracts', 'quote_doc', 'stock'].every(e => new RegExp(`\\b${e}:\\s+\\{`).test(srvCols)));
+    // The custom_fields columns arrive with migration 012, which is applied by
+    // hand — a deploy that lands first must not start losing RFQs and POs.
+    const rfqSrv = fs.readFileSync('src/routes/rfq.js', 'utf8');
+    const poSrv = fs.readFileSync('src/routes/purchase-orders.js', 'utf8');
+    check('documents persist their custom fields tolerantly of the pending migration',
+      /custom_fields/.test(rfqSrv) && /custom_fields/.test(poSrv)
+      && /ctx\.writeOptional\([\s\S]{0,200}custom_fields/.test(rfqSrv)
+      && /ctx\.writeOptional\([\s\S]{0,200}custom_fields/.test(poSrv));
+    check('writeOptional drops only the named column and retries',
+      /dropped\.forEach\(k => \{ delete rest\[k\]; \}\)/.test(fs.readFileSync('src/ctx.js', 'utf8')));
+    check('migration 012 adds the two columns the documents need',
+      /rfqs\s+ADD COLUMN IF NOT EXISTS custom_fields/.test(fs.readFileSync('migrations/012_document_custom_fields.sql', 'utf8'))
+      && /purchase_orders ADD COLUMN IF NOT EXISTS custom_fields/.test(fs.readFileSync('migrations/012_document_custom_fields.sql', 'utf8')));
   }
 
   await browser.close();
