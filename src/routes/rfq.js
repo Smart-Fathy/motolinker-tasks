@@ -58,6 +58,8 @@ function rfqBuildRow(body) {
     documents_required: String(b.documents_required || '').trim(),
     customer_id: b.customer_id ? parseInt(b.customer_id) : null,
     status: RFQ_STATUSES.includes(b.status) ? b.status : 'draft',
+    // Configurable document fields (the rfq_doc column config) ride here.
+    custom_fields: b.custom_fields && typeof b.custom_fields === 'object' ? b.custom_fields : {},
   };
 }
 
@@ -118,7 +120,8 @@ function mountRfqRoutes(base, guard) {
     const who = callerIdentity(req);
     const row = rfqBuildRow(req.body);
     row.created_by = who.key;
-    const { data, error } = await supabase.from('rfqs').insert(row).select().single();
+    const { data, error } = await ctx.writeOptional(
+      p => supabase.from('rfqs').insert(p).select().single(), row, ['custom_fields']);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
     if (data.customer_id) {
@@ -133,7 +136,8 @@ function mountRfqRoutes(base, guard) {
     const row = rfqBuildRow(req.body);
     row.updated_at = new Date().toISOString();
     delete row.rfq_no;   // immutable once issued
-    const { data, error } = await supabase.from('rfqs').update(row).eq('id', req.params.id).select().single();
+    const { data, error } = await ctx.writeOptional(
+      p => supabase.from('rfqs').update(p).eq('id', req.params.id).select().single(), row, ['custom_fields']);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
@@ -489,6 +493,10 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       const items       = JSON.parse(itemsJson       || '[]');
       const logistics   = JSON.parse(logisticsJson   || '[]');
       const customSpecs = JSON.parse(customSpecsJson || '[]');
+      // The quotation's configurable document fields (quote_doc), kept in the
+      // record's own data payload — quotations need no column for them.
+      let customFields = {};
+      try { const cf = JSON.parse(req.body.customFields || '{}'); if (cf && typeof cf === 'object') customFields = cf; } catch (_) {}
       let existingImages = [];
       try { existingImages = JSON.parse(req.body.existingImages || '[]'); } catch (_) {}
       const files       = req.files || [];
@@ -512,7 +520,7 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       const pk = req.body.quotation_pk ? parseInt(req.body.quotation_pk) : null;
       const record = {
         title: `${vehicleModel || 'Quotation'} — ${name || ''}`.trim(),
-        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs, imageDataUrls, template },
+        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs, imageDataUrls, template, customFields },
         customer_id: custId,
       };
       if (pk) {

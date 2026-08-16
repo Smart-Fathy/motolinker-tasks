@@ -27,6 +27,10 @@ function api(u, method, postData, headers) {
     return { pdf: Buffer.from('%PDF-1.4 fake').toString('base64') };
   }
   if (/quotation\/newid$/.test(p)) return { id: 'Q-2026-099' };
+  // The quotation's own configurable fields — the document half of the engine.
+  if (/columns\/quote_doc$/.test(p)) return { columns: [
+    { key: 'cf_bank', label: 'Financing bank', type: 'select', builtin: false, visible: true,
+      options: [{ key: 'cib', label: 'CIB' }, { key: 'cash', label: 'Cash' }] } ] };
   if (/quotations\/9$/.test(p)) return SAVED;
   if (/quotations$/.test(p)) return [SAVED];
   if (/quotation\/settings$/.test(p)) return { company_name: 'MotoLinker' };
@@ -114,6 +118,22 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
     check(`${portal.label}: changing the exchange recomputes every mirror`,
       recalced === (30000 * 50 + 1200 * 50).toLocaleString('en-US'), recalced);
 
+    // The quotation's own configurable fields render on the sheet, and the
+    // chosen value must ride the multipart the server already parses.
+    const docFields = await page.evaluate(() => {
+      const sel = document.querySelector('[data-doc-extras="quote_doc"] [data-cek="cf_bank"]');
+      if (sel) sel.value = 'cash';
+      return { tag: sel ? sel.tagName : null,
+               fieldsBtn: [...document.querySelectorAll('#modal-body button, .modal button')]
+                 .some(b => /\+ Field/.test(b.textContent)) };
+    });
+    // The team fills the fields in; only the admin may change what they are —
+    // the server refuses employee writes to these configs, so the portal does
+    // not offer a doomed button.
+    check(`${portal.label}: the quotation carries its configurable document fields`,
+      docFields.tag === 'SELECT' && docFields.fieldsBtn === (portal.label === 'admin'),
+      JSON.stringify(docFields));
+
     // Generate: the POST must go to THIS portal's API as multipart with the
     // exact field names the server has always read.
     await page.evaluate(() => generateQuotation());
@@ -123,11 +143,13 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       JSON.stringify(generatePosts.map(g => g.path)));
     const body = generatePosts[0] ? generatePosts[0].body : '';
     const fields = ['id', 'date', 'validTo', 'name', 'vehicleModel', 'currency', 'exchange', 'issuer',
-      'items', 'logistics', 'customSpecs', 'template', 'existingImages', 'quotation_pk'];
+      'items', 'logistics', 'customSpecs', 'customFields', 'template', 'existingImages', 'quotation_pk'];
     const missing = fields.filter(f => !new RegExp(`name="${f}"`).test(body));
     check(`${portal.label}: the multipart body carries every field the server reads`,
       generatePosts[0] && /multipart\/form-data/.test(generatePosts[0].ct) && missing.length === 0,
       missing.join(',') || generatePosts[0]?.ct);
+    check(`${portal.label}: the chosen document-field value is in the body`,
+      /name="customFields"[\s\S]{0,60}cf_bank[\s\S]{0,20}cash/.test(body), body.slice(0, 0) || 'no customFields part');
     check(`${portal.label}: editing carries the record id so Generate UPDATES it`,
       /name="quotation_pk"[\s\S]{0,20}9/.test(body));
     const pdfShown = await page.evaluate(() =>

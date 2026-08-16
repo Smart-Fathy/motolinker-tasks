@@ -46,16 +46,54 @@ const PO_COLS_CFG = [
   { key: 'brand', label: 'MARQUE', type: 'text', builtin: true, visible: true },   // renamed
   { key: 'model', label: 'MODEL', type: 'text', builtin: true, visible: true },
   { key: 'cf_port', label: 'PORT', type: 'text', builtin: false, visible: true },
+  // A custom DROPDOWN on a line grid: the sheets used to draw every custom
+  // column as a text box no matter what type it was configured with.
+  { key: 'cf_ship', label: 'SHIPPING', type: 'select', builtin: false, visible: true,
+    options: [{ key: 'roro', label: 'RoRo', color: '#22c55e' }, { key: 'container', label: 'Container' }] },
 ];
+const RFQ_COLS_CFG = [
+  { key: 'brand', label: 'BRAND', type: 'text', builtin: true, visible: true },
+  { key: 'cf_urgency', label: 'URGENCY', type: 'select', builtin: false, visible: true,
+    options: [{ key: 'rush', label: 'Rush', color: '#f87171' }, { key: 'normal', label: 'Normal' }] },
+];
+// A DOCUMENT's own fields: the Status at the top of an RFQ — renamed and
+// recolored here — plus an extra field this company wants on every document.
+const DOC_CFG = [
+  { key: 'status', label: 'Status', type: 'select', builtin: true, visible: true, options: [
+    { key: 'draft', label: 'Not sent yet', color: '#b9b3a4' },
+    { key: 'sent', label: 'With supplier', color: '#e69650' },
+    { key: 'awarded', label: 'Awarded', color: '#6dd8a4' } ] },
+  { key: 'cf_agent', label: 'Shipping agent', type: 'text', builtin: false, visible: true },
+];
+const CONTRACT_CFG = [
+  { key: 'status', label: 'Status', type: 'select', builtin: true, visible: true, options: [
+    { key: 'draft', label: 'Unsigned', color: '#b9b3a4' }, { key: 'signed', label: 'Signed', color: '#6dd8a4' } ] },
+  { key: 'cf_notary', label: 'Notary', type: 'select', builtin: false, visible: true, required: true,
+    options: [{ key: 'cairo', label: 'Cairo office' }, { key: 'giza', label: 'Giza office' }] },
+];
+// Inventory: the per-car unit rows are a line grid too, and they live in the
+// vehicle's own JSONB — so a field added here needs no column anywhere.
+const STOCK_CFG = [
+  { key: 'vin', label: 'VIN', type: 'text', builtin: true, visible: true },
+  { key: 'status', label: 'Status', type: 'select', builtin: true, visible: true, options: [
+    { key: 'in_yard', label: 'In the yard', color: '#6dd8a4' }, { key: 'reserved', label: 'Reserved' } ] },
+  { key: 'cf_plate', label: 'Plate', type: 'text', builtin: false, visible: true },
+];
+const STOCK = [{ id: 3, make: 'BYD', model: 'Seal', trim: 'Design', price: 2000000, colors: [],
+  units: [{ vin: 'X1', status: 'in_yard', cf_plate: 'ق ط ر 123' }] }];
 const SALES = [{ id: 4, client: 'Mona', status: 'delivered', custom_fields: { cf_bank: 'cib' } }];
 const SUPPLIERS = [{ id: 7, name: 'Yu Motors', contact: '', country: 'CN', address: '', notes: '', custom_fields: { cf_rating: 'a' } }];
 
 let savedPuts = [];
 let savedWrites = [];
 function api(pathname, method, body) {
-  if (method === 'PUT' && /columns\/leads$|leads\/columns$/.test(pathname)) {
+  if (method === 'PUT' && /columns\/[a-z_]+$|leads\/columns$/.test(pathname)) {
     savedPuts.push({ pathname, body: JSON.parse(body) });
     return { ok: true };
+  }
+  if ((method === 'POST' || method === 'PUT') && /\/(rfqs|purchase-orders|contracts|stock)(\/\d+)?$/.test(pathname)) {
+    savedWrites.push({ pathname, method, body: JSON.parse(body || '{}') });
+    return { ok: true, id: 5, rfq_no: 'RFQ-1', contract_no: 'CT-1' };
   }
   if ((method === 'POST' || method === 'PUT') && /\/sales(\/\d+)?$|\/suppliers(\/\d+)?$/.test(pathname)) {
     savedWrites.push({ pathname, method, body: JSON.parse(body || '{}') });
@@ -64,11 +102,18 @@ function api(pathname, method, body) {
   if (/columns\/sales$/.test(pathname)) return { columns: SALES_COLS_CFG };
   if (/columns\/suppliers$/.test(pathname)) return { columns: SUP_COLS_CFG };
   if (/columns\/po_items$/.test(pathname)) return { columns: PO_COLS_CFG };
-  if (/columns\/rfq_items$/.test(pathname)) return { columns: null };
+  if (/columns\/rfq_items$/.test(pathname)) return { columns: RFQ_COLS_CFG };
+  if (/columns\/rfq_doc$/.test(pathname)) return { columns: DOC_CFG };
+  if (/columns\/po_doc$/.test(pathname)) return { columns: DOC_CFG };
+  if (/columns\/contracts$/.test(pathname)) return { columns: CONTRACT_CFG };
+  if (/columns\/stock$/.test(pathname)) return { columns: STOCK_CFG };
+  if (/\/stock$/.test(pathname)) return STOCK;
+  if (/contracts\/new\/defaults$/.test(pathname)) return { contract_no: 'CT-1', data: {} };
   if (/\/sales$/.test(pathname)) return SALES;
   if (/\/suppliers$/.test(pathname)) return SUPPLIERS;
   if (/suppliers\/\d+\/(vehicles|docs)$/.test(pathname)) return [];
   if (/purchase-orders\/new\/defaults$/.test(pathname)) return { po_number: 'PO-1', po_date: '2026-08-15', currency: 'USD', items: [{}] };
+  if (/rfqs\/new\/defaults$/.test(pathname)) return { rfq_no: 'RFQ-1', rfq_date: '2026-08-15', status: 'draft', items: [{}] };
   if (/columns\/leads$|leads\/columns$/.test(pathname)) return { columns: COLS };
   if (/customers$|employee\/leads$/.test(pathname)) return LEADS;
   if (/auth\/check$/.test(pathname)) return { ok: true };
@@ -269,7 +314,236 @@ const CELL = sel => `(() => {
     check('PO grid: a renamed builtin shows its configured label', po.heads.includes('MARQUE'), JSON.stringify(po.heads.slice(0, 6)));
     check('PO grid: a custom column exists and collects into the items JSON',
       po.collected === 'Alexandria', String(po.collected));
+
+    // ── Reaching the editor from a table that is not the leads pool ───────────
+    // The complaint: "I still cannot edit the fields type or options in the
+    // RFQs, POs, Suppliers, contract". These tables offered show/hide and
+    // "+ Field" only — nothing that opened an EXISTING field.
+    const reach = await page.evaluate(async () => {
+      await openPoForm(null);
+      await new Promise(r => setTimeout(r, 250));
+      const chevs = document.querySelectorAll('#po-grid thead .col-chev-btn').length;
+      CE('po_items').openPicker({ stopPropagation() {}, clientX: 40, clientY: 40 });
+      await new Promise(r => setTimeout(r, 80));
+      const menu = document.querySelector('.lead-menu');
+      const pencils = menu.querySelectorAll('.lead-col-edit').length;
+      const addField = [...menu.querySelectorAll('button')].some(b => /Add field/.test(b.textContent));
+      // …and the header chevron opens the per-field menu with the editor on it.
+      CE('po_items').openMenu({ stopPropagation() {}, clientX: 40, clientY: 40 }, 'cf_ship');
+      await new Promise(r => setTimeout(r, 80));
+      const items = [...document.querySelectorAll('.lead-menu button')].map(b => b.textContent.trim());
+      return { chevs, pencils, addField, items };
+    });
+    check('PO grid: every header carries the field menu chevron',
+      reach.chevs >= 4, String(reach.chevs));
+    check('the Columns picker opens the field editor and can add a field',
+      reach.pencils >= 4 && reach.addField === true, JSON.stringify({ p: reach.pencils, a: reach.addField }));
+    check('the field menu offers type and options for a non-leads entity',
+      reach.items.some(t => /Edit field/.test(t)) && reach.items.some(t => /Change type/.test(t))
+      && reach.items.some(t => /Edit options/.test(t)), JSON.stringify(reach.items));
+
+    // One modal edits name + type + options + required, and PUTs to this entity.
+    savedPuts = [];
+    const fieldEdit = await page.evaluate(async () => {
+      CE('po_items').openFieldModal('cf_ship');
+      await new Promise(r => setTimeout(r, 120));
+      document.getElementById('ce-name').value = 'Shipping mode';
+      document.getElementById('ce-required').checked = true;
+      const rowsBefore = document.querySelectorAll('#ce-opts-list .lo-row').length;
+      CE('po_items').addOptRow();
+      const rows = document.querySelectorAll('#ce-opts-list .lo-row');
+      rows[rows.length - 1].querySelector('input').value = 'Air freight';
+      rows[rows.length - 1].querySelector('input[type=color]').value = '#3b82f6';
+      CE('po_items').saveField();
+      await new Promise(r => setTimeout(r, 150));
+      const col = CE('po_items').col('cf_ship');
+      return { rowsBefore, label: col.label, required: col.required === true,
+               opts: col.options.map(o => o.key + (o.color ? ':' + o.color : '')) };
+    });
+    check('the field editor loads the existing options into one modal',
+      fieldEdit.rowsBefore === 2, String(fieldEdit.rowsBefore));
+    check('one save applies rename + a new colored option + required',
+      fieldEdit.label === 'Shipping mode' && fieldEdit.required
+      && fieldEdit.opts.join(' ') === 'roro:#22c55e container air_freight:#3b82f6',
+      JSON.stringify(fieldEdit));
+    check('the edit is PUT to the entity that owns the field',
+      savedPuts.length === 1 && /\/columns\/po_items$/.test(savedPuts[0].pathname),
+      JSON.stringify(savedPuts.map(p => p.pathname)));
+
+    // A dropdown column must DRAW as a dropdown in the sheet, and collect its key.
+    const grid = await page.evaluate(async () => {
+      PROCFG.closeModal();
+      await openPoForm(null);
+      await new Promise(r => setTimeout(r, 250));
+      const el = document.querySelector('#po-rows [data-k="cf_ship"]');
+      const tag = el ? el.tagName : null;
+      const opts = el && el.tagName === 'SELECT' ? [...el.options].map(o => o.textContent) : [];
+      if (el && el.tagName === 'SELECT') el.value = 'container';
+      const items = poCollectItems();
+      PROCFG.closeModal();
+      return { tag, opts, collected: items[0] && items[0].cf_ship };
+    });
+    check('PO grid: a dropdown field renders as a dropdown, not a text box',
+      grid.tag === 'SELECT', String(grid.tag));
+    check('PO grid: it offers the configured options and collects the chosen key',
+      grid.opts.includes('RoRo') && grid.opts.includes('Air freight') && grid.collected === 'container',
+      JSON.stringify(grid));
+
+    // The RFQ sheet — the screen in the report — gets the same treatment.
+    const rfq = await page.evaluate(async () => {
+      await openRfqForm(null);
+      await new Promise(r => setTimeout(r, 300));
+      const chevs = document.querySelectorAll('#rfq-rows') ? document.querySelectorAll('.po-th .col-chev-btn').length : 0;
+      const el = document.querySelector('#rfq-rows [data-k="cf_urgency"]');
+      const tag = el ? el.tagName : null;
+      if (el) el.value = 'rush';
+      const collected = rfqCollect().items[0].cf_urgency;
+      PROCFG.closeModal();
+      return { chevs, tag, collected };
+    });
+    check('RFQ sheet: headers carry the field menu and a dropdown field is a dropdown',
+      rfq.chevs >= 4 && rfq.tag === 'SELECT', JSON.stringify(rfq));
+    check('RFQ sheet: the chosen option is collected into the line', rfq.collected === 'rush', String(rfq.collected));
+
     check('adoption: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
+    await page.close();
+  }
+
+  // ── Configured options drive what the tables draw ───────────────────────────
+  // Sales rendered its badges from a frozen SALE_STATUS_OPTS const, so editing
+  // the Status options changed nothing on screen.
+  {
+    const { page, errs } = await openPortal(browser, {
+      route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token', port });
+    await page.evaluate(() => { navigate('deals'); dealsTab('sales'); });
+    await sleep(600);
+    const st = await page.evaluate(async () => {
+      const col = CE('sales').col('status');
+      col.options = [{ key: 'delivered', label: 'Handed over', color: '#22c55e' }];
+      CE('sales').cfg.onChange();
+      await new Promise(r => setTimeout(r, 400));
+      const badge = [...document.querySelectorAll('#deals-sales-table tbody span')]
+        .find(s => s.textContent.trim() === 'Handed over');
+      openSaleForm(4);
+      await new Promise(r => setTimeout(r, 200));
+      const sel = document.getElementById('sale-status');
+      const formOpts = sel ? [...sel.options].map(o => o.textContent) : [];
+      PROCFG.closeModal();
+      return { badge: badge ? getComputedStyle(badge).color : null, formOpts };
+    });
+    check('sales: a renamed status option renames the badge in the table',
+      !!st.badge && /34, 197, 94/.test(st.badge), String(st.badge));
+    check('sales: the form dropdown offers the configured options',
+      st.formOpts.length === 1 && st.formOpts[0] === 'Handed over', JSON.stringify(st.formOpts));
+    check('configured options: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
+    await page.close();
+  }
+
+  // ── The document's OWN fields ────────────────────────────────────────────────
+  // The screenshot in the report had the RFQ's Status dropdown open — a document
+  // field, not a line-item column, and the one part of the form the engine did
+  // not reach. Status options, their colors, and extra document fields are
+  // configurable now, and the extras save with the record.
+  {
+    const { page, errs } = await openPortal(browser, {
+      route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token', port });
+    await page.evaluate(() => navigate('rfqs'));
+    await sleep(500);
+    savedWrites.length = 0;
+    const rfqDoc = await page.evaluate(async () => {
+      await openRfqForm(null);
+      await new Promise(r => setTimeout(r, 350));
+      const sel = document.getElementById('rfq-status');
+      const opts = sel ? [...sel.options].map(o => o.textContent.trim()) : [];
+      const extra = document.querySelector('[data-doc-extras="rfq_doc"] [data-cek="cf_agent"]');
+      const fieldsBtn = [...document.querySelectorAll('#modal-body button')]
+        .some(b => /\+ Field/.test(b.textContent));
+      if (extra) extra.value = 'Nile Freight';
+      if (sel) sel.value = 'awarded';
+      const brand = document.querySelector('#rfq-rows [data-k="brand"]');
+      if (brand) brand.value = 'Toyota';
+      await saveRfq(false);
+      await new Promise(r => setTimeout(r, 250));
+      return { opts, hadExtra: !!extra, fieldsBtn };
+    });
+    check('RFQ document: Status offers the CONFIGURED options, not the frozen map',
+      rfqDoc.opts.join('|') === 'Not sent yet|With supplier|Awarded', JSON.stringify(rfqDoc.opts));
+    check('RFQ document: an admin-added document field appears on the form',
+      rfqDoc.hadExtra === true && rfqDoc.fieldsBtn === true, JSON.stringify(rfqDoc));
+    check('RFQ document: the extra field and the status save with the record',
+      savedWrites.length === 1 && savedWrites[0].body.status === 'awarded'
+      && savedWrites[0].body.custom_fields && savedWrites[0].body.custom_fields.cf_agent === 'Nile Freight',
+      JSON.stringify(savedWrites[0] && { s: savedWrites[0].body.status, cf: savedWrites[0].body.custom_fields }));
+
+    // Contracts had no engine at all. Their extras ride in the data payload the
+    // table already has, so this one needs no migration to work.
+    savedWrites.length = 0;
+    await page.evaluate(() => navigate('contracts'));
+    await sleep(400);
+    const ct = await page.evaluate(async () => {
+      await openContractForm(null);
+      await new Promise(r => setTimeout(r, 400));
+      const sel = document.getElementById('ct-status');
+      const opts = sel ? [...sel.options].map(o => o.textContent.trim()) : [];
+      const notary = document.querySelector('[data-doc-extras="contracts"] [data-cek="cf_notary"]');
+      const buyer = document.querySelector('.ct-f[data-path="buyer.name"]');
+      if (buyer) buyer.value = 'Ahmed';
+      // Required, and left empty on purpose: the save must refuse and name it.
+      await saveContract(false);
+      await new Promise(r => setTimeout(r, 120));
+      const refusal = document.getElementById('ct-err').textContent;
+      if (notary) notary.value = 'giza';
+      await saveContract(false);
+      await new Promise(r => setTimeout(r, 200));
+      return { opts, isSelect: !!notary && notary.tagName === 'SELECT', refusal, hadBuyer: !!buyer };
+    });
+    check('contracts: a required document field blocks the save and is named',
+      /Notary/.test(ct.refusal) && ct.hadBuyer === true, JSON.stringify(ct.refusal));
+    check('contracts: Status reads its configured options', ct.opts.join('|') === 'Unsigned|Signed', JSON.stringify(ct.opts));
+    check('contracts: a document dropdown field renders as a dropdown', ct.isSelect === true);
+    check('contracts: the extra field saves inside the contract data payload',
+      savedWrites.length >= 1 && savedWrites[savedWrites.length - 1].body.data
+      && savedWrites[savedWrites.length - 1].body.data.custom_fields
+      && savedWrites[savedWrites.length - 1].body.data.custom_fields.cf_notary === 'giza',
+      JSON.stringify(savedWrites.length && savedWrites[savedWrites.length - 1].body.data
+        ? savedWrites[savedWrites.length - 1].body.data.custom_fields : null));
+    check('document fields: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
+    await page.close();
+  }
+
+  // ── Inventory ────────────────────────────────────────────────────────────────
+  {
+    const { page, errs } = await openPortal(browser, {
+      route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token', port });
+    await page.evaluate(() => navigate('stock'));
+    await sleep(600);
+    savedWrites.length = 0;
+    const stock = await page.evaluate(async () => {
+      const card = document.querySelector('.stock-units');
+      const cardHeads = card ? [...card.querySelectorAll('thead th')].map(t => t.textContent.trim()) : [];
+      const cardBadge = card ? [...card.querySelectorAll('tbody span')].map(x => x.textContent.trim()) : [];
+      await openStockForm(3);
+      await new Promise(r => setTimeout(r, 300));
+      const chevs = document.querySelectorAll('#modal-body .po-th .col-chev-btn').length;
+      const plate = document.querySelector('.stk-unit-row [data-k="cf_plate"]');
+      const status = document.querySelector('.stk-unit-row [data-k="status"]');
+      const statusOpts = status && status.tagName === 'SELECT' ? [...status.options].map(o => o.textContent) : [];
+      if (plate) plate.value = 'ABC 987';
+      await saveStock(3);
+      await new Promise(r => setTimeout(r, 250));
+      return { cardHeads, cardBadge, chevs, hadPlate: !!plate, statusOpts };
+    });
+    check('inventory: the unit table renders the configured columns',
+      stock.cardHeads.includes('Plate') && stock.cardHeads.includes('VIN'), JSON.stringify(stock.cardHeads));
+    check('inventory: a unit status shows its configured badge',
+      stock.cardBadge.includes('In the yard'), JSON.stringify(stock.cardBadge));
+    check('inventory: the unit editor carries the field menu and the custom field',
+      stock.chevs >= 3 && stock.hadPlate === true && stock.statusOpts.includes('In the yard'),
+      JSON.stringify({ c: stock.chevs, p: stock.hadPlate, o: stock.statusOpts }));
+    check('inventory: the custom unit field saves inside the vehicle',
+      savedWrites.length === 1 && savedWrites[0].body.units && savedWrites[0].body.units[0].cf_plate === 'ABC 987',
+      JSON.stringify(savedWrites[0] && savedWrites[0].body.units));
+    check('inventory: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
     await page.close();
   }
 
@@ -291,6 +565,21 @@ const CELL = sel => `(() => {
       && /leads_columns_config/.test(srvCols));
     check('employee column WRITES stay leads-only on the generic route',
       /ent\.empEdit \|\| !empCan\(req\.employee, ent\.perm, ent\.empEdit\)/.test(srvCols));
+    check('the registry covers the documents, not just their line items',
+      ['rfq_doc', 'po_doc', 'contracts', 'quote_doc', 'stock'].every(e => new RegExp(`\\b${e}:\\s+\\{`).test(srvCols)));
+    // The custom_fields columns arrive with migration 012, which is applied by
+    // hand — a deploy that lands first must not start losing RFQs and POs.
+    const rfqSrv = fs.readFileSync('src/routes/rfq.js', 'utf8');
+    const poSrv = fs.readFileSync('src/routes/purchase-orders.js', 'utf8');
+    check('documents persist their custom fields tolerantly of the pending migration',
+      /custom_fields/.test(rfqSrv) && /custom_fields/.test(poSrv)
+      && /ctx\.writeOptional\([\s\S]{0,200}custom_fields/.test(rfqSrv)
+      && /ctx\.writeOptional\([\s\S]{0,200}custom_fields/.test(poSrv));
+    check('writeOptional drops only the named column and retries',
+      /dropped\.forEach\(k => \{ delete rest\[k\]; \}\)/.test(fs.readFileSync('src/ctx.js', 'utf8')));
+    check('migration 012 adds the two columns the documents need',
+      /rfqs\s+ADD COLUMN IF NOT EXISTS custom_fields/.test(fs.readFileSync('migrations/012_document_custom_fields.sql', 'utf8'))
+      && /purchase_orders ADD COLUMN IF NOT EXISTS custom_fields/.test(fs.readFileSync('migrations/012_document_custom_fields.sql', 'utf8')));
   }
 
   await browser.close();
