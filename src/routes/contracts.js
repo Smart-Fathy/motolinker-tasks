@@ -10,6 +10,7 @@ const createNotification = (...a) => ctx.createNotification(...a);
 const renderQuotationPdf = (...a) => ctx.renderQuotationPdf(...a);
 const requirePerm = (...a) => ctx.requirePerm(...a);
 const callerIdentity = (...a) => ctx.callerIdentity(...a);
+const { BRAND_LOGO_URL } = ctx.need('BRAND_LOGO_URL');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Contracts (Arabic "عقد شراء وإستيراد سيارة لحساب الغير") ──────────────────

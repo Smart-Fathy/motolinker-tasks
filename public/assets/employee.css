@@ -817,3 +817,13 @@
   .ce-modal-body { padding:16px; overflow-y:auto; }
   .ce-modal-foot { padding:12px 16px; border-top:1px solid var(--border); display:flex;
                    justify-content:flex-end; gap:8px; }
+
+  /* Columns picker rows: the label toggles visibility, the pencil opens the field
+     editor. Both are .lead-menu buttons, which are width:100% by default — the
+     pencil must opt out or it claims the row and wraps every label. */
+  .lead-menu .lead-col-row { display:flex; align-items:center; gap:2px; padding-right:4px; }
+  .lead-menu .lead-col-row .lead-col-eye { flex:1 1 auto; min-width:0; white-space:nowrap;
+                                           overflow:hidden; text-overflow:ellipsis; }
+  .lead-menu button.lead-col-edit { width:auto; flex:0 0 auto; padding:6px; color:var(--muted);
+                                    border-radius:5px; }
+  .lead-menu button.lead-col-edit:hover { color:var(--primary); background:rgba(255,255,255,.07); }
