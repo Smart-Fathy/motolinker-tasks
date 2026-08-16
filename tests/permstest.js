@@ -55,7 +55,13 @@ const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', perm
   c('…and gains nothing sensitive by default',
     ['email', 'gchat', 'issues', 'quotation', 'deals', 'reports'].every(k => legacy[k] !== true));
   c('a legacy master switch still means every action in that section',
-    Object.values(legacy.leadsActions).every(Boolean), JSON.stringify(legacy.leadsActions));
+    ['view', 'create', 'edit', 'delete', 'import', 'export'].every(a => legacy.leadsActions[a] === true),
+    JSON.stringify(legacy.leadsActions));
+  // …except the ones that must never be assumed. A client folder holds passports
+  // and signed contracts; an old record that never named the action gets it off,
+  // rather than the whole team gaining every client's paperwork on one deploy.
+  c('…but never one that was declared un-inheritable',
+    legacy.leadsActions.clientFolder === false, JSON.stringify(legacy.leadsActions.clientFolder));
 }
 
 // ── The one action a master switch must NOT imply ─────────────────────────────

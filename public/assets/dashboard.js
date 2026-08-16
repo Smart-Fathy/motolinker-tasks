@@ -4478,7 +4478,8 @@ let _leadSort = (() => { try { return JSON.parse(localStorage.getItem('ml_leads_
 // a live reference to its array plus the same thin lookups every call site used.
 let _leadCols = null;
 function leadCol(key) { return CE('leads') ? CE('leads').col(key) : null; }
-function colOptMap(col) { return CE('leads').optMap(col); }
+function colOptMap(col) { return CE('leads') ? CE('leads').optMap(col) : {}; }
+function leadOptColor(col, key) { return CE('leads') ? CE('leads').optionColor(col, key) : null; }
 function isChecked(raw) { return raw === true || raw === 'true' || raw === 1 || raw === '1'; }
 // Budget: parse a single number OR a range ("1700000-2000000", "1.7M to 2M") into {min,max}.
 function parseBudgetPart(s) {
@@ -4985,7 +4986,7 @@ function renderLeadDrawer() {
   document.getElementById('ld-name').textContent = c.name || '—';
   const badge = document.getElementById('ld-status');
   badge.textContent = (stMap[stKey] || c.lead_status || 'Cold') + ' ▾';
-  const stHex = CE('leads').optionColor(stCol, stKey);
+  const stHex = leadOptColor(stCol, stKey);
   badge.style.background = stHex ? hexA(stHex, 0.16) : 'rgba(255,255,255,.06)';
   badge.style.color = stHex || '#b9b3a4';
   document.getElementById('ld-phone').textContent = c.phone || '';
@@ -5028,7 +5029,7 @@ function renderLeadDrawer() {
     let bodyHtml = esc(a.body || '');
     if (a.type === 'status_change' && a.meta?.to) {
       const fk = normKey(a.meta.from, stMap), tk = normKey(a.meta.to, stMap);
-      const pill = k => { const h = CE('leads').optionColor(stCol, k); return `background:${h ? hexA(h, 0.16) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
+      const pill = k => { const h = leadOptColor(stCol, k); return `background:${h ? hexA(h, 0.16) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
       bodyHtml = `Status: <span class="ld-stage-pill" style="${pill(fk)}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="${pill(tk)}">${esc(stMap[tk] || a.meta.to)}</span>`;
     }
     return `<div class="ld-tl-item">
@@ -5109,6 +5110,7 @@ function renderLeadDrawer() {
         <button class="btn btn-sm btn-primary" onclick="ldScheduleFollowup()">Schedule</button>
       </div>
     </div>
+    ${clientFolderSection(c.id)}
     <div class="ld-section">
       <div class="ld-section-title">Quotations <span style="font-weight:400;text-transform:none;letter-spacing:0">${quotes.length || ''}</span></div>
       ${quotesHtml}
@@ -6101,6 +6103,18 @@ const QTCFG = {
     return [...(Array.isArray(leads) ? leads : [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   },
   people: async () => apiFetch('/api/dashboard/employees-for-tasks').then(r => r.json()).catch(() => []),
+};
+
+// The client folder's portal adapter — the admin owns the sharing list, so
+// isAdmin is true here and the people list is the employee roster.
+const CFCFG = {
+  base: '/api/dashboard',
+  path: id => `/customers/${id}/folder`,
+  fetch: (url, opts) => apiFetch(url, opts),
+  toast: (msg, bad) => showAdminToast(msg, bad),
+  can: () => true,
+  isAdmin: true,
+  people: () => employeesForTasks || [],
 };
 
 const PROCFG = {

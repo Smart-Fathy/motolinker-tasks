@@ -358,3 +358,8 @@ GET /api/submissions
 DELETE /api/submissions/:id
 GET /api/employee/submissions
 DELETE /api/employee/submissions/:id
+GET /api/dashboard/customers/:id/folder
+POST /api/dashboard/customers/:id/folder
+GET /api/employee/leads/:id/folder
+POST /api/employee/leads/:id/folder
+PUT /api/dashboard/customers/:id/folder/viewers

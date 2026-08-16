@@ -1826,6 +1826,11 @@ Object.assign(ctx, require('./src/routes/quotations'));
 // Employee Quotation Draft  → src/routes/employee-quote.js
 Object.assign(ctx, { ADMIN_USERNAME, express, receiver, requireAuth, requireEmployeeAuth, supabase, upload, vapidKeys });
 Object.assign(ctx, require('./src/routes/employee-quote'));
+
+// Per-client Drive folders  → src/routes/client-folder.js
+// Last of the document modules: it renders PDFs with their builders and files
+// them with the supplier module's Drive helpers, so both must be on ctx first.
+Object.assign(ctx, require('./src/routes/client-folder'));
 // ─── Lead follow-up reminders ─────────────────────────────────────────────────
 // Fires within ~5 minutes of a follow-up's due time: notifies the assigned
 // employee (or admin when unassigned) once per follow-up.
