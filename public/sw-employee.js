@@ -1,4 +1,4 @@
-const CACHE = 'motolinker-emp-v72';
+const CACHE = 'motolinker-emp-v74';
 // The version rides every asset URL (?v=N). The HTML references assets with the
 // SAME stamp, so a deploy changes the cache key: new HTML can never be paired
 // with the previous bundle out of this cache, which is what used to blank the
@@ -6,7 +6,7 @@ const CACHE = 'motolinker-emp-v72';
 // asserts the HTML and this file agree on N.
 const V = CACHE.split('-v')[1];
 const SHELL = ['/employee', '/manifest-employee.json', '/help-docs.js?v=' + V, '/assets/employee.css?v=' + V, '/assets/mobile.css?v=' + V, '/assets/employee.js?v=' + V, '/assets/home.js?v=' + V, '/assets/huddle.js?v=' + V,
-  '/assets/procurement.js?v=' + V, '/assets/quote.js?v=' + V, '/assets/meetings.js?v=' + V, '/assets/chat-extras.js?v=' + V, '/assets/columns.js?v=' + V, '/assets/lead-filters.js?v=' + V, '/assets/mobile.js?v=' + V];
+  '/assets/procurement.js?v=' + V, '/assets/quote.js?v=' + V, '/assets/meetings.js?v=' + V, '/assets/availability.js?v=' + V, '/assets/chat-extras.js?v=' + V, '/assets/columns.js?v=' + V, '/assets/lead-filters.js?v=' + V, '/assets/mobile.js?v=' + V];
 const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com'];
 
 self.addEventListener('install', e => {

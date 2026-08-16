@@ -2218,6 +2218,7 @@ function closeModal(e) { if (e.target === document.getElementById('modal-overlay
 let allEmployees = [];
 
 async function loadEmployees() {
+  if (typeof renderAvailabilityBoard === 'function') renderAvailabilityBoard('availability-board');
   const tableC = document.getElementById('employees-table-container');
   tableC.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   try {

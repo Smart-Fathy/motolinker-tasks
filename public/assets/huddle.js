@@ -145,6 +145,7 @@ function huddleLeave() {
   _hd.peers.clear();
   [_hd.local, _hd.screen].forEach(st => st && st.getTracks().forEach(t => t.stop()));
   _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: _hd.ice, iceUntil: _hd.iceUntil, roster: [], statsTimer: null };
+  hdPruneAudio(null);
   hdRenderBar();
 }
 
@@ -300,6 +301,11 @@ async function huddleOnSignal(msg) {
       await p.pc.setRemoteDescription(new RTCSessionDescription(msg.data));
       p.negotiated = true;
       await hdFlushIce(p);
+    } else if (p && p.pc.remoteDescription) {
+      // A duplicate answer in stable is discarded — but candidates that queued
+      // behind it must not sit parked forever; the description they belong to
+      // is already applied.
+      await hdFlushIce(p);
     }
   } else if (msg.type === 'ice') {
     const p = _hd.peers.get(from);
@@ -364,6 +370,29 @@ async function hdPollStats() {
       if (p.video && !moving && !p.everPainted) p.video = false;
       if (moving) p.everPainted = true;
     } catch (_) { /* a closing connection throws; the next tick will settle it */ }
+  }
+  // Offer watchdog. Dialling is idempotent by design (the glare rule), which
+  // means a LOST offer strands the pair as "connecting" forever — signalling
+  // rides the chat SSE stream, and frames sent while a peer's stream is
+  // reconnecting are simply dropped, with no queue on the server. If we are the
+  // offerer and the peer still has no remote description after two ticks (~6s),
+  // offer again; bounded so a genuinely dead peer doesn't loop.
+  for (const [key, p] of _hd.peers) {
+    try {
+      if (hdMe() < key
+          && !p.pc.remoteDescription
+          && (p.pc.connectionState === 'new' || p.pc.connectionState === 'connecting')
+          && !p.makingOffer) {
+        p.offerTicks = (p.offerTicks || 0) + 1;
+        if (p.offerTicks >= 2 && (p.offerRetries || 0) < 3) {
+          p.offerTicks = 0;
+          p.offerRetries = (p.offerRetries || 0) + 1;
+          hdCall(key).catch(() => {});
+        }
+      } else {
+        p.offerTicks = 0;
+      }
+    } catch (_) {}
   }
   hdRenderBar();
 }
@@ -521,6 +550,9 @@ function hdRing() {
   const ctx = new Ctx(), osc = ctx.createOscillator(), gain = ctx.createGain();
   osc.frequency.value = 660; gain.gain.value = 0.06;
   osc.connect(gain); gain.connect(ctx.destination);
+  // Born from an SSE event, not a gesture, so it starts suspended — without the
+  // resume() the incoming-huddle ring was usually silent.
+  if (ctx.state === 'suspended' && ctx.resume) { const r = ctx.resume(); if (r && r.catch) r.catch(() => {}); }
   osc.start(); osc.stop(ctx.currentTime + 0.5);
   setTimeout(() => { try { ctx.close(); } catch (_) {} }, 900);
 }
@@ -579,32 +611,82 @@ function hdFullscreen(tile) {
   else hdToast('This browser will not go full screen.');
 }
 
-// A remote stream is only audible once it is attached to a media element, so every
-// participant keeps a <video> whether or not a camera is on — it is simply hidden
-// behind the avatar when there is no picture, and display:none does not stop audio.
-// Creating the element only once video arrived is what made audio-only huddles
-// silent: the audio was being received and decoded, but nothing was playing it.
+// ── The audio path, kept out of the UI entirely ───────────────────────────────
+// A peer's voice must never depend on how their tile is displayed. The old design
+// played audio through the tile's <video> and hid it with display:none when there
+// was no picture — and while Chromium keeps playing a hidden video, WebKit does
+// NOT: a MediaStream <video> outside the render tree simply never starts. That is
+// exactly "they can't hear me until I share my screen" — sharing set p.video,
+// unhid the element, and its autoplay finally kicked in. The sink lives on <body>,
+// OUTSIDE #hd-bar, so minimising the widget (a persisted preference that hides
+// .hd-tiles with display:none) can never mute a call either.
+let _hdSinkEl = null;   // closure-held, not id-looked-up: one sink per module instance
+function hdAudioSink() {
+  if (!_hdSinkEl || !_hdSinkEl.isConnected) {
+    _hdSinkEl = document.createElement('div');
+    _hdSinkEl.className = 'hd-audio-sink';
+    _hdSinkEl.style.cssText = 'position:fixed;width:0;height:0;overflow:hidden';
+    document.body.appendChild(_hdSinkEl);
+  }
+  return _hdSinkEl;
+}
+function hdPaintAudio(key, stream) {
+  const sink = hdAudioSink();
+  let au = [...sink.children].find(a => a.dataset.peer === key);
+  if (!stream || !stream.getAudioTracks().length) { if (au) { au.srcObject = null; au.remove(); } return; }
+  if (!au) {
+    au = document.createElement('audio');
+    au.autoplay = true;
+    au.dataset.peer = key;
+    sink.appendChild(au);
+  }
+  if (au.srcObject !== stream) au.srcObject = stream;
+  if (au.paused) {
+    const r = au.play();
+    // Only a genuine autoplay refusal warrants the "blocked" flow. AbortError is
+    // a superseded load and NotSupportedError a not-yet-live track — both settle
+    // by themselves on a later render.
+    if (r && r.catch) r.catch(err => { if (err && err.name === 'NotAllowedError') hdAudioBlocked(); });
+  }
+}
+function hdPruneAudio(keep) {
+  const sink = _hdSinkEl;
+  if (!sink) return;
+  [...sink.children].forEach(a => {
+    if (!keep || !keep.has(a.dataset.peer)) { a.srcObject = null; a.remove(); }
+  });
+}
+
+// Tiles are pure picture now — the sink above carries every remote voice.
 function hdPaintTile(el, label, stream, showVideo, mute, peer, key) {
   const nameEl = el.querySelector('.hd-tile-name');
   if (nameEl.textContent !== label) nameEl.textContent = label;
   const v = el.querySelector('.hd-video');
-  v.muted = !!mute;                        // only ever our own tile, or we echo
-  // Follow the TRACKS, not the stream object. hdPeer creates entry.stream empty and
-  // ontrack mutates that same object, so an identity check binds the element to an
-  // empty stream on the first render — which for the offerer happens before any media
-  // arrives — plays nothing, and then never rebinds or replays when the audio turns up.
-  // That rejected play() on an empty stream is also what raised "your browser blocked
-  // the sound", and the click handler it installed is why a call would start working
-  // the instant the user clicked anything, screen-share button included.
+  // ALWAYS muted: remote audio plays through the sink, and playing it here too
+  // would double every voice on Chromium. (Muted also means this play() can
+  // never be autoplay-blocked, so the tile paints regardless of gestures.)
+  v.muted = true;
+  // Follow the TRACKS, not the stream object — hdPeer mutates one entry.stream in
+  // place — but never re-ASSIGN the same object: the srcObject setter re-runs the
+  // load algorithm unconditionally, which rejects the still-pending play() with
+  // AbortError. In an audio-only call ontrack fires twice (mic, then the reserved
+  // video transceiver's track), so the old code re-bound on the second track and
+  // reported its own AbortError as "your browser blocked the sound" every call.
   const sig = stream ? stream.getTracks().map(t => t.id).join(',') : '';
   if (v.dataset.sig !== sig) {
-    v.dataset.sig = sig;
-    if (sig) {
-      v.srcObject = stream;
-      const r = v.play();
-      if (r && r.catch) r.catch(() => hdAudioBlocked());
-    } else {
+    if (!sig) {
+      v.dataset.sig = '';
       v.srcObject = null;          // nothing to play yet; binding empty is the bug
+    } else {
+      if (v.srcObject !== stream) v.srcObject = stream;   // a live stream picks up added tracks itself
+      const r = v.play();
+      if (r && r.then) {
+        // The signature is recorded only once playback actually starts, so a
+        // failed attempt stays retryable on the very next render.
+        r.then(() => { v.dataset.sig = sig; }, () => {});
+      } else {
+        v.dataset.sig = sig;
+      }
     }
   }
   v.style.display = showVideo ? '' : 'none';
@@ -641,18 +723,42 @@ function hdPaintTile(el, label, stream, showVideo, mute, peer, key) {
 
 // Browsers refuse to start audio without a user gesture. Joining a huddle is a
 // click, so this should be rare — but when it does happen the call is silent with
-// no clue why, so say so and retry on the next click anywhere.
+// no clue why, so say so and retry on the next gesture. The retry STAYS armed
+// until something actually starts playing: the old version unhooked its listener
+// unconditionally and swallowed the retry's own failures, so the user's one
+// click burned the only recovery path and the call stayed silent for good.
 let _hdGestureHooked = false;
+let _hdBlockedToastAt = 0;
 function hdAudioBlocked() {
-  hdToast('Your browser blocked the sound. Click anywhere to turn it on.');
+  // Every blocked element lands here; one toast every few seconds is plenty.
+  if (Date.now() - _hdBlockedToastAt > 4000) {
+    _hdBlockedToastAt = Date.now();
+    hdToast('Your browser blocked the sound. Tap anywhere to turn it on.');
+  }
   if (_hdGestureHooked) return;
   _hdGestureHooked = true;
-  const resume = () => {
-    document.querySelectorAll('#hd-bar video').forEach(v => { const r = v.play(); if (r && r.catch) r.catch(() => {}); });
-    document.removeEventListener('click', resume);
+  const EVENTS = ['click', 'pointerdown', 'keydown'];
+  function unhook() {
+    EVENTS.forEach(t => document.removeEventListener(t, resume));
     _hdGestureHooked = false;
-  };
-  document.addEventListener('click', resume);
+  }
+  function resume() {
+    const els = [...document.querySelectorAll('#hd-bar video, .hd-audio-sink audio')];
+    if (!els.length) { unhook(); return; }
+    let pending = els.length, anyOk = false;
+    const done = ok => {
+      anyOk = anyOk || ok;
+      // Stand down only once at least one element genuinely started; otherwise
+      // stay armed for the next gesture instead of giving up silently.
+      if (--pending === 0 && anyOk) unhook();
+    };
+    els.forEach(el => {
+      const r = el.play();
+      if (r && r.then) r.then(() => done(true), () => done(false));
+      else done(true);
+    });
+  }
+  EVENTS.forEach(t => document.addEventListener(t, resume));
 }
 
 // Where the widget sits and whether it is collapsed survives across calls and
@@ -731,10 +837,12 @@ function hdRenderBar() {
     const label = (p.name || key) + (p.state !== 'connected' ? ' · ' + p.state : '')
       + (p.sharing ? ' · sharing' : '');
     hdPaintTile(hdTileEl(tiles, key), label, p.stream, !!p.video, false, p, key);
+    hdPaintAudio(key, p.stream);   // the voice, independent of every tile state
   });
 
   const keep = new Set(['__self', ...peers.map(([k]) => k)]);
   [...tiles.children].forEach(el => { if (!keep.has(el.getAttribute('data-tile'))) el.remove(); });
+  hdPruneAudio(new Set(peers.map(([k]) => k)));
 
   // No media lives in the controls, so replacing those wholesale is safe
   const ic = n => `<i data-lucide="${n}" style="width:16px;height:16px"></i>`;
@@ -913,7 +1021,19 @@ function chatHeaderActions(room) {
 function chatHeaderStatus(room) {
   if (!room || room.type !== 'direct') return '';
   const other = (room.members || []).find(m => m.member_key !== hdMe());
-  return other ? statusChip(other.member_status_emoji, other.member_status) : '';
+  if (!other) return '';
+  // Today's availability rides along when the board has been loaded this
+  // session — "partial 14:00–18:00" answers "can I call?" before the call.
+  let avail = '';
+  try {
+    const d = typeof availabilityToday === 'function' ? availabilityToday(other.member_key) : null;
+    if (d) {
+      const color = d.status === 'available' ? '#22c55e' : d.status === 'partial' ? '#eab308' : '#6b7280';
+      const hours = d.status !== 'off' && d.from && d.to ? ` ${d.from}–${d.to}` : '';
+      avail = ` <span style="font-size:10px;font-weight:600;color:${color}">· ${d.status}${hours}</span>`;
+    }
+  } catch (_) {}
+  return statusChip(other.member_status_emoji, other.member_status) + avail;
 }
 
 // ── Status ────────────────────────────────────────────────────────────────────

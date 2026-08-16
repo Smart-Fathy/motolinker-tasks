@@ -134,6 +134,10 @@ GET /api/employee/meetings
 POST /api/employee/meetings
 PUT /api/employee/meetings/:id
 DELETE /api/employee/meetings/:id
+GET /api/dashboard/availability
+PUT /api/dashboard/availability
+GET /api/employee/availability
+PUT /api/employee/availability
 GET /api/calendar/status
 GET /api/calendar/connect
 POST /api/calendar/disconnect

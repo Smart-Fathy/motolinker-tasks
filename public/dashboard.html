@@ -22,10 +22,10 @@
     if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=91">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=93">
   <!-- Shared with the team portal. Last on purpose: several mobile rules were being
        beaten by later same-specificity rules in the sheet above. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=91">
+  <link rel="stylesheet" href="/assets/mobile.css?v=93">
 </head>
 <body>
 
@@ -300,7 +300,11 @@
       <button class="btn btn-primary" onclick="openEmpModal()">+ Create Employee</button>
     </div>
     <div id="employee-accounts-section" style="padding:0 28px 28px">
-      <div id="employees-table-container"><div class="loading"><div class="spinner"></div> Loading…</div></div>
+      <div class="card" style="margin-bottom:18px;padding:16px 18px">
+      <div style="font-weight:700;font-size:14px;margin-bottom:10px">Team availability</div>
+      <div id="availability-board"></div>
+    </div>
+    <div id="employees-table-container"><div class="loading"><div class="spinner"></div> Loading…</div></div>
     </div>
   </div>
 
@@ -1379,16 +1383,17 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
-<script src="/assets/mobile.js?v=91"></script>
-<script src="/assets/columns.js?v=91"></script>
-<script src="/assets/lead-filters.js?v=91"></script>
-<script src="/assets/chat-extras.js?v=91"></script>
-<script src="/assets/home.js?v=91"></script>
-<script src="/assets/huddle.js?v=91"></script>
-<script src="/assets/procurement.js?v=91"></script>
-<script src="/assets/quote.js?v=91"></script>
-<script src="/assets/meetings.js?v=91"></script>
-<script src="/assets/dashboard.js?v=91"></script>
+<script src="/assets/mobile.js?v=93"></script>
+<script src="/assets/columns.js?v=93"></script>
+<script src="/assets/lead-filters.js?v=93"></script>
+<script src="/assets/chat-extras.js?v=93"></script>
+<script src="/assets/home.js?v=93"></script>
+<script src="/assets/huddle.js?v=93"></script>
+<script src="/assets/procurement.js?v=93"></script>
+<script src="/assets/quote.js?v=93"></script>
+<script src="/assets/meetings.js?v=93"></script>
+<script src="/assets/availability.js?v=93"></script>
+<script src="/assets/dashboard.js?v=93"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
@@ -1421,6 +1426,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=91"></script>
+<script src="/help-docs.js?v=93"></script>
 </body>
 </html>

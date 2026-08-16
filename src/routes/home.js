@@ -63,6 +63,7 @@ const HOME_WIDGETS = {
   notifications:       { gate: null,        src: [] },
   calendar:            { gate: 'calendar',  src: [] },
   meet_quick:          { gate: 'meet',      src: [] },
+  team_availability:   { gate: 'availability', src: [] },
   drive_recent:        { gate: 'drive',     src: [] },
   sheets_recent:       { gate: 'sheets',    src: [] },
   email_unread:        { gate: 'email',     src: [] },
