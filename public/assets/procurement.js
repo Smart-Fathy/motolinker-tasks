@@ -1421,7 +1421,9 @@
     rfq_doc:   [docStatusCol([['draft', 'Draft'], ['sent', 'Sent'], ['answered', 'Answered'], ['closed', 'Closed']])],
     po_doc:    [docStatusCol([['draft', 'Draft'], ['sent', 'Sent'], ['confirmed', 'Confirmed'], ['closed', 'Closed']])],
     contracts: [docStatusCol([['draft', 'Draft'], ['signed', 'Signed'], ['cancelled', 'Cancelled']])],
-    quote_doc: [docStatusCol([['draft', 'Draft'], ['sent', 'Sent'], ['accepted', 'Accepted'], ['closed', 'Closed']])],
+    // A quotation has no status column of its own, so its document config is
+    // purely the extra fields an admin adds.
+    quote_doc: [],
   };
   function docEngine(entity) { return procColsEngine(entity, DOC_BUILTINS[entity] || [], () => {}); }
   // The document's Status select, drawn from the configured options. The stored
@@ -1676,6 +1678,7 @@
     supTab, supUploadDoc, supVehicleRowHtml, supplierFillFields,
     supplierOptionsHtml, viewDocPdf, viewDocPdfPayload,
       SALE_COLS, SALE_STATUS_OPTS, deleteSale, loadSales, openSaleForm, saleUploadFile, saveSale,
-      docEngine, docStatusBadge, docStatusHtml,
+      docCollect, docEngine, docExtrasHtml, docRequiredMissing, docStatusBadge, docStatusHtml,
+      procColsBtn, procColsEngine, procGridCollect, procGridInput, procTh, tupleCols,
   });
 })();

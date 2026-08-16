@@ -493,6 +493,10 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       const items       = JSON.parse(itemsJson       || '[]');
       const logistics   = JSON.parse(logisticsJson   || '[]');
       const customSpecs = JSON.parse(customSpecsJson || '[]');
+      // The quotation's configurable document fields (quote_doc), kept in the
+      // record's own data payload — quotations need no column for them.
+      let customFields = {};
+      try { const cf = JSON.parse(req.body.customFields || '{}'); if (cf && typeof cf === 'object') customFields = cf; } catch (_) {}
       let existingImages = [];
       try { existingImages = JSON.parse(req.body.existingImages || '[]'); } catch (_) {}
       const files       = req.files || [];
@@ -516,7 +520,7 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
       const pk = req.body.quotation_pk ? parseInt(req.body.quotation_pk) : null;
       const record = {
         title: `${vehicleModel || 'Quotation'} — ${name || ''}`.trim(),
-        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs, imageDataUrls, template },
+        data: { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, customSpecs, imageDataUrls, template, customFields },
         customer_id: custId,
       };
       if (pk) {

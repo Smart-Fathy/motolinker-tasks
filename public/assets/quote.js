@@ -61,6 +61,7 @@
   }
 
   async function openQuoteForm(saved, opts) {
+    await docEngine('quote_doc').load();
     const editing = !!(saved && opts && opts.editing);
     const d = (saved && saved.data) || {};
     qtEditingPk = editing ? saved.id : null;
@@ -103,7 +104,8 @@
         </select>`) : '<input type="hidden" id="qt-customer-id" value="">'}
       </div>
 
-      <div style="font-weight:700;font-size:13px;margin:6px 0 8px">Pricing</div>
+      ${docExtrasHtml('quote_doc', d.customFields)}
+      <div style="font-weight:700;font-size:13px;margin:6px 0 8px;margin-top:14px">Pricing</div>
       <div style="overflow-x:auto"><table id="qt-grid" style="width:100%;min-width:640px;border-collapse:collapse;font-size:12.5px">
         <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
           <th style="padding:6px 8px;width:34px">#</th><th style="padding:6px 8px">Item</th>
@@ -331,6 +333,8 @@
 
     if (!id || !date || !name) { err.textContent = 'Please fill in ID, Date and Customer Name.'; err.style.display = 'block'; return; }
     if (!exchange || parseFloat(exchange) <= 0) { err.textContent = 'Please enter a valid Exchange Rate.'; err.style.display = 'block'; return; }
+    const missingDoc = docRequiredMissing('quote_doc');
+    if (missingDoc.length) { err.textContent = 'Required: ' + missingDoc.join(', '); err.style.display = 'block'; return; }
 
     const items = [];
     document.querySelectorAll('.qt-item-row').forEach(row => {
@@ -363,6 +367,7 @@
       formData.append('items', JSON.stringify(items));
       formData.append('logistics', JSON.stringify(logistics));
       formData.append('customSpecs', JSON.stringify(customSpecs));
+      formData.append('customFields', JSON.stringify(docCollect('quote_doc')));
       const qtLeadId = (document.getElementById('qt-customer-id') || {}).value || '';
       if (qtLeadId) formData.append('customer_id', qtLeadId);
       formData.append('template', (document.getElementById('qt-template') || {}).value || 'classic');

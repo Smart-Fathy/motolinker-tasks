@@ -1350,12 +1350,26 @@ async function uploadCSV() {
 // ── Car Stock (immediate-delivery inventory) ────────────────────────────────────
 // Per-unit columns (screenshot 4): what we track for each physical car.
 const STOCK_UNIT_COLS = [
-  ['consignee', 'Consignee'], ['colour', 'Colour EXT / INT'], ['vin', 'VIN'],
-  ['status', 'Status'], ['price_list', 'Price List'], ['discounted', 'Discounted'],
-  ['logistics', 'Logistics'], ['supplier', 'Supplier'],
+  ['consignee', 'Consignee', 120], ['colour', 'Colour EXT / INT', 120], ['vin', 'VIN', 120],
+  ['status', 'Status', 120], ['price_list', 'Price List', 120], ['discounted', 'Discounted', 120],
+  ['logistics', 'Logistics', 120], ['supplier', 'Supplier', 120],
 ];
+// Inventory's unit rows are a line grid like the PO and RFQ sheets, so they get
+// the same engine: rename, reorder, hide, add a field of any type. Unit rows are
+// JSONB inside the vehicle, so a new field needs no column.
+function stockUnitsEngine() {
+  return procColsEngine('stock', tupleCols(STOCK_UNIT_COLS, {
+    price_list: 'number', discounted: 'number', status: 'select',
+    'options:status': PO_LINE_STATUSES.map(o => ({ key: o.key, label: o.label, color: o.fg })),
+  }), () => renderStock());
+}
+function stockUnitCols() {
+  const eng = CE('stock');
+  return eng && eng.loaded ? eng.visible() : tupleCols(STOCK_UNIT_COLS, {});
+}
 let _stockCache = [];
 async function loadStock() {
+  await stockUnitsEngine().load();
   const body = document.getElementById('stock-table-container');
   if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div> Loading stock…</div>';
   let list = [];
@@ -1403,13 +1417,15 @@ function stockCardHtml(v) {
     <div class="stock-colors">
       <div class="stock-sec-label">Units (${units.length})</div>
       <div class="table-scroll"><table class="stock-units">
-        <thead><tr>${STOCK_UNIT_COLS.map(([, l]) => `<th>${esc(l)}</th>`).join('')}</tr></thead>
+        <thead><tr>${stockUnitCols().map(c => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>
         <tbody>${units.map(u => {
-          const st = poLineStatus(u.status);
-          return `<tr>${STOCK_UNIT_COLS.map(([k]) => {
-            if (k === 'status') return `<td><span class="pill-sm" style="background:${st.bg};color:${st.fg}">${esc(st.label)}</span></td>`;
-            if (k === 'price_list' || k === 'discounted') return `<td style="text-align:right">${Number(u[k]) ? Number(u[k]).toLocaleString() : '—'}</td>`;
-            return `<td>${esc(u[k] || '—')}</td>`;
+          const eng = CE('stock');
+          return `<tr>${stockUnitCols().map(c => {
+            const k = c.key;
+            if ((c.type === 'select' || c.type === 'radio') && eng) return `<td>${eng.badgeHtml(c, u[k])}</td>`;
+            if (c.type === 'number') return `<td style="text-align:right">${Number(u[k]) ? Number(u[k]).toLocaleString() : '—'}</td>`;
+            if (c.type === 'checkbox') return `<td style="text-align:center">${u[k] === true || u[k] === 'true' ? '✓' : '—'}</td>`;
+            return `<td>${esc(u[k] == null ? '—' : String(u[k]) || '—')}</td>`;
           }).join('')}</tr>`;
         }).join('')}</tbody>
       </table></div>
@@ -1452,7 +1468,8 @@ function stockColorSwatch(name) {
   for (const k in map) if (n.includes(k)) return map[k];
   return '#9ca3af';
 }
-function openStockForm(id) {
+async function openStockForm(id) {
+  await stockUnitsEngine().load();
   const v = id ? _stockCache.find(x => x.id === id) : null;
   showModal(v ? 'Edit vehicle' : 'Add vehicle', `
     <div style="display:grid;gap:12px">
@@ -1476,13 +1493,13 @@ function openStockForm(id) {
           <table style="border-collapse:collapse;font-size:12px;min-width:1080px">
             <thead><tr>
               <th class="po-th" style="width:34px">#</th>
-              ${STOCK_UNIT_COLS.map(([, l]) => `<th class="po-th" style="min-width:120px">${esc(l)}</th>`).join('')}
+              ${stockUnitCols().map(c => procTh('stock', c, { cls: 'po-th', style: `min-width:${c.width || 120}px` })).join('')}
               <th class="po-th" style="width:38px"></th>
             </tr></thead>
             <tbody id="stk-units"></tbody>
           </table>
         </div>
-        <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="stkAddUnitRow()">+ Add unit</button>
+        <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="stkAddUnitRow()">+ Add unit</button> ${procColsBtn('stock')}
         <div style="font-size:11px;color:var(--muted);margin-top:6px">One row per car. These are the stock count — there is no separate total to type in.</div>
         ${v && !(v.units || []).length && v.legacy_count ? `<div class="stk-legacy">
           <i data-lucide="alert-triangle" style="width:14px;height:14px"></i>
@@ -1518,17 +1535,10 @@ function stkAddUnitRow(u) {
   const v = u || {};
   const tr = document.createElement('tr');
   tr.className = 'stk-unit-row';
-  const cell = k => {
-    if (k === 'status') {
-      return `<td class="po-td"><select class="form-input stk-u" data-k="status" style="font-size:12px;padding:5px 6px">
-        ${PO_LINE_STATUSES.map(o => `<option value="${o.key}" ${(v.status || 'send_to_supplier') === o.key ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
-      </select></td>`;
-    }
-    const num = (k === 'price_list' || k === 'discounted') ? 'type="number" min="0"' : '';
-    return `<td class="po-td"><input class="form-input stk-u" data-k="${k}" ${num} value="${esc(v[k] == null ? '' : String(v[k]))}" style="font-size:12px;padding:5px 6px"></td>`;
-  };
+  const val = c => (c.key === 'status' && v[c.key] == null
+    ? ((c.options && c.options[0] && c.options[0].key) || 'send_to_supplier') : v[c.key]);
   tr.innerHTML = `<td class="po-td stk-u-no" style="text-align:center;color:var(--muted)"></td>` +
-    STOCK_UNIT_COLS.map(([k]) => cell(k)).join('') +
+    stockUnitCols().map(c => procGridInput(CE('stock'), c, val(c), 'stk-u')).join('') +
     `<td class="po-td" style="text-align:center"><button class="btn btn-outline" style="padding:2px 7px;font-size:14px;color:var(--danger);border-color:var(--danger)" title="Remove">×</button></td>`;
   tr.querySelector('button').onclick = () => { tr.remove(); stkRenumberUnits(); };
   tbody.appendChild(tr);
@@ -1545,9 +1555,8 @@ async function saveStock(id) {
     name: r.querySelector('.stk-color-name').value.trim(),
     qty: 0,                    // counts come from the individual cars, not here
   })).filter(c => c.name);
-  const units = [...document.querySelectorAll('.stk-unit-row')].map(r => {
-    const o = {}; r.querySelectorAll('.stk-u').forEach(el => { o[el.dataset.k] = el.value; }); return o;
-  }).filter(u => u.vin || u.consignee || u.colour || u.supplier);
+  const units = procGridCollect('.stk-unit-row', '.stk-u')
+    .filter(u => u.vin || u.consignee || u.colour || u.supplier);
   const payload = {
     make: document.getElementById('stk-make').value.trim(),
     model: document.getElementById('stk-model').value.trim(),

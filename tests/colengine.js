@@ -71,6 +71,16 @@ const CONTRACT_CFG = [
   { key: 'cf_notary', label: 'Notary', type: 'select', builtin: false, visible: true, required: true,
     options: [{ key: 'cairo', label: 'Cairo office' }, { key: 'giza', label: 'Giza office' }] },
 ];
+// Inventory: the per-car unit rows are a line grid too, and they live in the
+// vehicle's own JSONB — so a field added here needs no column anywhere.
+const STOCK_CFG = [
+  { key: 'vin', label: 'VIN', type: 'text', builtin: true, visible: true },
+  { key: 'status', label: 'Status', type: 'select', builtin: true, visible: true, options: [
+    { key: 'in_yard', label: 'In the yard', color: '#6dd8a4' }, { key: 'reserved', label: 'Reserved' } ] },
+  { key: 'cf_plate', label: 'Plate', type: 'text', builtin: false, visible: true },
+];
+const STOCK = [{ id: 3, make: 'BYD', model: 'Seal', trim: 'Design', price: 2000000, colors: [],
+  units: [{ vin: 'X1', status: 'in_yard', cf_plate: 'ق ط ر 123' }] }];
 const SALES = [{ id: 4, client: 'Mona', status: 'delivered', custom_fields: { cf_bank: 'cib' } }];
 const SUPPLIERS = [{ id: 7, name: 'Yu Motors', contact: '', country: 'CN', address: '', notes: '', custom_fields: { cf_rating: 'a' } }];
 
@@ -81,7 +91,7 @@ function api(pathname, method, body) {
     savedPuts.push({ pathname, body: JSON.parse(body) });
     return { ok: true };
   }
-  if ((method === 'POST' || method === 'PUT') && /\/(rfqs|purchase-orders|contracts)(\/\d+)?$/.test(pathname)) {
+  if ((method === 'POST' || method === 'PUT') && /\/(rfqs|purchase-orders|contracts|stock)(\/\d+)?$/.test(pathname)) {
     savedWrites.push({ pathname, method, body: JSON.parse(body || '{}') });
     return { ok: true, id: 5, rfq_no: 'RFQ-1', contract_no: 'CT-1' };
   }
@@ -96,6 +106,8 @@ function api(pathname, method, body) {
   if (/columns\/rfq_doc$/.test(pathname)) return { columns: DOC_CFG };
   if (/columns\/po_doc$/.test(pathname)) return { columns: DOC_CFG };
   if (/columns\/contracts$/.test(pathname)) return { columns: CONTRACT_CFG };
+  if (/columns\/stock$/.test(pathname)) return { columns: STOCK_CFG };
+  if (/\/stock$/.test(pathname)) return STOCK;
   if (/contracts\/new\/defaults$/.test(pathname)) return { contract_no: 'CT-1', data: {} };
   if (/\/sales$/.test(pathname)) return SALES;
   if (/\/suppliers$/.test(pathname)) return SUPPLIERS;
@@ -496,6 +508,42 @@ const CELL = sel => `(() => {
       JSON.stringify(savedWrites.length && savedWrites[savedWrites.length - 1].body.data
         ? savedWrites[savedWrites.length - 1].body.data.custom_fields : null));
     check('document fields: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
+    await page.close();
+  }
+
+  // ── Inventory ────────────────────────────────────────────────────────────────
+  {
+    const { page, errs } = await openPortal(browser, {
+      route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token', port });
+    await page.evaluate(() => navigate('stock'));
+    await sleep(600);
+    savedWrites.length = 0;
+    const stock = await page.evaluate(async () => {
+      const card = document.querySelector('.stock-units');
+      const cardHeads = card ? [...card.querySelectorAll('thead th')].map(t => t.textContent.trim()) : [];
+      const cardBadge = card ? [...card.querySelectorAll('tbody span')].map(x => x.textContent.trim()) : [];
+      await openStockForm(3);
+      await new Promise(r => setTimeout(r, 300));
+      const chevs = document.querySelectorAll('#modal-body .po-th .col-chev-btn').length;
+      const plate = document.querySelector('.stk-unit-row [data-k="cf_plate"]');
+      const status = document.querySelector('.stk-unit-row [data-k="status"]');
+      const statusOpts = status && status.tagName === 'SELECT' ? [...status.options].map(o => o.textContent) : [];
+      if (plate) plate.value = 'ABC 987';
+      await saveStock(3);
+      await new Promise(r => setTimeout(r, 250));
+      return { cardHeads, cardBadge, chevs, hadPlate: !!plate, statusOpts };
+    });
+    check('inventory: the unit table renders the configured columns',
+      stock.cardHeads.includes('Plate') && stock.cardHeads.includes('VIN'), JSON.stringify(stock.cardHeads));
+    check('inventory: a unit status shows its configured badge',
+      stock.cardBadge.includes('In the yard'), JSON.stringify(stock.cardBadge));
+    check('inventory: the unit editor carries the field menu and the custom field',
+      stock.chevs >= 3 && stock.hadPlate === true && stock.statusOpts.includes('In the yard'),
+      JSON.stringify({ c: stock.chevs, p: stock.hadPlate, o: stock.statusOpts }));
+    check('inventory: the custom unit field saves inside the vehicle',
+      savedWrites.length === 1 && savedWrites[0].body.units && savedWrites[0].body.units[0].cf_plate === 'ABC 987',
+      JSON.stringify(savedWrites[0] && savedWrites[0].body.units));
+    check('inventory: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
     await page.close();
   }
 
