@@ -338,6 +338,24 @@ const CELL = sel => `(() => {
       reach.chevs >= 4, String(reach.chevs));
     check('the Columns picker opens the field editor and can add a field',
       reach.pencils >= 4 && reach.addField === true, JSON.stringify({ p: reach.pencils, a: reach.addField }));
+
+    // Reported from production with a screenshot of the leads picker: every label
+    // wrapped onto two lines and no pencil was visible. `.lead-menu button` is
+    // width:100%, which the pencil inherited — it claimed the whole row and left
+    // the label a narrow column with a blank gap beside it.
+    const rowLayout = await page.evaluate(() => {
+      CE('po_items').openPicker({ stopPropagation() {}, clientX: 40, clientY: 40 });
+      const row = document.querySelector('.lead-menu .lead-col-row');
+      const eye = row.querySelector('.lead-col-eye');
+      const pen = row.querySelector('.lead-col-edit');
+      const icon = pen.querySelector('i, svg');
+      return { rowW: row.getBoundingClientRect().width, eyeW: eye.getBoundingClientRect().width,
+               penW: pen.getBoundingClientRect().width, eyeH: eye.getBoundingClientRect().height,
+               iconName: icon ? (icon.getAttribute('data-lucide') || icon.tagName) : null };
+    });
+    check('the label keeps the row and the pencil takes only what it needs',
+      rowLayout.eyeW > rowLayout.rowW * 0.6 && rowLayout.penW < 40, JSON.stringify(rowLayout));
+    check('a picker row stays one line high', rowLayout.eyeH < 40, String(rowLayout.eyeH));
     check('the field menu offers type and options for a non-leads entity',
       reach.items.some(t => /Edit field/.test(t)) && reach.items.some(t => /Change type/.test(t))
       && reach.items.some(t => /Edit options/.test(t)), JSON.stringify(reach.items));

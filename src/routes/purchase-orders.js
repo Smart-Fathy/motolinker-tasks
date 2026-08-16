@@ -10,6 +10,7 @@ const quoteTheme = (...a) => ctx.quoteTheme(...a);
 const renderQuotationPdf = (...a) => ctx.renderQuotationPdf(...a);
 const requirePerm = (...a) => ctx.requirePerm(...a);
 const callerIdentity = (...a) => ctx.callerIdentity(...a);
+const { BRAND_LOGO_URL } = ctx.need('BRAND_LOGO_URL');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Purchase Orders ───────────────────────────────────────────────────────────

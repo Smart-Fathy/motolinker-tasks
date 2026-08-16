@@ -7,6 +7,14 @@ const { calcEgp, escHtml, express, fmtNum, generateQuoteId, getIsoWeek, logLeadA
 const runAutomations = (...a) => ctx.runAutomations(...a);
 const requirePerm = (...a) => ctx.requirePerm(...a);
 const callerIdentity = (...a) => ctx.callerIdentity(...a);
+// The shared document chrome lives in purchase-orders.js and the brand logo in
+// src/lib/constants.js. Both were used here as bare globals, which throws the
+// moment a PDF is rendered — "BRAND_LOGO_URL is not defined" on every quotation.
+const docChromeCss = (...a) => ctx.docChromeCss(...a);
+const docFooterHtml = (...a) => ctx.docFooterHtml(...a);
+const docSupplierBlock = (...a) => ctx.docSupplierBlock(...a);
+const docTermsHtml = (...a) => ctx.docTermsHtml(...a);
+const { BRAND_LOGO_URL } = ctx.need('BRAND_LOGO_URL');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── RFQ — Request for Quotation (sent to suppliers) ───────────────────────────

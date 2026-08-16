@@ -155,15 +155,17 @@ function ColumnsEngine(entity, cfg) {
   // from a field's type, its options and their colors everywhere.
   E._pickerHtml = function (m) {
     const edit = canEdit();
+    // Styled in the stylesheets, not here: `.lead-menu button { width:100% }`
+    // applies to this button too, and an inline style that forgot to override it
+    // squeezed every label into a narrow column with a blank gap beside it.
     const pencil = c => !edit || (cfg.fixedKeys || []).includes(c.key) || c.type === 'virtual' ? '' : `
       <button type="button" class="lead-col-edit" title="Edit field — type, options, colors"
-        onclick="event.stopPropagation();CE('${entity}').openFieldModal('${esc(c.key)}')"
-        style="background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 4px;display:inline-flex;align-items:center;border-radius:4px;flex-shrink:0">
-        <i data-lucide="settings-2" style="width:13px;height:13px"></i></button>`;
+        onclick="event.stopPropagation();CE('${entity}').openFieldModal('${esc(c.key)}')">
+        <i data-lucide="pencil" style="width:13px;height:13px"></i></button>`;
     m.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:6px 10px 4px">Columns</div>` +
       E.cols.filter(c => !c.deleted).map(c => `
-        <div class="lead-col-row" style="display:flex;align-items:center;gap:2px;padding-right:6px">
-          <button type="button" class="lead-col-eye ${c.visible ? '' : 'col-hidden'}" style="flex:1;min-width:0" onclick="event.stopPropagation();CE('${entity}').setVis('${esc(c.key)}', ${c.visible ? 'false' : 'true'});CE('${entity}').refreshPicker()">
+        <div class="lead-col-row">
+          <button type="button" class="lead-col-eye ${c.visible ? '' : 'col-hidden'}" onclick="event.stopPropagation();CE('${entity}').setVis('${esc(c.key)}', ${c.visible ? 'false' : 'true'});CE('${entity}').refreshPicker()">
             <i data-lucide="${c.visible ? 'eye' : 'eye-off'}" style="width:14px;height:14px"></i> ${esc(c.label)}
           </button>${pencil(c)}
         </div>`).join('') +

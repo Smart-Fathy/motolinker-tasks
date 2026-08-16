@@ -11,6 +11,13 @@ const requestCtx = (...a) => ctx.requestCtx(...a);
 // reaches empCan through the context.
 const requirePerm = (...a) => ctx.requirePerm(...a);
 const runAutomations = (...a) => ctx.runAutomations(...a);
+// The automation payload builders (automation.js) and the Won-deal contract
+// hook (contracts.js). Used here as bare globals, they threw a ReferenceError
+// on the first task, lead or deal the team portal created.
+const taskCtx = (...a) => ctx.taskCtx(...a);
+const leadCtx = (...a) => ctx.leadCtx(...a);
+const dealCtx = (...a) => ctx.dealCtx(...a);
+const autoCreateContractForWonDeal = (...a) => ctx.autoCreateContractForWonDeal(...a);
 
 // ─── Employee Portal ──────────────────────────────────────────────────────────
 // PUBLIC_DIR, not __dirname: this file lives in src/routes, so joining its own
