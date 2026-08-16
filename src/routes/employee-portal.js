@@ -267,6 +267,54 @@ const PERM_ACTION_LABELS = {
   'contracts.export': 'Generate the PDF',
   'submissions.delete': 'Delete a submission',
 };
+// Starting points, not roles. Twenty-two sections is a lot to tick one at a
+// time for a new starter, and the honest shape of the job is "most of these,
+// then a few adjustments" — so a preset fills the form and the admin edits from
+// there; nothing is stored as "this person is a Sales rep".
+//
+// `sections` lists what the preset turns ON with all of its actions. `readOnly`
+// lists sections granted with their read-ish actions only. Everything else is
+// off. They live here, beside PERM_ACTIONS, because a preset naming a section
+// that no longer exists should be visible in the same file that renamed it.
+const PERM_READISH = ['view', 'log', 'draft', 'history', 'leads', 'sales'];
+const PERM_PRESETS = [
+  { key: 'sales', label: 'Sales rep',
+    hint: 'Leads, deals and quotations, plus the everyday tools.',
+    sections: ['requests', 'tasks', 'hours', 'availability', 'chat', 'meet', 'calendar', 'email',
+      'drive', 'quotation', 'leads', 'deals'],
+    readOnly: ['stock', 'contracts', 'reports'] },
+  { key: 'procurement', label: 'Procurement',
+    hint: 'Suppliers, RFQs and purchase orders end to end.',
+    sections: ['requests', 'tasks', 'hours', 'availability', 'chat', 'meet', 'calendar', 'email',
+      'drive', 'suppliers', 'rfq', 'purchaseorders', 'stock'],
+    readOnly: ['leads', 'contracts'] },
+  { key: 'ops', label: 'Operations',
+    hint: 'Contracts, submissions and the paperwork around a sale.',
+    sections: ['requests', 'tasks', 'hours', 'availability', 'chat', 'meet', 'calendar', 'email',
+      'drive', 'sheets', 'contracts', 'submissions', 'stock'],
+    readOnly: ['leads', 'deals', 'rfq', 'purchaseorders'] },
+  { key: 'readonly', label: 'Read-only',
+    hint: 'Can see the work, cannot change it.',
+    sections: ['requests', 'tasks', 'chat'],
+    readOnly: ['leads', 'deals', 'stock', 'suppliers', 'rfq', 'purchaseorders', 'contracts',
+      'submissions', 'reports', 'quotation', 'availability', 'meet', 'hours'] },
+  { key: 'everything', label: 'Full access', hint: 'Every section, every action.', all: true },
+  { key: 'none', label: 'No access', hint: 'Start from nothing and build up.', sections: [] },
+];
+// Expand a preset into the same permissions shape the editor saves, so the
+// client applies a server-built object rather than reimplementing the rules.
+function permPresetPerms(preset) {
+  const out = {};
+  for (const [section, actions] of Object.entries(PERM_ACTIONS)) {
+    const full = preset.all === true || (preset.sections || []).includes(section);
+    const read = !full && (preset.readOnly || []).includes(section);
+    out[section] = full || read;
+    const acts = {};
+    actions.forEach(a => { acts[a] = full || (read && PERM_READISH.includes(a)); });
+    out[section + 'Actions'] = acts;
+  }
+  return out;
+}
 function permCatalogue() {
   return PERM_GROUPS.map(g => ({
     group: g.group,
@@ -282,7 +330,13 @@ function permCatalogue() {
   }));
 }
 receiver.router.get('/api/dashboard/permissions/catalogue', requireAuth,
-  (_req, res) => res.json({ groups: permCatalogue(), stages: ctx.DEAL_STAGES }));
+  (_req, res) => res.json({
+    groups: permCatalogue(),
+    stages: ctx.DEAL_STAGES,
+    presets: PERM_PRESETS.map(p => ({
+      key: p.key, label: p.label, hint: p.hint, permissions: permPresetPerms(p),
+    })),
+  }));
 
 function empHasScope(emp) {
   const s = emp && emp.permissions && emp.permissions.scope;
