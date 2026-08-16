@@ -2238,16 +2238,17 @@ async function loadEmployees() {
     if (!emps.length) {
       tableC.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px">No employee portal accounts yet. Click "+ Create Employee" to add one.</div>';
     } else {
-      const permLabels = { requests: 'Requests', drive: 'Drive', sheets: 'Sheets', email: 'Email', viewAllRequests: 'View All Requests', quotation: 'Quotation', leads: 'Leads', deals: 'Deals' };
+      // The catalogue drives this column too — it used to name eight sections out
+      // of twenty-two (including viewAllRequests, which stopped being a section
+      // long ago), so the table said nothing true about the other fourteen.
+      await permCatalogue();
       tableC.innerHTML = `<div class="table-scroll"><table>
         <thead><tr><th style="width:34px"><input type="checkbox" id="emp-select-all" onchange="empToggleSelectAll(this)"></th><th>Name</th><th>Username</th><th>Job Title</th><th>Status</th><th>Email</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>${emps.map(e => {
           const p = e.permissions || {};
           const sc = p.scope || {};
           const scoped = !!(sc.assignedOnly || (sc.dealStages && sc.dealStages.length) || (sc.leadStatuses && sc.leadStatuses.length));
-          const badges = Object.entries(permLabels).map(([k, lbl]) =>
-            `<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;margin:1px;background:${p[k]?'rgba(99,102,241,.15)':'rgba(255,255,255,.05)'};color:${p[k]?'var(--primary)':'var(--muted)'}">${lbl}</span>`
-          ).join('') + (scoped ? `<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin:1px;background:rgba(230,150,80,.18);color:var(--gold)" title="Data scope is limited">⛨ Scoped</span>` : '');
+          const badges = empPermsCell(p, scoped);
           const initials = (e.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
           const avatar = e.avatar_url ? `<img src="${esc(e.avatar_url)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;font-size:10px;font-weight:700;vertical-align:middle;margin-right:8px">${initials}</span>`;
           const statusStr = (e.status_emoji || e.status_text) ? `${e.status_emoji||''} ${esc(e.status_text||'')}`.trim() : '—';
@@ -2304,23 +2305,28 @@ async function openBulkPermsModal() {
     <div class="form-group">
       <label class="form-label">Start from</label>
       <select class="form-control" onchange="bulkPermsPrefill(this.value)">
-        <option value="">Everything off</option>
+        <option value="">Copy from nobody — use the presets below</option>
         ${allEmployees.map(e => `<option value="${e.id}">Copy from ${esc(e.name)}</option>`).join('')}
       </select>
     </div>
-    <div id="bulk-perms-form">
-      ${cat.failed
-        ? `<div class="error-msg" style="display:block">Could not load the permission list — try again.</div>`
-        : cat.groups.map(empPermGroup).join('')}
-    </div>
+    ${cat.failed
+      ? `<div class="error-msg" style="display:block">Could not load the permission list — try again.</div>`
+      : `<div class="perm-editor">
+          ${empPermToolbar(cat)}
+          <div id="perm-groups">${cat.groups.map(empPermGroup).join('')}</div>
+        </div>`}
   `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
       <button class="btn btn-primary" onclick="applyBulkPerms()">Apply to ${who}</button>`);
+  empPermTally();
+  requestAnimationFrame(() => lucide.createIcons());
 }
 function bulkPermsPrefill(empId) {
   const e = allEmployees.find(x => String(x.id) === String(empId));
   _empModalPerms = e ? { ...(e.permissions || {}) } : {};
-  const wrap = document.getElementById('bulk-perms-form');
+  const wrap = document.getElementById('perm-groups');
   if (wrap && _permCatalogue) wrap.innerHTML = _permCatalogue.groups.map(empPermGroup).join('');
+  empPermTally();
+  requestAnimationFrame(() => lucide.createIcons());
 }
 async function applyBulkPerms() {
   const targets = _empPicked.size ? [..._empPicked] : 'all';
@@ -2372,50 +2378,209 @@ function empActs(p, section) { return (p && p[section + 'Actions']) || {}; }
 // carries the server's default and the block falls back to that rather than to
 // "off" — otherwise opening and saving an old employee would silently strip
 // everything the section list has grown since they were created.
+// The Permissions column: how much access, then which — the three sections that
+// name the job, and a count for the rest. A row of twenty-two chips would be the
+// same wall the editor used to be.
+function empPermsCell(p, scoped) {
+  const secs = (_permCatalogue?.groups || []).flatMap(g => g.sections);
+  const chip = (text, tone, title) => `<span class="perm-badge ${tone}"${title ? ` title="${esc(title)}"` : ''}>${esc(text)}</span>`;
+  const scopeChip = scoped ? chip('Scoped', 'scoped', 'This employee only sees part of the leads/deals') : '';
+  if (!secs.length) return chip('—', 'off') + scopeChip;   // catalogue unavailable
+  const on = secs.filter(s => (Object.prototype.hasOwnProperty.call(p, s.key) ? p[s.key] === true : s.defaultOn));
+  if (!on.length) return chip('No access', 'off') + scopeChip;
+  if (on.length === secs.length) return chip('Full access', 'full') + scopeChip;
+  const named = on.slice(0, 3).map(s => chip(s.label, 'on')).join('');
+  return `${chip(on.length + ' of ' + secs.length, 'count', on.map(s => s.label).join(', '))}${named}` +
+    (on.length > 3 ? chip('+' + (on.length - 3), 'off', on.slice(3).map(s => s.label).join(', ')) : '') + scopeChip;
+}
+
+// One row per section: a switch, the section's name, and — the point of the
+// redesign — a live summary of what is actually granted, so twenty-two sections
+// can be read at a glance instead of scanned as a hundred loose checkboxes. The
+// exact actions are one click away rather than always on screen.
+//
+// The DOM contract is deliberately unchanged: a real `#perm-<section>` checkbox
+// and real `.perm-act[data-section][data-action]` checkboxes, styled as a switch
+// and as chips. empBuildPerms() reads exactly what it always read.
 function empPermBlock(sec, p) {
   const on = p && Object.prototype.hasOwnProperty.call(p, sec.key) ? p[sec.key] === true : sec.defaultOn;
   const acts = empActs(p, sec.key);
   const known = p && Object.prototype.hasOwnProperty.call(p, sec.key + 'Actions');
-  return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px">
-    <label style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;cursor:pointer">
-      <input type="checkbox" id="perm-${sec.key}" ${on ? 'checked' : ''} onchange="empToggleSection('${sec.key}')" style="accent-color:var(--primary);width:15px;height:15px"> ${esc(sec.label)}
-    </label>
-    <div id="perm-${sec.key}-actions" style="display:${on ? 'flex' : 'none'};flex-wrap:wrap;gap:10px 14px;margin-top:8px;padding-left:23px">
-      ${sec.actions.map(a => `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="perm-act" data-section="${sec.key}" data-action="${esc(a.key)}" ${(known ? acts[a.key] : on) ? 'checked' : ''} style="accent-color:var(--primary)"> ${esc(a.label)}</label>`).join('')}
+  const chosen = sec.actions.filter(a => (known ? acts[a.key] : on));
+  const hay = esc((sec.label + ' ' + sec.actions.map(a => a.label).join(' ')).toLowerCase());
+  return `<div class="perm-row ${on ? 'on' : ''}" data-perm-section="${esc(sec.key)}" data-perm-hay="${hay}">
+    <div class="perm-row-head" onclick="empPermExpand('${esc(sec.key)}', event)">
+      <label class="perm-switch" onclick="event.stopPropagation()" title="${on ? 'Granted' : 'Not granted'}">
+        <input type="checkbox" id="perm-${sec.key}" ${on ? 'checked' : ''} onchange="empToggleSection('${sec.key}')">
+        <span class="perm-switch-track"><span class="perm-switch-knob"></span></span>
+      </label>
+      <div class="perm-row-name">${esc(sec.label)}</div>
+      <div class="perm-row-sum" id="perm-${sec.key}-sum">${empPermSumHtml(sec, chosen, on)}</div>
+      <i data-lucide="chevron-down" class="perm-row-chev"></i>
+    </div>
+    <div class="perm-acts" id="perm-${sec.key}-actions">
+      <div class="perm-acts-bar">
+        <span>Allowed actions</span>
+        <button type="button" onclick="empSectionActs('${esc(sec.key)}',true)">All</button>
+        <button type="button" onclick="empSectionActs('${esc(sec.key)}',false)">None</button>
+      </div>
+      <div class="perm-chips">
+        ${sec.actions.map(a => `<label class="perm-chip">
+          <input type="checkbox" class="perm-act" data-section="${esc(sec.key)}" data-action="${esc(a.key)}"
+            ${(known ? acts[a.key] : on) ? 'checked' : ''} onchange="empPermTouched('${esc(sec.key)}')">
+          <span>${esc(a.label)}</span></label>`).join('')}
+      </div>
     </div>
   </div>`;
 }
+// "Full access" / "View, Create +2" / "No access" — the sentence an admin is
+// actually trying to read off this screen.
+function empPermSumHtml(sec, chosen, on) {
+  if (!on) return '<span class="perm-sum-off">No access</span>';
+  if (chosen.length === sec.actions.length) return '<span class="perm-sum-full">Full access</span>';
+  if (!chosen.length) return '<span class="perm-sum-off">Section only — no actions</span>';
+  const names = chosen.slice(0, 2).map(a => esc(a.label)).join(', ');
+  return `<span class="perm-sum-part">${names}${chosen.length > 2 ? ` +${chosen.length - 2}` : ''}</span>`;
+}
 function empPermGroup(g) {
-  return `<div style="margin-bottom:14px">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
-      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">${esc(g.group)}</div>
-      <div style="display:flex;gap:10px">
-        <a href="#" onclick="empGroupSet('${esc(g.group)}',true);return false" style="font-size:11px;color:var(--primary)">All</a>
-        <a href="#" onclick="empGroupSet('${esc(g.group)}',false);return false" style="font-size:11px;color:var(--muted)">None</a>
-      </div>
+  return `<div class="perm-group" data-perm-group-box="${esc(g.group)}">
+    <div class="perm-group-head">
+      <div class="perm-group-name">${esc(g.group)}</div>
+      <div class="perm-group-count" id="perm-count-${esc(g.group).replace(/\s+/g, '_')}"></div>
+      <button type="button" class="perm-mini" onclick="empGroupSet('${esc(g.group)}',true)">All</button>
+      <button type="button" class="perm-mini" onclick="empGroupSet('${esc(g.group)}',false)">None</button>
     </div>
-    <div data-perm-group="${esc(g.group)}" style="display:grid;gap:8px">
+    <div data-perm-group="${esc(g.group)}" class="perm-group-rows">
       ${g.sections.map(s => empPermBlock(s, _empModalPerms)).join('')}
     </div>
   </div>`;
 }
-// Whole group on or off in one click — with sixteen sections, setting up a new
+// The toolbar: what this adds up to, a search across every section AND action
+// name, and the presets — because ticking twenty-two sections by hand for each
+// new starter is the chore that made this screen feel like work.
+function empPermToolbar(cat) {
+  const presets = (cat && cat.presets) || [];
+  return `<div class="perm-toolbar">
+    <div class="perm-toolbar-top">
+      <div class="perm-search">
+        <i data-lucide="search" style="width:14px;height:14px"></i>
+        <input id="perm-search" placeholder="Find a section or action…" oninput="empPermSearch(this.value)">
+      </div>
+      <div class="perm-tally" id="perm-tally"></div>
+      <button type="button" class="perm-mini" onclick="empAllSections(true)">Everything on</button>
+      <button type="button" class="perm-mini" onclick="empAllSections(false)">Everything off</button>
+    </div>
+    ${presets.length ? `<div class="perm-presets">
+      <span class="perm-presets-label">Start from</span>
+      ${presets.map(p => `<button type="button" class="perm-preset" title="${esc(p.hint || '')}"
+        onclick="empApplyPreset('${esc(p.key)}')">${esc(p.label)}</button>`).join('')}
+    </div>` : ''}
+  </div>`;
+}
+// Presets come from the server expanded into the permissions shape the editor
+// saves, so applying one is a re-render of this form — no second set of rules.
+function empApplyPreset(key) {
+  const p = (_permCatalogue?.presets || []).find(x => x.key === key);
+  if (!p) return;
+  const scope = _empModalPerms.scope;
+  _empModalPerms = { ...p.permissions, ...(scope ? { scope } : {}) };
+  const wrap = document.getElementById('perm-groups');
+  if (!wrap) return;
+  wrap.innerHTML = _permCatalogue.groups.map(empPermGroup).join('');
+  document.querySelectorAll('.perm-preset').forEach(b => b.classList.remove('active'));
+  const btn = [...document.querySelectorAll('.perm-preset')].find(b => b.getAttribute('onclick').includes(`'${key}'`));
+  if (btn) btn.classList.add('active');
+  const term = document.getElementById('perm-search')?.value || '';
+  if (term) empPermSearch(term);
+  empPermTally();
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function empPermExpand(section, e) {
+  if (e && e.target && e.target.closest('.perm-switch')) return;
+  const row = document.querySelector(`[data-perm-section="${section}"]`);
+  if (row) row.classList.toggle('open');
+}
+function empSectionActs(section, on) {
+  document.querySelectorAll(`.perm-act[data-section="${section}"]`).forEach(cb => { cb.checked = on; });
+  // Granting actions grants the section; removing every action is "section only",
+  // not a silent revoke — the summary says which, so neither is a surprise.
+  if (on) { const m = document.getElementById('perm-' + section); if (m) m.checked = true; }
+  empPermTouched(section);
+}
+// Keep one row's summary, its on/off styling and the totals honest after any
+// change, wherever the change came from.
+function empPermTouched(section) {
+  const sec = empPermSection(section);
+  const row = document.querySelector(`[data-perm-section="${section}"]`);
+  const master = document.getElementById('perm-' + section);
+  if (!sec || !row || !master) return;
+  const chosen = sec.actions.filter(a =>
+    document.querySelector(`.perm-act[data-section="${section}"][data-action="${a.key}"]`)?.checked);
+  row.classList.toggle('on', master.checked);
+  const sum = document.getElementById('perm-' + section + '-sum');
+  if (sum) sum.innerHTML = empPermSumHtml(sec, chosen, master.checked);
+  empPermTally();
+}
+function empPermSection(key) {
+  for (const g of (_permCatalogue?.groups || [])) {
+    const s = g.sections.find(x => x.key === key);
+    if (s) return s;
+  }
+  return null;
+}
+function empPermTally() {
+  const rows = [...document.querySelectorAll('[data-perm-section]')];
+  const on = rows.filter(r => document.getElementById('perm-' + r.dataset.permSection)?.checked);
+  const acts = document.querySelectorAll('.perm-act:checked').length;
+  const el = document.getElementById('perm-tally');
+  if (el) el.innerHTML = `<strong>${on.length}</strong> of ${rows.length} sections · <strong>${acts}</strong> actions`;
+  (_permCatalogue?.groups || []).forEach(g => {
+    const box = document.querySelector(`[data-perm-group="${g.group}"]`);
+    const cnt = document.getElementById('perm-count-' + g.group.replace(/\s+/g, '_'));
+    if (!box || !cnt) return;
+    const total = g.sections.length;
+    const live = g.sections.filter(s => document.getElementById('perm-' + s.key)?.checked).length;
+    cnt.textContent = `${live}/${total}`;
+    cnt.classList.toggle('none', live === 0);
+    cnt.classList.toggle('all', live === total);
+  });
+}
+// Search matches a section OR any of its action names, and hides a whole group
+// once nothing in it matches, so the list stays readable while filtered.
+function empPermSearch(term) {
+  const q = String(term || '').trim().toLowerCase();
+  document.querySelectorAll('[data-perm-section]').forEach(row => {
+    const hit = !q || (row.dataset.permHay || '').includes(q);
+    row.style.display = hit ? '' : 'none';
+    if (q && hit && (row.dataset.permHay || '').includes(q)
+        && !row.dataset.permHay.startsWith(q)) row.classList.add('open');
+  });
+  document.querySelectorAll('[data-perm-group-box]').forEach(box => {
+    const any = [...box.querySelectorAll('[data-perm-section]')].some(r => r.style.display !== 'none');
+    box.style.display = any ? '' : 'none';
+  });
+}
+function empAllSections(on) {
+  (_permCatalogue?.groups || []).forEach(g => empGroupSet(g.group, on, true));
+  empPermTally();
+}
+// Whole group on or off in one click — with twenty-two sections, setting up a new
 // starter one checkbox at a time is the kind of chore that gets skipped.
-function empGroupSet(group, on) {
+function empGroupSet(group, on, quiet) {
   const wrap = document.querySelector(`[data-perm-group="${group}"]`);
   if (!wrap) return;
   wrap.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = on; });
-  wrap.querySelectorAll('[id^="perm-"][id$="-actions"]').forEach(d => { d.style.display = on ? 'flex' : 'none'; });
+  wrap.querySelectorAll('[data-perm-section]').forEach(r => empPermTouched(r.dataset.permSection));
+  if (!quiet) empPermTally();
 }
 function empToggleSection(section) {
   const on = document.getElementById('perm-' + section)?.checked;
-  const wrap = document.getElementById('perm-' + section + '-actions');
-  if (wrap) wrap.style.display = on ? 'flex' : 'none';
   // Turning a section ON with no actions ticked ⇒ default to all actions (matches "master on = full").
   if (on) {
     const boxes = [...document.querySelectorAll(`.perm-act[data-section="${section}"]`)];
     if (boxes.length && !boxes.some(b => b.checked)) boxes.forEach(b => { b.checked = true; });
   }
+  empPermTouched(section);
 }
 let _empModalPerms = {};
 async function openEmpModal(id) {
@@ -2438,35 +2603,39 @@ async function openEmpModal(id) {
       <div class="form-group"><label class="form-label">Job Title</label><input class="form-control" id="em-job-title" value="${esc(e?.job_title||'')}" placeholder="e.g. Sales Manager"></div>
     </div>
     <div class="form-group" style="margin-top:8px">
-      <label class="form-label">Access — tick a section, then the exact actions allowed</label>
-      <div style="margin-top:6px">
-        ${cat.failed
-          ? `<div class="error-msg" style="display:block">Could not load the permission list, so it cannot be edited here right now. Saving will leave this employee's access unchanged.</div>`
-          : cat.groups.map(empPermGroup).join('')}
-      </div>
+      <label class="form-label">Access</label>
+      ${cat.failed
+        ? `<div class="error-msg" style="display:block">Could not load the permission list, so it cannot be edited here right now. Saving will leave this employee's access unchanged.</div>`
+        : `<div class="perm-editor">
+            ${empPermToolbar(cat)}
+            <div id="perm-groups">${cat.groups.map(empPermGroup).join('')}</div>
+          </div>`}
     </div>
-    <div class="form-group" style="margin-top:8px">
-      <label class="form-label">Data scope — limit which leads/deals this employee can see (leave all unticked = everything)</label>
-      <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:6px;display:grid;gap:12px">
+    <div class="form-group" style="margin-top:14px">
+      <label class="form-label">Data scope</label>
+      <div class="perm-scope-hint">Limit which leads and deals this employee can see. Leave everything unticked for no limit.</div>
+      <div class="perm-scope">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
           <input type="checkbox" id="scope-assigned" ${scope.assignedOnly?'checked':''} style="accent-color:var(--primary);width:15px;height:15px"> Only leads/deals <strong>assigned to this employee</strong>
         </label>
         <div>
           <div style="font-size:12px;color:var(--muted);margin-bottom:5px">Only leads whose deal is in these stage(s):</div>
-          <div style="display:flex;flex-wrap:wrap;gap:10px">
-            ${stages.map(s => `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="scope-stage" value="${esc(s)}" ${(scope.dealStages||[]).includes(s)?'checked':''} style="accent-color:var(--primary)"> ${esc(s.charAt(0).toUpperCase()+s.slice(1))}</label>`).join('')}
+          <div class="perm-chips">
+            ${stages.map(s => `<label class="perm-chip"><input type="checkbox" class="scope-stage" value="${esc(s)}" ${(scope.dealStages||[]).includes(s)?'checked':''}> <span>${esc(s.charAt(0).toUpperCase()+s.slice(1))}</span></label>`).join('')}
           </div>
         </div>
         <div>
           <div style="font-size:12px;color:var(--muted);margin-bottom:5px">Only leads with these status(es):</div>
-          <div style="display:flex;flex-wrap:wrap;gap:10px">
-            ${empScopeStatusOpts().map(([k,l]) => `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="scope-status" value="${esc(k)}" ${scopeStatuses.includes(empCnorm(k))?'checked':''} style="accent-color:var(--primary)"> ${esc(l)}</label>`).join('')}
+          <div class="perm-chips">
+            ${empScopeStatusOpts().map(([k,l]) => `<label class="perm-chip"><input type="checkbox" class="scope-status" value="${esc(k)}" ${scopeStatuses.includes(empCnorm(k))?'checked':''}> <span>${esc(l)}</span></label>`).join('')}
           </div>
         </div>
       </div>
     </div>
   `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEmployee(${id||'null'})">Save</button>`);
+  empPermTally();
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function empBuildPerms() {

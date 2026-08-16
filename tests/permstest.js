@@ -120,8 +120,11 @@ const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', perm
     /employeeSessions\.set\(token, \{ \.\.\.sess, permissions: perms \}\)/.test(EMP));
   c('the employees list offers the selection UI',
     /emp-select-all/.test(DASH_JS) && /openBulkPermsModal/.test(DASH_JS));
+  // Both modals render the SAME editor — toolbar, groups and rows — from the
+  // catalogue. Two renderings of a permission form is how one of them ends up
+  // missing a section that the other can grant.
   c('the bulk modal reuses the catalogue-generated form, not a copy',
-    /bulk-perms-form[\s\S]{0,400}cat\.groups\.map\(empPermGroup\)/.test(DASH_JS));
+    (DASH_JS.match(/empPermToolbar\(cat\)\s*\}?\s*\n?\s*<div id="perm-groups">\$\{cat\.groups\.map\(empPermGroup\)/g) || []).length === 2);
   c('and says in words that it REPLACES',
     /<strong>replaces<\/strong> the permissions/.test(DASH_JS));
 }

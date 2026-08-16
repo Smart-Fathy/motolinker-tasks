@@ -1272,3 +1272,103 @@
     .hd-tile, .hd-video, .hd-avatar { width:100%; }
     .hd-tiles { display:grid; grid-template-columns:1fr 1fr; }
   }
+
+  /* ── The access editor ──────────────────────────────────────────────────────
+     Twenty-two sections, each with up to eight actions. Rendered as a hundred
+     loose checkboxes it read as a wall; here each section is one row that says
+     what it grants, and the exact actions open on demand. The controls are the
+     same real checkboxes underneath — the switch and the chips are the label. */
+  .perm-editor { margin-top:6px; }
+  .perm-toolbar { position:sticky; top:0; z-index:3; background:var(--surface);
+                  border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:12px; }
+  .perm-toolbar-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .perm-search { display:flex; align-items:center; gap:7px; flex:1; min-width:190px;
+                 background:var(--bg); border:1px solid var(--border); border-radius:9px; padding:0 10px; }
+  .perm-search svg { color:var(--muted); flex-shrink:0; }
+  .perm-search input { flex:1; min-width:0; background:none; border:none; outline:none; color:var(--text);
+                       font-size:13px; padding:8px 0; font-family:inherit; }
+  .perm-tally { font-size:12px; color:var(--muted); white-space:nowrap; }
+  .perm-tally strong { color:var(--text); font-weight:700; }
+  .perm-mini { background:none; border:1px solid var(--border); color:var(--muted); border-radius:8px;
+               font-size:11.5px; padding:5px 10px; cursor:pointer; font-family:inherit; white-space:nowrap; }
+  .perm-mini:hover { color:var(--text); border-color:var(--primary); }
+  .perm-presets { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:9px;
+                  padding-top:9px; border-top:1px solid var(--border); }
+  .perm-presets-label { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+                        color:var(--muted); margin-right:2px; }
+  .perm-preset { background:rgba(201,163,94,.08); border:1px solid rgba(201,163,94,.28); color:var(--primary);
+                 border-radius:20px; font-size:12px; padding:5px 13px; cursor:pointer; font-family:inherit; }
+  .perm-preset:hover { background:rgba(201,163,94,.16); }
+  .perm-preset.active { background:var(--primary); border-color:var(--primary); color:#1b1608; font-weight:600; }
+
+  .perm-group { margin-bottom:14px; }
+  .perm-group-head { display:flex; align-items:center; gap:8px; margin-bottom:6px; padding:0 2px; }
+  .perm-group-name { font-size:11px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); }
+  .perm-group-count { font-size:11px; font-weight:700; color:var(--primary); background:rgba(201,163,94,.12);
+                      border-radius:20px; padding:2px 8px; margin-right:auto; }
+  .perm-group-count.none { color:var(--muted); background:rgba(255,255,255,.05); }
+  .perm-group-rows { display:grid; gap:6px; }
+
+  .perm-row { border:1px solid var(--border); border-radius:10px; background:var(--surface); overflow:hidden;
+              transition:border-color .15s, background .15s; }
+  .perm-row.on { border-color:rgba(201,163,94,.34); background:rgba(201,163,94,.04); }
+  .perm-row-head { display:flex; align-items:center; gap:11px; padding:9px 12px; cursor:pointer; }
+  .perm-row-head:hover { background:rgba(255,255,255,.03); }
+  .perm-row-name { font-size:13px; font-weight:600; color:var(--text); white-space:nowrap; }
+  .perm-row-sum { flex:1; min-width:0; font-size:11.5px; text-align:right; overflow:hidden;
+                  text-overflow:ellipsis; white-space:nowrap; }
+  .perm-sum-full { color:var(--primary); font-weight:600; }
+  .perm-sum-part { color:var(--muted); }
+  .perm-sum-off  { color:rgba(141,137,127,.6); }
+  .perm-row-chev { width:14px; height:14px; color:var(--muted); flex-shrink:0; transition:transform .18s; }
+  .perm-row.open .perm-row-chev { transform:rotate(180deg); }
+
+  /* The switch IS the section checkbox — hidden, not replaced, so the form still
+     reads back exactly the inputs it always did. */
+  .perm-switch { position:relative; display:inline-flex; flex-shrink:0; cursor:pointer; }
+  .perm-switch input { position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
+  .perm-switch-track { width:34px; height:19px; border-radius:20px; background:rgba(255,255,255,.11);
+                       border:1px solid var(--border); display:block; transition:background .16s; }
+  .perm-switch-knob { position:absolute; top:3px; left:3px; width:13px; height:13px; border-radius:50%;
+                      background:var(--muted); transition:transform .16s, background .16s; }
+  .perm-switch input:checked ~ .perm-switch-track { background:var(--primary); border-color:var(--primary); }
+  .perm-switch input:checked ~ .perm-switch-track .perm-switch-knob { transform:translateX(15px); background:#1b1608; }
+  .perm-switch input:focus-visible ~ .perm-switch-track { outline:2px solid var(--primary); outline-offset:2px; }
+
+  .perm-acts { display:none; padding:2px 12px 12px 57px; }
+  .perm-row.open .perm-acts { display:block; }
+  .perm-acts-bar { display:flex; align-items:center; gap:8px; margin-bottom:7px; font-size:10.5px;
+                   font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); }
+  .perm-acts-bar button { background:none; border:none; color:var(--primary); font-size:11px; cursor:pointer;
+                          font-family:inherit; text-transform:none; letter-spacing:0; padding:0 2px; }
+  .perm-acts-bar button:last-child { color:var(--muted); }
+  .perm-chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .perm-chip { position:relative; display:inline-flex; align-items:center; cursor:pointer; }
+  .perm-chip input { position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
+  .perm-chip span { display:inline-block; font-size:12px; padding:5px 12px; border-radius:20px;
+                    border:1px solid var(--border); color:var(--muted); background:var(--bg);
+                    transition:background .14s, color .14s, border-color .14s; }
+  .perm-chip:hover span { color:var(--text); }
+  .perm-chip input:checked ~ span { background:rgba(201,163,94,.14); border-color:rgba(201,163,94,.45);
+                                    color:var(--primary); font-weight:600; }
+  .perm-chip input:focus-visible ~ span { outline:2px solid var(--primary); outline-offset:2px; }
+
+  .perm-scope-hint { font-size:12px; color:var(--muted); margin:2px 0 8px; }
+  .perm-scope { border:1px solid var(--border); border-radius:12px; background:var(--surface);
+                padding:13px; display:grid; gap:13px; }
+
+  @media (max-width:640px) {
+    /* The summary is the first thing to go when the row cannot hold everything;
+       the switch and the name are what a phone needs. */
+    .perm-row-sum { display:none; }
+    .perm-acts { padding-left:14px; }
+    .perm-toolbar { position:static; }
+  }
+
+  /* The Permissions column in the employee list — the same language as the editor. */
+  .perm-badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:10.5px; font-weight:600;
+                margin:1px 2px 1px 0; background:rgba(255,255,255,.05); color:var(--muted); white-space:nowrap; }
+  .perm-badge.on { background:rgba(201,163,94,.13); color:var(--primary); }
+  .perm-badge.full { background:var(--primary); color:#1b1608; font-weight:700; }
+  .perm-badge.count { background:rgba(255,255,255,.07); color:var(--text); font-weight:700; }
+  .perm-badge.scoped { background:rgba(230,150,80,.18); color:#e69650; font-weight:700; }
