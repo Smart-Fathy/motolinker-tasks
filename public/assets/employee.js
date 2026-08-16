@@ -1264,8 +1264,6 @@ async function loadLeadCols() {
   const eng = CE('leads') || ColumnsEngine('leads', {
     base: '/api/employee',
     fetch: (url, opts) => ef(url, opts),
-    modal: (...a) => showModal(...a),
-    closeModal: () => hideModal(),
     builtins: LEADS_BUILTIN_COLS,
     fixedKeys: ['name', 'budget_lead', 'lead_date'],
     // Arranging columns is the leads.edit action, same as the server enforces.

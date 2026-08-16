@@ -799,3 +799,21 @@
 .modal-close:hover { color: var(--text); }
 .modal-body   { padding: 20px 24px; }
 .modal-footer { padding: 0 24px 20px; display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* The field editor's own layer. It opens from inside the RFQ and PO sheets,
+     and each portal has exactly one modal element — routing it through that one
+     replaced the sheet being filled in. This stacks above it instead. */
+  .ce-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:10100;
+                      display:none; align-items:center; justify-content:center; padding:20px; }
+  .ce-modal-overlay.open { display:flex; }
+  .ce-modal-box { background:var(--surface); border:1px solid var(--border); border-radius:14px;
+                  width:min(540px,96vw); max-height:88vh; display:flex; flex-direction:column;
+                  box-shadow:0 24px 64px rgba(0,0,0,.6); }
+  .ce-modal-head { display:flex; align-items:center; justify-content:space-between; gap:10px;
+                   padding:14px 16px; border-bottom:1px solid var(--border); font-size:14px; font-weight:600; }
+  .ce-modal-x { background:none; border:none; color:var(--muted); font-size:22px; line-height:1;
+                cursor:pointer; padding:0 4px; }
+  .ce-modal-x:hover { color:var(--text); }
+  .ce-modal-body { padding:16px; overflow-y:auto; }
+  .ce-modal-foot { padding:12px 16px; border-top:1px solid var(--border); display:flex;
+                   justify-content:flex-end; gap:8px; }

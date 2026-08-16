@@ -10,7 +10,6 @@
 //
 //   ColumnsEngine('leads', {
 //     base: PROCFG.base,  fetch: PROCFG.fetch,   // which portal's API
-//     modal, closeModal,                          // the generic modal pair
 //     builtins: [...],                            // seeds an empty config
 //     canEdit: () => bool,                        // hides every mutating affordance
 //     onChange: () => {},                         // re-render after any change
@@ -225,7 +224,7 @@ function ColumnsEngine(entity, cfg) {
   // ── Add-column modal ──────────────────────────────────────────────────────
   E.openAddModal = function () {
     if (!canEdit()) return;
-    cfg.modal('Add Column', `
+    ceModalShow('Add Column', `
       <div class="form-group"><label class="form-label">Column name</label>
         <input class="form-control" id="ce-name" placeholder="e.g. Insurance status"></div>
       <div class="form-group"><label class="form-label">Type</label>
@@ -275,7 +274,7 @@ function ColumnsEngine(entity, cfg) {
     const col = E.col(key); if (!col) return;
     E._fieldKey = key;
     const opts = ceHasOpts(col.type);
-    cfg.modal('Edit Field — ' + col.label, `
+    ceModalShow('Edit Field — ' + col.label, `
       <div class="form-group"><label class="form-label">Field name</label>
         <input class="form-control" id="ce-name" value="${esc(col.label)}"></div>
       <div class="form-group"><label class="form-label">Type</label>
@@ -332,7 +331,7 @@ function ColumnsEngine(entity, cfg) {
     ceMenuClose();
     const col = E.col(key); if (!col) return;
     E._typeKey = key;
-    cfg.modal('Change Type — ' + col.label, `
+    ceModalShow('Change Type — ' + col.label, `
       <div class="form-group"><label class="form-label">Type</label>
         <select class="form-control" id="ce-type" onchange="document.getElementById('ce-options-wrap').style.display = (this.value === 'select' || this.value === 'radio') ? '' : 'none'">
           <option value="text">Text</option><option value="select">Dropdown</option>
@@ -366,7 +365,7 @@ function ColumnsEngine(entity, cfg) {
     ceMenuClose();
     const col = E.col(key); if (!col) return;
     E._optsKey = key;
-    cfg.modal('Edit Options — ' + col.label, `
+    ceModalShow('Edit Options — ' + col.label, `
       <div id="ce-opts-list">${(col.options || []).map(o => E._optRow(o.key, o.label, o.color)).join('')}</div>
       <button class="btn btn-outline btn-sm" onclick="CE('${entity}').addOptRow()">+ Add option</button>
       <div style="font-size:11.5px;color:var(--muted);margin-top:10px">The color paints the value's badge in tables and cards.</div>`,
@@ -412,7 +411,7 @@ function ColumnsEngine(entity, cfg) {
     E._closeModal();
     changed();
   };
-  E._closeModal = () => cfg.closeModal();
+  E._closeModal = () => ceModalClose();
 
   // ── Form helpers (consumed by the entities that generate their forms) ─────
   E.inputHtml = function (col, value, attrs) {
@@ -481,6 +480,44 @@ function hexA(hex, a) {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
+
+// ── The editor's own modal layer ──────────────────────────────────────────────
+// Both portals have exactly ONE modal element and showModal() overwrites it. The
+// field editor opens from inside the RFQ and PO sheets, so routing it through
+// the host's modal REPLACED the sheet: you clicked "+ Field" and the document
+// you were half-way through typing was gone, and saving the field closed
+// everything. This layer stacks above whatever is open and closes back to it.
+let CE_MODAL = null;
+function ceModalEl() {
+  if (!CE_MODAL) {
+    CE_MODAL = document.createElement('div');
+    CE_MODAL.className = 'ce-modal-overlay';
+    CE_MODAL.innerHTML = `<div class="ce-modal-box" role="dialog" aria-modal="true">
+      <div class="ce-modal-head"><span id="ce-modal-title"></span>
+        <button type="button" class="ce-modal-x" aria-label="Close">&times;</button></div>
+      <div class="ce-modal-body" id="ce-modal-body"></div>
+      <div class="ce-modal-foot" id="ce-modal-foot"></div>
+    </div>`;
+    document.body.appendChild(CE_MODAL);
+    CE_MODAL.addEventListener('click', e => { if (e.target === CE_MODAL) ceModalClose(); });
+    CE_MODAL.querySelector('.ce-modal-x').addEventListener('click', ceModalClose);
+    // Escape closes this layer only — the sheet underneath stays open.
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && CE_MODAL.classList.contains('open')) { e.stopPropagation(); ceModalClose(); }
+    }, true);
+  }
+  return CE_MODAL;
+}
+function ceModalShow(title, body, footer) {
+  const m = ceModalEl();
+  m.querySelector('#ce-modal-title').textContent = title;
+  m.querySelector('#ce-modal-body').innerHTML = body;
+  m.querySelector('#ce-modal-foot').innerHTML = footer;
+  m.classList.add('open');
+  const first = m.querySelector('#ce-modal-body input, #ce-modal-body select');
+  if (first) requestAnimationFrame(() => first.focus());
+}
+function ceModalClose() { if (CE_MODAL) { CE_MODAL.classList.remove('open'); CE_MODAL.querySelector('#ce-modal-body').innerHTML = ''; } }
 
 // One floating menu element for every engine instance on the page.
 let CE_MENU = null;
