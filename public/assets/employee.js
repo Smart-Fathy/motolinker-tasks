@@ -1220,7 +1220,8 @@ let _leadCols = null;
 let _editingLeadCell = false;
 let _pendingFollowups = {}; // customer_id -> earliest pending due_at (ISO)
 function leadCol(key) { return CE('leads') ? CE('leads').col(key) : null; }
-function colOptMap(col) { return CE('leads').optMap(col); }
+function colOptMap(col) { return CE('leads') ? CE('leads').optMap(col) : {}; }
+function leadOptColor(col, key) { return CE('leads') ? CE('leads').optionColor(col, key) : null; }
 function isChecked(raw) { return raw === true || raw === 'true' || raw === 1 || raw === '1'; }
 
 // Rebuild a built-in select from the live column config. The Add Lead form used to
@@ -1467,7 +1468,7 @@ function renderLeadDrawer() {
   document.getElementById('ld-name').textContent = c.name || '—';
   const badge = document.getElementById('ld-status');
   badge.textContent = (stMap[stKey] || c.lead_status || 'Cold') + ' ▾';
-  const stHex = CE('leads').optionColor(leadCol('lead_status'), stKey);
+  const stHex = leadOptColor(leadCol('lead_status'), stKey);
   badge.style.background = stHex ? hexA(stHex, 0.16) : 'rgba(255,255,255,.06)';
   badge.style.color = stHex || '#b9b3a4';
   document.getElementById('ld-phone').textContent = c.phone || '';
@@ -1507,7 +1508,7 @@ function renderLeadDrawer() {
     let bodyHtml = esc(a.body || '');
     if (a.type === 'status_change' && a.meta?.to) {
       const fk = normKey(a.meta.from, stMap), tk = normKey(a.meta.to, stMap);
-      const pill = k => { const h = CE('leads').optionColor(leadCol('lead_status'), k); return `background:${h ? hexA(h, 0.16) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
+      const pill = k => { const h = leadOptColor(leadCol('lead_status'), k); return `background:${h ? hexA(h, 0.16) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
       bodyHtml = `Status: <span class="ld-stage-pill" style="${pill(fk)}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="${pill(tk)}">${esc(stMap[tk] || a.meta.to)}</span>`;
     }
     return `<div class="ld-tl-item">
@@ -1550,6 +1551,7 @@ function renderLeadDrawer() {
         <button class="btn btn-sm btn-primary" onclick="ldScheduleFollowup()">Schedule</button>
       </div>
     </div>
+    ${clientFolderSection(c.id)}
     <div class="ld-section">
       <div class="ld-section-title">Quotations <span style="font-weight:400;text-transform:none;letter-spacing:0">${quotes.length || ''}</span></div>
       ${quotesHtml}
@@ -4081,6 +4083,18 @@ function closeModal(e) { if (e.target === document.getElementById('modal-overlay
 // Portal binding for the shared operations module (Suppliers, RFQ, POs, Contracts,
 // Submissions). Same handlers as the dashboard on the server; the difference is
 // entirely in `can`, which is what the admin actually granted this employee.
+// A rep may create and sync a client folder when granted; who may OPEN one is
+// the admin's list, enforced server-side — this portal never offers to edit it.
+const CFCFG = {
+  base: '/api/employee',
+  path: id => `/leads/${id}/folder`,
+  fetch: (url, opts) => ef(url, opts),
+  toast: (msg, bad) => showToast(msg, bad),
+  can: (section, action) => empCan(section, action),
+  isAdmin: false,
+  people: () => [],
+};
+
 const PROCFG = {
   base: '/api/employee',
   fetch: (url, opts) => ef(url, opts),

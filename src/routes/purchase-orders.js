@@ -361,4 +361,4 @@ function buildPurchaseOrderHtml(po) {
 }
 
 
-module.exports = { DOC_DEFAULT_ACCESSORIES, DOC_DEFAULT_DOCUMENTS, DOC_DEFAULT_PAYMENT_TERMS, docChromeCss, docFooterHtml, docSupplierBlock, docTermsHtml, quoteTheme };
+module.exports = { DOC_DEFAULT_ACCESSORIES, DOC_DEFAULT_DOCUMENTS, DOC_DEFAULT_PAYMENT_TERMS, buildPurchaseOrderHtml, docChromeCss, docFooterHtml, docSupplierBlock, docTermsHtml, quoteTheme };

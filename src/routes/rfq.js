@@ -541,4 +541,4 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
 );
 
 
-module.exports = { buildQuotationHtml, quoteTheme, renderQuotationPdf };
+module.exports = { buildQuotationHtml, buildRfqHtml, quoteTheme, renderQuotationPdf, rfqSettings };

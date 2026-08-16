@@ -54,6 +54,12 @@ setTimeout(async () => {
   const { normEmpPerms } = require(process.cwd() + '/src/routes/employee-portal.js');
   const allOn = {};
   for (const [k, v] of Object.entries(normEmpPerms({}))) if (typeof v === 'boolean') allOn[k] = true;
+  // Some actions are deliberately un-inheritable — a section master must not imply
+  // them (see PERM_ACTION_NEVER_INHERIT). Flipping the masters on is therefore not
+  // enough to reach their routes, so grant every action explicitly.
+  for (const [section, actions] of Object.entries(require(process.cwd() + '/src/routes/employee-portal.js').PERM_ACTIONS || {})) {
+    allOn[section + 'Actions'] = Object.fromEntries(actions.map(a => [a, true]));
+  }
   const empToken = 'smoke-employee-session';
   ctx.employeeSessions.set(empToken, {
     id: 1, name: 'Smoke', username: 'smoke',

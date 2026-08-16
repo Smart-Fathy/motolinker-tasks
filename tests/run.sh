@@ -32,6 +32,7 @@ run leadstest   node tests/leadstest.js
 run permstest   node tests/permstest.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js
+run foldertest  node tests/foldertest.js
 run proctest    node tests/proctest.js
 run boottest    node tests/boottest.js
 run sessions    node tests/sessiontest.js

@@ -135,7 +135,10 @@ const PERM_ACTIONS = {
   // The website writes these; a person only reads one or bins it.
   submissions: ['view', 'delete'],
   // CRM
-  leads: ['view', 'create', 'edit', 'delete', 'import', 'export'],
+  // `clientFolder` is separate from edit on purpose: a client's Drive folder
+  // holds passports and signed contracts, and who may open one is named per
+  // folder on top of this grant (src/routes/client-folder.js).
+  leads: ['view', 'create', 'edit', 'delete', 'import', 'export', 'clientFolder'],
   // The Deals page's Sales tab is its own grant: `sales` opens the tab,
   // `salesEdit` writes to it. The Pipeline tab is simply deals.view.
   deals: ['view', 'create', 'edit', 'delete', 'move', 'sales', 'salesEdit'],
@@ -176,6 +179,13 @@ const PERM_ACTION_FALLBACK = {
   'suppliers.purchases': acts => acts.view === true,
 };
 
+// Actions that must never be inherited — not from a section master, not from a
+// sibling. A client folder holds passports and signed contracts, so an employee
+// record that predates the action gets it OFF and an admin turns it on
+// deliberately. Everything else inherits, because a section granted before an
+// action existed did mean "all of it".
+const PERM_ACTION_NEVER_INHERIT = new Set(['leads.clientFolder']);
+
 function normEmpPerms(raw) {
   const p = { ...DEFAULT_PERMISSIONS, ...(raw || {}) };
   for (const [section, actions] of Object.entries(PERM_ACTIONS)) {
@@ -185,11 +195,12 @@ function normEmpPerms(raw) {
     for (const a of actions) {
       const legacy = PERM_LEGACY[section + '.' + a];
       const fallback = PERM_ACTION_FALLBACK[section + '.' + a];
+      const never = PERM_ACTION_NEVER_INHERIT.has(section + '.' + a);
       out[a] = given
         // An explicit answer always wins; a MISSING key predates the action.
-        ? (a in given ? given[a] === true : (fallback ? fallback(given, p) : false))
+        ? (a in given ? given[a] === true : (never ? false : (fallback ? fallback(given, p) : false)))
         // No actions object at all: master on ⇒ all, except older flat flags.
-        : (legacy ? master && legacy(p) : master);
+        : (never ? false : (legacy ? master && legacy(p) : master));
     }
     p[section + 'Actions'] = out;
   }
@@ -266,6 +277,7 @@ const PERM_ACTION_LABELS = {
   'purchaseorders.export': 'Generate the PDF',
   'contracts.export': 'Generate the PDF',
   'submissions.delete': 'Delete a submission',
+  'leads.clientFolder': 'Client Drive folders',
 };
 // Starting points, not roles. Twenty-two sections is a lot to tick one at a
 // time for a new starter, and the honest shape of the job is "most of these,

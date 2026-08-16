@@ -373,4 +373,4 @@ async function autoCreateContractForWonDeal(deal) {
 }
 
 
-module.exports = { autoCreateContractForWonDeal, renderQuotationPdf };
+module.exports = { autoCreateContractForWonDeal, buildContractHtml, renderQuotationPdf };

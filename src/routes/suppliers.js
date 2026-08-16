@@ -221,6 +221,10 @@ mountSaleFileRoute('/api/employee/sales', requireEmployeeAuth);
 
 // Supplier catalogue, documents and purchase history  → src/routes/supplier-catalogue.js
 Object.assign(ctx, { driveUpload, driveUploadGuard, express, handleDriveUpload, receiver, requireAuth, supabase });
+// The client folder (src/routes/client-folder.js) builds on exactly these — one
+// implementation of "find or make a folder", "upload bytes", "is Drive usable".
+Object.assign(ctx, { DRIVE_ROOT_FOLDER, driveAdminToken, driveEnsureFolder, driveErrMessage,
+  driveErrStatus, driveFindOrCreateFolder, driveUploadFile });
 require('./supplier-catalogue');
 mountSupplierRoutes('/api/dashboard/suppliers', requireAuth);
 mountSupplierRoutes('/api/employee/suppliers', requireEmployeeAuth);
