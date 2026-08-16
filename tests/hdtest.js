@@ -45,7 +45,7 @@ ${MODULE}
   return { huddleStart, huddleJoinExisting, huddleLeave, huddleOnSignal, huddleToggleMute,
            huddleToggleCam, huddleToggleShare, hdRenderBar, hdIncoming, hdIce, hdOpenInvite,
            hdPollStats, hdQuality, hdCanShareScreen, hdAvatarFor, hdInitialsFor, hdRingOnce,
-           hdRenderBar, hdDialRoster,
+           hdRenderBar, hdDialRoster, hdAudioBlocked,
            state: () => _hd, peers: () => _hd.peers };
 }
 
@@ -158,9 +158,51 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
   check('an audio-only peer still gets a media element', audible.hasEl, JSON.stringify(audible));
   check('the remote stream is attached to it', audible.attached && audible.audioTracks === 1, JSON.stringify(audible));
-  check('the remote element is NOT muted', audible.muted === false, JSON.stringify(audible));
+  // The audio path moved OUT of the tile: the tile <video> is always muted now
+  // (the sink below carries the voice; both playing would double every voice),
+  // which also means tile playback can never be autoplay-blocked.
+  check('the remote TILE is muted — audio rides the sink, not the tile', audible.muted === true, JSON.stringify(audible));
   check('and it is actually playing', audible.paused === false, JSON.stringify(audible));
   check('our own tile IS muted, so we do not echo', audible.selfMuted === true, JSON.stringify(audible));
+
+  // 2b-sink. The voice lives in a per-peer <audio> OUTSIDE #hd-bar, so no tile
+  // state — avatar mode, a minimised widget, display:none anywhere in the bar —
+  // can silence a call. This is the WebKit half of "they can't hear me until I
+  // share my screen": a MediaStream <video> outside the render tree never plays
+  // there, and the old design's only audio element was display:none whenever the
+  // peer had no picture.
+  const sink = await page.evaluate(() => {
+    const sinks = [...document.querySelectorAll('.hd-audio-sink')];
+    // Client A's sink: the one holding an element for peer B.
+    const au = sinks.flatMap(sk => [...sk.children]).find(a => a.dataset.peer === 'B');
+    if (!au) return { found: false, sinks: sinks.length };
+    const tileVideo = document.querySelector('#hd-bar [data-tile="B"] video');
+    return {
+      found: true,
+      insideBar: !!au.closest('#hd-bar'),
+      tag: au.tagName,
+      muted: au.muted,
+      paused: au.paused,
+      sameStream: !!(tileVideo && au.srcObject === tileVideo.srcObject),
+      audioTracks: au.srcObject ? au.srcObject.getAudioTracks().length : 0,
+    };
+  });
+  check('a per-peer audio sink exists', sink.found === true, JSON.stringify(sink));
+  check('…as an <audio> OUTSIDE #hd-bar', sink.tag === 'AUDIO' && sink.insideBar === false, JSON.stringify(sink));
+  check('…unmuted and playing the same remote stream', sink.muted === false && sink.paused === false && sink.sameStream && sink.audioTracks === 1, JSON.stringify(sink));
+
+  // Minimising the widget hides every tile with display:none — the sink must
+  // keep playing regardless, because it does not live in the widget at all.
+  const minimised = await page.evaluate(async () => {
+    const bar = document.getElementById('hd-bar');
+    bar.classList.add('min');
+    await new Promise(r => setTimeout(r, 150));
+    const au = [...document.querySelectorAll('.hd-audio-sink audio')].find(a => a.dataset.peer === 'B');
+    const out = { paused: au ? au.paused : null };
+    bar.classList.remove('min');
+    return out;
+  });
+  check('minimising the widget does not pause the voice', minimised.paused === false, JSON.stringify(minimised));
 
   // 2c. Re-rendering must not tear down live playback
   const survives = await page.evaluate(() => {
@@ -819,6 +861,125 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       late.hasPeer && late.videoSenders === 1 && late.sendingScreen, JSON.stringify(late));
   }
   await sleep(300);
+
+  // ── 21. The load algorithm is never re-run on a live element ──
+  // In an audio-only call ontrack fires twice (mic, then the reserved video
+  // transceiver's track). Re-assigning srcObject on the second one re-runs the
+  // media load algorithm, which rejects the pending play() with AbortError — and
+  // the old code reported that self-inflicted AbortError as "your browser
+  // blocked the sound" on every single call.
+  {
+    const r1 = await page.evaluate(async () => {
+      // Count srcObject assignments per element, and record every toast.
+      const proto = HTMLMediaElement.prototype;
+      const desc = Object.getOwnPropertyDescriptor(proto, 'srcObject');
+      Object.defineProperty(proto, 'srcObject', {
+        configurable: true,
+        get: desc.get,
+        // Only an IDENTICAL re-assign is the defect — it re-runs the load
+        // algorithm for nothing and aborts the pending play(). (The harness's
+        // shared #hd-bar makes both clients alternate their own self-tile
+        // stream, so counting every assignment would flag a harness artifact.)
+        set(v) { if (v && desc.get.call(this) === v) this.__srcSets = (this.__srcSets || 0) + 1; return desc.set.call(this, v); },
+      });
+      const toasts = [];
+      const toastEl = document.getElementById('hd-toast');
+      const mo = new MutationObserver(() => { if (toastEl.textContent) toasts.push(toastEl.textContent); });
+      mo.observe(toastEl, { childList: true, characterData: true, subtree: true });
+
+      await window.A.huddleStart(8, false);
+      await new Promise(r => setTimeout(r, 150));
+      await window.B.huddleStart(8, false);
+      const t0 = Date.now();
+      while (Date.now() - t0 < 15000) {
+        const a = window.A.peers().get('B');
+        if (a && a.pc.connectionState === 'connected') break;
+        await new Promise(r => setTimeout(r, 200));
+      }
+      // Let several renders and both ontrack firings go by.
+      await new Promise(r => setTimeout(r, 1200));
+      window.A.hdRenderBar(); window.B.hdRenderBar();
+      await new Promise(r => setTimeout(r, 300));
+      const counts = [...document.querySelectorAll('#hd-bar [data-tile] video, .hd-audio-sink audio')]
+        .map(el => ({ tag: el.tagName, peer: el.dataset.peer || el.closest('[data-tile]')?.getAttribute('data-tile'), sets: el.__srcSets || 0 }));
+      mo.disconnect();
+      Object.defineProperty(proto, 'srcObject', desc);
+      const out = { counts, blockedToasts: toasts.filter(t => /blocked the sound/i.test(t)) };
+      window.A.huddleLeave(); window.B.huddleLeave();
+      return out;
+    });
+    const overSet = r1.counts.filter(c => c.sets > 0);
+    check('no live element ever has its srcObject re-assigned with the same object', overSet.length === 0, JSON.stringify(r1.counts));
+    check('a healthy call raises NO "blocked the sound" toast', r1.blockedToasts.length === 0, JSON.stringify(r1.blockedToasts));
+  }
+  await sleep(300);
+
+  // ── 22. The gesture retry survives a failed attempt ──
+  // The old handler unhooked itself unconditionally and swallowed the retry's own
+  // rejection: the user's one click burned the only recovery path, and the call
+  // stayed silent for good. Now it stays armed until something actually plays.
+  {
+    const r3 = await page.evaluate(async () => {
+      // A sink element for the retry to find.
+      const sink = document.createElement('div');
+      sink.className = 'hd-audio-sink';
+      const au = document.createElement('audio');
+      sink.appendChild(au); document.body.appendChild(sink);
+      const orig = HTMLMediaElement.prototype.play;
+      let fail = true, plays = 0;
+      HTMLMediaElement.prototype.play = function () {
+        if (fail) return Promise.reject(Object.assign(new Error('blocked'), { name: 'NotAllowedError' }));
+        plays++; return Promise.resolve();
+      };
+      window.A.hdAudioBlocked();                       // arm the recovery
+      document.dispatchEvent(new Event('click'));      // gesture #1 — retry FAILS
+      await new Promise(r => setTimeout(r, 120));
+      fail = false;                                    // browser would now allow it
+      document.dispatchEvent(new Event('click'));      // gesture #2 — must still be armed
+      await new Promise(r => setTimeout(r, 120));
+      HTMLMediaElement.prototype.play = orig;
+      sink.remove();
+      return { plays };
+    });
+    check('a failed gesture retry stays armed for the next gesture', r3.plays > 0, JSON.stringify(r3));
+  }
+  await sleep(200);
+
+  // ── 23. A lost offer is re-sent — the pair is no longer stranded forever ──
+  // Signalling rides the chat SSE stream with no server-side queue; a frame sent
+  // during a reconnect gap is simply gone. Dialling being idempotent (the glare
+  // rule) meant one lost offer parked the pair at "connecting" for good.
+  {
+    const r4 = await page.evaluate(async () => {
+      const bus = window.__bus, realB = bus.inbox.B;
+      let dropped = 0;
+      bus.inbox.B = m => { if (m.type === 'offer' && dropped < 1) { dropped++; return; } realB(m); };
+      await window.B.huddleStart(9, false);
+      await new Promise(r => setTimeout(r, 150));
+      window.__log.length = 0;
+      await window.A.huddleStart(9, false);           // A offers; the offer is eaten
+      await new Promise(r => setTimeout(r, 400));
+      const before = window.__log.filter(l => l === 'A -> offer @B').length;
+      // Two watchdog ticks (it retries on the second) — the stats poll hosts it.
+      await window.A.hdPollStats(); await window.A.hdPollStats();
+      const t0 = Date.now();
+      while (Date.now() - t0 < 10000) {
+        const p = window.A.peers().get('B');
+        if (p && p.pc.remoteDescription) break;
+        await new Promise(r => setTimeout(r, 200));
+      }
+      const after = window.__log.filter(l => l === 'A -> offer @B').length;
+      const p = window.A.peers().get('B');
+      const out = { dropped, before, after, gotAnswer: !!(p && p.pc.remoteDescription) };
+      bus.inbox.B = realB;
+      window.A.huddleLeave(); window.B.huddleLeave();
+      return out;
+    });
+    check('the first offer was dropped and only one was sent initially',
+      r4.dropped === 1 && r4.before === 1, JSON.stringify(r4));
+    check('the watchdog re-offers and the pair recovers', r4.after >= 2 && r4.gotAnswer, JSON.stringify(r4));
+  }
+  await sleep(200);
 
   check('no page errors', errs.length === 0, errs.slice(0, 4).join(' | '));
 
