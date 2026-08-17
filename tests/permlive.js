@@ -171,6 +171,19 @@ setTimeout(async () => {
     c('…and refused without availability.set', refused(denied), String(denied.status));
   }
 
+  // ── The Inventory page is its own grant ─────────────────────────────────────
+  // stock is on by default for everyone (the vehicle picker needs it), so the
+  // register itself has to be gated on the action, not the section — otherwise
+  // the whole team could pull every model and price the company holds.
+  {
+    const picker = mint('perm-live-stock-ro', { stock: true, stockActions: { view: true, browse: false } });
+    const denied = await hit('GET', '/api/employee/stock', picker);
+    c('the stock register is refused with the picker grant alone', refused(denied), String(denied.status));
+    const browser2 = mint('perm-live-stock-rw', { stock: true, stockActions: { view: true, browse: true } });
+    const ok = await hit('GET', '/api/employee/stock', browser2);
+    c('…and served with stock.browse', !refused(ok), String(ok.status));
+  }
+
   // ── The admin is never subject to employee permissions ──────────────────────
   // Both portals run the same handlers now. If requirePerm read a missing
   // req.employee as "no permissions", the dashboard would lose these outright.
@@ -214,6 +227,9 @@ setTimeout(async () => {
       'rfq.edit': 1, 'rfq.export': 1,
       'purchaseorders.create': 1, 'purchaseorders.delete': 1, 'purchaseorders.export': 1,
       'contracts.edit': 1, 'contracts.export': 1,
+      'stock.view': 1,                    // the picker and the Home widgets
+      'stock.browse': 1,                  // the register, checked live above
+      'leads.clientFolder': 1,            // foldertest drives it end to end
     };
     const gaps = [];
     for (const [section, actions] of Object.entries(PERM_ACTIONS)) {

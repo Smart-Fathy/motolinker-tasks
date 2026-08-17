@@ -1,7 +1,8 @@
 // Car Stock (immediate-delivery inventory)
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
-const { express, parseCSV, receiver, requireAuth, supabase, upload } = ctx.need('express', 'parseCSV', 'receiver', 'requireAuth', 'supabase', 'upload');
+const { express, parseCSV, receiver, requireAuth, requireEmployeeAuth, supabase, upload } = ctx.need('express', 'parseCSV', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'upload');
+const requirePerm = (...a) => ctx.requirePerm(...a);
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
 
@@ -112,11 +113,19 @@ async function stockWrite(row, id) {
   return res;
 }
 
-receiver.router.get('/api/dashboard/stock', requireAuth, async (_req, res) => {
-  const { data, error } = await supabase.from('stock_vehicles').select('*').order('make', { ascending: true }).order('model', { ascending: true }).order('trim', { ascending: true });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
-});
+// Reading the register is mounted for both portals. stock.view was grantable long
+// before there was anywhere in the team portal to spend it — the permission
+// existed, the page did not, so granting Inventory to a rep did nothing at all.
+// Writing stays the admin's: there is no employee mount below this one.
+function mountStockReadRoute(base, guard) {
+  receiver.router.get(`${base}/stock`, guard, requirePerm('stock', 'browse'), async (_req, res) => {
+    const { data, error } = await supabase.from('stock_vehicles').select('*').order('make', { ascending: true }).order('model', { ascending: true }).order('trim', { ascending: true });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+}
+mountStockReadRoute('/api/dashboard', requireAuth);
+mountStockReadRoute('/api/employee', requireEmployeeAuth);
 
 receiver.router.post('/api/dashboard/stock', requireAuth, express.json(), async (req, res) => {
   const { row, error: verr } = stockBuildRow(req.body);

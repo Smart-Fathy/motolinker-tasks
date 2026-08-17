@@ -250,7 +250,7 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
     // Inheriting it the way meet.view inherited its master would hand the whole
     // team every client's passport scans on the deploy that shipped it.
     check('nobody INHERITS access to client folders — it is granted, never assumed',
-      /PERM_ACTION_NEVER_INHERIT = new Set\(\['leads\.clientFolder'\]\)/.test(EMP)
+      /PERM_ACTION_NEVER_INHERIT = new Set\(\[[^\]]*'leads\.clientFolder'/.test(EMP)
       && /never \? false : \(fallback/.test(EMP) && /never \? false : \(legacy/.test(EMP));
     const MIG = fs.readFileSync('migrations/013_client_folder.sql', 'utf8');
     check('migration 013 adds the column it needs, idempotently',

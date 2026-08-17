@@ -22,6 +22,7 @@ PUT /api/dashboard/recurring-tasks/:id
 DELETE /api/dashboard/recurring-tasks/:id
 POST /api/dashboard/recurring-tasks/:id/run-now
 GET /api/dashboard/stock
+GET /api/employee/stock
 POST /api/dashboard/stock
 PUT /api/dashboard/stock/:id
 DELETE /api/dashboard/stock/:id
@@ -287,6 +288,7 @@ PUT /api/dashboard/quotation/settings
 GET /api/dashboard/quotations
 GET /api/dashboard/quotations/:id
 POST /api/dashboard/quotations/:id/pdf
+POST /api/employee/quotations/:id/pdf
 DELETE /api/dashboard/quotations/:id
 GET /api/employee/quotation/settings
 PUT /api/employee/quotation/settings

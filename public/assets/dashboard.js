@@ -4943,6 +4943,9 @@ let _ldProfile = null; // { customer, activities, followups, quotations, deals }
 const LD_ACT_ICONS = { note: 'sticky-note', call: 'phone', whatsapp: 'message-circle', meeting: 'users', status_change: 'refresh-ccw', quote: 'file-badge', deal: 'kanban-square', follow_up: 'alarm-clock', system: 'info' };
 
 async function openLeadProfile(id) {
+  // The drawer reads the lead's columns; the pipeline and the submissions page
+  // never load them, which left the info grid blank exactly there.
+  if (!_leadCols) { try { await loadLeadCols(); } catch (_) {} }
   document.getElementById('lead-drawer-overlay').classList.add('open');
   document.getElementById('lead-drawer').classList.add('open');
   document.getElementById('lead-drawer-body').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
