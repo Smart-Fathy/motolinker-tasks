@@ -10,6 +10,7 @@ const createNotification = (...a) => ctx.createNotification(...a);
 const dealCtx = (...a) => ctx.dealCtx(...a);
 const leadCtx = (...a) => ctx.leadCtx(...a);
 const quoteTheme = (...a) => ctx.quoteTheme(...a);
+const requirePerm = (...a) => ctx.requirePerm(...a);
 const renderQuotationPdf = (...a) => ctx.renderQuotationPdf(...a);
 const runAutomations = (...a) => ctx.runAutomations(...a);
 
@@ -341,22 +342,31 @@ receiver.router.get('/api/dashboard/quotations/:id', requireAuth, async (req, re
 
 // Re-render a saved quotation to PDF straight from its stored data, so it can be
 // viewed from the lead profile without loading it back into the draft form.
-receiver.router.post('/api/dashboard/quotations/:id/pdf', requireAuth, async (req, res) => {
-  try {
-    const { data: row, error } = await supabase.from('quotations').select('*').eq('id', req.params.id).single();
-    if (error || !row) return res.status(404).json({ error: 'Quotation not found' });
-    const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
-    const settings = {};
-    for (const s of settingsRows || []) settings[s.key] = s.value;
-    const d = row.data || {};
-    const html = buildQuotationHtml({ ...d, template: quoteTheme(d.template).key, settings });
-    const pdf = await renderQuotationPdf(html);
-    res.json({ pdf: Buffer.from(pdf).toString('base64'), name: row.quote_id || 'quotation' });
-  } catch (e) {
-    console.error('[quotation-pdf]', e);
-    res.status(500).json({ error: e.message });
-  }
-});
+//
+// Mounted for BOTH portals. It was the dashboard's alone, while the team portal's
+// quotation list carried the same PDF button — pointed, through procPath(), at an
+// /api/employee route that did not exist. The 404 fell through to the SPA's HTML,
+// which the client tried to read as JSON: "Unexpected token '<'".
+function mountQuotationPdfRoute(base, guard) {
+  receiver.router.post(`${base}/quotations/:id/pdf`, guard, requirePerm('quotation', 'history'), async (req, res) => {
+    try {
+      const { data: row, error } = await supabase.from('quotations').select('*').eq('id', req.params.id).single();
+      if (error || !row) return res.status(404).json({ error: 'Quotation not found' });
+      const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
+      const settings = {};
+      for (const s of settingsRows || []) settings[s.key] = s.value;
+      const d = row.data || {};
+      const html = buildQuotationHtml({ ...d, template: quoteTheme(d.template).key, settings });
+      const pdf = await renderQuotationPdf(html);
+      res.json({ pdf: Buffer.from(pdf).toString('base64'), name: row.quote_id || 'quotation' });
+    } catch (e) {
+      console.error('[quotation-pdf]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+}
+mountQuotationPdfRoute('/api/dashboard', requireAuth);
+mountQuotationPdfRoute('/api/employee', requireEmployeeAuth);
 
 receiver.router.delete('/api/dashboard/quotations/:id', requireAuth, async (req, res) => {
   const { error } = await supabase.from('quotations').delete().eq('id', req.params.id);

@@ -88,7 +88,9 @@ const PERM_SECTIONS = [
   'suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions',
 ];
 // Nav items whose visibility is an action rather than a whole section.
-const PERM_NAV_ACTIONS = { log: ['hours', 'log'], hours: ['hours', 'view'] };
+// stock is the same story: every employee has the section (the vehicle picker
+// needs it), but the Inventory page is stock.browse.
+const PERM_NAV_ACTIONS = { log: ['hours', 'log'], hours: ['hours', 'view'], stock: ['stock', 'browse'] };
 
 // Normalized permissions of the logged-in employee (rich shape from the server).
 let empPerms = {};
@@ -108,7 +110,7 @@ function empCan(section, action) {
   return a[action] === true;
 }
 // Actions a master switch must never imply — mirrors PERM_LEGACY on the server.
-const PERM_LEGACY_OFF = ['requests.viewAll'];
+const PERM_LEGACY_OFF = ['requests.viewAll', 'leads.clientFolder', 'stock.browse'];
 // Whether a whole section is on, honouring the same CTO rule.
 function empHas(section) {
   return section === 'issues' ? (empPerms.issues === true || isCtoUser()) : empPerms[section] === true;
@@ -155,7 +157,8 @@ function applyPermissions(permissions) {
   };
   groupOn('nav-label-tools', empHas('quotation'));
   groupOn('nav-label-crm', empHas('leads') || empHas('deals') || empHas('reports'));
-  groupOn('nav-label-ops', ['suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions'].some(empHas));
+  groupOn('nav-label-ops', ['suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions'].some(empHas)
+    || empCan('stock', 'browse'));
   // Google and Chat groups have no id, so they are found by their data-group.
   const anyGoogle = ['drive', 'sheets', 'email', 'calendar', 'meet', 'gchat'].some(empHas);
   const gGoogle = document.querySelector('.nav-group[data-group="google"]');
@@ -494,15 +497,68 @@ async function logout() {
   localStorage.removeItem('ml_emp_token'); empToken = null; showLogin();
 }
 
+/* ── Inventory (read-only) ──
+   The stock.view grant existed long before there was anywhere in this portal to
+   spend it: granting Inventory to a rep changed nothing on their screen. This is
+   that page — the same register the dashboard shows, without the editing. */
+let _empStock = [];
+async function loadEmpStock() {
+  const box = document.getElementById('emp-stock-list');
+  if (box) box.innerHTML = '<div class="loading"><span class="spinner"></span> Loading inventory…</div>';
+  try {
+    const list = await ef('/api/employee/stock').then(r => r.json());
+    if (list && list.error) throw new Error(list.error);
+    _empStock = Array.isArray(list) ? list : [];
+  } catch (e) {
+    if (box) box.innerHTML = `<div style="color:var(--danger);padding:16px;font-size:13px">${esc(e.message)}</div>`;
+    return;
+  }
+  renderEmpStock();
+}
+function renderEmpStock() {
+  const box = document.getElementById('emp-stock-list');
+  if (!box) return;
+  const term = (document.getElementById('emp-stock-search')?.value || '').trim().toLowerCase();
+  const rows = _empStock.filter(v => !term || `${v.make} ${v.model} ${v.trim}`.toLowerCase().includes(term));
+  if (!rows.length) {
+    box.innerHTML = `<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">${
+      _empStock.length ? 'No vehicles match your search.' : 'No vehicles in stock yet.'}</div>`;
+    return;
+  }
+  // Units are the count — the same rule the dashboard follows, so the two pages
+  // can never disagree about how many cars are actually held.
+  const units = v => (Array.isArray(v.units) ? v.units.length : 0) || (parseInt(v.legacy_count, 10) || 0);
+  const total = rows.reduce((s, v) => s + units(v), 0);
+  box.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${rows.length} model(s) · ${total} car(s) in stock</div>
+    <div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+        <th style="padding:8px 10px">Vehicle</th><th style="padding:8px 10px">Colours</th>
+        <th style="padding:8px 10px;text-align:right">In stock</th>
+        <th style="padding:8px 10px;text-align:right">Price</th></tr></thead>
+      <tbody>${rows.map(v => {
+        const colors = (Array.isArray(v.colors) ? v.colors : []).map(c => esc(c.name)).filter(Boolean);
+        const n = units(v);
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px;font-weight:600">${esc([v.make, v.model, v.trim].filter(Boolean).join(' '))}</td>
+          <td style="padding:8px 10px;color:var(--muted)">${colors.length ? colors.join(', ') : '—'}</td>
+          <td style="padding:8px 10px;text-align:right;${n ? 'color:var(--primary);font-weight:700' : 'color:var(--muted)'}">${n || '—'}</td>
+          <td style="padding:8px 10px;text-align:right">${v.price ? Number(v.price).toLocaleString() + ' EGP' : '—'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
 /* ── Navigation ── */
 const pageTitles = { home: 'Home', chat: 'Chat', log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', gchat: 'Google Chat', notif: 'Notifications', issues: 'Issues',
   suppliers: 'Suppliers', rfq: 'RFQ', purchaseorders: 'Purchase Orders',
-  contracts: 'Contracts', submissions: 'Website Submissions' };
+  contracts: 'Contracts', submissions: 'Website Submissions', stock: 'Inventory' };
 const pageLoaders = { home: loadHome, requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: () => initQuotationPage(), leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, gchat: loadGChat, notif: loadNotifPage, issues: loadIssues,
   // Operations: the renderers live in the shared procurement.js, which both
   // portals load, so these are the same functions the dashboard calls.
   suppliers: () => loadSuppliers(), rfq: () => loadRfqs(), purchaseorders: () => loadPurchaseOrders(),
-  contracts: () => loadContracts(), submissions: () => loadSubmissions(), meet: () => loadMeetings() };
+  contracts: () => loadContracts(), submissions: () => loadSubmissions(), meet: () => loadMeetings(),
+  stock: () => loadEmpStock() };
 let _currentEmpPage = 'log';
 function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
@@ -1432,6 +1488,9 @@ async function empImportCsv() {
 let _ldProfile = null; // { customer, activities, followups, quotations, deals }
 const LD_ACT_ICONS = { note: 'sticky-note', call: 'phone', whatsapp: 'message-circle', meeting: 'users', status_change: 'refresh-ccw', quote: 'file-badge', deal: 'kanban-square', follow_up: 'alarm-clock', system: 'info' };
 async function openLeadProfile(id) {
+  // The drawer reads the lead's columns; the pipeline and the submissions page
+  // never load them, which left the info grid blank exactly there.
+  if (!_leadCols) { try { await loadLeadCols(); } catch (_) {} }
   document.getElementById('lead-drawer-overlay').classList.add('open');
   document.getElementById('lead-drawer').classList.add('open');
   document.getElementById('lead-drawer-body').innerHTML = '<div class="loading"><span class="spinner"></span> Loading…</div>';

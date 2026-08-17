@@ -1003,13 +1003,18 @@
       return;
     }
     _suppliersCache = Array.isArray(list) ? list : [];
-    if (!_suppliersCache.length) {
-      body.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No suppliers yet.</div>';
-      return;
-    }
     const eng = suppliersEngine();
     await eng.load();
     const cols = eng.visible();
+    if (!_suppliersCache.length) {
+      // Still offer the field controls — the register's columns are worth setting
+      // up BEFORE the first supplier is added, not after.
+      body.innerHTML = `
+        <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px">${procColsBtn('suppliers')}</div>
+        <div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No suppliers yet.</div>`;
+      requestAnimationFrame(() => lucide.createIcons());
+      return;
+    }
     body.innerHTML = `
       <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px">${procColsBtn('suppliers')}</div>
       <div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -1209,9 +1214,10 @@
     ], {}), () => loadSuppliers());
   }
 
-  function openSupplierForm(id) {
+  async function openSupplierForm(id) {
     const x = id ? _suppliersCache.find(v => v.id === id) : null;
     const eng = suppliersEngine();
+    await eng.load();          // the form IS the column config; no config, no fields
     // Builtin supplier fields honor their configured type too — switch Country to
     // a dropdown in the field editor and the form draws a dropdown.
     const builtinField = c => {

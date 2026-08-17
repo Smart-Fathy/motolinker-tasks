@@ -258,14 +258,27 @@ const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', perm
   // Every nav item that has a page, minus the three nobody is locked out of.
   const navIds = [...PORTAL_HTML.matchAll(/id="nav-([a-z]+)"/g)].map(m => m[1]);
   const ALWAYS = ['home', 'notif', 'help'];
-  const actionNav = ['log', 'hours'];   // governed by hours.log / hours.view
+  // Nav items governed by an ACTION rather than a section master — read from the
+  // portal's own map, so adding one (Inventory → stock.browse) needs no edit here.
+  const actionNav = Object.keys(Object.fromEntries(
+    [...((PORTAL_JS.match(/const PERM_NAV_ACTIONS = \{([^}]*)\}/) || [])[1] || '')
+      .matchAll(/(\w+):\s*\[/g)].map(m => [m[1], 1])));
   const ungoverned = navIds.filter(id => !ALWAYS.includes(id) && !actionNav.includes(id) && !gated.has(id));
   c('every nav item in the team portal is governed by a permission',
     ungoverned.length === 0, ungoverned.join(', '));
   c('…except the three nobody should be locked out of',
     ALWAYS.every(id => !gated.has(id)));
   c('Log Hours and Hours Log are separate actions of one section',
-    /PERM_NAV_ACTIONS = \{ log: \['hours', 'log'\], hours: \['hours', 'view'\] \}/.test(PORTAL_JS));
+    /log: \['hours', 'log'\]/.test(PORTAL_JS) && /hours: \['hours', 'view'\]/.test(PORTAL_JS));
+  // Inventory is the same shape: every employee holds the stock section (the
+  // vehicle picker needs it), so the PAGE has to be its own action or adding it
+  // would have put an Inventory tab in front of the entire team.
+  c('the Inventory page is an action, not the stock master switch',
+    /stock: \['stock', 'browse'\]/.test(PORTAL_JS)
+    && /stock: \['view', 'browse'\]/.test(EMP)
+    && M.normEmpPerms({}).stockActions.browse === false
+    && M.normEmpPerms({}).stockActions.view === true,
+    JSON.stringify(M.normEmpPerms({}).stockActions));
   c('every section the portal gates is one the server models',
     [...gated].every(k => M.PERM_ACTIONS[k]), [...gated].filter(k => !M.PERM_ACTIONS[k]).join(','));
   c("the portal's fallback defaults match the server's",
