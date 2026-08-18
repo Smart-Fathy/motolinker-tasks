@@ -196,35 +196,87 @@ function homeRender() {
   if (window.lucide) requestAnimationFrame(() => lucide.createIcons());
 }
 
+// A bar is the only thing several widgets draw, and it was drawing every row in
+// the same gold. These are the tokens both portals define; anything unrecognised
+// keeps the brand colour, so a new status degrades to today's behaviour.
+const HOME_BAR_TONE = {
+  todo: '--st-todo', in_progress: '--st-progress', done: '--st-done',
+  pending: '--st-todo', in_review: '--st-progress', approved: '--st-done', rejected: '--danger',
+  hot: '--lead-hot', warm: '--lead-warm', cold: '--lead-cold',
+  immediate_delivery: '--lead-immediate', not_interested: '--lead-notinterested', blacklist: '--lead-blacklist',
+  lead: '--stage-lead', inquiry: '--stage-inquiry', quoted: '--stage-quoted',
+  negotiating: '--stage-negotiating', won: '--stage-won', lost: '--stage-lost',
+  draft: '--st-todo', sent: '--stage-negotiating', confirmed: '--st-done', closed: '--stock-sold',
+};
+function homeBarTone(label) {
+  const t = HOME_BAR_TONE[String(label || '').trim().toLowerCase().replace(/[\s-]+/g, '_')];
+  return t ? `var(${t})` : 'var(--primary)';
+}
+// The server groups by the raw column value, so bars read "in_progress".
+function homeBarLabel(label) {
+  const raw = String(label == null ? '' : label);
+  if (!/^[a-z0-9_]+$/.test(raw)) return raw;            // already human, leave it
+  const SPECIAL = { todo: 'To Do', rfq: 'RFQ', po: 'PO', vin: 'VIN' };
+  if (SPECIAL[raw]) return SPECIAL[raw];
+  return raw.split('_').filter(Boolean).map(w => SPECIAL[w] || (w.charAt(0).toUpperCase() + w.slice(1))).join(' ');
+}
+
 function homeWidgetBody(id) {
   const d = _home.data || {};
   const money = n => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  // Three defects fixed here, all of which made the bar lengths lie:
+  //  - `max` was taken across every row but only the first six are drawn, so an
+  //    undrawn seventh row silently shrank every visible bar. Slice first.
+  //  - `max` used `r.count || r.value` (truthiness) while the row used
+  //    `r.count != null ? r.count : r.value` (nullishness), so a {count:0,
+  //    value:N} row measured `max` in money and the whole chart collapsed to
+  //    the 2% floor. One accessor now feeds both.
+  //  - the 2% floor drew a stub for a genuinely empty row, which reads as data.
+  //    Zero now renders as zero; only non-zero values get the 2% legibility floor.
+  // Where a row carries both, the printed figure is the value, so the bar has to
+  // measure the value too. It used to be sized by count while the label showed
+  // money, which is how "Pipeline by stage" drew its largest bar next to its
+  // third-largest number.
+  const barVal = r => ((r.value != null && r.count != null) ? r.value
+                      : (r.count != null ? r.count : r.value)) || 0;
   const bars = rows => !rows || !rows.length
     ? '<div class="home-none">Nothing yet</div>'
     : `<div class="home-bars">${(() => {
-        const max = Math.max(...rows.map(r => r.count || r.value || 0), 1);
-        return rows.slice(0, 6).map(r => {
-          const v = r.count != null ? r.count : r.value;
-          return `<div class="home-bar-row"><span class="home-bar-lbl">${esc(r.label)}</span>
-            <span class="home-bar"><i style="width:${Math.max(2, Math.round((v / max) * 100))}%"></i></span>
-            <span class="home-bar-val">${r.value != null && r.count != null ? money(r.value) : v}</span></div>`;
+        const shown = rows.slice(0, 6);
+        const max = Math.max(...shown.map(barVal), 1);
+        return shown.map(r => {
+          const v = barVal(r);
+          const pct = v === 0 ? 0 : Math.max(2, Math.round((v / max) * 100));
+          const tone = homeBarTone(r.label);
+          return `<div class="home-bar-row">
+            <span class="home-bar-head">
+              <i class="home-bar-dot" style="background:${tone}"></i>
+              <span class="home-bar-lbl">${esc(homeBarLabel(r.label))}</span>
+              ${r.value != null && r.count != null ? `<span class="home-bar-n">${r.count}</span>` : ''}
+              <span class="home-bar-val">${r.value != null && r.count != null ? money(r.value) : v}</span>
+            </span>
+            <span class="home-bar"><i style="width:${pct}%;background:${tone}"></i></span></div>`;
         }).join('');
       })()}</div>`;
   const list = (rows, line) => !rows || !rows.length
     ? '<div class="home-none">Nothing yet</div>'
     : `<ul class="home-list">${rows.map(line).join('')}</ul>`;
-  const big = (v, sub) => `<div class="home-big">${v}</div><div class="home-sub">${esc(sub)}</div>`;
+  const big = (v, sub, tone) => `<div class="home-big"${tone ? ` style="color:${tone}"` : ''}>${v}</div><div class="home-sub">${esc(sub)}</div>`;
 
   switch (id) {
     case 'my_tasks':
       return list(d.my_tasks, t => `<li><span class="home-li-main">${esc(t.title || '')}</span>
         <span class="home-li-sub">${t.due_date ? esc(String(t.due_date).slice(0, 10)) : ''}</span></li>`);
     case 'task_status':   return bars(d.task_status);
-    case 'overdue_tasks': return big(d.overdue_tasks || 0, 'tasks past their due date');
+    case 'overdue_tasks': {
+      const n = d.overdue_tasks || 0;
+      return big(n, n === 1 ? 'task past its due date' : 'tasks past their due date',
+                 n > 0 ? 'var(--danger)' : null);
+    }
     case 'leads_status':  return bars(d.leads_status);
     case 'recent_leads':
       return list(d.recent_leads, c => `<li><span class="home-li-main">${esc(c.name || '')}</span>
-        <span class="home-li-sub">${esc(c.lead_status || '')}</span></li>`);
+        ${c.lead_status ? `<span class="home-li-tag" style="--c:${homeBarTone(c.lead_status)}">${esc(homeBarLabel(c.lead_status))}</span>` : ''}</li>`);
     case 'followups':
       return list(d.followups, f => `<li><span class="home-li-main">${esc(f.note || 'Follow-up')}</span>
         <span class="home-li-sub">${f.due_at ? esc(String(f.due_at).slice(0, 10)) : ''}</span></li>`);

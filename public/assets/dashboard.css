@@ -1797,3 +1797,56 @@
     .task-summary-exc{ width:100%; }
     .task-exc{ flex:1; min-width:0; }
   }
+
+  /* ── Home widgets ──────────────────────────────────────────────────────
+   * Shared verbatim with the team portal, so these rules are appended to
+   * both sheets. */
+  .home-w{ border-radius:var(--r-xl); padding:16px 18px; }
+  .home-w-title{ font-size:11.5px; letter-spacing:.7px; }
+  .home-w-head{ gap:9px; margin-bottom:14px; }
+
+  /* The label was a fixed 86px and the value a fixed 64px, so a long status
+   * ellipsised at 86px however wide the tile was, and the track that carried
+   * the actual information got whatever was left. Label and value now sit
+   * above a full-width track. */
+  .home-bar-row{ display:block; }
+  .home-bar-head{
+    display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:12.5px;
+  }
+  .home-bar-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .home-bar-lbl{
+    width:auto; flex:1; min-width:0; font-weight:600; color:var(--text);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .home-bar-val{ width:auto; flex-shrink:0; font-weight:700; font-size:12.5px; }
+  .home-bar{ height:7px; border-radius:var(--r-pill); display:block; }
+  .home-bar i{ border-radius:var(--r-pill); }
+  .home-bars{ gap:12px; }
+
+  /* A list row was one nowrap line, so both the title and its meta competed
+   * for a ~195px tile and each got half of it. They stack now. */
+  .home-list{ gap:2px; }
+  .home-list li{
+    display:block; padding:7px 0; border-bottom:1px solid rgba(255,255,255,.04);
+  }
+  .home-list li:last-child{ border-bottom:none; }
+  .home-li-main{ display:block; font-size:13px; font-weight:500; line-height:1.35; }
+  .home-li-sub{ display:block; margin-top:4px; font-size:11.5px; }
+  .home-bar-n{
+    flex-shrink:0; font-size:11px; color:var(--muted); font-weight:600;
+    font-variant-numeric:tabular-nums;
+  }
+  /* A lead status in a Home list is the same object as a lead status in the
+   * table, so it wears the same pill. */
+  .home-li-tag{
+    display:inline-flex; align-items:center; gap:6px; margin-top:5px;
+    padding:2px 9px; border-radius:var(--r-pill);
+    font-size:11px; font-weight:700; line-height:1.5; white-space:nowrap;
+    background:color-mix(in srgb, var(--c) 12%, transparent);
+    color:var(--c);
+    border:1px solid color-mix(in srgb, var(--c) 30%, transparent);
+  }
+  .home-li-tag::before{
+    content:''; width:6px; height:6px; border-radius:50%;
+    background:currentColor; flex-shrink:0;
+  }
