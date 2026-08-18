@@ -1536,23 +1536,16 @@
     body.innerHTML = `<div class="stock-grid">${rows.map(stockCardHtml).join('')}</div>`;
     requestAnimationFrame(() => lucide.createIcons());
   }
-  // One card per car: title, price, spec sheet and per-colour stock counts.
+  // One card per car: title, price and the individual cars held against it.
   function stockCardHtml(v) {
-    const colors = Array.isArray(v.colors) ? v.colors : [];
     // Individual cars held against this model (VIN, tracking status, supplier…).
     // These ARE the stock count — nothing here reads a typed-in total any more.
     const units = Array.isArray(v.units) ? v.units : [];
     const qty = units.length;
     const noVin = units.filter(u => !String(u.vin || '').trim()).length;
     const legacy = units.length ? 0 : (parseInt(v.legacy_count, 10) || 0);
-    const colorChips = colors.length
-      ? colors.map(c => {
-          const held = units.filter(u => String(u.colour || '').trim().toLowerCase() === String(c.name || '').trim().toLowerCase()).length;
-          return `<span class="color-chip"><span class="color-dot" style="background:${stockColorSwatch(c.name)}"></span>${esc(c.name)}${held ? `<b>${held}</b>` : ''}</span>`;
-        }).join('')
-      : '<span style="color:var(--muted);font-size:12px">No colours recorded</span>';
     const unitsHtml = units.length ? `
-      <div class="stock-colors">
+      <div class="stock-sec">
         <div class="stock-sec-label">Units (${units.length})</div>
         <div class="table-scroll"><table class="stock-units">
           <thead><tr>${stockUnitCols().map(c => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>
@@ -1578,10 +1571,6 @@
           <span class="stock-qty ${qty > 0 ? 'in' : 'out'}">${qty} in stock</span>
         </div>
         <div class="stock-price">${v.price ? egp(v.price) : 'Price not set'}</div>
-        <div class="stock-colors">
-          <div class="stock-sec-label">Available colours</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px">${colorChips}</div>
-        </div>
         ${unitsHtml}
         ${legacy ? `<div class="stk-legacy">
           <i data-lucide="alert-triangle" style="width:14px;height:14px"></i>
@@ -1597,15 +1586,6 @@
         </div>` : ''}
       </div>`;
   }
-  // Map a colour name to a swatch; unknown names fall back to a neutral grey.
-  function stockColorSwatch(name) {
-    const n = String(name || '').trim().toLowerCase();
-    const map = { white:'#f8fafc', black:'#111827', grey:'#6b7280', gray:'#6b7280', silver:'#cbd5e1', red:'#dc2626',
-      blue:'#2563eb', 'navy':'#1e3a8a', green:'#16a34a', yellow:'#eab308', orange:'#ea580c', brown:'#92400e',
-      beige:'#e7d7bf', gold:'#c9a35e', purple:'#7c3aed', pink:'#ec4899' };
-    for (const k in map) if (n.includes(k)) return map[k];
-    return '#9ca3af';
-  }
   async function openStockForm(id) {
     await stockUnitsEngine().load();
     const v = id ? _stockCache.find(x => x.id === id) : null;
@@ -1617,13 +1597,6 @@
         </div>
         <div><label class="form-label">Trim</label><input id="stk-trim" class="form-input" value="${esc(v?.trim || '')}" placeholder="e.g. GLI 1.6 (leave blank if none)"></div>
         <div><label class="form-label">Price (EGP)</label><input id="stk-price" class="form-input" type="number" min="0" step="any" value="${v?.price ?? ''}" placeholder="e.g. 1150000"></div>
-
-        <div>
-          <label class="form-label">Colours offered</label>
-          <div id="stk-colors"></div>
-          <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="stkAddColorRow()">+ Add colour</button>
-          <div style="font-size:11px;color:var(--muted);margin-top:6px">Shown on the spec card. How many are in stock comes from the cars listed below, each with its own VIN.</div>
-        </div>
 
         <div>
           <label class="form-label">Units in stock <span style="color:var(--muted);font-weight:400">(one row per physical car)</span></label>
@@ -1651,21 +1624,7 @@
       `<button class="btn btn-outline" onclick="PROCFG.closeModal()">Cancel</button>
        <button class="btn btn-primary" onclick="saveStock(${id || 'null'})">${v ? 'Save changes' : 'Add vehicle'}</button>`,
       { wide: true });
-    const existing = Array.isArray(v?.colors) ? v.colors : [];
-    (existing.length ? existing : [{ name: '', qty: '' }]).forEach(c => stkAddColorRow(c.name, c.qty));
     (Array.isArray(v?.units) ? v.units : []).forEach(stkAddUnitRow);
-  }
-  function stkAddColorRow(name, qty) {
-    const wrap = document.getElementById('stk-colors');
-    if (!wrap) return;
-    const row = document.createElement('div');
-    row.className = 'stk-color-row';
-    row.style.cssText = 'display:grid;grid-template-columns:1fr 34px;gap:8px;margin-bottom:6px';
-    row.innerHTML = `
-      <input class="form-input stk-color-name" placeholder="Colour (e.g. White)" value="${esc(name || '')}">
-      <button class="btn btn-outline" style="padding:0;font-size:15px;color:var(--danger);border-color:var(--danger)" title="Remove"><i data-lucide="x" style="width:13px;height:13px"></i></button>`;
-    row.querySelector('button').onclick = () => row.remove();
-    wrap.appendChild(row);
   }
   function stkAddUnitRow(u) {
     const tbody = document.getElementById('stk-units');
@@ -1689,10 +1648,6 @@
   }
 
   async function saveStock(id) {
-    const colors = [...document.querySelectorAll('.stk-color-row')].map(r => ({
-      name: r.querySelector('.stk-color-name').value.trim(),
-      qty: 0,                    // counts come from the individual cars, not here
-    })).filter(c => c.name);
     const units = procGridCollect('.stk-unit-row', '.stk-u')
       .filter(u => u.vin || u.consignee || u.colour || u.supplier);
     const payload = {
@@ -1701,7 +1656,7 @@
       trim: document.getElementById('stk-trim').value.trim(),
       price: document.getElementById('stk-price').value,
       notes: document.getElementById('stk-notes').value.trim(),
-      colors, units,
+      units,
     };
     const err = document.getElementById('stk-err');
     if (!payload.make || !payload.model) { err.textContent = 'Make and Model are required.'; err.style.display = 'block'; return; }
@@ -1913,9 +1868,9 @@
     supplierOptionsHtml, viewDocPdf, viewDocPdfPayload,
       SALE_COLS, SALE_STATUS_OPTS, deleteSale, loadSales, openSaleForm, saleUploadFile, saveSale,
       docCollect, docEngine, docExtrasHtml, docRequiredMissing, docStatusBadge, docStatusHtml,
-      STOCK_UNIT_COLS, loadStock, openStockForm, renderStock, saveStock, stkAddColorRow, stkAddUnitRow,
+      STOCK_UNIT_COLS, loadStock, openStockForm, renderStock, saveStock, stkAddUnitRow,
       stockVehicle: id => _stockCache.find(v => String(v.id) === String(id)),
-      stkRenumberUnits, stockCardHtml, stockColorSwatch, stockUnitCols, stockUnitsEngine,
+      stkRenumberUnits, stockCardHtml, stockUnitCols, stockUnitsEngine,
       procColsBtn, procColsEngine, procGridCollect, procGridInput, procTh, tupleCols,
   });
 })();

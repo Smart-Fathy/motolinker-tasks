@@ -1364,8 +1364,8 @@ async function deleteStock(id) {
 function openStockCsvModal() {
   showModal('Bulk upload vehicles', `
     <div style="display:grid;gap:12px;font-size:13px">
-      <p style="color:var(--muted);margin:0">Upload a CSV with columns: <strong>make, model, trim, price, range_km, motor_ps, power_train, drive_train, transmission, battery, top_speed, fast_charge, seats, body, year, colors, quantity, notes</strong>.</p>
-      <p style="color:var(--muted);margin:0">Make and Model are required; a model with several trims = one row per trim. Colours use <code>Name:Qty | Name:Qty</code> (e.g. <code>White:2 | Black:1</code>) and their sum becomes the total quantity.</p>
+      <p style="color:var(--muted);margin:0">Upload a CSV with columns: <strong>make, model, trim, price, range_km, motor_ps, power_train, drive_train, transmission, battery, top_speed, fast_charge, seats, body, year, units, notes</strong>.</p>
+      <p style="color:var(--muted);margin:0">Make and Model are required; a model with several trims = one row per trim. Units are the cars themselves — <code>VIN:Colour:Status | VIN:Colour:Status</code> — and how many of them there are is the quantity.</p>
       <a class="btn btn-outline" href="/api/dashboard/stock/template.csv${authToken ? '?_t=' + encodeURIComponent(authToken) : ''}" download style="justify-self:start"><i data-lucide="download" style="width:14px;height:14px"></i> Download sample template</a>
       <input id="stock-csv-file" type="file" accept=".csv,text/csv" class="form-input">
       <div id="stock-csv-result"></div>

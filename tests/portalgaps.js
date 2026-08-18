@@ -202,19 +202,33 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       await new Promise(r => setTimeout(r, 500));
       const btn = [...document.querySelectorAll('#page-stock button')].find(b => /Add vehicle/.test(b.textContent));
       const shown = !!btn && btn.style.display !== 'none';
+      const cardText = document.getElementById('page-stock').textContent.replace(/\s+/g, ' ');
+      const chips = document.querySelectorAll('#page-stock .color-chip').length;
       await openStockForm(null);
       await new Promise(r => setTimeout(r, 300));
       const fields = ['stk-make', 'stk-model', 'stk-price'].every(id => !!document.getElementById(id));
+      const colours = !!document.getElementById('stk-colors');
+      const colourBtn = [...document.querySelectorAll('#modal-body button')].some(b => /Add colour/.test(b.textContent));
       document.getElementById('stk-make').value = 'BYD';
       document.getElementById('stk-model').value = 'Dolphin';
       await saveStock(null);
       await new Promise(r => setTimeout(r, 250));
-      return { shown, fields, cards: document.querySelectorAll('#page-stock .stock-card').length };
+      return { shown, fields, colours, colourBtn, cardText, chips,
+               cards: document.querySelectorAll('#page-stock .stock-card').length };
     });
     check('team portal: the register renders the same cards the dashboard shows',
       add.cards === 2, String(add.cards));
+    // Each CAR still carries its colour — that is the unit column. What is gone
+    // is the model-level "colours offered" list, which said the same thing twice
+    // and disagreed the moment a car arrived in a colour nobody had listed.
+    check('…without a colours-offered block, though each unit keeps its colour',
+      !/Available colours|No colours recorded/i.test(add.cardText)
+      && add.chips === 0 && /Colour EXT \/ INT/.test(add.cardText),
+      JSON.stringify({ chips: add.chips }));
     check('a rep with stock.create is offered Add vehicle, with the real form',
       add.shown === true && add.fields === true, JSON.stringify(add));
+    check('the form no longer asks for a list of colours offered',
+      add.colours === false && add.colourBtn === false, JSON.stringify(add));
     check('…and the save goes to their OWN portal',
       stockWrites.length === 1 && stockWrites[0].pathname === '/api/employee/stock'
       && stockWrites[0].body.make === 'BYD', JSON.stringify(stockWrites));

@@ -848,12 +848,9 @@
   .stock-qty.in{ background:rgba(201,163,94,.15); color:var(--primary); }
   .stock-qty.out{ background:rgba(220,38,38,.14); color:#f87171; }
   .stock-price{ font-size:17px; font-weight:700; color:var(--primary); margin:8px 0 12px; }
-  .stock-colors{ margin-top:12px; }
+  .stock-sec{ margin-top:12px; }
   .stock-sec-label{ font-size:10px; letter-spacing:.4px; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
-  .color-chip{ display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:3px 9px;
                border:1px solid var(--border); border-radius:12px; }
-  .color-chip b{ color:var(--primary); }
-  .color-dot{ width:11px; height:11px; border-radius:50%; border:1px solid rgba(255,255,255,.25); flex-shrink:0; }
   .stock-notes{ margin-top:11px; font-size:12px; color:var(--muted); }
   .stock-units{ width:100%; border-collapse:collapse; font-size:11px; }
   .stock-units th{ text-align:left; color:var(--muted); font-weight:700; font-size:9.5px;

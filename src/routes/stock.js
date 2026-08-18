@@ -11,23 +11,7 @@ const requirePerm = (...a) => ctx.requirePerm(...a);
 // per make+model+trim (a model may carry several trims); each physical car is a
 // unit with its own VIN, and `quantity` is derived from them. `price` = per car. Separate from the read-only website inventory picker.
 // Spec sheet shown on each car card. Keys are stable; labels drive the UI/CSV.
-const STOCK_CSV_HEADERS = ['make', 'model', 'trim', 'price', 'colors', 'units', 'notes'];
-
-// "White:3 | Black:2" (or "White:3,Black:2") → [{name:'White',qty:3},…]
-function parseStockColors(val) {
-  if (Array.isArray(val)) {
-    return val.map(c => ({
-      name: String(c && c.name != null ? c.name : '').trim(),
-      qty: Math.max(0, parseInt(String(c && c.qty != null ? c.qty : 0).replace(/[^\d]/g, ''), 10) || 0),
-    })).filter(c => c.name);
-  }
-  const s = String(val || '').trim();
-  if (!s) return [];
-  return s.split(/[|;,]/).map(part => {
-    const [name, qty] = part.split(':');
-    return { name: String(name || '').trim(), qty: Math.max(0, parseInt(String(qty || '0').replace(/[^\d]/g, ''), 10) || 0) };
-  }).filter(c => c.name);
-}
+const STOCK_CSV_HEADERS = ['make', 'model', 'trim', 'price', 'units', 'notes'];
 
 // Individual physical cars held against a model row. Accepts the UI's array form
 // or a CSV cell like "VIN123:White:in_logistics | VIN124:Black:delivered".
@@ -61,7 +45,6 @@ function stockBuildRow(body) {
   if (!model) return { error: 'Model is required' };
   const priceNum = Number(String(b.price ?? '').replace(/[^\d.]/g, ''));
 
-  const colors = parseStockColors(b.colors);
   const units = parseStockUnits(b.units);
   // Every car has its own VIN, so the cars themselves are the count. A typed-in
   // total and per-colour tallies were summaries nobody could trace back to a
@@ -73,7 +56,7 @@ function stockBuildRow(body) {
     trim: String(b.trim || '').trim(),
     price: (isFinite(priceNum) && priceNum > 0) ? priceNum : 0,
     quantity,
-    colors, units,
+    units,
     notes: String(b.notes || '').trim(),
     // Once real cars are listed the pre-migration figure has served its purpose
     legacy_count: units.length ? null : (b.legacy_count ?? undefined),
@@ -91,7 +74,9 @@ function stockUnitGaps(row) {
   };
 }
 
-// Until migrations/001 has been applied the specs/colors columns may not exist.
+// Until migrations/001 and /003 have been applied the specs/units columns may not
+// exist. (colors is still named because an old database may lack that column too,
+// even though nothing writes it any more.)
 // Detect that specific failure and retry without them so Car Stock keeps working.
 function isMissingColumnErr(err) {
   const m = String((err && (err.message || err.details)) || '');
@@ -106,7 +91,7 @@ async function stockWrite(row, id) {
     : supabase.from('stock_vehicles').insert(payload).select().single();
   let res = await run(row);
   if (res.error && isMissingColumnErr(res.error)) {
-    console.warn('[stock] colors/units columns missing — apply migrations/001 and /003. Saving without them.');
+    console.warn('[stock] units column missing — apply migrations/001 and /003. Saving without it.');
     const { colors, units, legacy_count, ...rest } = row;
     res = await run(rest);
   }
@@ -161,13 +146,14 @@ receiver.router.delete('/api/dashboard/stock/:id', requireAuth, async (req, res)
 
 // Downloadable sample CSV template for bulk upload.
 receiver.router.get('/api/dashboard/stock/template.csv', requireAuth, (_req, res) => {
-  // colors = "Name:Qty | Name:Qty"  ·  units = "VIN:Colour:Status | VIN:Colour:Status"
-  // Units win over colours for the total quantity; both may be left blank.
+  // units = "VIN:Colour:Status | VIN:Colour:Status" — the cars themselves are the
+  // count, and each one carries its own colour. A model no longer keeps a list of
+  // the colours it is offered in.
   const sample = [
     STOCK_CSV_HEADERS.join(','),
-    '"BYD","Seal","Design",1950000,"White:2 | Black:1","LGXC76C41P0123456:White:in_logistics | LGXC76C41P0123457:White:delivered",,"Immediate delivery"',
-    '"BYD","Seal","Excellence AWD",2250000,"Grey:1",,1,',
-    '"Toyota","Corolla","GLI 1.6",1150000,"White:2 | Silver:2",,4,',
+    '"BYD","Seal","Design",1950000,"LGXC76C41P0123456:White:in_logistics | LGXC76C41P0123457:White:delivered","Immediate delivery"',
+    '"BYD","Seal","Excellence AWD",2250000,,',
+    '"Toyota","Corolla","GLI 1.6",1150000,,',
   ].join('\n');
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="car-stock-template.csv"');
@@ -189,7 +175,7 @@ receiver.router.post('/api/dashboard/stock/bulk', requireAuth, upload.single('fi
   if (!inserts.length) return res.json({ inserted: 0, errors });
   let { data, error } = await supabase.from('stock_vehicles').insert(inserts).select();
   if (error && isMissingColumnErr(error)) {
-    console.warn('[stock] colors/units columns missing — apply migrations/001 and /003. Importing without them.');
+    console.warn('[stock] units column missing — apply migrations/001 and /003. Importing without it.');
     ({ data, error } = await supabase.from('stock_vehicles')
       .insert(inserts.map(({ colors, units, ...rest }) => rest)).select());
   }

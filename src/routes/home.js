@@ -199,6 +199,9 @@ async function buildHomeSummary({ employee, scope, want }) {
     return Object.entries(m).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count);
   };
   const num = v => (typeof v === 'number' ? v : parseFloat(v) || 0);
+  // Cars first. The colour tallies are a HISTORICAL fallback only — the register
+  // stopped keeping a colours-offered list, so nothing writes them any more, but
+  // rows saved before that still carry their counts and should not read as zero.
   const stockUnits = v => (Array.isArray(v.units) && v.units.length) ? v.units.length
     : (Array.isArray(v.colors) ? v.colors.reduce((s, c) => s + (parseInt(c && c.qty) || 0), 0) : 0) || (v.quantity || 0);
   const dateDesc = (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''));

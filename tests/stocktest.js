@@ -25,8 +25,8 @@ function grab(name) {
 const PO_KEYS = JSON.parse('["send_to_supplier","in_production","in_logistics","in_customs","delivered"]');
 // The module reads shared vocabulary off the context, so give it one
 const sandbox = new Function('ctx', 'PO_LINE_STATUS_KEYS',
-  [grab('parseStockColors'), grab('parseStockUnits'), grab('stockBuildRow'), grab('stockUnitGaps')].join('\n')
-  + '\nreturn { parseStockColors, parseStockUnits, stockBuildRow, stockUnitGaps };')(
+  [grab('parseStockUnits'), grab('stockBuildRow'), grab('stockUnitGaps')].join('\n')
+  + '\nreturn { parseStockUnits, stockBuildRow, stockUnitGaps };')(
     { PO_LINE_STATUS_KEYS: PO_KEYS }, PO_KEYS);
 const { stockBuildRow, stockUnitGaps } = sandbox;
 
@@ -44,12 +44,16 @@ const c = (n, ok, x) => { results.push(ok); console.log((ok ? '  ok  ' : ' FAIL 
   const { row } = stockBuildRow({ make: 'BYD', model: 'Seal', quantity: '99', units: [{ vin: 'A1' }] });
   c('a typed-in total cannot inflate the count', row.quantity === 1, 'qty=' + row.quantity);
 }
-// 3. Colour tallies no longer count either
+// 3. A model no longer keeps a list of the colours it is offered in. Each car
+//    carries its own colour; a "colours offered" list was a second place to say
+//    the same thing, and the two disagreed the moment a car arrived in a colour
+//    nobody had listed.
 {
   const { row } = stockBuildRow({ make: 'BYD', model: 'Seal', colors: 'White:5 | Black:4', units: [] });
   c('colour tallies do not create stock', row.quantity === 0, 'qty=' + row.quantity);
-  c('but the colours are still recorded for the spec card',
-    row.colors.map(x => x.name).join() === 'White,Black', JSON.stringify(row.colors));
+  c('a colours-offered list is not stored at all', row.colors === undefined, JSON.stringify(row.colors));
+  const withCars = stockBuildRow({ make: 'BYD', model: 'Seal', units: [{ vin: 'A1', colour: 'White' }] }).row;
+  c("…but each car keeps its own colour", withCars.units[0].colour === 'White', JSON.stringify(withCars.units));
 }
 // 4. legacy_count is a prompt, never stock
 {
