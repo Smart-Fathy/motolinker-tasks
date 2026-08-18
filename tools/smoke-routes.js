@@ -72,6 +72,8 @@ setTimeout(async () => {
   // any OTHER route turned away by a guard still fails the run.
   const dataGated = new Set([
     'PUT /api/dashboard/chat/rooms/:id',
+    'PUT /api/dashboard/chat/rooms/:id/icon',
+    'PUT /api/employee/chat/rooms/:id/icon',
     'POST /api/dashboard/chat/rooms/:id/members',
     'DELETE /api/dashboard/chat/rooms/:id/members/:memberKey',
     'PUT /api/employee/chat/rooms/:id',

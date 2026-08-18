@@ -100,13 +100,19 @@ function api(p, method, body) {
   check('the form repeats the prompt for missing cars',
     /3 cars were recorded here/.test(modal.legacyNote), modal.legacyNote.slice(0, 60));
 
+  // The model-level "colours offered" list is gone entirely: it said the same
+  // thing as the cars' own colours and disagreed the moment one arrived in a
+  // colour nobody had listed. Each unit still carries its colour.
   const payload = await page.evaluate(() => {
     stkAddUnitRow({ vin: 'NEW1', colour: 'White' });
-    const colors = [...document.querySelectorAll('.stk-color-row')].map(r => ({
-      name: r.querySelector('.stk-color-name').value, qty: 0 }));
-    return { colors, hasQty: 'quantity' in (() => { const o = {}; return o; })() };
+    const row = [...document.querySelectorAll('.stk-unit-row')].pop();
+    return { colourRows: document.querySelectorAll('.stk-color-row').length,
+             colourWrap: !!document.getElementById('stk-colors'),
+             unitColour: row ? (row.querySelector('[data-k="colour"]') || {}).value : null };
   });
-  check('colours still collect a name for the spec card', payload.colors[0].name === 'White', JSON.stringify(payload.colors));
+  check('the form offers no colours-offered list at all',
+    payload.colourRows === 0 && payload.colourWrap === false, JSON.stringify(payload));
+  check('…while a car still carries its own colour', payload.unitColour === 'White', JSON.stringify(payload));
 
   // ── Supplier detail ──
   await page.evaluate(() => navigate('suppliers'));

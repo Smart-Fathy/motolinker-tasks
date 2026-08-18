@@ -27,6 +27,7 @@ const ENTITY_COLUMNS = {
   rfq_items: { kvKey: 'columns_config:rfq_items', perm: 'rfq' },
   rfq_doc:   { kvKey: 'columns_config:rfq_doc',   perm: 'rfq' },
   suppliers: { kvKey: 'columns_config:suppliers', perm: 'suppliers' },
+  supplier_vehicles: { kvKey: 'columns_config:supplier_vehicles', perm: 'suppliers' },
   contracts: { kvKey: 'columns_config:contracts', perm: 'contracts' },
   quote_doc: { kvKey: 'columns_config:quote_doc', perm: 'quotation' },
   stock:     { kvKey: 'columns_config:stock',     perm: 'stock' },

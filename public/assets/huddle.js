@@ -13,6 +13,110 @@
 // Mesh topology: every participant holds one RTCPeerConnection per peer, so the
 // server caps a huddle at HUDDLE_MAX. Signalling rides the chat SSE stream that
 // messages already use, so there is no second socket to keep alive.
+
+// ── The conversation menu ─────────────────────────────────────────────────────
+// The "⋯" on every row in the chat list. Archiving and hiding are YOUR view of
+// a conversation: the other side keeps theirs exactly as it was, which is why
+// "delete" here says "for me" and means "until they write again". Managing the
+// group itself — its name, its icon, whether it exists at all — is a different
+// thing, and only offered to whoever may manage it.
+let CHAT_MENU = null;
+function chatMenuEl() {
+  if (!CHAT_MENU) {
+    CHAT_MENU = document.createElement('div');
+    CHAT_MENU.className = 'lead-menu';
+    document.body.appendChild(CHAT_MENU);
+    document.addEventListener('click', e => {
+      if (CHAT_MENU.classList.contains('open') && !CHAT_MENU.contains(e.target)
+          && !(e.target.closest && e.target.closest('.chat-room-dots'))) chatMenuClose();
+    });
+  }
+  return CHAT_MENU;
+}
+function chatMenuClose() { if (CHAT_MENU) CHAT_MENU.classList.remove('open'); }
+function chatRoomDotsHtml(roomId) {
+  return `<button class="chat-room-dots" title="More" aria-label="More"
+    onclick="event.stopPropagation();chatRoomMenu(event, ${roomId})">⋯</button>`;
+}
+// Only the admin manages groups here. The server checks it again; this decides
+// what to draw.
+function chatMayManage() { return HDCFG.me && HDCFG.me() === 'admin'; }
+
+function chatRoomMenu(e, roomId) {
+  e.stopPropagation();
+  const room = hdRoom(roomId);
+  const m = chatMenuEl();
+  const archived = !!(room && room.archived);
+  const isGroup = room && room.type === 'group';
+  m.innerHTML = `
+    <button onclick="chatRoomArchive(${roomId}, ${archived ? 'false' : 'true'})">
+      <i data-lucide="${archived ? 'archive-restore' : 'archive'}" style="width:13px;height:13px"></i>
+      ${archived ? 'Move back to chats' : 'Archive for me'}</button>
+    <button onclick="chatRoomHide(${roomId})">
+      <i data-lucide="eye-off" style="width:13px;height:13px"></i> Delete for me</button>
+    ${isGroup && chatMayManage() ? `<div class="lead-menu-sep"></div>
+      <button onclick="chatRoomRename(${roomId})"><i data-lucide="pencil" style="width:13px;height:13px"></i> Rename group</button>
+      <button onclick="chatRoomIcon(${roomId})"><i data-lucide="smile" style="width:13px;height:13px"></i> Group icon…</button>
+      <button class="danger" onclick="chatRoomDelete(${roomId})"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete group for everyone</button>` : ''}`;
+  m.style.left = Math.min(e.clientX, window.innerWidth - 240) + 'px';
+  m.style.top = Math.min(e.clientY + 6, window.innerHeight - 80) + 'px';
+  m.classList.add('open');
+  if (window.lucide) requestAnimationFrame(() => lucide.createIcons());
+}
+
+async function chatRoomState(roomId, patch, note) {
+  const r = await hdFetch(`/rooms/${roomId}/state`, { method: 'POST', body: JSON.stringify(patch) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return hdToast(d.error || 'Could not update this conversation.');
+  if (note) hdToast(note);
+  if (HDCFG.refreshRooms) await HDCFG.refreshRooms();
+}
+function chatRoomArchive(roomId, on) {
+  chatMenuClose();
+  chatRoomState(roomId, { archived: !!on }, on ? 'Archived — only for you.' : 'Back in your chats.');
+}
+function chatRoomHide(roomId) {
+  chatMenuClose();
+  if (!confirm('Remove this conversation from your list? It stays on the other side, and comes back if they write again.')) return;
+  chatRoomState(roomId, { hidden: true }, 'Removed from your list.');
+}
+async function chatRoomRename(roomId) {
+  chatMenuClose();
+  const room = hdRoom(roomId);
+  const name = prompt('Group name', (room && room.name) || '');
+  if (!name || !name.trim()) return;
+  const r = await hdFetch(`/rooms/${roomId}`, { method: 'PUT', body: JSON.stringify({ name: name.trim() }) });
+  if (!r.ok) return hdToast('Could not rename the group.');
+  if (HDCFG.refreshRooms) await HDCFG.refreshRooms();
+}
+// An emoji, so setting one needs no upload and no storage. Blank clears it.
+async function chatRoomIcon(roomId) {
+  chatMenuClose();
+  const room = hdRoom(roomId);
+  const icon = prompt('Group icon — one emoji. Leave blank to remove it.', (room && room.icon) || '');
+  if (icon === null) return;
+  const r = await hdFetch(`/rooms/${roomId}/icon`, { method: 'PUT', body: JSON.stringify({ icon: icon.trim() }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return hdToast(d.error || 'Could not set the icon.');
+  hdToast(icon.trim() ? 'Group icon set.' : 'Group icon removed.');
+  if (HDCFG.refreshRooms) await HDCFG.refreshRooms();
+}
+async function chatRoomDelete(roomId) {
+  chatMenuClose();
+  const room = hdRoom(roomId);
+  if (!confirm(`Delete "${(room && room.name) || 'this group'}" for EVERYONE? The messages go with it.`)) return;
+  const r = await hdFetch(`/rooms/${roomId}`, { method: 'DELETE' });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return hdToast(d.error || 'Could not delete the group.');
+  hdToast('Group deleted.');
+  if (HDCFG.refreshRooms) await HDCFG.refreshRooms();
+}
+// Split for the two sections the list draws.
+function chatRoomsSplit(rooms) {
+  const all = rooms || [];
+  return { active: all.filter(r => !r.archived), archived: all.filter(r => r.archived) };
+}
+
 let _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: null, iceUntil: 0, roster: [], statsTimer: null, startedAt: null, clockTimer: null };
 
 function hdMe() { return HDCFG.me(); }

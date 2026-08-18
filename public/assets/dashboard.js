@@ -1364,8 +1364,8 @@ async function deleteStock(id) {
 function openStockCsvModal() {
   showModal('Bulk upload vehicles', `
     <div style="display:grid;gap:12px;font-size:13px">
-      <p style="color:var(--muted);margin:0">Upload a CSV with columns: <strong>make, model, trim, price, range_km, motor_ps, power_train, drive_train, transmission, battery, top_speed, fast_charge, seats, body, year, colors, quantity, notes</strong>.</p>
-      <p style="color:var(--muted);margin:0">Make and Model are required; a model with several trims = one row per trim. Colours use <code>Name:Qty | Name:Qty</code> (e.g. <code>White:2 | Black:1</code>) and their sum becomes the total quantity.</p>
+      <p style="color:var(--muted);margin:0">Upload a CSV with columns: <strong>make, model, trim, price, range_km, motor_ps, power_train, drive_train, transmission, battery, top_speed, fast_charge, seats, body, year, units, notes</strong>.</p>
+      <p style="color:var(--muted);margin:0">Make and Model are required; a model with several trims = one row per trim. Units are the cars themselves — <code>VIN:Colour:Status | VIN:Colour:Status</code> — and how many of them there are is the quantity.</p>
       <a class="btn btn-outline" href="/api/dashboard/stock/template.csv${authToken ? '?_t=' + encodeURIComponent(authToken) : ''}" download style="justify-self:start"><i data-lucide="download" style="width:14px;height:14px"></i> Download sample template</a>
       <input id="stock-csv-file" type="file" accept=".csv,text/csv" class="form-input">
       <div id="stock-csv-result"></div>
@@ -3287,6 +3287,9 @@ function adminChatBackToRooms() {
   document.getElementById('admin-chat-main')?.classList.remove('mob-show');
 }
 
+// Archived conversations are collapsed by default — they are archived.
+let _chatArchOpen = false;
+function chatToggleArchived() { _chatArchOpen = !_chatArchOpen; adminChatRenderRoomList(); }
 function adminChatRenderRoomList() {
   const el = document.getElementById('admin-chat-room-list');
   if (!el) return;
@@ -3294,7 +3297,7 @@ function adminChatRenderRoomList() {
     el.innerHTML = '<div style="padding:28px 16px;font-size:12px;color:var(--muted);text-align:center">No conversations yet.<br>Use the buttons above to start one.</div>';
     return;
   }
-  el.innerHTML = adminChatRooms.map(room => {
+  const row = room => {
     const other  = room.type === 'direct' ? (room.members || []).find(m => m.member_key !== 'admin') : null;
     const name   = room.type === 'group' ? room.name : (other?.member_name || 'Unknown');
     const init   = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
@@ -3302,15 +3305,23 @@ function adminChatRenderRoomList() {
     const unread = adminChatUnread.has(room.id) ? '<div class="chat-unread-dot"></div>' : '';
     return `<div class="chat-room-item${adminActiveChatRoom === room.id ? ' active' : ''}" onclick="adminChatOpenRoom(${room.id})" data-room="${room.id}">
       <div class="chat-room-avatar-wrap">
-        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${other?.member_avatar ? `<img src="${esc(other.member_avatar)}" alt="">` : esc(init)}</div>
+        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${
+          room.type === 'group' && room.icon ? esc(room.icon)
+            : (other?.member_avatar ? `<img src="${esc(other.member_avatar)}" alt="">` : esc(init))}</div>
         ${room.type === 'direct' ? `<div class="presence-dot" id="presence-dot-${room.id}"></div>` : ''}
       </div>
       <div class="chat-room-info">
         <div class="chat-room-name">${esc(name)}${statusEmojiOnly(other?.member_status_emoji, other?.member_status)}</div>
         <div class="chat-room-preview">${esc(prev)}</div>
-      </div>${unread}
+      </div>${unread}${chatRoomDotsHtml(room.id)}
     </div>`;
-  }).join('');
+  };
+  const { active, archived } = chatRoomsSplit(adminChatRooms);
+  el.innerHTML = active.map(row).join('')
+    + (archived.length ? `<button class="chat-arch-head" onclick="chatToggleArchived()">
+        <i data-lucide="archive" style="width:13px;height:13px"></i> Archived (${archived.length})
+        <span class="chat-arch-chev">${_chatArchOpen ? '▴' : '▾'}</span></button>
+      <div class="chat-arch-list" style="display:${_chatArchOpen ? '' : 'none'}">${archived.map(row).join('')}</div>` : '');
   requestAnimationFrame(() => lucide.createIcons());
 }
 

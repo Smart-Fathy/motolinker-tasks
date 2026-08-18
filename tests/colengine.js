@@ -380,6 +380,39 @@ const CELL = sel => `(() => {
     });
     check('the field editor loads the existing options into one modal',
       fieldEdit.rowsBefore === 2, String(fieldEdit.rowsBefore));
+
+    // Reported from the PO sheet: choosing a type showed the options UNDER the
+    // editor. A <select>'s popup is drawn by the browser, not by us, and inside a
+    // stacked dialog some browsers paint it behind. There is no popup now.
+    const types = await page.evaluate(async () => {
+      CE('po_items').openFieldModal('cf_ship');
+      await new Promise(r => setTimeout(r, 120));
+      const box = document.querySelector('.ce-modal-body');
+      const selects = box.querySelectorAll('select').length;
+      const chips = [...box.querySelectorAll('.ce-type')].map(b => b.textContent.trim());
+      const before = document.getElementById('ce-type').value;
+      const onNow = box.querySelector('.ce-type.on').textContent.trim();
+      // Every chip is inside the dialog, so nothing can be layered behind it.
+      const r = box.getBoundingClientRect();
+      const chip = box.querySelector('.ce-type[data-ce-type="checkbox"]');
+      const cr = chip.getBoundingClientRect();
+      const inside = cr.top >= r.top - 1 && cr.bottom <= r.bottom + 1;
+      chip.click();
+      const after = document.getElementById('ce-type').value;
+      const optsHidden = document.getElementById('ce-options-wrap').style.display === 'none';
+      document.querySelector('.ce-type[data-ce-type="select"]').click();
+      const optsBack = document.getElementById('ce-options-wrap').style.display !== 'none';
+      CE('po_items')._closeModal();
+      return { selects, chips, before, onNow, inside, after, optsHidden, optsBack };
+    });
+    check('the type is chosen from chips, with no popup to be layered wrongly',
+      types.selects === 0 && types.chips.length === 6 && types.inside === true,
+      JSON.stringify({ selects: types.selects, chips: types.chips.length, inside: types.inside }));
+    check('…the field\'s current type is the one lit', types.before === 'select' && types.onNow === 'Dropdown',
+      JSON.stringify(types));
+    check('…picking one changes the answer and shows or hides the options',
+      types.after === 'checkbox' && types.optsHidden === true && types.optsBack === true,
+      JSON.stringify(types));
     check('one save applies rename + a new colored option + required',
       fieldEdit.label === 'Shipping mode' && fieldEdit.required
       && fieldEdit.opts.join(' ') === 'roro:#22c55e container air_freight:#3b82f6',

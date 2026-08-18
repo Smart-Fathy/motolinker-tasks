@@ -29,6 +29,10 @@ function supplierVehicleRow(body, supplierId) {
     lead_time: String(b.lead_time || '').trim(),
     accessories: String(b.accessories || '').trim(),
     notes: String(b.notes || '').trim(),
+    // Fields an admin added to the catalogue grid (the supplier_vehicles column
+    // config). Migration 014 adds the column; writeOptional keeps a save working
+    // on a database that has not had it applied yet.
+    custom_fields: b.custom_fields && typeof b.custom_fields === 'object' ? b.custom_fields : {},
   };
   if (!row.brand && !row.model) return { error: 'Brand or model is required' };
   return { row };
@@ -105,7 +109,8 @@ ctx.mountSupplierCatalogueRoutes = function mountSupplierCatalogueRoutes(base, g
   receiver.router.post(`${base}/:id/vehicles`, guard, requirePerm('suppliers', 'catalogue'), express.json(), async (req, res) => {
     const { row, error: verr } = supplierVehicleRow(req.body, parseInt(req.params.id));
     if (verr) return res.status(400).json({ error: verr });
-    const { data, error } = await supabase.from('supplier_vehicles').insert(row).select().single();
+    const { data, error } = await ctx.writeOptional(
+      p => supabase.from('supplier_vehicles').insert(p).select().single(), row, ['custom_fields']);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
@@ -113,8 +118,9 @@ ctx.mountSupplierCatalogueRoutes = function mountSupplierCatalogueRoutes(base, g
     const { row, error: verr } = supplierVehicleRow(req.body, parseInt(req.params.id));
     if (verr) return res.status(400).json({ error: verr });
     row.updated_at = new Date().toISOString();
-    const { data, error } = await supabase.from('supplier_vehicles').update(row)
-      .eq('id', req.params.vid).eq('supplier_id', req.params.id).select().single();
+    const { data, error } = await ctx.writeOptional(
+      p => supabase.from('supplier_vehicles').update(p).eq('id', req.params.vid)
+        .eq('supplier_id', req.params.id).select().single(), row, ['custom_fields']);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });

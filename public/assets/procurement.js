@@ -1073,7 +1073,12 @@
     const id = _supDetailId;
     try {
       if (which === 'vehicles') {
-        _supData.vehicles = await apiFetch(`/api/dashboard/suppliers/${id}/vehicles`).then(r => r.json());
+        // The column config decides what this grid even has, so it loads with it.
+        const [veh] = await Promise.all([
+          apiFetch(`/api/dashboard/suppliers/${id}/vehicles`).then(r => r.json()),
+          supVehiclesEngine().load(),
+        ]);
+        _supData.vehicles = veh;
         supRenderVehicles();
       } else if (which === 'docs') {
         _supData.docs = await apiFetch(`/api/dashboard/suppliers/${id}/docs`).then(r => r.json());
@@ -1086,36 +1091,62 @@
     requestAnimationFrame(() => lucide.createIcons());
   }
 
-  const SUP_V_COLS = [['brand', 'Brand'], ['model', 'Model'], ['trim', 'Trim'], ['model_year', 'Year'],
-    ['availability', 'Availability'], ['fob_price', 'FOB price'], ['lead_time', 'Lead time'],
-    ['accessories', 'Accessories']];
+  // What a supplier offers. The last grid with a frozen column list — it reads
+  // from the shared engine now, so an admin can rename these, hide them, or add
+  // a field of any type, exactly as on the PO and RFQ sheets.
+  const SUP_V_COLS = [['brand', 'Brand', 110], ['model', 'Model', 110], ['trim', 'Trim', 100],
+    ['model_year', 'Year', 70], ['availability', 'Availability', 120], ['fob_price', 'FOB price', 100],
+    ['lead_time', 'Lead time', 110], ['accessories', 'Accessories', 160]];
+  function supVehiclesEngine() {
+    return procColsEngine('supplier_vehicles',
+      tupleCols(SUP_V_COLS, { model_year: 'number', fob_price: 'number' }), () => supTab('vehicles'));
+  }
+  function supVehicleCols() {
+    const eng = CE('supplier_vehicles');
+    return eng && eng.loaded ? eng.visible() : tupleCols(SUP_V_COLS, {});
+  }
 
   function supRenderVehicles() {
     const rows = Array.isArray(_supData.vehicles) ? _supData.vehicles : [];
+    const cols = supVehicleCols();
     document.getElementById('sup-pane').innerHTML = `
-      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px">
+        ${procColsBtn('supplier_vehicles')}
         <button class="btn btn-outline btn-sm" onclick="supAddVehicleRow()"><i data-lucide="plus" style="width:13px;height:13px"></i> Add vehicle</button>
       </div>
       <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px">
         <table style="border-collapse:collapse;font-size:12px;min-width:900px;width:100%">
-          <thead><tr>${SUP_V_COLS.map(([, l]) => `<th class="po-th">${esc(l)}</th>`).join('')}<th class="po-th" style="width:38px"></th></tr></thead>
+          <thead><tr>${cols.map(c => procTh('supplier_vehicles', c, { cls: 'po-th', style: `min-width:${c.width || 100}px` })).join('')}<th class="po-th" style="width:38px"></th></tr></thead>
           <tbody id="sup-v-body">${rows.map(supVehicleRowHtml).join('')}</tbody>
         </table>
       </div>
       ${rows.length ? '' : '<div style="color:var(--muted);font-size:12.5px;padding:14px;text-align:center">Nothing listed yet. Add what this supplier offers so RFQs and purchase orders can pick from it.</div>'}`;
+    // Every cell saves the row it is in, whatever type it was configured as.
+    const body = document.getElementById('sup-v-body');
+    if (body) body.addEventListener('change', e => {
+      const el = e.target.closest('.sup-v');
+      if (el) supSaveVehicle(Number(el.closest('tr').dataset.vid), el);
+    });
   }
   function supVehicleRowHtml(v) {
-    return `<tr data-vid="${v.id}">${SUP_V_COLS.map(([k]) => {
-      const val = k === 'fob_price' && v[k] ? Number(v[k]).toLocaleString() : (v[k] ?? '');
-      return `<td class="po-td"><input class="form-input sup-v" data-k="${k}" value="${esc(String(val))}"
-        style="font-size:12px;padding:5px 6px" onchange="supSaveVehicle(${v.id}, this)"></td>`;
-    }).join('')}
+    const eng = CE('supplier_vehicles');
+    const value = c => c.builtin
+      ? (c.key === 'fob_price' && v[c.key] ? Number(v[c.key]) : (v[c.key] ?? ''))
+      : ((v.custom_fields || {})[c.key] ?? '');
+    return `<tr data-vid="${v.id}">${supVehicleCols().map(c => procGridInput(eng, c, value(c), 'sup-v')).join('')}
     <td class="po-td"><button class="btn btn-outline" style="padding:2px 6px;color:var(--danger);border-color:var(--danger)"
       onclick="supDeleteVehicle(${v.id})"><i data-lucide="x" style="width:12px;height:12px"></i></button></td></tr>`;
   }
+  // Builtin columns are the table's own; anything added rides in custom_fields.
   function supRowPayload(tr) {
-    const o = {};
-    tr.querySelectorAll('.sup-v').forEach(i => { o[i.dataset.k] = i.value; });
+    const eng = CE('supplier_vehicles');
+    const o = { custom_fields: {} };
+    tr.querySelectorAll('.sup-v').forEach(i => {
+      const k = i.dataset.k;
+      const val = i.type === 'checkbox' ? i.checked : i.value;
+      const col = eng && eng.col(k);
+      if (col && col.builtin === false) o.custom_fields[k] = val; else o[k] = val;
+    });
     return o;
   }
   async function supAddVehicleRow() {
@@ -1536,23 +1567,16 @@
     body.innerHTML = `<div class="stock-grid">${rows.map(stockCardHtml).join('')}</div>`;
     requestAnimationFrame(() => lucide.createIcons());
   }
-  // One card per car: title, price, spec sheet and per-colour stock counts.
+  // One card per car: title, price and the individual cars held against it.
   function stockCardHtml(v) {
-    const colors = Array.isArray(v.colors) ? v.colors : [];
     // Individual cars held against this model (VIN, tracking status, supplier…).
     // These ARE the stock count — nothing here reads a typed-in total any more.
     const units = Array.isArray(v.units) ? v.units : [];
     const qty = units.length;
     const noVin = units.filter(u => !String(u.vin || '').trim()).length;
     const legacy = units.length ? 0 : (parseInt(v.legacy_count, 10) || 0);
-    const colorChips = colors.length
-      ? colors.map(c => {
-          const held = units.filter(u => String(u.colour || '').trim().toLowerCase() === String(c.name || '').trim().toLowerCase()).length;
-          return `<span class="color-chip"><span class="color-dot" style="background:${stockColorSwatch(c.name)}"></span>${esc(c.name)}${held ? `<b>${held}</b>` : ''}</span>`;
-        }).join('')
-      : '<span style="color:var(--muted);font-size:12px">No colours recorded</span>';
     const unitsHtml = units.length ? `
-      <div class="stock-colors">
+      <div class="stock-sec">
         <div class="stock-sec-label">Units (${units.length})</div>
         <div class="table-scroll"><table class="stock-units">
           <thead><tr>${stockUnitCols().map(c => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>
@@ -1578,10 +1602,6 @@
           <span class="stock-qty ${qty > 0 ? 'in' : 'out'}">${qty} in stock</span>
         </div>
         <div class="stock-price">${v.price ? egp(v.price) : 'Price not set'}</div>
-        <div class="stock-colors">
-          <div class="stock-sec-label">Available colours</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px">${colorChips}</div>
-        </div>
         ${unitsHtml}
         ${legacy ? `<div class="stk-legacy">
           <i data-lucide="alert-triangle" style="width:14px;height:14px"></i>
@@ -1597,15 +1617,6 @@
         </div>` : ''}
       </div>`;
   }
-  // Map a colour name to a swatch; unknown names fall back to a neutral grey.
-  function stockColorSwatch(name) {
-    const n = String(name || '').trim().toLowerCase();
-    const map = { white:'#f8fafc', black:'#111827', grey:'#6b7280', gray:'#6b7280', silver:'#cbd5e1', red:'#dc2626',
-      blue:'#2563eb', 'navy':'#1e3a8a', green:'#16a34a', yellow:'#eab308', orange:'#ea580c', brown:'#92400e',
-      beige:'#e7d7bf', gold:'#c9a35e', purple:'#7c3aed', pink:'#ec4899' };
-    for (const k in map) if (n.includes(k)) return map[k];
-    return '#9ca3af';
-  }
   async function openStockForm(id) {
     await stockUnitsEngine().load();
     const v = id ? _stockCache.find(x => x.id === id) : null;
@@ -1617,13 +1628,6 @@
         </div>
         <div><label class="form-label">Trim</label><input id="stk-trim" class="form-input" value="${esc(v?.trim || '')}" placeholder="e.g. GLI 1.6 (leave blank if none)"></div>
         <div><label class="form-label">Price (EGP)</label><input id="stk-price" class="form-input" type="number" min="0" step="any" value="${v?.price ?? ''}" placeholder="e.g. 1150000"></div>
-
-        <div>
-          <label class="form-label">Colours offered</label>
-          <div id="stk-colors"></div>
-          <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="stkAddColorRow()">+ Add colour</button>
-          <div style="font-size:11px;color:var(--muted);margin-top:6px">Shown on the spec card. How many are in stock comes from the cars listed below, each with its own VIN.</div>
-        </div>
 
         <div>
           <label class="form-label">Units in stock <span style="color:var(--muted);font-weight:400">(one row per physical car)</span></label>
@@ -1651,21 +1655,7 @@
       `<button class="btn btn-outline" onclick="PROCFG.closeModal()">Cancel</button>
        <button class="btn btn-primary" onclick="saveStock(${id || 'null'})">${v ? 'Save changes' : 'Add vehicle'}</button>`,
       { wide: true });
-    const existing = Array.isArray(v?.colors) ? v.colors : [];
-    (existing.length ? existing : [{ name: '', qty: '' }]).forEach(c => stkAddColorRow(c.name, c.qty));
     (Array.isArray(v?.units) ? v.units : []).forEach(stkAddUnitRow);
-  }
-  function stkAddColorRow(name, qty) {
-    const wrap = document.getElementById('stk-colors');
-    if (!wrap) return;
-    const row = document.createElement('div');
-    row.className = 'stk-color-row';
-    row.style.cssText = 'display:grid;grid-template-columns:1fr 34px;gap:8px;margin-bottom:6px';
-    row.innerHTML = `
-      <input class="form-input stk-color-name" placeholder="Colour (e.g. White)" value="${esc(name || '')}">
-      <button class="btn btn-outline" style="padding:0;font-size:15px;color:var(--danger);border-color:var(--danger)" title="Remove"><i data-lucide="x" style="width:13px;height:13px"></i></button>`;
-    row.querySelector('button').onclick = () => row.remove();
-    wrap.appendChild(row);
   }
   function stkAddUnitRow(u) {
     const tbody = document.getElementById('stk-units');
@@ -1689,10 +1679,6 @@
   }
 
   async function saveStock(id) {
-    const colors = [...document.querySelectorAll('.stk-color-row')].map(r => ({
-      name: r.querySelector('.stk-color-name').value.trim(),
-      qty: 0,                    // counts come from the individual cars, not here
-    })).filter(c => c.name);
     const units = procGridCollect('.stk-unit-row', '.stk-u')
       .filter(u => u.vin || u.consignee || u.colour || u.supplier);
     const payload = {
@@ -1701,7 +1687,7 @@
       trim: document.getElementById('stk-trim').value.trim(),
       price: document.getElementById('stk-price').value,
       notes: document.getElementById('stk-notes').value.trim(),
-      colors, units,
+      units,
     };
     const err = document.getElementById('stk-err');
     if (!payload.make || !payload.model) { err.textContent = 'Make and Model are required.'; err.style.display = 'block'; return; }
@@ -1908,14 +1894,14 @@
     rfqRenumber, saveContract, savePo, saveRfq,
     saveSupplier, supAddVehicleRow, supCatFilter, supCatLabel,
     supCatRows, supCatalogue, supDeleteVehicle, supRenderDocs,
-    supRenderPurchases, supRenderVehicles, supRowPayload, supSaveVehicle,
+    supRenderPurchases, supRenderVehicles, supRowPayload, supSaveVehicle, supVehicleCols, supVehiclesEngine,
     supTab, supUploadDoc, supVehicleRowHtml, supplierFillFields,
     supplierOptionsHtml, viewDocPdf, viewDocPdfPayload,
       SALE_COLS, SALE_STATUS_OPTS, deleteSale, loadSales, openSaleForm, saleUploadFile, saveSale,
       docCollect, docEngine, docExtrasHtml, docRequiredMissing, docStatusBadge, docStatusHtml,
-      STOCK_UNIT_COLS, loadStock, openStockForm, renderStock, saveStock, stkAddColorRow, stkAddUnitRow,
+      STOCK_UNIT_COLS, loadStock, openStockForm, renderStock, saveStock, stkAddUnitRow,
       stockVehicle: id => _stockCache.find(v => String(v.id) === String(id)),
-      stkRenumberUnits, stockCardHtml, stockColorSwatch, stockUnitCols, stockUnitsEngine,
+      stkRenumberUnits, stockCardHtml, stockUnitCols, stockUnitsEngine,
       procColsBtn, procColsEngine, procGridCollect, procGridInput, procTh, tupleCols,
   });
 })();
