@@ -485,6 +485,9 @@ async function showApp() {
   loadNotifs();
   openNotifStream();
   // After applyPermissions(), so a gated section falls back instead of erroring
+  // A huddle that was running when this page last unloaded is still running;
+  // offer it back rather than leaving people to guess.
+  if (typeof hdBootLive === 'function') hdBootLive();
   navigate(lastPage('home'));
   await Promise.all([loadDropdownTasks(), loadMyTasks(), loadMyHours()]);
   requestAnimationFrame(() => lucide.createIcons());
@@ -497,68 +500,16 @@ async function logout() {
   localStorage.removeItem('ml_emp_token'); empToken = null; showLogin();
 }
 
-/* ── Inventory (read-only) ──
-   The stock.view grant existed long before there was anywhere in this portal to
-   spend it: granting Inventory to a rep changed nothing on their screen. This is
-   that page — the same register the dashboard shows, without the editing. */
-let _empStock = [];
-async function loadEmpStock() {
-  const box = document.getElementById('emp-stock-list');
-  if (box) box.innerHTML = '<div class="loading"><span class="spinner"></span> Loading inventory…</div>';
-  try {
-    const list = await ef('/api/employee/stock').then(r => r.json());
-    if (list && list.error) throw new Error(list.error);
-    _empStock = Array.isArray(list) ? list : [];
-  } catch (e) {
-    if (box) box.innerHTML = `<div style="color:var(--danger);padding:16px;font-size:13px">${esc(e.message)}</div>`;
-    return;
-  }
-  renderEmpStock();
-}
-function renderEmpStock() {
-  const box = document.getElementById('emp-stock-list');
-  if (!box) return;
-  const term = (document.getElementById('emp-stock-search')?.value || '').trim().toLowerCase();
-  const rows = _empStock.filter(v => !term || `${v.make} ${v.model} ${v.trim}`.toLowerCase().includes(term));
-  if (!rows.length) {
-    box.innerHTML = `<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">${
-      _empStock.length ? 'No vehicles match your search.' : 'No vehicles in stock yet.'}</div>`;
-    return;
-  }
-  // Units are the count — the same rule the dashboard follows, so the two pages
-  // can never disagree about how many cars are actually held.
-  const units = v => (Array.isArray(v.units) ? v.units.length : 0) || (parseInt(v.legacy_count, 10) || 0);
-  const total = rows.reduce((s, v) => s + units(v), 0);
-  box.innerHTML = `
-    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${rows.length} model(s) · ${total} car(s) in stock</div>
-    <div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
-        <th style="padding:8px 10px">Vehicle</th><th style="padding:8px 10px">Colours</th>
-        <th style="padding:8px 10px;text-align:right">In stock</th>
-        <th style="padding:8px 10px;text-align:right">Price</th></tr></thead>
-      <tbody>${rows.map(v => {
-        const colors = (Array.isArray(v.colors) ? v.colors : []).map(c => esc(c.name)).filter(Boolean);
-        const n = units(v);
-        return `<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:8px 10px;font-weight:600">${esc([v.make, v.model, v.trim].filter(Boolean).join(' '))}</td>
-          <td style="padding:8px 10px;color:var(--muted)">${colors.length ? colors.join(', ') : '—'}</td>
-          <td style="padding:8px 10px;text-align:right;${n ? 'color:var(--primary);font-weight:700' : 'color:var(--muted)'}">${n || '—'}</td>
-          <td style="padding:8px 10px;text-align:right">${v.price ? Number(v.price).toLocaleString() + ' EGP' : '—'}</td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table></div>`;
-}
-
 /* ── Navigation ── */
 const pageTitles = { home: 'Home', chat: 'Chat', log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', gchat: 'Google Chat', notif: 'Notifications', issues: 'Issues',
   suppliers: 'Suppliers', rfq: 'RFQ', purchaseorders: 'Purchase Orders',
   contracts: 'Contracts', submissions: 'Website Submissions', stock: 'Inventory' };
-const pageLoaders = { home: loadHome, requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: () => initQuotationPage(), leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, gchat: loadGChat, notif: loadNotifPage, issues: loadIssues,
+const pageLoaders = { calendar: () => loadCalendar(), home: loadHome, requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: () => initQuotationPage(), leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, gchat: loadGChat, notif: loadNotifPage, issues: loadIssues,
   // Operations: the renderers live in the shared procurement.js, which both
   // portals load, so these are the same functions the dashboard calls.
   suppliers: () => loadSuppliers(), rfq: () => loadRfqs(), purchaseorders: () => loadPurchaseOrders(),
   contracts: () => loadContracts(), submissions: () => loadSubmissions(), meet: () => loadMeetings(),
-  stock: () => loadEmpStock() };
+  stock: () => loadStock() };
 let _currentEmpPage = 'log';
 function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
@@ -735,6 +686,8 @@ function renderTasksList() {
             ${activeTab === 'current' ? `<button class="btn btn-primary btn-sm" onclick="markTaskDone(${t.id})"><i data-lucide="check" style="width:14px;height:14px"></i> Done</button>` : ''}
           </div>
         </div>
+        ${t.description ? `<div class="task-desc" id="task-desc-${t.id}">${esc(t.description)}</div>
+          <button class="task-desc-more" onclick="empTaskDescToggle(${t.id})">Show more</button>` : ''}
         <div class="task-meta">
           <span>${t.channel_name}</span>
           <span>Due ${t.due_date}</span>
@@ -749,7 +702,23 @@ function renderTasksList() {
       </div>
     </div>`;
   }).join('');
-  requestAnimationFrame(() => lucide.createIcons());
+  requestAnimationFrame(() => {
+    lucide.createIcons();
+    // Only offer "Show more" where the text is actually clipped.
+    document.querySelectorAll('.task-desc').forEach(el => {
+      const more = el.nextElementSibling;
+      if (more && more.classList.contains('task-desc-more') && el.scrollHeight <= el.clientHeight + 2) more.remove();
+    });
+  });
+}
+// The brief the task was created with — the team could not read it at all: the
+// card showed the title, the due date and the badges, and dropped the body.
+function empTaskDescToggle(id) {
+  const el = document.getElementById('task-desc-' + id);
+  if (!el) return;
+  const open = el.classList.toggle('open');
+  const btn = el.nextElementSibling;
+  if (btn && btn.classList.contains('task-desc-more')) btn.textContent = open ? 'Show less' : 'Show more';
 }
 
 /* ── Log Hours ── */
@@ -4152,6 +4121,19 @@ const CFCFG = {
   can: (section, action) => empCan(section, action),
   isAdmin: false,
   people: () => [],
+};
+
+// The calendar's portal adapter for the team. Everything is scoped server-side
+// to this employee; the gates here only decide which affordances to draw.
+const CALCFG = {
+  base: '/api/employee',
+  fetch: (url, opts) => ef(url, opts),
+  can: (section, action) => empCan(section, action),
+  modal: (...a) => showModal(...a),
+  closeModal: () => hideModal(),
+  toast: msg => showToast(msg),
+  openTask: () => navigate('tasks'),
+  openLead: id => { if (id && typeof openLeadProfile === 'function') openLeadProfile(id); },
 };
 
 const PROCFG = {

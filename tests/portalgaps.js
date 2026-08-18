@@ -49,8 +49,13 @@ const MOUNTED = fs.readFileSync('tools/routes.snapshot.txt', 'utf8').split('\n')
 const isMounted = (pathname, method) =>
   MOUNTED.some(r => r.method === (method || 'GET') && r.re.test(pathname));
 
-let pdfPosts = [];
-function api(pathname, method) {
+let pdfPosts = [], stockWrites = [];
+function api(pathname, method, body) {
+  if ((method === 'POST' || method === 'PUT') && /\/stock(\/\d+)?$/.test(pathname)) {
+    stockWrites.push({ pathname, method, body: JSON.parse(body || '{}') });
+    return { ok: true, id: 7 };
+  }
+  if (/columns\/stock$/.test(pathname)) return { columns: null };
   // The team portal's PDF button must reach a route that EXISTS. Anything the
   // stub does not know answers with the SPA's HTML, exactly like production.
   if (/quotations\/\d+\/pdf$/.test(pathname)) {
@@ -94,7 +99,7 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       if (!isMounted(u.pathname, req.method())) {
         return req.respond({ status: 404, contentType: 'text/html', body: '<!DOCTYPE html><html></html>' });
       }
-      const body = api(u.pathname, req.method());
+      const body = api(u.pathname, req.method(), req.postData());
       if (body === undefined) return req.respond({ status: 404, contentType: 'text/html', body: '<!DOCTYPE html><html></html>' });
       return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     }
@@ -153,22 +158,18 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       const nav = document.getElementById('nav-stock');
       const navShown = !!nav && nav.style.display !== 'none';
       navigate('stock');
-      await new Promise(r => setTimeout(r, 500));
-      const box = document.getElementById('emp-stock-list');
+      await new Promise(r => setTimeout(r, 550));
+      const box = document.getElementById('page-stock');
       return { navShown, text: box ? box.textContent.replace(/\s+/g, ' ').trim() : null,
-               rows: box ? box.querySelectorAll('tbody tr').length : 0,
-               // Writing stays the admin's: nothing here may offer to change stock.
-               editable: box ? box.querySelectorAll('input,select,button').length : -1 };
+               cards: box ? box.querySelectorAll('.stock-card').length : 0 };
     });
     check('a granted rep gets an Inventory item in the nav', inv.navShown === true);
-    check('…and the page lists the stock with its real unit counts',
-      inv.rows === 2 && /BYD Seal Design/.test(inv.text) && /2 model\(s\) · 2 car\(s\)/.test(inv.text),
-      JSON.stringify(inv.text && inv.text.slice(0, 120)));
-    check('…read-only: it offers nothing that would write', inv.editable === 0, String(inv.editable));
+    check('…and the page lists the stock the dashboard holds',
+      inv.cards === 2 && /BYD Seal/.test(inv.text), JSON.stringify(inv.text && inv.text.slice(0, 90)));
     const search = await page.evaluate(async () => {
-      document.getElementById('emp-stock-search').value = 'changan';
-      renderEmpStock();
-      return document.getElementById('emp-stock-list').querySelectorAll('tbody tr').length;
+      document.getElementById('stock-search').value = 'changan';
+      renderStock();
+      return document.querySelectorAll('#page-stock .stock-card').length;
     });
     check('…and can be searched', search === 1, String(search));
     check('Inventory: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
@@ -185,6 +186,54 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
     });
     check('a rep with the picker but NOT the page sees no Inventory', hidden.nav === true && hidden.page === '0',
       JSON.stringify(hidden));
+    await page.close();
+  }
+
+  // ── 2b. A rep who may ADD a vehicle ─────────────────────────────────────────
+  // Reading the register was the whole of the first Inventory build; a team that
+  // keeps the stock could not touch it.
+  {
+    stockWrites = [];
+    const { page, errs } = await openPortal(browser, {
+      route: '/employee', file: 'public/employee.html', tokenKey: 'ml_emp_token', port,
+      perms: { stock: true, stockActions: { view: true, browse: true, create: true, edit: true } } });
+    const add = await page.evaluate(async () => {
+      navigate('stock');
+      await new Promise(r => setTimeout(r, 500));
+      const btn = [...document.querySelectorAll('#page-stock button')].find(b => /Add vehicle/.test(b.textContent));
+      const shown = !!btn && btn.style.display !== 'none';
+      await openStockForm(null);
+      await new Promise(r => setTimeout(r, 300));
+      const fields = ['stk-make', 'stk-model', 'stk-price'].every(id => !!document.getElementById(id));
+      document.getElementById('stk-make').value = 'BYD';
+      document.getElementById('stk-model').value = 'Dolphin';
+      await saveStock(null);
+      await new Promise(r => setTimeout(r, 250));
+      return { shown, fields, cards: document.querySelectorAll('#page-stock .stock-card').length };
+    });
+    check('team portal: the register renders the same cards the dashboard shows',
+      add.cards === 2, String(add.cards));
+    check('a rep with stock.create is offered Add vehicle, with the real form',
+      add.shown === true && add.fields === true, JSON.stringify(add));
+    check('…and the save goes to their OWN portal',
+      stockWrites.length === 1 && stockWrites[0].pathname === '/api/employee/stock'
+      && stockWrites[0].body.make === 'BYD', JSON.stringify(stockWrites));
+    check('Inventory write: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
+    await page.close();
+  }
+  {
+    const { page } = await openPortal(browser, {
+      route: '/employee', file: 'public/employee.html', tokenKey: 'ml_emp_token', port,
+      perms: { stock: true, stockActions: { view: true, browse: true, create: false, edit: false } } });
+    const ro = await page.evaluate(async () => {
+      navigate('stock');
+      await new Promise(r => setTimeout(r, 500));
+      const btn = [...document.querySelectorAll('#page-stock button')].find(b => /Add vehicle/.test(b.textContent));
+      return { add: !!btn && btn.style.display !== 'none',
+               edit: [...document.querySelectorAll('#page-stock .stock-actions button')].length };
+    });
+    check('a rep without the write grants gets no Add and no Edit',
+      ro.add === false && ro.edit === 0, JSON.stringify(ro));
     await page.close();
   }
 

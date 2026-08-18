@@ -318,15 +318,27 @@ async function sweep(browser, o) {
     t('the modal height resolves against the viewport', mh && mh !== 'none', String(mh));
   }
 
-  // ── Google Calendar shows an agenda, not a seven-column week grid ──
+  // ── The calendar is legible on a phone ──
+  // It used to be Google's embed in agenda mode; it is our own grid now, which
+  // has to survive 390px without the chips turning it into a wall of text.
   {
     await page.evaluate(() => { try { navigate('calendar'); } catch (_) {} });
-    await sleep(400);
-    const mode = await page.evaluate(() => {
-      const f = document.querySelector('iframe[src*="calendar.google.com/calendar/embed"]');
-      return f ? (f.getAttribute('src').match(/[?&]mode=([A-Z]+)/) || [])[1] : null;
+    await sleep(600);
+    const cal = await page.evaluate(() => {
+      const host = document.getElementById('ml-calendar');
+      if (!host || !host.querySelector('.cal-day')) return null;
+      const day = host.querySelector('.cal-day');
+      const chip = host.querySelector('.cal-chip');
+      return { grid: host.querySelectorAll('.cal-day').length,
+               dayH: day.getBoundingClientRect().height,
+               wide: host.scrollWidth > host.clientWidth + 2,
+               chipText: chip ? getComputedStyle(chip).fontSize : null };
     });
-    if (mode) t('the calendar embed uses agenda mode on a phone', mode === 'AGENDA', String(mode));
+    if (cal) {
+      t('the calendar grid fits the phone without scrolling sideways', cal.wide === false, JSON.stringify(cal));
+      t('…with compact day cells, and chips reduced to their icon',
+        cal.dayH < 120 && (cal.chipText === null || cal.chipText === '0px'), JSON.stringify(cal));
+    }
   }
 
   // ── Home widgets are sized by their content ──

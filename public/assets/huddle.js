@@ -13,7 +13,7 @@
 // Mesh topology: every participant holds one RTCPeerConnection per peer, so the
 // server caps a huddle at HUDDLE_MAX. Signalling rides the chat SSE stream that
 // messages already use, so there is no second socket to keep alive.
-let _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: null, iceUntil: 0, roster: [], statsTimer: null };
+let _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: null, iceUntil: 0, roster: [], statsTimer: null, startedAt: null, clockTimer: null };
 
 function hdMe() { return HDCFG.me(); }
 function hdFetch(path, opts) { return HDCFG.fetch(HDCFG.base + path, opts); }
@@ -125,6 +125,8 @@ async function huddleStart(roomId, withVideo) {
   catch (_) {}
   if (!r || r.error) { hdToast((r && r.error) || 'Could not join the huddle.'); huddleLeave(); return; }
   _hd.roster = r.participants || [];
+  _hd.startedAt = r.started_at || Date.now();
+  hdStartClock();
   // Dial from the join response as well as from the roster frame. Signalling rides the
   // chat stream, and a joiner whose stream has not finished registering misses its own
   // roster broadcast — if it also holds the smaller key, nobody calls that pair at all
@@ -138,13 +140,36 @@ async function huddleStart(roomId, withVideo) {
 
 function huddleJoinExisting(roomId) { return huddleStart(roomId, false); }
 
+// How long this has been going. Counted from the server's start time so it is
+// the huddle's duration, not "how long I have been in it".
+function hdElapsed(since) {
+  const ms = Math.max(0, Date.now() - Number(since || Date.now()));
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  const two = n => String(n).padStart(2, '0');
+  return h ? `${h}:${two(m)}:${two(ss)}` : `${m}:${two(ss)}`;
+}
+function hdStartClock() {
+  if (_hd.clockTimer) clearInterval(_hd.clockTimer);
+  hdPaintClock();
+  _hd.clockTimer = setInterval(hdPaintClock, 1000);
+}
+function hdStopClock() { if (_hd.clockTimer) { clearInterval(_hd.clockTimer); _hd.clockTimer = null; } }
+function hdPaintClock() {
+  const el = document.querySelector('#hd-bar .hd-clock');
+  if (el) el.textContent = _hd.startedAt ? hdElapsed(_hd.startedAt) : '';
+  const chip = document.querySelector('#hd-join-chip .hd-chip-clock');
+  if (chip && chip.dataset.since) chip.textContent = hdElapsed(Number(chip.dataset.since));
+}
+
 function huddleLeave() {
   if (_hd.roomId) hdSignal('leave').catch(() => {});
   if (_hd.statsTimer) { clearInterval(_hd.statsTimer); _hd.statsTimer = null; }
+  hdStopClock();
   _hd.peers.forEach(p => { try { p.pc.close(); } catch (_) {} });
   _hd.peers.clear();
   [_hd.local, _hd.screen].forEach(st => st && st.getTracks().forEach(t => t.stop()));
-  _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: _hd.ice, iceUntil: _hd.iceUntil, roster: [], statsTimer: null };
+  _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: _hd.ice, iceUntil: _hd.iceUntil, roster: [], statsTimer: null, startedAt: null, clockTimer: null };
   hdPruneAudio(null);
   hdRenderBar();
 }
@@ -503,20 +528,51 @@ function hdToast(msg) {
 }
 function hdNoteRoster(msg) {
   // A huddle is running in a room we are not in
-  if ((msg.participants || []).length) hdShowJoinChip(msg.roomId, msg.participants.length);
+  if ((msg.participants || []).length) hdShowJoinChip(msg.roomId, msg.participants.length, msg.started_at);
   else hdHideJoinChip();
 }
-function hdShowJoinChip(roomId, n) {
+function hdShowJoinChip(roomId, n, startedAt) {
   const el = document.getElementById('hd-join-chip');
   if (!el || _hd.roomId) return;
   const room = hdRoom(roomId);
   const where = room ? (room.type === 'group' ? room.name : hdNameFor((room.members || []).map(m => m.member_key).find(k => k !== hdMe()) || '')) : 'a conversation';
-  el.innerHTML = `<span>Huddle in ${esc(where)} · ${n} ${n === 1 ? 'person' : 'people'}</span>
+  el.innerHTML = `<span class="hd-chip-live"></span>
+    <span>Huddle in ${esc(where)} · ${n} ${n === 1 ? 'person' : 'people'}</span>
+    ${startedAt ? `<span class="hd-chip-clock" data-since="${Number(startedAt)}">${esc(hdElapsed(startedAt))}</span>` : ''}
     <button class="hd-chip-btn" onclick="huddleJoinExisting(${roomId})">Join</button>
     <button class="hd-chip-x" onclick="hdHideJoinChip()" title="Dismiss">×</button>`;
   el.style.display = 'flex';
 }
-function hdHideJoinChip() { const el = document.getElementById('hd-join-chip'); if (el) el.style.display = 'none'; }
+function hdHideJoinChip() {
+  const el = document.getElementById('hd-join-chip');
+  if (el) el.style.display = 'none';
+  if (_hdChipTimer) { clearInterval(_hdChipTimer); _hdChipTimer = null; }
+}
+let _hdChipTimer = null;
+
+// A refresh leaves the call without leaving the roster: the huddle is still
+// running, and the reloaded page had no way to know. Ask on boot, and offer it
+// back — this is the difference between "the huddle is gone" and "rejoin".
+// Boot: know the rooms before naming one in the chip, then ask.
+async function hdBootLive() {
+  try { if (HDCFG.refreshRooms) await HDCFG.refreshRooms(); } catch (_) {}
+  hdCheckLive();
+}
+async function hdCheckLive() {
+  if (_hd.roomId) return;
+  let live = [];
+  try {
+    const r = await hdFetch('/huddle/live');
+    if (!r.ok) return;                       // no chat.huddle grant: nothing to offer
+    live = await r.json();
+  } catch (_) { return; }
+  if (!Array.isArray(live) || !live.length) return hdHideJoinChip();
+  // The busiest one — with several running, the chip can only offer one.
+  const best = live.slice().sort((a, b) => (b.participants || []).length - (a.participants || []).length)[0];
+  hdShowJoinChip(best.roomId, (best.participants || []).length, best.started_at);
+  if (_hdChipTimer) clearInterval(_hdChipTimer);
+  _hdChipTimer = setInterval(hdPaintClock, 1000);
+}
 
 // An invite now arrives twice for anyone sitting on the chat page: once over the chat
 // stream and once over the always-on notification stream. Ring once.
@@ -818,6 +874,7 @@ function hdRenderBar() {
     bar.innerHTML = '<div class="hd-head">'
       + '<span class="hd-grip"><i data-lucide="grip-horizontal" style="width:14px;height:14px"></i></span>'
       + '<span class="hd-title"></span>'
+      + '<span class="hd-clock" title="How long this huddle has been running"></span>'
       + '<button class="hd-wbtn" data-act="min" title="Minimise"><i data-lucide="minus" style="width:14px;height:14px"></i></button>'
       + '<button class="hd-wbtn" data-act="max" title="Maximise"><i data-lucide="maximize-2" style="width:14px;height:14px"></i></button>'
       + '</div><div class="hd-tiles"></div><div class="hd-controls"></div>';
@@ -827,6 +884,7 @@ function hdRenderBar() {
   bar.style.display = 'flex';
   hdApplyWidget(bar);
   bar.querySelector('.hd-title').textContent = 'Huddle · ' + (_hd.peers.size + 1);
+  hdPaintClock();
 
   const selfLabel = 'You' + (_hd.muted ? ' (muted)' : '') + (_hd.sharing ? ' · sharing' : '');
   hdPaintTile(hdTileEl(tiles, '__self'), selfLabel, _hd.sharing ? _hd.screen : _hd.local,

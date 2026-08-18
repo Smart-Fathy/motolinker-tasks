@@ -25,6 +25,8 @@ GET /api/dashboard/stock
 GET /api/employee/stock
 POST /api/dashboard/stock
 PUT /api/dashboard/stock/:id
+POST /api/employee/stock
+PUT /api/employee/stock/:id
 DELETE /api/dashboard/stock/:id
 GET /api/dashboard/stock/template.csv
 POST /api/dashboard/stock/bulk
@@ -224,6 +226,7 @@ PUT /api/dashboard/chat/rooms/:id
 POST /api/dashboard/chat/rooms/:id/members
 DELETE /api/dashboard/chat/rooms/:id/members/:memberKey
 GET /api/dashboard/chat/rooms/:id/attachments
+GET /api/dashboard/chat/huddle/live
 GET /api/dashboard/chat/huddle/ice
 GET /api/dashboard/chat/huddle/:roomId
 POST /api/dashboard/chat/huddle/signal
@@ -231,6 +234,7 @@ PUT /api/employee/chat/rooms/:id
 POST /api/employee/chat/rooms/:id/members
 DELETE /api/employee/chat/rooms/:id/members/:memberKey
 GET /api/employee/chat/rooms/:id/attachments
+GET /api/employee/chat/huddle/live
 GET /api/employee/chat/huddle/ice
 GET /api/employee/chat/huddle/:roomId
 POST /api/employee/chat/huddle/signal
@@ -365,3 +369,5 @@ POST /api/dashboard/customers/:id/folder
 GET /api/employee/leads/:id/folder
 POST /api/employee/leads/:id/folder
 PUT /api/dashboard/customers/:id/folder/viewers
+GET /api/dashboard/calendar
+GET /api/employee/calendar

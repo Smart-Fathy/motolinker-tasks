@@ -23,7 +23,8 @@ const STREAMS     = fs.readFileSync('src/routes/notif-streams.js', 'utf8');
 const NOTIFS      = fs.readFileSync('src/routes/notifications.js', 'utf8');
 // The procurement modules serve both portals from one set of handlers, so their
 // guards count as enforcement the same as anything in index.js.
-const PROC = ['suppliers', 'supplier-catalogue', 'rfq', 'purchase-orders', 'contracts', 'submissions', 'meetings', 'columns', 'availability']
+const PROC = ['suppliers', 'supplier-catalogue', 'rfq', 'purchase-orders', 'contracts', 'submissions', 'meetings', 'columns', 'availability',
+  'stock', 'client-folder', 'quotations']
   .map(f => fs.readFileSync(`src/routes/${f}.js`, 'utf8'));
 const SERVER_FILES = [IDX, EMP, HUDDLES, STREAMS, NOTIFS, ...PROC].join('\n');
 
@@ -275,9 +276,12 @@ const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', perm
   // would have put an Inventory tab in front of the entire team.
   c('the Inventory page is an action, not the stock master switch',
     /stock: \['stock', 'browse'\]/.test(PORTAL_JS)
-    && /stock: \['view', 'browse'\]/.test(EMP)
+    && /stock: \['view', 'browse', 'create', 'edit'\]/.test(EMP)
     && M.normEmpPerms({}).stockActions.browse === false
-    && M.normEmpPerms({}).stockActions.view === true,
+    && M.normEmpPerms({}).stockActions.view === true
+    // Same for writing: the register is the company's, not everyone's to edit.
+    && M.normEmpPerms({}).stockActions.create === false
+    && M.normEmpPerms({}).stockActions.edit === false,
     JSON.stringify(M.normEmpPerms({}).stockActions));
   c('every section the portal gates is one the server models',
     [...gated].every(k => M.PERM_ACTIONS[k]), [...gated].filter(k => !M.PERM_ACTIONS[k]).join(','));

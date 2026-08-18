@@ -22,10 +22,10 @@
     if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=101">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=104">
   <!-- Shared with the team portal. Last on purpose: several mobile rules were being
        beaten by later same-specificity rules in the sheet above. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=101">
+  <link rel="stylesheet" href="/assets/mobile.css?v=104">
 </head>
 <body>
 
@@ -387,21 +387,19 @@
   <div id="page-calendar" class="page">
     <div style="padding:20px 28px 12px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
       <div>
-        <div style="font-size:18px;font-weight:700;margin-bottom:4px">Google Calendar</div>
-        <div style="font-size:12px;color:var(--muted)">Your calendar — make sure you're signed into Google in this browser.<br>Connect an account below to push every new task to its assignee's calendar.</div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:4px">Calendar</div>
+        <div style="font-size:12px;color:var(--muted)">Meetings, task due dates and lead follow-ups from MotoLinker. Scheduled meetings also land on everyone's Google Calendar.</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
         <span id="cal-sync-status" style="font-size:12px;color:var(--muted)"></span>
         <button id="cal-sync-btn" class="btn btn-outline btn-sm" onclick="calendarSyncToggle()"></button>
-        <a href="https://calendar.google.com/calendar/r/eventedit" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="text-decoration:none">
-          <i data-lucide="plus" style="width:13px;height:13px"></i> New Event
+        <a href="https://calendar.google.com/calendar/r/week" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none">
+          <i data-lucide="external-link" style="width:13px;height:13px"></i> Google Calendar
         </a>
       </div>
     </div>
-    <div style="flex:1;min-height:0;padding:16px">
-      <iframe src="https://calendar.google.com/calendar/embed?showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&showTz=1&mode=WEEK"
-        style="width:100%;height:100%;min-height:600px;border:none;border-radius:10px;background:#fff"
-        frameborder="0" scrolling="no"></iframe>
+    <div style="flex:1;min-height:0;overflow:auto;padding:16px 28px 28px">
+      <div id="ml-calendar"></div>
     </div>
   </div>
 
@@ -1383,18 +1381,19 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
-<script src="/assets/mobile.js?v=101"></script>
-<script src="/assets/columns.js?v=101"></script>
-<script src="/assets/client-folder.js?v=101"></script>
-<script src="/assets/lead-filters.js?v=101"></script>
-<script src="/assets/chat-extras.js?v=101"></script>
-<script src="/assets/home.js?v=101"></script>
-<script src="/assets/huddle.js?v=101"></script>
-<script src="/assets/procurement.js?v=101"></script>
-<script src="/assets/quote.js?v=101"></script>
-<script src="/assets/meetings.js?v=101"></script>
-<script src="/assets/availability.js?v=101"></script>
-<script src="/assets/dashboard.js?v=101"></script>
+<script src="/assets/mobile.js?v=104"></script>
+<script src="/assets/columns.js?v=104"></script>
+<script src="/assets/client-folder.js?v=104"></script>
+<script src="/assets/lead-filters.js?v=104"></script>
+<script src="/assets/chat-extras.js?v=104"></script>
+<script src="/assets/home.js?v=104"></script>
+<script src="/assets/huddle.js?v=104"></script>
+<script src="/assets/procurement.js?v=104"></script>
+<script src="/assets/quote.js?v=104"></script>
+<script src="/assets/meetings.js?v=104"></script>
+<script src="/assets/calendar.js?v=104"></script>
+<script src="/assets/availability.js?v=104"></script>
+<script src="/assets/dashboard.js?v=104"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
@@ -1427,6 +1426,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=101"></script>
+<script src="/help-docs.js?v=104"></script>
 </body>
 </html>
