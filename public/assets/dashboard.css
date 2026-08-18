@@ -2071,3 +2071,49 @@
     .t-due-chip{ min-height:44px; }
     .t-who{ min-height:44px; }
   }
+
+  /* ── Composition band ──────────────────────────────────────────────────
+   * Same object as the Tasks summary: one bar carrying a partition, weighted
+   * by the real counts, so the shape of a filtered set reads before any row. */
+  .mix-band{
+    display:flex; align-items:center; gap:26px; flex-wrap:wrap;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-xl); padding:16px 20px; margin-bottom:14px;
+  }
+  .mix-total{ display:flex; align-items:baseline; gap:8px; flex-shrink:0; }
+  .mix-total .stat-value{ font-size:32px; line-height:.9; }
+  .mix-unit{ font-size:12.5px; color:var(--muted); }
+  .mix-body{ flex:1; min-width:260px; }
+  .mix-bar{
+    display:flex; height:10px; border-radius:var(--r-pill);
+    overflow:hidden; background:var(--bg);
+  }
+  .mix-bar span{ display:block; }
+  .mix-legend{ display:flex; gap:18px; margin-top:12px; flex-wrap:wrap; }
+  .mix-key{
+    display:inline-flex; align-items:center; gap:7px;
+    font-size:12px; font-weight:600; white-space:nowrap;
+  }
+  .mix-key i{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .mix-key b{ font-weight:700; color:var(--muted); }
+  @media (max-width:700px){
+    .mix-band{ flex-direction:column; align-items:stretch; gap:14px; padding:14px; }
+    .mix-body{ min-width:0; }
+  }
+
+  /* ── Hours summary ─────────────────────────────────────────────────────
+   * Given the same wash as the board and group headers, so a summary tile and
+   * a column head read as the same kind of object. */
+  .hours-card{
+    border-radius:var(--r-lg);
+    background:linear-gradient(180deg, rgba(201,163,94,.12), var(--surface) 58%);
+    border:1px solid var(--border);
+  }
+  .hours-card:nth-child(2){
+    background:linear-gradient(180deg, rgba(16,185,129,.12), var(--surface) 58%);
+  }
+  .hours-card-val{ font-size:31px; line-height:.92; }
+  .hours-card-lbl{
+    font-size:10.5px; font-weight:800; text-transform:uppercase;
+    letter-spacing:.8px; margin-top:8px;
+  }

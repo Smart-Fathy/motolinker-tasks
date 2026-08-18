@@ -5002,7 +5002,41 @@ function setLeadsPageSize(v) {
 let _leadsShown = leadsPageSize();
 function leadsShowMore() { _leadsShown += leadsPageSize(); renderCustomers(_lastRenderedLeads); }
 
+// The lead statuses already carry their own colours in columns.js; this shows
+// the shape of the filtered set before any row is read.
+function renderLeadMix(list) {
+  const el = document.getElementById('leads-mix');
+  if (!el) return;
+  const col = (typeof leadCol === 'function' ? leadCol('lead_status') : null)
+    || (_leadCols || []).find(c => c.key === 'lead_status');
+  const opts = (col && col.options) || [];
+  if (!opts.length || !list.length) { el.style.display = 'none'; return; }
+  const counts = new Map();
+  list.forEach(c => {
+    const k = String(c.lead_status || '').trim();
+    if (k) counts.set(k, (counts.get(k) || 0) + 1);
+  });
+  const rows = opts
+    .map(o => ({ label: o.label || o.key, n: counts.get(o.key) || 0, c: o.color || 'var(--muted)' }))
+    .filter(r => r.n > 0);
+  if (!rows.length) { el.style.display = 'none'; return; }
+  const total = rows.reduce((a, r) => a + r.n, 0) || 1;
+  el.style.display = '';
+  el.innerHTML = `
+    <div class="mix-total">
+      <span class="stat-value">${total.toLocaleString()}</span>
+      <span class="mix-unit">lead${total === 1 ? '' : 's'}</span>
+    </div>
+    <div class="mix-body">
+      <div class="mix-bar">${rows.map(r =>
+        `<span title="${esc(r.label)}: ${r.n}" style="flex:${r.n};background:${r.c}"></span>`).join('')}</div>
+      <div class="mix-legend">${rows.map(r =>
+        `<span class="mix-key"><i style="background:${r.c}"></i>${esc(r.label)}<b class="num">${r.n}</b></span>`).join('')}</div>
+    </div>`;
+}
+
 function renderCustomers(list) {
+  renderLeadMix(list);
   if (typeof mlTopScrollbar === 'function') mlTopScrollbar('leads-scroll');
   _lastRenderedLeads = list;
   const tbody = document.getElementById('customers-tbody');
