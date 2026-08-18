@@ -22,10 +22,10 @@
     if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=108">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=109">
   <!-- Shared with the team portal. Last on purpose: several mobile rules were being
        beaten by later same-specificity rules in the sheet above. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=108">
+  <link rel="stylesheet" href="/assets/mobile.css?v=109">
 </head>
 <body>
 
@@ -89,14 +89,16 @@
                oninput="navSearch(this.value)" onkeydown="navSearchKey(event)">
         <span class="nav-search-kbd">&#8984;K</span>
       </div>
-      <div class="nav-fav-label">Favourites</div>
-      <div class="nav-fav">
-        <div class="nav-item fav-item" id="fav-home"      onclick="navigate('home')"><span class="nav-icon"><i data-lucide="layout-dashboard"></i></span> Home</div>
-        <div class="nav-item fav-item" id="fav-tasks"     onclick="navigate('tasks')"><span class="nav-icon"><i data-lucide="clipboard-list"></i></span> Tasks</div>
-        <div class="nav-item fav-item" id="fav-customers" onclick="navigate('customers')"><span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads</div>
-        <div class="nav-item fav-item" id="fav-deals"     onclick="navigate('deals')"><span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals</div>
-        <div class="nav-item fav-item" id="fav-chat"      onclick="navigate('chat')"><span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat<span class="chat-nav-badge" id="chat-fav-badge" style="display:none">0</span></div>
+      <!-- Rendered from the signed-in user's own saved list, not hard-coded.
+           Each entry is a shortcut to a destination that already exists in
+           their rail, so it can never point somewhere they cannot go. -->
+      <div class="nav-fav-head">
+        <span class="nav-fav-label">Favourites</span>
+        <button class="nav-fav-edit" onclick="navFavEdit()" title="Choose favourites" aria-label="Choose favourites">
+          <i data-lucide="settings-2"></i>
+        </button>
       </div>
+      <div class="nav-fav" id="fav-list"></div>
     </div>
     <nav class="sidebar-nav">
       <div class="nav-group" data-group="management">
@@ -1415,19 +1417,19 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
-<script src="/assets/mobile.js?v=108"></script>
-<script src="/assets/columns.js?v=108"></script>
-<script src="/assets/client-folder.js?v=108"></script>
-<script src="/assets/lead-filters.js?v=108"></script>
-<script src="/assets/chat-extras.js?v=108"></script>
-<script src="/assets/home.js?v=108"></script>
-<script src="/assets/huddle.js?v=108"></script>
-<script src="/assets/procurement.js?v=108"></script>
-<script src="/assets/quote.js?v=108"></script>
-<script src="/assets/meetings.js?v=108"></script>
-<script src="/assets/calendar.js?v=108"></script>
-<script src="/assets/availability.js?v=108"></script>
-<script src="/assets/dashboard.js?v=108"></script>
+<script src="/assets/mobile.js?v=109"></script>
+<script src="/assets/columns.js?v=109"></script>
+<script src="/assets/client-folder.js?v=109"></script>
+<script src="/assets/lead-filters.js?v=109"></script>
+<script src="/assets/chat-extras.js?v=109"></script>
+<script src="/assets/home.js?v=109"></script>
+<script src="/assets/huddle.js?v=109"></script>
+<script src="/assets/procurement.js?v=109"></script>
+<script src="/assets/quote.js?v=109"></script>
+<script src="/assets/meetings.js?v=109"></script>
+<script src="/assets/calendar.js?v=109"></script>
+<script src="/assets/availability.js?v=109"></script>
+<script src="/assets/dashboard.js?v=109"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
@@ -1460,6 +1462,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=108"></script>
+<script src="/help-docs.js?v=109"></script>
 </body>
 </html>

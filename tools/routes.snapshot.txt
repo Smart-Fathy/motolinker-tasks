@@ -117,6 +117,10 @@ GET /api/dashboard/nav-config
 GET /api/employee/nav-config
 PUT /api/dashboard/nav-config
 DELETE /api/dashboard/nav-config
+GET /api/dashboard/nav-favourites
+PUT /api/dashboard/nav-favourites
+GET /api/employee/nav-favourites
+PUT /api/employee/nav-favourites
 GET /api/dashboard/home/layout
 PUT /api/dashboard/home/layout
 GET /api/dashboard/home/summary
