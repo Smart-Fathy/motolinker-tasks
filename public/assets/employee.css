@@ -827,3 +827,41 @@
   .lead-menu button.lead-col-edit { width:auto; flex:0 0 auto; padding:6px; color:var(--muted);
                                     border-radius:5px; }
   .lead-menu button.lead-col-edit:hover { color:var(--primary); background:rgba(255,255,255,.07); }
+
+  /* The task brief. Clamped to four lines so a long description does not push
+     every other task off the screen, with a toggle when there is more to read. */
+  .task-desc { font-size:12.5px; color:var(--text); opacity:.85; margin:6px 0 2px; white-space:pre-wrap;
+               word-break:break-word; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical;
+               overflow:hidden; }
+  .task-desc.open { -webkit-line-clamp:unset; overflow:visible; }
+  .task-desc-more { background:none; border:none; color:var(--primary); font-size:11.5px; cursor:pointer;
+                    padding:2px 0; font-family:inherit; }
+
+  /* ── Inventory ── the same cards the dashboard shows; the page moved into the
+     shared procurement.js, so its styling has to exist in both portals. */
+  .stock-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px; }
+  .stock-card{ background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px; display:flex; flex-direction:column; }
+  .stock-card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .stock-title{ font-size:15px; font-weight:700; line-height:1.3; }
+  .stock-trim{ font-size:12.5px; color:var(--muted); margin-top:2px; }
+  .stock-qty{ flex-shrink:0; font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:11px; white-space:nowrap; }
+  .stock-qty.in{ background:rgba(201,163,94,.15); color:var(--primary); }
+  .stock-qty.out{ background:rgba(220,38,38,.14); color:#f87171; }
+  .stock-price{ font-size:17px; font-weight:700; color:var(--primary); margin:8px 0 12px; }
+  .stock-colors{ margin-top:12px; }
+  .stock-sec-label{ font-size:10px; letter-spacing:.4px; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  .color-chip{ display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:3px 9px;
+  .color-chip b{ color:var(--primary); }
+  .color-dot{ width:11px; height:11px; border-radius:50%; border:1px solid rgba(255,255,255,.25); flex-shrink:0; }
+  .stock-notes{ margin-top:11px; font-size:12px; color:var(--muted); }
+  .stock-units{ width:100%; border-collapse:collapse; font-size:11px; }
+  .stock-units th{ text-align:left; color:var(--muted); font-weight:700; font-size:9.5px;
+  .stock-units td{ padding:5px 6px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  .stock-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+  .stk-legacy { display:flex; align-items:flex-start; gap:8px; margin-top:10px; padding:9px 12px;
+  .stk-legacy i { flex-shrink:0; margin-top:1px; color:var(--warning); }  /* The dashboard's stat cards, which the register's summary row uses. */
+  .stats-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
+  .stat-card{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+  .stat-card .stat-label{ font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .stat-card .stat-value{ font-size:24px; font-weight:700; margin-top:4px; }
+  .stat-card .stat-sub{ font-size:11.5px; color:var(--muted); margin-top:2px; }

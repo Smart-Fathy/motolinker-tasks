@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=82">
+  <link rel="stylesheet" href="/assets/employee.css?v=83">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=82">
+  <link rel="stylesheet" href="/assets/mobile.css?v=83">
 </head>
 <body>
 
@@ -800,12 +800,16 @@
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
           <div>
             <div class="card-title" style="margin:0">Inventory</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:4px">Cars in stock right now, with the units held against each model. Read-only.</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">Cars in stock, with the units held against each model.</div>
           </div>
-          <input class="form-control" id="emp-stock-search" placeholder="Search make, model or trim…"
-            oninput="renderEmpStock()" style="max-width:260px">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <input class="form-control" id="stock-search" placeholder="Search make, model or trim…"
+              oninput="renderStock()" style="max-width:240px">
+            <button class="btn btn-primary" data-perm="stock.create" onclick="openStockForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add vehicle</button>
+          </div>
         </div>
-        <div id="emp-stock-list"><div class="loading"><span class="spinner"></span> Loading inventory…</div></div>
+        <div id="stock-summary" class="stats-grid" style="margin-bottom:16px"></div>
+        <div id="stock-table-container"><div class="loading"><span class="spinner"></span> Loading inventory…</div></div>
       </div>
     </div>
 
@@ -1201,12 +1205,12 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=82"></script>
-<script src="/assets/columns.js?v=82"></script>
-<script src="/assets/client-folder.js?v=82"></script>
-<script src="/assets/lead-filters.js?v=82"></script>
-<script src="/assets/chat-extras.js?v=82"></script>
-<script src="/assets/home.js?v=82"></script>
+<script src="/assets/mobile.js?v=83"></script>
+<script src="/assets/columns.js?v=83"></script>
+<script src="/assets/client-folder.js?v=83"></script>
+<script src="/assets/lead-filters.js?v=83"></script>
+<script src="/assets/chat-extras.js?v=83"></script>
+<script src="/assets/home.js?v=83"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1244,12 +1248,12 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=82"></script>
-<script src="/assets/procurement.js?v=82"></script>
-<script src="/assets/quote.js?v=82"></script>
-<script src="/assets/meetings.js?v=82"></script>
-<script src="/assets/availability.js?v=82"></script>
-<script src="/assets/employee.js?v=82"></script>
+<script src="/assets/huddle.js?v=83"></script>
+<script src="/assets/procurement.js?v=83"></script>
+<script src="/assets/quote.js?v=83"></script>
+<script src="/assets/meetings.js?v=83"></script>
+<script src="/assets/availability.js?v=83"></script>
+<script src="/assets/employee.js?v=83"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1311,6 +1315,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=82"></script>
+<script src="/help-docs.js?v=83"></script>
 </body>
 </html>

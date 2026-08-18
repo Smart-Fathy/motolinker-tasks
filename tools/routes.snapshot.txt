@@ -25,6 +25,8 @@ GET /api/dashboard/stock
 GET /api/employee/stock
 POST /api/dashboard/stock
 PUT /api/dashboard/stock/:id
+POST /api/employee/stock
+PUT /api/employee/stock/:id
 DELETE /api/dashboard/stock/:id
 GET /api/dashboard/stock/template.csv
 POST /api/dashboard/stock/bulk

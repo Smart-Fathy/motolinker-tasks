@@ -136,7 +136,7 @@ const PERM_ACTIONS = {
   // is the Inventory PAGE, which is a different question: the whole register,
   // every model, every price. It is granted, never inherited, so adding the page
   // did not hand it to the entire team on one deploy.
-  stock: ['view', 'browse'],
+  stock: ['view', 'browse', 'create', 'edit'],
   // Operations and procurement. The handlers are the dashboard's own, mounted a
   // second time under /api/employee — so these actions are the only difference
   // between what an employee may do here and what the admin may.
@@ -196,7 +196,7 @@ const PERM_ACTION_FALLBACK = {
 // record that predates the action gets it OFF and an admin turns it on
 // deliberately. Everything else inherits, because a section granted before an
 // action existed did mean "all of it".
-const PERM_ACTION_NEVER_INHERIT = new Set(['leads.clientFolder', 'stock.browse']);
+const PERM_ACTION_NEVER_INHERIT = new Set(['leads.clientFolder', 'stock.browse', 'stock.create', 'stock.edit']);
 
 function normEmpPerms(raw) {
   const p = { ...DEFAULT_PERMISSIONS, ...(raw || {}) };
@@ -282,6 +282,7 @@ const PERM_ACTION_LABELS = {
   'availability.view': "See the team's week", 'availability.set': 'Set own availability',
   'stock.view': 'Look vehicles up (picker and Home)',
   'stock.browse': 'Open the Inventory page',
+  'stock.create': 'Add a vehicle', 'stock.edit': 'Edit a vehicle',
   'suppliers.catalogue': 'Manage the vehicle catalogue',
   'suppliers.purchases': 'Purchases tab',
   'deals.sales': 'Sales tab', 'deals.salesEdit': 'Edit sales records',

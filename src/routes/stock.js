@@ -127,23 +127,31 @@ function mountStockReadRoute(base, guard) {
 mountStockReadRoute('/api/dashboard', requireAuth);
 mountStockReadRoute('/api/employee', requireEmployeeAuth);
 
-receiver.router.post('/api/dashboard/stock', requireAuth, express.json(), async (req, res) => {
-  const { row, error: verr } = stockBuildRow(req.body);
-  if (verr) return res.status(400).json({ error: verr });
-  row.created_by = 'dashboard';
-  const { data, error } = await stockWrite(row, null);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+// Adding and editing a vehicle is grantable now — a team that keeps the register
+// could read it but not touch it, which made the Inventory grant half a feature.
+// Deleting stays the admin's: a vehicle carries its units, and losing those loses
+// the VINs with them.
+function mountStockWriteRoutes(base, guard, who) {
+  receiver.router.post(`${base}/stock`, guard, requirePerm('stock', 'create'), express.json(), async (req, res) => {
+    const { row, error: verr } = stockBuildRow(req.body);
+    if (verr) return res.status(400).json({ error: verr });
+    row.created_by = who(req);
+    const { data, error } = await stockWrite(row, null);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
 
-receiver.router.put('/api/dashboard/stock/:id', requireAuth, express.json(), async (req, res) => {
-  const { row, error: verr } = stockBuildRow(req.body);
-  if (verr) return res.status(400).json({ error: verr });
-  row.updated_at = new Date().toISOString();
-  const { data, error } = await stockWrite(row, req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+  receiver.router.put(`${base}/stock/:id`, guard, requirePerm('stock', 'edit'), express.json(), async (req, res) => {
+    const { row, error: verr } = stockBuildRow(req.body);
+    if (verr) return res.status(400).json({ error: verr });
+    row.updated_at = new Date().toISOString();
+    const { data, error } = await stockWrite(row, req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+}
+mountStockWriteRoutes('/api/dashboard', requireAuth, () => 'dashboard');
+mountStockWriteRoutes('/api/employee', requireEmployeeAuth, req => `employee_${req.employee.id}`);
 
 receiver.router.delete('/api/dashboard/stock/:id', requireAuth, async (req, res) => {
   const { error } = await supabase.from('stock_vehicles').delete().eq('id', req.params.id);

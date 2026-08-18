@@ -182,6 +182,14 @@ setTimeout(async () => {
     const browser2 = mint('perm-live-stock-rw', { stock: true, stockActions: { view: true, browse: true } });
     const ok = await hit('GET', '/api/employee/stock', browser2);
     c('…and served with stock.browse', !refused(ok), String(ok.status));
+    // Reading the register and keeping it are different jobs.
+    const noWrite = await hit('POST', '/api/employee/stock', browser2);
+    c('a reader cannot add a vehicle', refused(noWrite), String(noWrite.status));
+    const noEdit = await hit('PUT', '/api/employee/stock/1', browser2);
+    c('…nor edit one', refused(noEdit), String(noEdit.status));
+    const keeper = mint('perm-live-stock-w', { stock: true, stockActions: { view: true, browse: true, create: true, edit: true } });
+    const allowed = await hit('POST', '/api/employee/stock', keeper);
+    c('…and a keeper is let through to the handler', !refused(allowed), String(allowed.status));
   }
 
   // ── The admin is never subject to employee permissions ──────────────────────
@@ -228,7 +236,7 @@ setTimeout(async () => {
       'purchaseorders.create': 1, 'purchaseorders.delete': 1, 'purchaseorders.export': 1,
       'contracts.edit': 1, 'contracts.export': 1,
       'stock.view': 1,                    // the picker and the Home widgets
-      'stock.browse': 1,                  // the register, checked live above
+      'stock.browse': 1, 'stock.create': 1, 'stock.edit': 1,   // checked live above
       'leads.clientFolder': 1,            // foldertest drives it end to end
     };
     const gaps = [];

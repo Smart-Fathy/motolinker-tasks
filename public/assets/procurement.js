@@ -1483,6 +1483,236 @@
     return `<td style="padding:8px 10px">${esc(raw == null ? '' : String(raw))}</td>`;
   }
 
+  // Per-unit columns: what is tracked for each physical car.
+  const STOCK_UNIT_COLS = [
+    ['consignee', 'Consignee', 120], ['colour', 'Colour EXT / INT', 120], ['vin', 'VIN', 120],
+    ['status', 'Status', 120], ['price_list', 'Price List', 120], ['discounted', 'Discounted', 120],
+    ['logistics', 'Logistics', 120], ['supplier', 'Supplier', 120],
+  ];
+    // ── Inventory ────────────────────────────────────────────────────────────────
+    // The whole page, both portals. It lived in dashboard.js, so the team portal's
+    // Inventory grant bought a read-only list somebody had to write twice; now it
+    // is the same page the admin uses, with the write affordances following
+    // stock.create / stock.edit. Deleting stays the dashboard's.
+    const egp = n => (Number(n) || 0).toLocaleString() + ' EGP';
+  function stockUnitsEngine() {
+    return procColsEngine('stock', tupleCols(STOCK_UNIT_COLS, {
+      price_list: 'number', discounted: 'number', status: 'select',
+      'options:status': PO_LINE_STATUSES.map(o => ({ key: o.key, label: o.label, color: o.fg })),
+    }), () => renderStock());
+  }
+  function stockUnitCols() {
+    const eng = CE('stock');
+    return eng && eng.loaded ? eng.visible() : tupleCols(STOCK_UNIT_COLS, {});
+  }
+  let _stockCache = [];
+  async function loadStock() {
+    await stockUnitsEngine().load();
+    const body = document.getElementById('stock-table-container');
+    if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div> Loading stock…</div>';
+    let list = [];
+    try { list = await apiFetch('/api/dashboard/stock').then(r => r.json()); }
+    catch (_) { if (body) body.innerHTML = '<div class="error-msg">Failed to load stock.</div>'; return; }
+    _stockCache = Array.isArray(list) ? list : [];
+    renderStock();
+  }
+  function renderStock() {
+    const body = document.getElementById('stock-table-container');
+    const sumEl = document.getElementById('stock-summary');
+    if (!body) return;
+    const models = new Set(_stockCache.map(v => `${(v.make||'').toLowerCase()}|${(v.model||'').toLowerCase()}`));
+    const totalUnits = _stockCache.reduce((s, v) => s + (Number(v.quantity) || 0), 0);
+    const totalValue = _stockCache.reduce((s, v) => s + (Number(v.price) || 0) * (Number(v.quantity) || 0), 0);
+    if (sumEl) sumEl.innerHTML = `
+      <div class="stat-card total"><div class="stat-label">Listings</div><div class="stat-value">${_stockCache.length.toLocaleString()}</div><div class="stat-sub">${models.size} model(s)</div></div>
+      <div class="stat-card high-pri"><div class="stat-label">Units in stock</div><div class="stat-value">${totalUnits.toLocaleString()}</div><div class="stat-sub">Ready for delivery</div></div>
+      <div class="stat-card in-progress"><div class="stat-label">Stock value</div><div class="stat-value" style="font-size:20px">${egp(totalValue)}</div><div class="stat-sub">Price × quantity</div></div>`;
+    const term = (document.getElementById('stock-search')?.value || '').trim().toLowerCase();
+    const rows = _stockCache.filter(v => !term || `${v.make} ${v.model} ${v.trim}`.toLowerCase().includes(term));
+    if (!rows.length) {
+      body.innerHTML = `<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">${_stockCache.length ? 'No vehicles match your search.' : 'No vehicles in stock yet.<br>Click “Add vehicle” or “Bulk upload CSV” to get started.'}</div>`;
+      return;
+    }
+    body.innerHTML = `<div class="stock-grid">${rows.map(stockCardHtml).join('')}</div>`;
+    requestAnimationFrame(() => lucide.createIcons());
+  }
+  // One card per car: title, price, spec sheet and per-colour stock counts.
+  function stockCardHtml(v) {
+    const colors = Array.isArray(v.colors) ? v.colors : [];
+    // Individual cars held against this model (VIN, tracking status, supplier…).
+    // These ARE the stock count — nothing here reads a typed-in total any more.
+    const units = Array.isArray(v.units) ? v.units : [];
+    const qty = units.length;
+    const noVin = units.filter(u => !String(u.vin || '').trim()).length;
+    const legacy = units.length ? 0 : (parseInt(v.legacy_count, 10) || 0);
+    const colorChips = colors.length
+      ? colors.map(c => {
+          const held = units.filter(u => String(u.colour || '').trim().toLowerCase() === String(c.name || '').trim().toLowerCase()).length;
+          return `<span class="color-chip"><span class="color-dot" style="background:${stockColorSwatch(c.name)}"></span>${esc(c.name)}${held ? `<b>${held}</b>` : ''}</span>`;
+        }).join('')
+      : '<span style="color:var(--muted);font-size:12px">No colours recorded</span>';
+    const unitsHtml = units.length ? `
+      <div class="stock-colors">
+        <div class="stock-sec-label">Units (${units.length})</div>
+        <div class="table-scroll"><table class="stock-units">
+          <thead><tr>${stockUnitCols().map(c => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>
+          <tbody>${units.map(u => {
+            const eng = CE('stock');
+            return `<tr>${stockUnitCols().map(c => {
+              const k = c.key;
+              if ((c.type === 'select' || c.type === 'radio') && eng) return `<td>${eng.badgeHtml(c, u[k])}</td>`;
+              if (c.type === 'number') return `<td style="text-align:right">${Number(u[k]) ? Number(u[k]).toLocaleString() : '—'}</td>`;
+              if (c.type === 'checkbox') return `<td style="text-align:center">${u[k] === true || u[k] === 'true' ? '✓' : '—'}</td>`;
+              return `<td>${esc(u[k] == null ? '—' : String(u[k]) || '—')}</td>`;
+            }).join('')}</tr>`;
+          }).join('')}</tbody>
+        </table></div>
+      </div>` : '';
+    return `
+      <div class="stock-card">
+        <div class="stock-card-head">
+          <div style="min-width:0">
+            <div class="stock-title">${esc(v.make || '')} ${esc(v.model || '')}</div>
+            ${v.trim ? `<div class="stock-trim">${esc(v.trim)}</div>` : ''}
+          </div>
+          <span class="stock-qty ${qty > 0 ? 'in' : 'out'}">${qty} in stock</span>
+        </div>
+        <div class="stock-price">${v.price ? egp(v.price) : 'Price not set'}</div>
+        <div class="stock-colors">
+          <div class="stock-sec-label">Available colours</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">${colorChips}</div>
+        </div>
+        ${unitsHtml}
+        ${legacy ? `<div class="stk-legacy">
+          <i data-lucide="alert-triangle" style="width:14px;height:14px"></i>
+          <span><strong>${legacy} car${legacy === 1 ? '' : 's'}</strong> ${legacy === 1 ? 'was' : 'were'} recorded here before VIN tracking.
+          Add ${legacy === 1 ? 'it' : 'them'} to bring this model back into stock.</span></div>` : ''}
+        ${noVin ? `<div class="stk-legacy">
+          <i data-lucide="alert-triangle" style="width:14px;height:14px"></i>
+          <span>${noVin} car${noVin === 1 ? ' has' : 's have'} no VIN yet.</span></div>` : ''}
+        ${v.notes ? `<div class="stock-notes">${esc(v.notes)}</div>` : ''}
+        ${procCan('stock', 'edit') || PROCFG.base === '/api/dashboard' ? `<div class="stock-actions">
+          ${procCan('stock', 'edit') ? `<button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="openStockForm(${v.id})"><i data-lucide="pencil" style="width:13px;height:13px"></i> Edit</button>` : ''}
+          ${PROCFG.base === '/api/dashboard' ? `<button class="btn btn-outline" style="padding:5px 10px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteStock(${v.id})"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete</button>` : ''}
+        </div>` : ''}
+      </div>`;
+  }
+  // Map a colour name to a swatch; unknown names fall back to a neutral grey.
+  function stockColorSwatch(name) {
+    const n = String(name || '').trim().toLowerCase();
+    const map = { white:'#f8fafc', black:'#111827', grey:'#6b7280', gray:'#6b7280', silver:'#cbd5e1', red:'#dc2626',
+      blue:'#2563eb', 'navy':'#1e3a8a', green:'#16a34a', yellow:'#eab308', orange:'#ea580c', brown:'#92400e',
+      beige:'#e7d7bf', gold:'#c9a35e', purple:'#7c3aed', pink:'#ec4899' };
+    for (const k in map) if (n.includes(k)) return map[k];
+    return '#9ca3af';
+  }
+  async function openStockForm(id) {
+    await stockUnitsEngine().load();
+    const v = id ? _stockCache.find(x => x.id === id) : null;
+    PROCFG.modal(v ? 'Edit vehicle' : 'Add vehicle', `
+      <div style="display:grid;gap:12px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><label class="form-label">Make *</label><input id="stk-make" class="form-input" value="${esc(v?.make || '')}" placeholder="e.g. Toyota"></div>
+          <div><label class="form-label">Model *</label><input id="stk-model" class="form-input" value="${esc(v?.model || '')}" placeholder="e.g. Corolla"></div>
+        </div>
+        <div><label class="form-label">Trim</label><input id="stk-trim" class="form-input" value="${esc(v?.trim || '')}" placeholder="e.g. GLI 1.6 (leave blank if none)"></div>
+        <div><label class="form-label">Price (EGP)</label><input id="stk-price" class="form-input" type="number" min="0" step="any" value="${v?.price ?? ''}" placeholder="e.g. 1150000"></div>
+
+        <div>
+          <label class="form-label">Colours offered</label>
+          <div id="stk-colors"></div>
+          <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="stkAddColorRow()">+ Add colour</button>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px">Shown on the spec card. How many are in stock comes from the cars listed below, each with its own VIN.</div>
+        </div>
+
+        <div>
+          <label class="form-label">Units in stock <span style="color:var(--muted);font-weight:400">(one row per physical car)</span></label>
+          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:10px">
+            <table style="border-collapse:collapse;font-size:12px;min-width:1080px">
+              <thead><tr>
+                <th class="po-th" style="width:34px">#</th>
+                ${stockUnitCols().map(c => procTh('stock', c, { cls: 'po-th', style: `min-width:${c.width || 120}px` })).join('')}
+                <th class="po-th" style="width:38px"></th>
+              </tr></thead>
+              <tbody id="stk-units"></tbody>
+            </table>
+          </div>
+          <button class="btn btn-outline" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="stkAddUnitRow()">+ Add unit</button> ${procColsBtn('stock')}
+          <div style="font-size:11px;color:var(--muted);margin-top:6px">One row per car. These are the stock count — there is no separate total to type in.</div>
+          ${v && !(v.units || []).length && v.legacy_count ? `<div class="stk-legacy">
+            <i data-lucide="alert-triangle" style="width:14px;height:14px"></i>
+            <span>${v.legacy_count} car${v.legacy_count === 1 ? ' was' : 's were'} recorded here before VIN tracking.
+            Add ${v.legacy_count === 1 ? 'it' : 'them'} above to bring this model back into stock.</span>
+          </div>` : ''}
+        </div>
+        <div><label class="form-label">Notes</label><input id="stk-notes" class="form-input" value="${esc(v?.notes || '')}" placeholder="Options, delivery notes…"></div>
+        <div id="stk-err" class="error-msg" style="display:none"></div>
+      </div>`,
+      `<button class="btn btn-outline" onclick="PROCFG.closeModal()">Cancel</button>
+       <button class="btn btn-primary" onclick="saveStock(${id || 'null'})">${v ? 'Save changes' : 'Add vehicle'}</button>`,
+      { wide: true });
+    const existing = Array.isArray(v?.colors) ? v.colors : [];
+    (existing.length ? existing : [{ name: '', qty: '' }]).forEach(c => stkAddColorRow(c.name, c.qty));
+    (Array.isArray(v?.units) ? v.units : []).forEach(stkAddUnitRow);
+  }
+  function stkAddColorRow(name, qty) {
+    const wrap = document.getElementById('stk-colors');
+    if (!wrap) return;
+    const row = document.createElement('div');
+    row.className = 'stk-color-row';
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 34px;gap:8px;margin-bottom:6px';
+    row.innerHTML = `
+      <input class="form-input stk-color-name" placeholder="Colour (e.g. White)" value="${esc(name || '')}">
+      <button class="btn btn-outline" style="padding:0;font-size:15px;color:var(--danger);border-color:var(--danger)" title="Remove"><i data-lucide="x" style="width:13px;height:13px"></i></button>`;
+    row.querySelector('button').onclick = () => row.remove();
+    wrap.appendChild(row);
+  }
+  function stkAddUnitRow(u) {
+    const tbody = document.getElementById('stk-units');
+    if (!tbody) return;
+    const v = u || {};
+    const tr = document.createElement('tr');
+    tr.className = 'stk-unit-row';
+    const val = c => (c.key === 'status' && v[c.key] == null
+      ? ((c.options && c.options[0] && c.options[0].key) || 'send_to_supplier') : v[c.key]);
+    tr.innerHTML = `<td class="po-td stk-u-no" style="text-align:center;color:var(--muted)"></td>` +
+      stockUnitCols().map(c => procGridInput(CE('stock'), c, val(c), 'stk-u')).join('') +
+      `<td class="po-td" style="text-align:center"><button class="btn btn-outline" style="padding:2px 7px;font-size:14px;color:var(--danger);border-color:var(--danger)" title="Remove">×</button></td>`;
+    tr.querySelector('button').onclick = () => { tr.remove(); stkRenumberUnits(); };
+    tbody.appendChild(tr);
+    stkRenumberUnits();
+  }
+  function stkRenumberUnits() {
+    [...document.querySelectorAll('.stk-unit-row')].forEach((r, i) => {
+      const c = r.querySelector('.stk-u-no'); if (c) c.textContent = i + 1;
+    });
+  }
+
+  async function saveStock(id) {
+    const colors = [...document.querySelectorAll('.stk-color-row')].map(r => ({
+      name: r.querySelector('.stk-color-name').value.trim(),
+      qty: 0,                    // counts come from the individual cars, not here
+    })).filter(c => c.name);
+    const units = procGridCollect('.stk-unit-row', '.stk-u')
+      .filter(u => u.vin || u.consignee || u.colour || u.supplier);
+    const payload = {
+      make: document.getElementById('stk-make').value.trim(),
+      model: document.getElementById('stk-model').value.trim(),
+      trim: document.getElementById('stk-trim').value.trim(),
+      price: document.getElementById('stk-price').value,
+      notes: document.getElementById('stk-notes').value.trim(),
+      colors, units,
+    };
+    const err = document.getElementById('stk-err');
+    if (!payload.make || !payload.model) { err.textContent = 'Make and Model are required.'; err.style.display = 'block'; return; }
+    const url = id ? `/api/dashboard/stock/${id}` : '/api/dashboard/stock';
+    const r = await apiFetch(url, { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+    const d = await r.json();
+    if (!r.ok) { err.textContent = d.error || 'Failed to save.'; err.style.display = 'block'; return; }
+    PROCFG.closeModal();
+    loadStock();
+  }
+
   // ── Sales (the Deals page's Sales tab) ───────────────────────────────────────
   // Moved here from dashboard.js when the tab became a permission of its own
   // (deals.sales to read, deals.salesEdit to write): both portals render it now,
@@ -1683,6 +1913,9 @@
     supplierOptionsHtml, viewDocPdf, viewDocPdfPayload,
       SALE_COLS, SALE_STATUS_OPTS, deleteSale, loadSales, openSaleForm, saleUploadFile, saveSale,
       docCollect, docEngine, docExtrasHtml, docRequiredMissing, docStatusBadge, docStatusHtml,
+      STOCK_UNIT_COLS, loadStock, openStockForm, renderStock, saveStock, stkAddColorRow, stkAddUnitRow,
+      stockVehicle: id => _stockCache.find(v => String(v.id) === String(id)),
+      stkRenumberUnits, stockCardHtml, stockColorSwatch, stockUnitCols, stockUnitsEngine,
       procColsBtn, procColsEngine, procGridCollect, procGridInput, procTh, tupleCols,
   });
 })();
