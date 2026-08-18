@@ -230,10 +230,7 @@ function ColumnsEngine(entity, cfg) {
       <div class="form-group"><label class="form-label">Column name</label>
         <input class="form-control" id="ce-name" placeholder="e.g. Insurance status"></div>
       <div class="form-group"><label class="form-label">Type</label>
-        <select class="form-control" id="ce-type" onchange="document.getElementById('ce-options-wrap').style.display = (this.value === 'select' || this.value === 'radio') ? '' : 'none'">
-          <option value="text">Text</option><option value="number">Number</option><option value="date">Date</option>
-          <option value="select">Dropdown</option><option value="radio">Radio</option><option value="checkbox">Checkbox</option>
-        </select></div>
+        ${ceTypeChips('text', 'ceToggleOptions')}</div>
       <div class="form-group" id="ce-options-wrap" style="display:none"><label class="form-label">Options — one per line</label>
         <textarea class="form-control" id="ce-options" rows="4" placeholder="Pending\nApproved\nRejected"></textarea></div>
       <div class="form-group" style="display:flex;gap:18px;align-items:center">
@@ -280,10 +277,7 @@ function ColumnsEngine(entity, cfg) {
       <div class="form-group"><label class="form-label">Field name</label>
         <input class="form-control" id="ce-name" value="${esc(col.label)}"></div>
       <div class="form-group"><label class="form-label">Type</label>
-        <select class="form-control" id="ce-type" onchange="CE('${entity}')._fieldTypeChanged(this.value)">
-          ${['text|Text', 'number|Number', 'date|Date', 'select|Dropdown', 'radio|Radio', 'checkbox|Checkbox']
-            .map(t => t.split('|')).map(([v, l]) => `<option value="${v}" ${col.type === v ? 'selected' : ''}>${l}</option>`).join('')}
-        </select></div>
+        ${ceTypeChips(col.type, 'ce' + entity.replace(/[^a-z0-9]/gi, '') + 'TypeChanged')}</div>
       <div id="ce-options-wrap" style="display:${opts ? '' : 'none'}">
         <label class="form-label">Options</label>
         <div id="ce-opts-list">${(col.options || []).map(o => E._optRow(o.key, o.label, o.color)).join('')}</div>
@@ -301,6 +295,7 @@ function ColumnsEngine(entity, cfg) {
   };
   // Switching to a dropdown with nothing to choose from is the commonest way to
   // end up with an empty select, so the first option is seeded here.
+  window['ce' + entity.replace(/[^a-z0-9]/gi, '') + 'TypeChanged'] = t => E._fieldTypeChanged(t);
   E._fieldTypeChanged = function (type) {
     const wrap = document.getElementById('ce-options-wrap');
     if (!wrap) return;
@@ -335,15 +330,11 @@ function ColumnsEngine(entity, cfg) {
     E._typeKey = key;
     ceModalShow('Change Type — ' + col.label, `
       <div class="form-group"><label class="form-label">Type</label>
-        <select class="form-control" id="ce-type" onchange="document.getElementById('ce-options-wrap').style.display = (this.value === 'select' || this.value === 'radio') ? '' : 'none'">
-          <option value="text">Text</option><option value="select">Dropdown</option>
-          <option value="radio">Radio</option><option value="checkbox">Checkbox</option>
-        </select></div>
+        ${ceTypeChips(ceHasOpts(col.type) ? col.type : (col.type === 'checkbox' ? 'checkbox' : 'text'), 'ceToggleOptions')}</div>
       <div class="form-group" id="ce-options-wrap"><label class="form-label">Options — one per line</label>
         <textarea class="form-control" id="ce-options" rows="4"></textarea></div>`,
       `<button class="btn btn-outline" onclick="CE('${entity}')._closeModal()">Cancel</button>
        <button class="btn btn-primary" onclick="CE('${entity}').saveType()">Save</button>`);
-    document.getElementById('ce-type').value = ceHasOpts(col.type) ? col.type : (col.type === 'checkbox' ? 'checkbox' : 'text');
     document.getElementById('ce-options').value = (col.options || []).map(o => o.label).join('\n');
     document.getElementById('ce-options-wrap').style.display = ceHasOpts(document.getElementById('ce-type').value) ? '' : 'none';
   };
@@ -456,6 +447,35 @@ function ColumnsEngine(entity, cfg) {
   };
 
   return E;
+}
+
+
+// Field types as chips rather than a <select>. A native popup is drawn by the
+// browser, not by us, and inside a stacked modal some browsers paint it BEHIND
+// the dialog — reported from the PO sheet, where choosing a type showed the
+// options underneath the editor. Six options fit on two rows; nothing pops up,
+// so nothing can be layered wrongly. The hidden input keeps `#ce-type` as the
+// one place the modals read the answer from.
+const CE_TYPES = [['text', 'Text'], ['number', 'Number'], ['date', 'Date'],
+                  ['select', 'Dropdown'], ['radio', 'Radio'], ['checkbox', 'Checkbox']];
+function ceTypeChips(current, onChange) {
+  const cur = CE_TYPES.some(([v]) => v === current) ? current : 'text';
+  return `<input type="hidden" id="ce-type" value="${cur}">
+    <div class="ce-types">${CE_TYPES.map(([v, l]) => `
+      <button type="button" class="ce-type${v === cur ? ' on' : ''}" data-ce-type="${v}"
+        onclick="ceTypePick(this, ${onChange ? `'${onChange}'` : 'null'})">${l}</button>`).join('')}</div>`;
+}
+function ceTypePick(btn, onChange) {
+  const wrap = btn.closest('.ce-types');
+  wrap.querySelectorAll('.ce-type').forEach(b => b.classList.toggle('on', b === btn));
+  const hidden = document.getElementById('ce-type');
+  if (hidden) hidden.value = btn.dataset.ceType;
+  if (onChange && typeof window[onChange] === 'function') window[onChange](btn.dataset.ceType);
+}
+// The shared "does this type need options" toggle, named so a chip can call it.
+function ceToggleOptions(type) {
+  const wrap = document.getElementById('ce-options-wrap');
+  if (wrap) wrap.style.display = ceHasOpts(type) ? '' : 'none';
 }
 
 // ── Shared plumbing ───────────────────────────────────────────────────────────

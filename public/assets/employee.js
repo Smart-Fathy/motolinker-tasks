@@ -3042,6 +3042,9 @@ async function loadChat() {
   document.getElementById('chat-main')?.classList.remove('mob-show');
 }
 
+// Archived conversations are collapsed by default — they are archived.
+let _chatArchOpen = false;
+function chatToggleArchived() { _chatArchOpen = !_chatArchOpen; chatRenderRoomList(); }
 function chatRenderRoomList() {
   const el = document.getElementById('chat-room-list');
   if (!el) return;
@@ -3049,7 +3052,7 @@ function chatRenderRoomList() {
     el.innerHTML = '<div style="padding:28px 16px;font-size:12px;color:var(--muted);text-align:center">No conversations yet.<br>Tap the edit icon to start one.</div>';
     return;
   }
-  el.innerHTML = chatRooms.map(room => {
+  const row = room => {
     const myKey  = myChatKey();
     const other  = room.type === 'direct' ? (room.members || []).find(m => m.member_key !== myKey) : null;
     const name   = room.type === 'group' ? room.name : (other?.member_name || 'Unknown');
@@ -3058,15 +3061,23 @@ function chatRenderRoomList() {
     const unread = chatUnread.has(room.id) ? '<div class="chat-unread-dot"></div>' : '';
     return `<div class="chat-room-item${activeChatRoomId === room.id ? ' active' : ''}" onclick="chatOpenRoom(${room.id})" data-room="${room.id}">
       <div class="chat-room-avatar-wrap">
-        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${other?.member_avatar ? `<img src="${esc(other.member_avatar)}" alt="">` : esc(init)}</div>
+        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${
+          room.type === 'group' && room.icon ? esc(room.icon)
+            : (other?.member_avatar ? `<img src="${esc(other.member_avatar)}" alt="">` : esc(init))}</div>
         ${room.type === 'direct' ? `<div class="presence-dot" id="presence-dot-${room.id}"></div>` : ''}
       </div>
       <div class="chat-room-info">
         <div class="chat-room-name">${esc(name)}${statusEmojiOnly(other?.member_status_emoji, other?.member_status)}</div>
         <div class="chat-room-preview">${esc(prev)}</div>
-      </div>${unread}
+      </div>${unread}${chatRoomDotsHtml(room.id)}
     </div>`;
-  }).join('');
+  };
+  const { active, archived } = chatRoomsSplit(chatRooms);
+  el.innerHTML = active.map(row).join('')
+    + (archived.length ? `<button class="chat-arch-head" onclick="chatToggleArchived()">
+        <i data-lucide="archive" style="width:13px;height:13px"></i> Archived (${archived.length})
+        <span class="chat-arch-chev">${_chatArchOpen ? '▴' : '▾'}</span></button>
+      <div class="chat-arch-list" style="display:${_chatArchOpen ? '' : 'none'}">${archived.map(row).join('')}</div>` : '');
   requestAnimationFrame(() => lucide.createIcons());
 }
 

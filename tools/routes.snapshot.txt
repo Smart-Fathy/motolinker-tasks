@@ -223,6 +223,8 @@ GET /api/employee/chat/rooms
 POST /api/dashboard/chat/rooms/direct
 POST /api/employee/chat/rooms/direct
 PUT /api/dashboard/chat/rooms/:id
+POST /api/dashboard/chat/rooms/:id/state
+PUT /api/dashboard/chat/rooms/:id/icon
 POST /api/dashboard/chat/rooms/:id/members
 DELETE /api/dashboard/chat/rooms/:id/members/:memberKey
 GET /api/dashboard/chat/rooms/:id/attachments
@@ -231,6 +233,8 @@ GET /api/dashboard/chat/huddle/ice
 GET /api/dashboard/chat/huddle/:roomId
 POST /api/dashboard/chat/huddle/signal
 PUT /api/employee/chat/rooms/:id
+POST /api/employee/chat/rooms/:id/state
+PUT /api/employee/chat/rooms/:id/icon
 POST /api/employee/chat/rooms/:id/members
 DELETE /api/employee/chat/rooms/:id/members/:memberKey
 GET /api/employee/chat/rooms/:id/attachments
@@ -238,6 +242,7 @@ GET /api/employee/chat/huddle/live
 GET /api/employee/chat/huddle/ice
 GET /api/employee/chat/huddle/:roomId
 POST /api/employee/chat/huddle/signal
+DELETE /api/dashboard/chat/rooms/:id
 POST /api/dashboard/chat/rooms/group
 GET /api/dashboard/chat/rooms/:roomId/messages
 GET /api/employee/chat/rooms/:roomId/messages

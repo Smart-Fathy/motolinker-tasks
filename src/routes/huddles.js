@@ -39,6 +39,49 @@ function mountChatAdminRoutes(base, guard) {
     res.json(data);
   });
 
+  // Put a conversation away, or take it off my list. Per MEMBER — the other side
+  // keeps the conversation exactly as it was, which is the point of asking.
+  // Hiding is not deleting: the messages stay, and a newer one brings it back.
+  receiver.router.post(`${base}/rooms/:id/state`, guard, express.json(), async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const roomId = parseInt(req.params.id);
+    const members = await chatRoomMemberKeys(roomId);
+    if (!members.includes(key)) return res.status(403).json({ error: 'Not a member' });
+    const patch = {};
+    const now = new Date().toISOString();
+    if ('archived' in (req.body || {})) patch.archived_at = req.body.archived ? now : null;
+    if ('hidden' in (req.body || {}))   patch.hidden_at   = req.body.hidden ? now : null;
+    if (!Object.keys(patch).length) return res.status(400).json({ error: 'archived or hidden required' });
+    const { error } = await supabase.from('chat_room_members')
+      .update(patch).eq('room_id', roomId).eq('member_key', key);
+    // The columns arrive with migration 015; say so rather than 500-ing.
+    if (error) {
+      const missing = /archived_at|hidden_at/.test(String(error.message || ''));
+      return res.status(missing ? 409 : 500).json({
+        error: missing ? 'Archiving needs migrations/015_chat_room_state.sql applied first.' : error.message });
+    }
+    res.json({ ok: true, ...patch });
+  });
+
+  // The group's icon — an emoji everyone in it sees. Set, changed or cleared by
+  // whoever may manage the group.
+  receiver.router.put(`${base}/rooms/:id/icon`, guard, express.json(), async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const roomId = parseInt(req.params.id);
+    if (!(await chatCanManage(roomId, key))) return res.status(403).json({ error: 'Not allowed' });
+    // Two characters of emoji at most: this is a badge, not a nickname.
+    const icon = [...String(req.body?.icon || '').trim()].slice(0, 2).join('');
+    const { data, error } = await supabase.from('chat_rooms')
+      .update({ icon, updated_at: new Date().toISOString() }).eq('id', roomId).select().single();
+    if (error) {
+      const missing = /icon/.test(String(error.message || ''));
+      return res.status(missing ? 409 : 500).json({
+        error: missing ? 'Group icons need migrations/015_chat_room_state.sql applied first.' : error.message });
+    }
+    chatBroadcast(await chatRoomMemberKeys(roomId), 'room', { roomId, room: data });
+    res.json(data);
+  });
+
   // Add members
   receiver.router.post(`${base}/rooms/:id/members`, guard, express.json(), async (req, res) => {
     const { key } = chatCallerIdentity(req);
@@ -274,6 +317,22 @@ mountChatAdminRoutes('/api/dashboard/chat', requireAuth);
 mountChatAdminRoutes('/api/employee/chat', requireEmployeeAuth);
 
 // Rooms — group (admin only)
+// Delete a group for everyone. Direct conversations are never deleted this way —
+// one person cannot erase another's history; they hide their own copy instead.
+receiver.router.delete('/api/dashboard/chat/rooms/:id', requireAuth, async (req, res) => {
+  const roomId = parseInt(req.params.id);
+  const { data: room } = await supabase.from('chat_rooms').select('id,type').eq('id', roomId).single();
+  if (!room) return res.status(404).json({ error: 'Room not found' });
+  if (room.type !== 'group') return res.status(400).json({ error: 'Only groups can be deleted. Hide a direct chat instead.' });
+  const members = await chatRoomMemberKeys(roomId);
+  await supabase.from('chat_messages').delete().eq('room_id', roomId);
+  await supabase.from('chat_room_members').delete().eq('room_id', roomId);
+  const { error } = await supabase.from('chat_rooms').delete().eq('id', roomId);
+  if (error) return res.status(500).json({ error: error.message });
+  chatBroadcast(members, 'room', { roomId, deleted: true });
+  res.json({ ok: true });
+});
+
 receiver.router.post('/api/dashboard/chat/rooms/group', requireAuth, express.json(), async (req, res) => {
   const { name, memberKeys } = req.body || {};
   if (!name || !Array.isArray(memberKeys) || !memberKeys.length) return res.status(400).json({ error: 'name and memberKeys[] required' });

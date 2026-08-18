@@ -936,3 +936,28 @@
     .cal-legend { width:100%; margin-left:0; }
     .cal-title { font-size:14px; }
   }
+
+  /* Field-type chips. They replaced a <select> because a native popup inside the
+     stacked field editor painted BEHIND it in some browsers. */
+  .ce-types { display:flex; flex-wrap:wrap; gap:6px; }
+  .ce-type { background:var(--bg); border:1px solid var(--border); color:var(--muted); border-radius:20px;
+             font-size:12.5px; padding:6px 14px; cursor:pointer; font-family:inherit; }
+  .ce-type:hover { color:var(--text); }
+  .ce-type.on { background:rgba(201,163,94,.16); border-color:rgba(201,163,94,.5); color:var(--primary); font-weight:600; }
+
+  /* The conversation menu and the archived shelf. Archiving and hiding are one
+     person's view of a chat; the other side never sees a change. */
+  .chat-room-item { position:relative; }
+  .chat-room-dots { position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none;
+                    border:none; color:var(--muted); cursor:pointer; font-size:17px; line-height:1;
+                    padding:2px 6px; border-radius:6px; opacity:0; transition:opacity .12s; font-family:inherit; }
+  .chat-room-item:hover .chat-room-dots, .chat-room-dots:focus { opacity:1; }
+  .chat-room-dots:hover { background:rgba(255,255,255,.09); color:var(--text); }
+  .chat-arch-head { display:flex; align-items:center; gap:8px; width:100%; background:none; border:none;
+                    border-top:1px solid var(--border); color:var(--muted); font-size:11.5px; font-weight:700;
+                    letter-spacing:.05em; text-transform:uppercase; padding:10px 14px; cursor:pointer;
+                    font-family:inherit; }
+  .chat-arch-head:hover { color:var(--text); }
+  .chat-arch-chev { margin-left:auto; }
+  .chat-arch-list .chat-room-item { opacity:.72; }
+  @media (max-width:640px) { .chat-room-dots { opacity:1; } }

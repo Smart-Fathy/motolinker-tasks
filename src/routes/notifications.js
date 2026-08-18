@@ -84,6 +84,11 @@ async function chatListRooms(callerKey) {
   (recentMsgs || []).forEach(m => { if (!lastMsgByRoom[m.room_id]) lastMsgByRoom[m.room_id] = m; });
   // Attach profile pictures so the room list can show the peer's avatar
   const profiles = await chatProfileMap();
+  // This caller's own row decides what they see: archived moves the conversation
+  // to its own section, hidden takes it off the list until somebody says
+  // something new. Both are per member — the other side is untouched.
+  const mine = {};
+  (allMembers || []).forEach(m => { if (m.member_key === callerKey) mine[m.room_id] = m; });
   return (rooms || []).map(r => ({
     ...r,
     members: (membersByRoom[r.id] || []).map(m => {
@@ -91,7 +96,14 @@ async function chatListRooms(callerKey) {
       return { ...m, member_avatar: p.avatar || null, member_status: p.statusText || '', member_status_emoji: p.statusEmoji || '' };
     }),
     lastMessage: lastMsgByRoom[r.id] || null,
-  }));
+    archived: !!(mine[r.id] && mine[r.id].archived_at),
+    hidden_at: (mine[r.id] && mine[r.id].hidden_at) || null,
+  })).filter(r => {
+    if (!r.hidden_at) return true;
+    // A newer message un-hides it — "delete" in a chat has always meant "until
+    // they write again", and silently swallowing the next message would be worse.
+    return !!(r.lastMessage && new Date(r.lastMessage.created_at) > new Date(r.hidden_at));
+  });
 }
 
 async function chatCreateOrGetDirect(callerKey, callerName, targetKey, targetName) {

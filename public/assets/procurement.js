@@ -1073,7 +1073,12 @@
     const id = _supDetailId;
     try {
       if (which === 'vehicles') {
-        _supData.vehicles = await apiFetch(`/api/dashboard/suppliers/${id}/vehicles`).then(r => r.json());
+        // The column config decides what this grid even has, so it loads with it.
+        const [veh] = await Promise.all([
+          apiFetch(`/api/dashboard/suppliers/${id}/vehicles`).then(r => r.json()),
+          supVehiclesEngine().load(),
+        ]);
+        _supData.vehicles = veh;
         supRenderVehicles();
       } else if (which === 'docs') {
         _supData.docs = await apiFetch(`/api/dashboard/suppliers/${id}/docs`).then(r => r.json());
@@ -1086,36 +1091,62 @@
     requestAnimationFrame(() => lucide.createIcons());
   }
 
-  const SUP_V_COLS = [['brand', 'Brand'], ['model', 'Model'], ['trim', 'Trim'], ['model_year', 'Year'],
-    ['availability', 'Availability'], ['fob_price', 'FOB price'], ['lead_time', 'Lead time'],
-    ['accessories', 'Accessories']];
+  // What a supplier offers. The last grid with a frozen column list — it reads
+  // from the shared engine now, so an admin can rename these, hide them, or add
+  // a field of any type, exactly as on the PO and RFQ sheets.
+  const SUP_V_COLS = [['brand', 'Brand', 110], ['model', 'Model', 110], ['trim', 'Trim', 100],
+    ['model_year', 'Year', 70], ['availability', 'Availability', 120], ['fob_price', 'FOB price', 100],
+    ['lead_time', 'Lead time', 110], ['accessories', 'Accessories', 160]];
+  function supVehiclesEngine() {
+    return procColsEngine('supplier_vehicles',
+      tupleCols(SUP_V_COLS, { model_year: 'number', fob_price: 'number' }), () => supTab('vehicles'));
+  }
+  function supVehicleCols() {
+    const eng = CE('supplier_vehicles');
+    return eng && eng.loaded ? eng.visible() : tupleCols(SUP_V_COLS, {});
+  }
 
   function supRenderVehicles() {
     const rows = Array.isArray(_supData.vehicles) ? _supData.vehicles : [];
+    const cols = supVehicleCols();
     document.getElementById('sup-pane').innerHTML = `
-      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px">
+        ${procColsBtn('supplier_vehicles')}
         <button class="btn btn-outline btn-sm" onclick="supAddVehicleRow()"><i data-lucide="plus" style="width:13px;height:13px"></i> Add vehicle</button>
       </div>
       <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px">
         <table style="border-collapse:collapse;font-size:12px;min-width:900px;width:100%">
-          <thead><tr>${SUP_V_COLS.map(([, l]) => `<th class="po-th">${esc(l)}</th>`).join('')}<th class="po-th" style="width:38px"></th></tr></thead>
+          <thead><tr>${cols.map(c => procTh('supplier_vehicles', c, { cls: 'po-th', style: `min-width:${c.width || 100}px` })).join('')}<th class="po-th" style="width:38px"></th></tr></thead>
           <tbody id="sup-v-body">${rows.map(supVehicleRowHtml).join('')}</tbody>
         </table>
       </div>
       ${rows.length ? '' : '<div style="color:var(--muted);font-size:12.5px;padding:14px;text-align:center">Nothing listed yet. Add what this supplier offers so RFQs and purchase orders can pick from it.</div>'}`;
+    // Every cell saves the row it is in, whatever type it was configured as.
+    const body = document.getElementById('sup-v-body');
+    if (body) body.addEventListener('change', e => {
+      const el = e.target.closest('.sup-v');
+      if (el) supSaveVehicle(Number(el.closest('tr').dataset.vid), el);
+    });
   }
   function supVehicleRowHtml(v) {
-    return `<tr data-vid="${v.id}">${SUP_V_COLS.map(([k]) => {
-      const val = k === 'fob_price' && v[k] ? Number(v[k]).toLocaleString() : (v[k] ?? '');
-      return `<td class="po-td"><input class="form-input sup-v" data-k="${k}" value="${esc(String(val))}"
-        style="font-size:12px;padding:5px 6px" onchange="supSaveVehicle(${v.id}, this)"></td>`;
-    }).join('')}
+    const eng = CE('supplier_vehicles');
+    const value = c => c.builtin
+      ? (c.key === 'fob_price' && v[c.key] ? Number(v[c.key]) : (v[c.key] ?? ''))
+      : ((v.custom_fields || {})[c.key] ?? '');
+    return `<tr data-vid="${v.id}">${supVehicleCols().map(c => procGridInput(eng, c, value(c), 'sup-v')).join('')}
     <td class="po-td"><button class="btn btn-outline" style="padding:2px 6px;color:var(--danger);border-color:var(--danger)"
       onclick="supDeleteVehicle(${v.id})"><i data-lucide="x" style="width:12px;height:12px"></i></button></td></tr>`;
   }
+  // Builtin columns are the table's own; anything added rides in custom_fields.
   function supRowPayload(tr) {
-    const o = {};
-    tr.querySelectorAll('.sup-v').forEach(i => { o[i.dataset.k] = i.value; });
+    const eng = CE('supplier_vehicles');
+    const o = { custom_fields: {} };
+    tr.querySelectorAll('.sup-v').forEach(i => {
+      const k = i.dataset.k;
+      const val = i.type === 'checkbox' ? i.checked : i.value;
+      const col = eng && eng.col(k);
+      if (col && col.builtin === false) o.custom_fields[k] = val; else o[k] = val;
+    });
     return o;
   }
   async function supAddVehicleRow() {
@@ -1863,7 +1894,7 @@
     rfqRenumber, saveContract, savePo, saveRfq,
     saveSupplier, supAddVehicleRow, supCatFilter, supCatLabel,
     supCatRows, supCatalogue, supDeleteVehicle, supRenderDocs,
-    supRenderPurchases, supRenderVehicles, supRowPayload, supSaveVehicle,
+    supRenderPurchases, supRenderVehicles, supRowPayload, supSaveVehicle, supVehicleCols, supVehiclesEngine,
     supTab, supUploadDoc, supVehicleRowHtml, supplierFillFields,
     supplierOptionsHtml, viewDocPdf, viewDocPdfPayload,
       SALE_COLS, SALE_STATUS_OPTS, deleteSale, loadSales, openSaleForm, saleUploadFile, saveSale,
