@@ -1850,3 +1850,146 @@
     content:''; width:6px; height:6px; border-radius:50%;
     background:currentColor; flex-shrink:0;
   }
+
+  /* ── Tasks: views and density ──────────────────────────────────────────
+   * Three shapes over one set of tasks. Both controls persist and change real
+   * geometry — the row padding and the description line — rather than only
+   * highlighting themselves. */
+  .task-toolbar{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    padding:0 20px; border-bottom:1px solid var(--border);
+  }
+  .task-views{ display:flex; align-items:center; gap:2px; }
+  .task-view-tab{
+    display:inline-flex; align-items:center; gap:7px;
+    padding:11px 14px; border:none; background:none; cursor:pointer;
+    font-family:inherit; font-size:12.5px; font-weight:600; color:var(--muted);
+    border-bottom:2px solid transparent; white-space:nowrap;
+  }
+  .task-view-tab i, .task-view-tab svg{ width:14px; height:14px; }
+  .task-view-tab:hover{ color:var(--text); }
+  .task-view-tab.active{ color:var(--gold); font-weight:700; border-bottom-color:var(--gold); }
+
+  .task-dens{
+    margin-left:auto; display:flex; align-items:center; gap:4px;
+    background:var(--bg); border:1px solid var(--border);
+    border-radius:var(--r-md); padding:3px;
+  }
+  .task-dens-btn{
+    padding:6px 11px; border:none; border-radius:var(--r-xs); cursor:pointer;
+    font-family:inherit; font-size:11.5px; font-weight:600;
+    background:none; color:var(--muted); min-height:32px;
+  }
+  .task-dens-btn.active{ background:rgba(201,163,94,.15); color:var(--gold); font-weight:700; }
+
+  /* ── List view ──────────────────────────────────────────────────────── */
+  .task-group{ border-bottom:1px solid var(--border); }
+  .task-group:last-child{ border-bottom:none; }
+  .task-group-head{
+    display:flex; align-items:center; gap:11px; width:100%;
+    padding:12px 20px; border:none; cursor:pointer; font-family:inherit;
+    text-align:left; background:linear-gradient(180deg,
+      color-mix(in srgb, var(--c) 12%, transparent), rgba(20,20,22,0));
+  }
+  .task-group-head:hover{ background:linear-gradient(180deg,
+      color-mix(in srgb, var(--c) 18%, transparent), rgba(20,20,22,0)); }
+  .task-group-chev{ width:13px; height:13px; color:var(--muted); transition:transform .18s; flex-shrink:0; }
+  .task-group-chev.shut{ transform:rotate(-90deg); }
+  .task-group-n{ font-size:12px; font-weight:700; color:var(--muted); }
+  .task-group-share{
+    flex:1; min-width:40px; max-width:220px; height:3px; margin-left:6px;
+    background:rgba(255,255,255,.07); border-radius:var(--r-pill); overflow:hidden;
+  }
+  .task-group-share i{ display:block; height:100%; background:var(--c); border-radius:var(--r-pill); }
+  .task-group-pct{ font-size:10.5px; font-weight:800; color:var(--c); }
+  .task-group-none{ padding:16px 20px; font-size:12.5px; color:var(--muted); }
+
+  .task-row{
+    display:flex; align-items:center; gap:12px;
+    padding:13px 20px; border-top:1px solid rgba(255,255,255,.05);
+  }
+  .task-row:hover{ background:rgba(201,163,94,.04); }
+  /* The title wins the remaining space instead of absorbing the shrink: with a
+   * 140px floor and everything else sized to content, the row needs ~430px
+   * before anything is pushed out. */
+  .task-row-main{ flex:1 1 auto; min-width:140px; cursor:pointer; }
+  .task-row-title{ font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .task-row-desc{ font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:3px; }
+  .task-row-ms{ flex-shrink:1; min-width:0; max-width:110px; overflow:hidden; text-overflow:ellipsis; }
+  .task-row-who{ font-size:12.5px; color:#b9b3a4; white-space:nowrap; flex-shrink:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  .task-row-due{ flex-shrink:0; }
+  .task-row-acts{ display:inline-flex; gap:5px; flex-shrink:0; margin-left:auto; }
+  .task-row .badge{ flex-shrink:0; }
+  .task-row .btn-sm{ padding:4px 9px; font-size:11px; }
+
+  /* Density is the one control that has to move real geometry. */
+  #table-container.dens-compact .task-row{ padding:7px 16px; gap:10px; }
+  #table-container.dens-compact .task-row-desc{ display:none; }
+  #table-container.dens-compact .task-group-head{ padding:8px 16px; }
+  #table-container.dens-compact td{ padding:7px 14px; }
+  #table-container.dens-compact .task-card{ padding:9px 11px; }
+
+  /* ── Board view ─────────────────────────────────────────────────────── */
+  .task-board{
+    display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:14px; padding:16px 20px 20px; align-items:start;
+  }
+  .task-bcol{
+    background:var(--bg); border:1px solid var(--border);
+    border-radius:var(--r-lg); overflow:hidden; min-height:160px;
+  }
+  .task-bcol-head{
+    display:flex; align-items:center; gap:9px; padding:13px 13px 12px;
+    background:linear-gradient(180deg, color-mix(in srgb, var(--c) 14%, transparent), rgba(20,20,22,0));
+  }
+  .task-bcol-n{ font-size:12px; font-weight:700; color:var(--muted); }
+  .task-bcol-share{
+    flex:1; height:3px; background:rgba(255,255,255,.07);
+    border-radius:var(--r-pill); overflow:hidden;
+  }
+  .task-bcol-share i{ display:block; height:100%; background:var(--c); border-radius:var(--r-pill); }
+  .task-bcol-body{ padding:0 11px 11px; display:grid; gap:9px; }
+  .task-card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-md); padding:12px 13px; cursor:pointer;
+  }
+  .task-card:hover{ border-color:rgba(201,163,94,.35); }
+  .task-card-title{ font-size:13px; font-weight:600; line-height:1.4; margin-bottom:9px; }
+  .task-card-meta{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:10px; }
+  .task-card-foot{
+    display:flex; align-items:center; gap:8px; padding-top:9px;
+    border-top:1px solid rgba(255,255,255,.06); font-size:11px; color:var(--muted);
+  }
+  .task-card-who{ font-weight:600; color:#b9b3a4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .task-card-ch{ flex:1; min-width:0; color:var(--gold); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  @media (max-width:900px){ .task-board{ grid-template-columns:minmax(0,1fr); } }
+  @media (max-width:700px){
+    .task-toolbar{ padding:0 12px; }
+    /* The mobile layer's blanket 44px floor is a bare `button` selector, so a
+     * class rule here outranks it and has to restate the floor itself. */
+    .task-dens{ margin-left:0; }
+    .task-dens-btn{ min-height:44px; padding:6px 14px; }
+    .task-view-tab{ min-height:44px; }
+    .task-row{ flex-wrap:wrap; padding:11px 14px; }
+    .task-row-main{ flex:1 1 100%; order:-1; }
+    .task-row-acts{ margin-left:auto; }
+  }
+
+  /* ── Toolbar filters ───────────────────────────────────────────────────
+   * .filter-input carries width:100% from the base sheet, which is right in a
+   * modal and wrong in a toolbar: inside a wrapping flex row every control
+   * claimed a full line, so the Tasks header was six stacked rows 243px tall.
+   * Scoped above 640px because the mobile layer deliberately stacks them, and
+   * this sheet is later in source order than that rule. */
+  @media (min-width:641px){
+    .table-filters .filter-input{ width:auto; min-width:140px; }
+    .table-filters .search-input{ flex:1 1 220px; min-width:200px; max-width:360px; }
+    .table-filters select.filter-input{ min-width:130px; }
+    /* enhanceBrandSelects() swaps each <select> for a .bselect-trigger button,
+     * and that carries width:100% too — it is the control actually on screen. */
+    .table-filters .bselect-trigger{ width:auto; min-width:132px; }
+    .table-filters .bselect{ width:auto; }
+    .table-header{ align-items:flex-start; gap:14px; }
+    .table-filters{ justify-content:flex-end; }
+  }

@@ -816,20 +816,8 @@ function filterTasks() {
   renderTable(filtered);
 }
 
-function renderTable(tasks) {
+function renderTaskTable(tasks) {
   const container = document.getElementById('table-container');
-
-  if (!tasks.length) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon" style="font-size:44px">—</div>
-        <div class="empty-title">No tasks found</div>
-        <div class="empty-sub">Adjust the filters or click "+ Add Task" to create one</div>
-      </div>`;
-    document.getElementById('table-count').textContent = '0 tasks';
-    return;
-  }
-
   const rows = tasks.map(t => {
     const overdue = isOverdue(t.due_date, t.status);
     const soon    = !overdue && isDueSoon(t.due_date, t.status);
@@ -885,8 +873,153 @@ function renderTable(tasks) {
       </table>
     </div>`;
 
+}
+
+// ── Task views ────────────────────────────────────────────────────────────────
+// One set of tasks, three shapes. List groups by status because that is how the
+// work is actually triaged; Board is the same grouping laid sideways; Table is
+// the full record. Density changes real geometry, not just its own highlight.
+const TASK_VIEWS = ['list', 'board', 'table'];
+let _taskView = 'list';
+let _taskDensity = 'comfortable';
+const TASK_GROUPS = [
+  { key: 'todo',        label: 'To Do',       tone: 'var(--st-todo)' },
+  { key: 'in_progress', label: 'In Progress', tone: 'var(--st-progress)' },
+  { key: 'done',        label: 'Done',        tone: 'var(--st-done)' },
+];
+let _taskGroupOpen = { todo: true, in_progress: true, done: false };
+
+try {
+  const v = localStorage.getItem('ml_task_view');
+  if (TASK_VIEWS.includes(v)) _taskView = v;
+  const d = localStorage.getItem('ml_task_density');
+  if (d === 'compact' || d === 'comfortable') _taskDensity = d;
+  const g = JSON.parse(localStorage.getItem('ml_task_groups') || 'null');
+  if (g && typeof g === 'object') _taskGroupOpen = { ..._taskGroupOpen, ...g };
+} catch (_) {}
+
+function setTaskView(v) {
+  if (!TASK_VIEWS.includes(v)) return;
+  _taskView = v;
+  try { localStorage.setItem('ml_task_view', v); } catch (_) {}
+  filterTasks();
+}
+function setTaskDensity(d) {
+  _taskDensity = d === 'compact' ? 'compact' : 'comfortable';
+  try { localStorage.setItem('ml_task_density', _taskDensity); } catch (_) {}
+  filterTasks();
+}
+function toggleTaskGroup(key) {
+  _taskGroupOpen[key] = !_taskGroupOpen[key];
+  try { localStorage.setItem('ml_task_groups', JSON.stringify(_taskGroupOpen)); } catch (_) {}
+  filterTasks();
+}
+function paintTaskChrome() {
+  document.querySelectorAll('.task-view-tab').forEach(b =>
+    b.classList.toggle('active', b.dataset.view === _taskView));
+  document.querySelectorAll('.task-dens-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.dens === _taskDensity));
+}
+
+function taskDueCell(t) {
+  const overdue = isOverdue(t.due_date, t.status);
+  const soon = !overdue && isDueSoon(t.due_date, t.status);
+  return { cls: overdue ? 'overdue' : (soon ? 'due-soon' : ''), label: t.due_date || '—' };
+}
+
+function taskRowHtml(t) {
+  const due = taskDueCell(t);
+  const isDone = t.status === 'done';
+  return `<div class="task-row" id="row-${t.id}">
+    <input type="checkbox" class="row-cb task-cb" data-id="${t.id}" onchange="onRowCheck()">
+    ${statusBadge(t.status)}
+    <div class="task-row-main" onclick="openTaskModal(${t.id})">
+      <div class="task-row-title">${esc(t.title)}</div>
+      ${t.description ? `<div class="task-row-desc">${esc(t.description)}</div>` : ''}
+    </div>
+    ${priorityBadge(t.priority)}
+    ${t.milestone ? `<span class="milestone-tag task-row-ms">${esc(t.milestone)}</span>` : ''}
+    <span class="task-row-who">${resolvedNames(t)}</span>
+    <span class="due-date ${due.cls} task-row-due">${due.label}</span>
+    <span class="task-row-acts">
+      ${isDone ? '' : `<button class="btn btn-success btn-sm" onclick="quickDone(${t.id})">Done</button>`}
+      <button class="btn btn-outline btn-sm" onclick="openTaskComments(${t.id})" title="Comments"><i data-lucide="message-square" style="width:13px;height:13px"></i></button>
+      <button class="btn btn-outline btn-sm" onclick="deleteTask(${t.id})" title="Delete"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+    </span>
+  </div>`;
+}
+
+function renderTaskList(tasks, container) {
+  const total = tasks.length || 1;
+  container.innerHTML = TASK_GROUPS.map(g => {
+    const rows = tasks.filter(t => t.status === g.key);
+    const pct = Math.round((rows.length / total) * 100);
+    const open = _taskGroupOpen[g.key] !== false;
+    return `<section class="task-group" style="--c:${g.tone}">
+      <button class="task-group-head" onclick="toggleTaskGroup('${g.key}')" aria-expanded="${open}">
+        <i data-lucide="chevron-down" class="task-group-chev${open ? '' : ' shut'}"></i>
+        <span class="badge badge-${g.key}">${g.label}</span>
+        <span class="task-group-n num">${rows.length}</span>
+        <span class="task-group-share"><i style="width:${pct}%"></i></span>
+        <span class="task-group-pct num">${pct}%</span>
+      </button>
+      ${open ? `<div class="task-group-body">${rows.length
+        ? rows.map(taskRowHtml).join('')
+        : '<div class="task-group-none">Nothing here</div>'}</div>` : ''}
+    </section>`;
+  }).join('');
+}
+
+function renderTaskBoard(tasks, container) {
+  const total = tasks.length || 1;
+  container.innerHTML = `<div class="task-board">${TASK_GROUPS.map(g => {
+    const rows = tasks.filter(t => t.status === g.key);
+    const pct = Math.round((rows.length / total) * 100);
+    return `<div class="task-bcol" style="--c:${g.tone}">
+      <div class="task-bcol-head">
+        <span class="badge badge-${g.key}">${g.label}</span>
+        <span class="task-bcol-n num">${rows.length}</span>
+        <span class="task-bcol-share"><i style="width:${pct}%"></i></span>
+      </div>
+      <div class="task-bcol-body">${rows.map(t => {
+        const due = taskDueCell(t);
+        return `<article class="task-card" onclick="openTaskModal(${t.id})">
+          <div class="task-card-title">${esc(t.title)}</div>
+          <div class="task-card-meta">${priorityBadge(t.priority)}<span class="due-date ${due.cls}">${due.label}</span></div>
+          <div class="task-card-foot">
+            <span class="task-card-who">${resolvedNames(t)}</span>
+            <span class="task-card-ch">${esc(t.channel_name || '')}</span>
+            <span class="task-id">#${t.id}</span>
+          </div>
+        </article>`;
+      }).join('') || '<div class="task-group-none">Nothing here</div>'}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderTable(tasks) {
+  const container = document.getElementById('table-container');
+  container.className = 'dens-' + _taskDensity;
+  paintTaskChrome();
+
+  if (!tasks.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon" style="font-size:44px">—</div>
+        <div class="empty-title">No tasks found</div>
+        <div class="empty-sub">Adjust the filters or click "+ Add Task" to create one</div>
+      </div>`;
+    document.getElementById('table-count').textContent = '0 tasks';
+    return;
+  }
+
+  if (_taskView === 'list') renderTaskList(tasks, container);
+  else if (_taskView === 'board') renderTaskBoard(tasks, container);
+  else renderTaskTable(tasks);
+
   document.getElementById('table-count').textContent =
     `Showing ${tasks.length} of ${allTasks.length} task${allTasks.length !== 1 ? 's' : ''}`;
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 // ── Load Dashboard ───────────────────────────────────────────────────────────

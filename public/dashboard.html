@@ -293,6 +293,19 @@
           </select>
         </div>
       </div>
+      <!-- One set of tasks, three shapes. Both controls change real state and
+           persist; neither is decoration. -->
+      <div class="task-toolbar">
+        <div class="task-views" role="tablist" aria-label="Task view">
+          <button class="task-view-tab active" data-view="list"  onclick="setTaskView('list')"><i data-lucide="list"></i> List</button>
+          <button class="task-view-tab"        data-view="board" onclick="setTaskView('board')"><i data-lucide="kanban-square"></i> Board</button>
+          <button class="task-view-tab"        data-view="table" onclick="setTaskView('table')"><i data-lucide="table"></i> Table</button>
+        </div>
+        <div class="task-dens" role="group" aria-label="Row density">
+          <button class="task-dens-btn active" data-dens="comfortable" onclick="setTaskDensity('comfortable')">Comfortable</button>
+          <button class="task-dens-btn"        data-dens="compact"     onclick="setTaskDensity('compact')">Compact</button>
+        </div>
+      </div>
       <div id="bulk-bar" class="bulk-bar">
         <span id="bulk-count">0 selected</span>
         <button class="btn btn-success" style="padding:5px 14px;font-size:12px" onclick="bulkMarkDone()">Mark Done</button>
