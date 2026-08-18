@@ -25,7 +25,7 @@
   .auth-wrap { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px; background:radial-gradient(ellipse at 50% 0%, rgba(124,106,255,.08) 0%, transparent 60%); }
   .auth-card { background:var(--surface); border:1px solid var(--glass-border); border-radius:20px; padding:44px 36px; width:100%; max-width:400px; box-shadow:var(--shadow-lg); backdrop-filter:blur(20px); }
   .auth-logo { text-align:center; margin-bottom:32px; }
-  .auth-logo-icon { width:56px; height:56px; background:linear-gradient(135deg, var(--primary), #9f8aff); border-radius:16px; display:flex; align-items:center; justify-content:center; margin:0 auto 14px; color:#fff; box-shadow:0 4px 20px rgba(124,106,255,.3); }
+  .auth-logo-icon { width:56px; height:56px; background:linear-gradient(135deg, var(--gold-soft,#d9bd7f), var(--primary)); border-radius:16px; display:flex; align-items:center; justify-content:center; margin:0 auto 14px; color:#fff; box-shadow:0 4px 20px rgba(201,163,94,.28); }
   .auth-logo h1 { font-size:22px; font-weight:800; letter-spacing:-.02em; }
   .auth-logo p  { font-size:13px; color:var(--muted); margin-top:6px; }
   .auth-err { background:rgba(248,113,113,.08); border:1px solid rgba(248,113,113,.25); color:var(--danger); padding:12px 16px; border-radius:var(--radius-sm); font-size:13px; margin-bottom:16px; display:none; }
@@ -37,7 +37,7 @@
   .sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; background:var(--surface); border-right:1px solid var(--glass-border); display:flex; flex-direction:column; z-index:100; transition:transform .3s cubic-bezier(.4,0,.2,1); }
   .sidebar-brand { padding:22px 20px 18px; border-bottom:1px solid var(--glass-border); }
   .sidebar-brand-row { display:flex; align-items:center; gap:12px; }
-  .sidebar-icon { width:38px; height:38px; background:linear-gradient(135deg, var(--primary), #9f8aff); border-radius:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0; color:#fff; box-shadow:0 2px 12px rgba(124,106,255,.25); }
+  .sidebar-icon { width:38px; height:38px; background:linear-gradient(135deg, var(--gold-soft,#d9bd7f), var(--primary)); border-radius:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0; color:#fff; box-shadow:0 2px 12px rgba(201,163,94,.22); }
   .sidebar-brand-name { font-size:15px; font-weight:800; line-height:1.2; letter-spacing:-.01em; }
   .sidebar-brand-sub  { font-size:10px; color:var(--muted); margin-top:2px; letter-spacing:.05em; text-transform:uppercase; }
   .sidebar-nav { flex:1; padding:14px 12px; display:flex; flex-direction:column; gap:2px; overflow-y:auto; }
@@ -47,7 +47,7 @@
   .nav-item.active { background:var(--primary-glow); color:var(--primary); font-weight:600; box-shadow:inset 0 0 0 1px rgba(124,106,255,.15); }
   .sidebar-footer { padding:16px 20px; border-top:1px solid var(--glass-border); }
   .user-row { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
-  .user-avatar { width:36px; height:36px; background:linear-gradient(135deg, var(--primary), #9f8aff); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#fff; flex-shrink:0; }
+  .user-avatar { width:36px; height:36px; background:linear-gradient(135deg, var(--gold-soft,#d9bd7f), var(--primary)); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#fff; flex-shrink:0; }
   .user-name { font-size:14px; font-weight:600; }
   .user-role { font-size:11px; color:var(--muted); }
 
@@ -171,11 +171,11 @@
   .form-hint { font-size:11px; color:var(--muted); }
   .task-toggle { display:flex; gap:6px; margin-bottom:8px; }
   .toggle-btn { flex:1; padding:9px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface); color:var(--muted); font-size:12px; cursor:pointer; text-align:center; transition:all .2s; font-weight:500; }
-  .toggle-btn.active { background:var(--primary); border-color:var(--primary); color:#fff; font-weight:600; box-shadow:0 2px 8px rgba(124,106,255,.25); }
+  .toggle-btn.active { background:var(--primary); border-color:var(--primary); color:#fff; font-weight:600; box-shadow:0 2px 8px rgba(201,163,94,.22); }
 
   /* Buttons */
   .btn { padding:10px 20px; border-radius:var(--radius-sm); font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all .2s ease; font-family:var(--font); display:inline-flex; align-items:center; gap:6px; }
-  .btn-primary { background:linear-gradient(135deg, var(--primary), #9f8aff); color:#fff; box-shadow:0 2px 10px rgba(124,106,255,.25); }
+  .btn-primary { background:linear-gradient(135deg, var(--gold-soft,#d9bd7f), var(--primary)); color:#fff; box-shadow:0 2px 10px rgba(201,163,94,.22); }
   .btn-primary:hover { box-shadow:0 4px 16px rgba(124,106,255,.35); transform:translateY(-1px); }
   .btn-primary:active { transform:translateY(0); }
   .btn-primary:disabled { opacity:.5; cursor:not-allowed; transform:none; box-shadow:none; }
@@ -363,7 +363,7 @@
   .chat-reply-quote { border-left:3px solid var(--primary); padding:4px 10px; border-radius:6px; background:rgba(124,106,255,.14); font-size:11px; margin-bottom:5px; max-width:100%; overflow:hidden; cursor:pointer; }
   .chat-reply-quote-sender { font-weight:700; color:var(--primary); margin-bottom:1px; }
   .chat-reply-quote-body { color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .chat-reply-bar { display:none; align-items:center; gap:8px; padding:6px 14px; background:rgba(124,106,255,.12); border-top:1px solid rgba(124,106,255,.3); font-size:12px; flex-shrink:0; }
+  .chat-reply-bar { display:none; align-items:center; gap:8px; padding:6px 14px; background:rgba(124,106,255,.12); border-top:1px solid rgba(201,163,94,.28); font-size:12px; flex-shrink:0; }
   .chat-reply-bar.visible { display:flex; }
   .chat-download-btn { background:none; border:none; cursor:pointer; font-size:14px; padding:2px 4px; opacity:.7; }
   .chat-download-btn:hover { opacity:1; }
@@ -428,10 +428,6 @@
   .tab.active{ color:var(--gold)!important; border-bottom-color:var(--gold)!important; }
   .nav-item.active{ color:var(--gold)!important; }
   .user-avatar{ color:#0c0c0e!important; }
-  .badge-todo{ background:rgba(255,255,255,.05)!important; color:#b9b3a4!important; }
-  .badge-in_progress,.badge-medium{ background:rgba(201,163,94,.1)!important; color:var(--gold)!important; }
-  .badge-done,.badge-low{ background:rgba(138,154,134,.12)!important; color:#9fb59a!important; }
-  .badge-high{ background:rgba(201,125,110,.1)!important; color:#d39082!important; }
   .alert-success{ background:rgba(138,154,134,.1)!important; border-color:rgba(138,154,134,.25)!important; color:#9fb59a!important; }
   .emp-toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(2rem);background:#1e293b;color:#fff;padding:.75rem 1.25rem;border-radius:8px;font-size:.875rem;opacity:0;transition:opacity .3s,transform .3s;z-index:9999;pointer-events:none;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis;}
   .emp-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -961,3 +957,120 @@
   .chat-arch-chev { margin-left:auto; }
   .chat-arch-list .chat-room-item { opacity:.72; }
   @media (max-width:640px) { .chat-room-dots { opacity:1; } }
+
+  /* ════════════════════════ MODERN UI ════════════════════════
+   * Mirrors the admin sheet's token and badge layer so the two portals agree.
+   * The team portal's screens are not redesigned here — this is the shared
+   * foundation only. Tokens are redefined, never renamed. */
+  :root{
+    --success:#10b981;
+    --warning:#f59e0b;
+    --danger:#ef4444;
+    --r-pill:99px; --r-xs:6px; --r-sm:8px; --r-md:10px; --r-lg:12px; --r-xl:14px;
+    --font-num:'Manrope',system-ui,-apple-system,sans-serif;
+
+    /* home.js is shared verbatim by both portals and colours its bars from
+     * these, so the team portal has to define them too. */
+    --st-todo:#94a3b8;   --st-progress:#f59e0b;  --st-done:#10b981;
+    --pri-high:#ef4444;  --pri-med:#f59e0b;      --pri-low:#10b981;
+    --stage-lead:#c9a35e;        --stage-inquiry:#7c6aff;
+    --stage-quoted:#5a78c8;      --stage-negotiating:#e69650;
+    --stage-won:#64b478;         --stage-lost:#ef4444;
+    --lead-cold:#b9b3a4; --lead-warm:#e69650; --lead-hot:#f87171;
+    --lead-immediate:#6dd8a4; --lead-notinterested:#888888; --lead-blacklist:#dc2626;
+    --stock-in:#10b981;  --stock-transit:#5a78c8;
+    --stock-reserved:#f59e0b; --stock-sold:#8d897f;
+  }
+
+  /* Numbers in a text-figure serif are what made the data look dated. */
+  .stat-val, .num, .home-big, .home-bar-val, .topbar-hours {
+    font-family:var(--font-num)!important;
+    font-variant-numeric:tabular-nums lining-nums;
+    font-feature-settings:'tnum' 1,'lnum' 1;
+    letter-spacing:-.03em!important;
+  }
+
+  /* Same six hues as the admin portal, in this sheet's own badge geometry. */
+  /* Only state carries a dot; priority is a bare pill. */
+  .badge-todo::before, .badge-in_progress::before, .badge-done::before,
+  .badge-pending::before, .badge-in_review::before,
+  .badge-approved::before, .badge-rejected::before{
+    content:''; width:6px; height:6px; border-radius:50%;
+    background:currentColor; flex-shrink:0;
+  }
+  .badge.no-dot::before{ content:none; }
+  .badge-todo        { background:rgba(148,163,184,.12); color:#94a3b8; }
+  .badge-in_progress { background:rgba(245,158,11,.12);  color:#f59e0b; }
+  .badge-done        { background:rgba(16,185,129,.12);  color:#10b981; }
+  .badge-high        { background:rgba(239,68,68,.12);   color:#ef4444; }
+  .badge-medium      { background:rgba(245,158,11,.12);  color:#f59e0b; }
+  .badge-low         { background:rgba(16,185,129,.12);  color:#10b981; }
+  .badge-pending     { background:rgba(148,163,184,.12); color:#94a3b8; }
+  .badge-in_review   { background:rgba(245,158,11,.12);  color:#f59e0b; }
+  .badge-approved    { background:rgba(16,185,129,.12);  color:#10b981; }
+  .badge-rejected    { background:rgba(239,68,68,.12);   color:#ef4444; }
+
+  /* The task dot's glow was amber while its fill was gold. */
+  .task-dot.in_progress { background:var(--warning); box-shadow:0 0 6px rgba(245,158,11,.35); }
+  .task-dot.done        { background:var(--success); box-shadow:0 0 6px rgba(16,185,129,.35); }
+
+  /* .error-msg is emitted by shared modules but only ever existed in the
+   * admin sheet, so the team portal rendered its error states unstyled. */
+  .error-msg{
+    background:rgba(239,68,68,.10); border:1px solid rgba(239,68,68,.32);
+    color:#f88; padding:12px 16px; border-radius:var(--r-md);
+    font-size:13px; margin-bottom:18px;
+  }
+
+  /* ── Home widgets ──────────────────────────────────────────────────────
+   * Shared verbatim with the team portal, so these rules are appended to
+   * both sheets. */
+  .home-w{ border-radius:var(--r-xl); padding:16px 18px; }
+  .home-w-title{ font-size:11.5px; letter-spacing:.7px; }
+  .home-w-head{ gap:9px; margin-bottom:14px; }
+
+  /* The label was a fixed 86px and the value a fixed 64px, so a long status
+   * ellipsised at 86px however wide the tile was, and the track that carried
+   * the actual information got whatever was left. Label and value now sit
+   * above a full-width track. */
+  .home-bar-row{ display:block; }
+  .home-bar-head{
+    display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:12.5px;
+  }
+  .home-bar-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .home-bar-lbl{
+    width:auto; flex:1; min-width:0; font-weight:600; color:var(--text);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .home-bar-val{ width:auto; flex-shrink:0; font-weight:700; font-size:12.5px; }
+  .home-bar{ height:7px; border-radius:var(--r-pill); display:block; }
+  .home-bar i{ border-radius:var(--r-pill); }
+  .home-bars{ gap:12px; }
+
+  /* A list row was one nowrap line, so both the title and its meta competed
+   * for a ~195px tile and each got half of it. They stack now. */
+  .home-list{ gap:2px; }
+  .home-list li{
+    display:block; padding:7px 0; border-bottom:1px solid rgba(255,255,255,.04);
+  }
+  .home-list li:last-child{ border-bottom:none; }
+  .home-li-main{ display:block; font-size:13px; font-weight:500; line-height:1.35; }
+  .home-li-sub{ display:block; margin-top:4px; font-size:11.5px; }
+  .home-bar-n{
+    flex-shrink:0; font-size:11px; color:var(--muted); font-weight:600;
+    font-variant-numeric:tabular-nums;
+  }
+  /* A lead status in a Home list is the same object as a lead status in the
+   * table, so it wears the same pill. */
+  .home-li-tag{
+    display:inline-flex; align-items:center; gap:6px; margin-top:5px;
+    padding:2px 9px; border-radius:var(--r-pill);
+    font-size:11px; font-weight:700; line-height:1.5; white-space:nowrap;
+    background:color-mix(in srgb, var(--c) 12%, transparent);
+    color:var(--c);
+    border:1px solid color-mix(in srgb, var(--c) 30%, transparent);
+  }
+  .home-li-tag::before{
+    content:''; width:6px; height:6px; border-radius:50%;
+    background:currentColor; flex-shrink:0;
+  }

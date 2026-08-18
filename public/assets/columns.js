@@ -96,9 +96,10 @@ function ColumnsEngine(entity, cfg) {
   E.badgeHtml = function (col, rawKey, label) {
     const text = label != null ? label : (E.optMap(col)[rawKey] || rawKey || '—');
     const hex = E.optionColor(col, rawKey);
-    const bg = hex ? hexA(hex, 0.16) : 'rgba(255,255,255,.06)';
+    const bg = hex ? hexA(hex, 0.12) : 'rgba(255,255,255,.06)';
     const fg = hex || 'var(--muted)';
-    return `<span style="display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;background:${bg};color:${fg}">${esc(text)}</span>`;
+    const bd = hex ? hexA(hex, 0.30) : 'rgba(255,255,255,.12)';
+    return `<span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;line-height:1.5;white-space:nowrap;background:${bg};color:${fg};border:1px solid ${bd}">${esc(text)}</span>`;
   };
 
   // ── The floating menu (sort / rename / type / options / move / hide / delete)

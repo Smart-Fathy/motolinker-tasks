@@ -1327,7 +1327,7 @@
       c.innerHTML = `
         <div class="table-scroll" style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow)">
           <table style="width:100%;border-collapse:collapse">
-            <thead><tr style="background:#f7fafc">
+            <thead><tr style="background:#101012">
               <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Name</th>
               <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Lead</th>
               <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Email</th>

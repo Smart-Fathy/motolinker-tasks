@@ -142,37 +142,46 @@ function priorityBadge(p) {
 
 // ── Render Stats ─────────────────────────────────────────────────────────────
 function renderStats(s) {
+  // Four of the six cards were one number sliced — total = done + inProgress +
+  // todo — so they are one bar weighted by the counts, with the legend inline.
+  // Overdue and High priority are attributes rather than statuses: different in
+  // kind, so they sit apart as exceptions instead of posing as peers.
+  const seg = [
+    { key: 'done',        label: 'Done',        n: Number(s.done) || 0,       c: 'var(--st-done)' },
+    { key: 'in_progress', label: 'In Progress', n: Number(s.inProgress) || 0, c: 'var(--st-progress)' },
+    { key: 'todo',        label: 'To Do',       n: Number(s.todo) || 0,       c: 'var(--st-todo)' },
+  ];
+  const partitioned = seg.reduce((a, x) => a + x.n, 0) || 1;
+  const exc = [
+    { label: 'Overdue',       n: Number(s.overdue) || 0,      c: 'var(--danger)', page: 'tasks' },
+    { label: 'High priority', n: Number(s.highPriority) || 0, c: 'var(--orange)', page: 'tasks' },
+  ];
+
   document.getElementById('stats-grid').innerHTML = `
-    <div class="stat-card total">
-      <div class="stat-label">Total Tasks</div>
-      <div class="stat-value">${s.total}</div>
-      <div class="stat-sub">All time</div>
-    </div>
-    <div class="stat-card done">
-      <div class="stat-label">Completed</div>
-      <div class="stat-value">${s.done}</div>
-      <div class="stat-sub">${s.completionRate}% rate</div>
-    </div>
-    <div class="stat-card in-progress">
-      <div class="stat-label">In Progress</div>
-      <div class="stat-value">${s.inProgress}</div>
-      <div class="stat-sub">Active now</div>
-    </div>
-    <div class="stat-card todo">
-      <div class="stat-label">To Do</div>
-      <div class="stat-value">${s.todo}</div>
-      <div class="stat-sub">Pending start</div>
-    </div>
-    <div class="stat-card high-pri">
-      <div class="stat-label">High Priority</div>
-      <div class="stat-value">${s.highPriority}</div>
-      <div class="stat-sub">Open issues</div>
-    </div>
-    <div class="stat-card overdue">
-      <div class="stat-label">Overdue</div>
-      <div class="stat-value">${s.overdue}</div>
-      <div class="stat-sub">Past due date</div>
-    </div>
+    <section class="task-summary">
+      <div class="task-summary-total">
+        <div class="task-summary-n"><span class="stat-value">${s.total}</span><span class="task-summary-unit">tasks</span></div>
+        <div class="task-summary-sub">${s.completionRate}% complete</div>
+      </div>
+      <div class="task-summary-mix">
+        <div class="task-summary-bar">
+          ${seg.map(x => `<span title="${x.label}: ${x.n}" style="flex:${x.n || 0.001};background:${x.c}"></span>`).join('')}
+        </div>
+        <div class="task-summary-legend">
+          ${seg.map(x => `<span class="task-summary-key">
+            <i style="background:${x.c}"></i>${x.label}
+            <b class="num">${x.n}</b>
+            <em class="num">${Math.round((x.n / partitioned) * 100)}%</em>
+          </span>`).join('')}
+        </div>
+      </div>
+      <div class="task-summary-exc">
+        ${exc.map(x => `<button class="task-exc" style="--c:${x.c}" onclick="navigate('${x.page}')">
+          <span class="task-exc-n num">${x.n}</span>
+          <span class="task-exc-l">${x.label}</span>
+        </button>`).join('')}
+      </div>
+    </section>
   `;
 
   document.getElementById('progress-fill').style.width = s.completionRate + '%';
@@ -807,20 +816,8 @@ function filterTasks() {
   renderTable(filtered);
 }
 
-function renderTable(tasks) {
+function renderTaskTable(tasks) {
   const container = document.getElementById('table-container');
-
-  if (!tasks.length) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon" style="font-size:44px">—</div>
-        <div class="empty-title">No tasks found</div>
-        <div class="empty-sub">Adjust the filters or click "+ Add Task" to create one</div>
-      </div>`;
-    document.getElementById('table-count').textContent = '0 tasks';
-    return;
-  }
-
   const rows = tasks.map(t => {
     const overdue = isOverdue(t.due_date, t.status);
     const soon    = !overdue && isDueSoon(t.due_date, t.status);
@@ -876,8 +873,153 @@ function renderTable(tasks) {
       </table>
     </div>`;
 
+}
+
+// ── Task views ────────────────────────────────────────────────────────────────
+// One set of tasks, three shapes. List groups by status because that is how the
+// work is actually triaged; Board is the same grouping laid sideways; Table is
+// the full record. Density changes real geometry, not just its own highlight.
+const TASK_VIEWS = ['list', 'board', 'table'];
+let _taskView = 'list';
+let _taskDensity = 'comfortable';
+const TASK_GROUPS = [
+  { key: 'todo',        label: 'To Do',       tone: 'var(--st-todo)' },
+  { key: 'in_progress', label: 'In Progress', tone: 'var(--st-progress)' },
+  { key: 'done',        label: 'Done',        tone: 'var(--st-done)' },
+];
+let _taskGroupOpen = { todo: true, in_progress: true, done: false };
+
+try {
+  const v = localStorage.getItem('ml_task_view');
+  if (TASK_VIEWS.includes(v)) _taskView = v;
+  const d = localStorage.getItem('ml_task_density');
+  if (d === 'compact' || d === 'comfortable') _taskDensity = d;
+  const g = JSON.parse(localStorage.getItem('ml_task_groups') || 'null');
+  if (g && typeof g === 'object') _taskGroupOpen = { ..._taskGroupOpen, ...g };
+} catch (_) {}
+
+function setTaskView(v) {
+  if (!TASK_VIEWS.includes(v)) return;
+  _taskView = v;
+  try { localStorage.setItem('ml_task_view', v); } catch (_) {}
+  filterTasks();
+}
+function setTaskDensity(d) {
+  _taskDensity = d === 'compact' ? 'compact' : 'comfortable';
+  try { localStorage.setItem('ml_task_density', _taskDensity); } catch (_) {}
+  filterTasks();
+}
+function toggleTaskGroup(key) {
+  _taskGroupOpen[key] = !_taskGroupOpen[key];
+  try { localStorage.setItem('ml_task_groups', JSON.stringify(_taskGroupOpen)); } catch (_) {}
+  filterTasks();
+}
+function paintTaskChrome() {
+  document.querySelectorAll('.task-view-tab').forEach(b =>
+    b.classList.toggle('active', b.dataset.view === _taskView));
+  document.querySelectorAll('.task-dens-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.dens === _taskDensity));
+}
+
+function taskDueCell(t) {
+  const overdue = isOverdue(t.due_date, t.status);
+  const soon = !overdue && isDueSoon(t.due_date, t.status);
+  return { cls: overdue ? 'overdue' : (soon ? 'due-soon' : ''), label: t.due_date || '—' };
+}
+
+function taskRowHtml(t) {
+  const due = taskDueCell(t);
+  const isDone = t.status === 'done';
+  return `<div class="task-row" id="row-${t.id}">
+    <input type="checkbox" class="row-cb task-cb" data-id="${t.id}" onchange="onRowCheck()">
+    ${statusBadge(t.status)}
+    <div class="task-row-main" onclick="openTaskModal(${t.id})">
+      <div class="task-row-title">${esc(t.title)}</div>
+      ${t.description ? `<div class="task-row-desc">${esc(t.description)}</div>` : ''}
+    </div>
+    ${priorityBadge(t.priority)}
+    ${t.milestone ? `<span class="milestone-tag task-row-ms">${esc(t.milestone)}</span>` : ''}
+    <span class="task-row-who">${resolvedNames(t)}</span>
+    <span class="due-date ${due.cls} task-row-due">${due.label}</span>
+    <span class="task-row-acts">
+      ${isDone ? '' : `<button class="btn btn-success btn-sm" onclick="quickDone(${t.id})">Done</button>`}
+      <button class="btn btn-outline btn-sm" onclick="openTaskComments(${t.id})" title="Comments"><i data-lucide="message-square" style="width:13px;height:13px"></i></button>
+      <button class="btn btn-outline btn-sm" onclick="deleteTask(${t.id})" title="Delete"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+    </span>
+  </div>`;
+}
+
+function renderTaskList(tasks, container) {
+  const total = tasks.length || 1;
+  container.innerHTML = TASK_GROUPS.map(g => {
+    const rows = tasks.filter(t => t.status === g.key);
+    const pct = Math.round((rows.length / total) * 100);
+    const open = _taskGroupOpen[g.key] !== false;
+    return `<section class="task-group" style="--c:${g.tone}">
+      <button class="task-group-head" onclick="toggleTaskGroup('${g.key}')" aria-expanded="${open}">
+        <i data-lucide="chevron-down" class="task-group-chev${open ? '' : ' shut'}"></i>
+        <span class="badge badge-${g.key}">${g.label}</span>
+        <span class="task-group-n num">${rows.length}</span>
+        <span class="task-group-share"><i style="width:${pct}%"></i></span>
+        <span class="task-group-pct num">${pct}%</span>
+      </button>
+      ${open ? `<div class="task-group-body">${rows.length
+        ? rows.map(taskRowHtml).join('')
+        : '<div class="task-group-none">Nothing here</div>'}</div>` : ''}
+    </section>`;
+  }).join('');
+}
+
+function renderTaskBoard(tasks, container) {
+  const total = tasks.length || 1;
+  container.innerHTML = `<div class="task-board">${TASK_GROUPS.map(g => {
+    const rows = tasks.filter(t => t.status === g.key);
+    const pct = Math.round((rows.length / total) * 100);
+    return `<div class="task-bcol" style="--c:${g.tone}">
+      <div class="task-bcol-head">
+        <span class="badge badge-${g.key}">${g.label}</span>
+        <span class="task-bcol-n num">${rows.length}</span>
+        <span class="task-bcol-share"><i style="width:${pct}%"></i></span>
+      </div>
+      <div class="task-bcol-body">${rows.map(t => {
+        const due = taskDueCell(t);
+        return `<article class="task-card" onclick="openTaskModal(${t.id})">
+          <div class="task-card-title">${esc(t.title)}</div>
+          <div class="task-card-meta">${priorityBadge(t.priority)}<span class="due-date ${due.cls}">${due.label}</span></div>
+          <div class="task-card-foot">
+            <span class="task-card-who">${resolvedNames(t)}</span>
+            <span class="task-card-ch">${esc(t.channel_name || '')}</span>
+            <span class="task-id">#${t.id}</span>
+          </div>
+        </article>`;
+      }).join('') || '<div class="task-group-none">Nothing here</div>'}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderTable(tasks) {
+  const container = document.getElementById('table-container');
+  container.className = 'dens-' + _taskDensity;
+  paintTaskChrome();
+
+  if (!tasks.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon" style="font-size:44px">—</div>
+        <div class="empty-title">No tasks found</div>
+        <div class="empty-sub">Adjust the filters or click "+ Add Task" to create one</div>
+      </div>`;
+    document.getElementById('table-count').textContent = '0 tasks';
+    return;
+  }
+
+  if (_taskView === 'list') renderTaskList(tasks, container);
+  else if (_taskView === 'board') renderTaskBoard(tasks, container);
+  else renderTaskTable(tasks);
+
   document.getElementById('table-count').textContent =
     `Showing ${tasks.length} of ${allTasks.length} task${allTasks.length !== 1 ? 's' : ''}`;
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 // ── Load Dashboard ───────────────────────────────────────────────────────────
@@ -991,32 +1133,112 @@ function resolvedNames(t) {
 }
 
 // ── Task CRUD modals ──────────────────────────────────────────────────────────
+// Helpers for the task form's segmented controls. Each writes back to the
+// hidden <select>/<input> that saveTask() already reads, so the form's data
+// contract is untouched — only what you touch changes.
+function taskSeg(group, value) {
+  const host = document.getElementById(group === 'priority' ? 't-priority' : 't-status');
+  if (host) host.value = value;
+  document.querySelectorAll(`.t-seg[data-group="${group}"]`).forEach(b =>
+    b.classList.toggle('on', b.dataset.value === value));
+}
+function taskDuePick(days) {
+  const el = document.getElementById('t-due');
+  if (!el) return;
+  const d = new Date(); d.setDate(d.getDate() + days);
+  el.value = d.toISOString().slice(0, 10);
+  taskDuePaint();
+}
+function taskDuePaint() {
+  const el = document.getElementById('t-due');
+  if (!el) return;
+  document.querySelectorAll('.t-due-chip').forEach(b => {
+    const d = new Date(); d.setDate(d.getDate() + Number(b.dataset.days));
+    b.classList.toggle('on', el.value === d.toISOString().slice(0, 10));
+  });
+}
+// The footer says who this is about to land on, so the consequence of the
+// choice is visible at the moment of making it.
+function taskAssigneePaint() {
+  const picked = [...document.querySelectorAll('.t-assignee-cb:checked')];
+  picked.forEach(cb => cb.closest('.t-who')?.classList.add('on'));
+  [...document.querySelectorAll('.t-assignee-cb:not(:checked)')].forEach(cb =>
+    cb.closest('.t-who')?.classList.remove('on'));
+  const names = picked.map(cb => cb.dataset.name).filter(Boolean);
+  const line = document.getElementById('t-who-line');
+  if (!line) return;
+  line.textContent = names.length === 0 ? 'Pick at least one assignee.'
+    : names.length === 1 ? `${names[0]} gets a notification straight away.`
+    : names.length === 2 ? `${names[0]} and ${names[1]} get a notification straight away.`
+    : `${names.length} people get a notification straight away.`;
+  line.classList.toggle('warn', names.length === 0);
+}
+
 async function openTaskModal(id) {
   await preloadEmployeesForTasks();
   const t = id ? allTasks.find(x => x.id === id) : null;
   const current = new Set((Array.isArray(t?.assignee_ids) && t.assignee_ids.length ? t.assignee_ids : (t?.assignee_id ? [t.assignee_id] : [])).map(String));
-  const assigneeChecks = (employeesForTasks || []).map(e => `
-    <label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px" onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background='none'">
-      <input type="checkbox" class="t-assignee-cb" value="${e.id}" ${current.has(String(e.id)) ? 'checked' : ''} style="accent-color:var(--gold)"> ${esc(e.name)}
+  const initials = n => String(n || '').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
+
+  // A checkbox in a scrolling box tells you nothing until you read every line.
+  // Same checkboxes — saveTask() still reads .t-assignee-cb — worn as chips.
+  const who = (employeesForTasks || []).map(e => `
+    <label class="t-who${current.has(String(e.id)) ? ' on' : ''}">
+      <input type="checkbox" class="t-assignee-cb" value="${e.id}" data-name="${esc(e.name)}"
+             ${current.has(String(e.id)) ? 'checked' : ''} onchange="taskAssigneePaint()">
+      <span class="t-who-av">${esc(initials(e.name))}</span>
+      <span class="t-who-name">${esc(e.name)}</span>
+      <i data-lucide="check" class="t-who-tick"></i>
     </label>`).join('');
-  showModal(t ? `Edit Task #${t.id}` : 'Add New Task', `
-    <div class="form-group"><label class="form-label">Title *</label><input class="form-control" id="t-title" value="${esc(t?.title||'')}" placeholder="Task title…"></div>
-    <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="t-desc" rows="2">${esc(t?.description||'')}</textarea></div>
-    <div class="form-group"><label class="form-label">Assignees * <span style="color:var(--muted);font-size:11px">(select one or more)</span></label>
-      <div id="t-assignees" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px">${assigneeChecks || '<div style="padding:8px;color:var(--muted);font-size:12px">No employees yet</div>'}</div>
+
+  const PRI = [['high', 'High', 'var(--pri-high)'], ['medium', 'Medium', 'var(--pri-med)'], ['low', 'Low', 'var(--pri-low)']];
+  const ST = [['todo', 'To Do', 'var(--st-todo)'], ['in_progress', 'In Progress', 'var(--st-progress)'], ['done', 'Done', 'var(--st-done)']];
+  const curPri = t?.priority || 'medium';
+  const curSt = t?.status || 'todo';
+  const seg = (group, opts, cur) => `<div class="t-segs">${opts.map(([v, l, c]) => `
+      <button type="button" class="t-seg${v === cur ? ' on' : ''}" data-group="${group}" data-value="${v}"
+              style="--c:${c}" onclick="taskSeg('${group}','${v}')"><i></i>${l}</button>`).join('')}</div>`;
+
+  showModal(t ? `Edit Task #${t.id}` : 'New task', `
+    <div class="t-form">
+      <input class="t-title" id="t-title" value="${esc(t?.title || '')}" placeholder="What needs doing?" autocomplete="off">
+      <textarea class="form-control" id="t-desc" rows="2" placeholder="Any detail the assignee needs">${esc(t?.description || '')}</textarea>
+
+      <div>
+        <div class="t-lbl-row"><label class="form-label">Assignees</label><span class="form-hint">tap to add or remove</span></div>
+        <div class="t-whos" id="t-assignees">${who || '<div class="t-none">No employees yet</div>'}</div>
+      </div>
+
+      <div>
+        <label class="form-label">Due date</label>
+        <div class="t-due-row">
+          <button type="button" class="t-due-chip" data-days="0" onclick="taskDuePick(0)">Today</button>
+          <button type="button" class="t-due-chip" data-days="1" onclick="taskDuePick(1)">Tomorrow</button>
+          <button type="button" class="t-due-chip" data-days="7" onclick="taskDuePick(7)">Next week</button>
+          <input class="form-control t-due-input" id="t-due" type="date" value="${t?.due_date || ''}" onchange="taskDuePaint()">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div><label class="form-label">Priority</label>${seg('priority', PRI, curPri)}</div>
+        <div><label class="form-label">Status</label>${seg('status', ST, curSt)}</div>
+      </div>
+
+      <div>
+        <label class="form-label">Milestone</label>
+        <input class="form-control" id="t-milestone" value="${esc(t?.milestone || '')}" placeholder="Optional">
+      </div>
+
+      <select id="t-priority" hidden>${PRI.map(([v]) => `<option value="${v}"${v === curPri ? ' selected' : ''}>${v}</option>`).join('')}</select>
+      <select id="t-status" hidden>${ST.map(([v]) => `<option value="${v}"${v === curSt ? ' selected' : ''}>${v}</option>`).join('')}</select>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Due Date *</label><input class="form-control" id="t-due" type="date" value="${t?.due_date||''}"></div>
-      <div class="form-group"><label class="form-label">Priority</label>
-        <select class="form-control" id="t-priority">${['high','medium','low'].map(p=>`<option value="${p}"${(t?.priority||'medium')===p?' selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('')}</select></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Status</label>
-        <select class="form-control" id="t-status">${[['todo','To Do'],['in_progress','In Progress'],['done','Done']].map(([v,l])=>`<option value="${v}"${(t?.status||'todo')===v?' selected':''}>${l}</option>`).join('')}</select></div>
-      <div class="form-group"><label class="form-label">Milestone</label><input class="form-control" id="t-milestone" value="${esc(t?.milestone||'')}" placeholder="e.g. Sprint 3…"></div>
-    </div>
-  `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveTask(${id||'null'})">Save</button>`);
+  `, `<span class="t-who-line" id="t-who-line"></span>
+      <button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTask(${id || 'null'})">${t ? 'Save' : 'Create'}</button>`);
+
+  taskAssigneePaint();
+  taskDuePaint();
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 async function saveTask(id) {
@@ -1916,11 +2138,16 @@ function navigate(page) {
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
   const bnav = document.getElementById('bnav-' + page);
   if (bnav) bnav.classList.add('active');
+  const fav = document.getElementById('fav-' + page);
+  if (fav) fav.classList.add('active');
   currentPage = page;
   openGroupForPage(page); // reveal the group containing the active item
   rememberPage(page);
   if (pageLoaders[page]) pageLoaders[page]();
   closeSidebar(); // close on mobile after navigation
+  // Counts are repainted here rather than once at boot: permission gating and
+  // applyNavConfig() both hide items after the rail is first drawn.
+  navPaintCounts();
   requestAnimationFrame(() => lucide.createIcons());
 }
 
@@ -1963,6 +2190,72 @@ function toggleSidebarCollapse() {
   const collapsed = document.getElementById('sidebar').classList.toggle('collapsed');
   try { localStorage.setItem('ml_admin_sidebar', collapsed ? 'collapsed' : 'expanded'); } catch (_) {}
 }
+// Each group head shows how many destinations it holds, so a collapsed group
+// still tells you whether it is worth opening. Written into a span of its own —
+// applyNavConfig() rewrites .nav-group-label's textContent and would eat it.
+function navPaintCounts() {
+  document.querySelectorAll('.nav-group').forEach(g => {
+    const head = g.querySelector('.nav-group-head');
+    if (!head) return;
+    const n = [...g.querySelectorAll('.nav-item')].filter(i => i.style.display !== 'none').length;
+    let tag = head.querySelector('.nav-group-count');
+    if (!tag) {
+      tag = document.createElement('span');
+      tag.className = 'nav-group-count';
+      head.insertBefore(tag, head.querySelector('.nav-group-chevron'));
+    }
+    tag.textContent = n || '';
+  });
+}
+
+// Filter the rail by label. Matching groups open themselves so the hit is
+// visible; clearing restores whatever was open before the search started.
+let _navSearchPrev = null;
+function navSearch(q) {
+  const term = String(q || '').trim().toLowerCase();
+  const nav = document.querySelector('.sidebar-nav');
+  if (!nav) return;
+  if (!term) {
+    nav.classList.remove('searching');
+    nav.querySelectorAll('.nav-item').forEach(i => i.classList.remove('nav-hit', 'nav-miss'));
+    if (_navSearchPrev) {
+      nav.querySelectorAll('.nav-group').forEach(g => g.classList.toggle('open', _navSearchPrev.includes(g.dataset.group)));
+      _navSearchPrev = null;
+    }
+    navPaintCounts();
+    return;
+  }
+  if (!_navSearchPrev) _navSearchPrev = [...nav.querySelectorAll('.nav-group.open')].map(g => g.dataset.group);
+  nav.classList.add('searching');
+  nav.querySelectorAll('.nav-group').forEach(g => {
+    let any = false;
+    g.querySelectorAll('.nav-item').forEach(i => {
+      const hit = i.textContent.trim().toLowerCase().includes(term);
+      i.classList.toggle('nav-hit', hit);
+      i.classList.toggle('nav-miss', !hit);
+      if (hit) any = true;
+    });
+    g.classList.toggle('open', any);
+    g.classList.toggle('nav-group-empty', !any);
+  });
+}
+function navSearchFirstHit() {
+  return document.querySelector('.sidebar-nav .nav-item.nav-hit');
+}
+function navSearchKey(e) {
+  if (e.key === 'Escape') { e.target.value = ''; navSearch(''); e.target.blur(); return; }
+  if (e.key === 'Enter') {
+    const hit = navSearchFirstHit();
+    if (hit) { hit.click(); e.target.value = ''; navSearch(''); e.target.blur(); }
+  }
+}
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    const box = document.getElementById('nav-search');
+    if (box) { e.preventDefault(); box.focus(); box.select(); }
+  }
+});
+
 function toggleNavGroup(head) {
   const group = head.closest('.nav-group');
   if (!group) return;
@@ -2469,7 +2762,7 @@ async function deleteEmployee(id) {
 
 // ── Requests ──────────────────────────────────────────────────────────────────
 let allRequests = [];
-const reqStatusColors = { pending: 'badge-todo', in_review: 'badge-in_progress', approved: 'badge-done', rejected: 'badge-high' };
+const reqStatusColors = { pending: 'badge-pending', in_review: 'badge-in_review', approved: 'badge-approved', rejected: 'badge-rejected' };
 const reqStatusLabels = { pending: 'Pending', in_review: 'In Review', approved: 'Approved', rejected: 'Rejected' };
 
 function reqAssigneeName(r) {
@@ -2501,7 +2794,7 @@ function renderRequestsTable() {
       <td><div class="task-title">${esc(r.title)}</div>${r.description ? `<div class="task-desc">${esc(r.description)}</div>` : ''}${r.category ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(r.category)}</div>` : ''}</td>
       <td style="font-size:13px"><span style="background:rgba(99,102,241,.12);color:var(--primary);padding:3px 8px;border-radius:6px;font-size:12px;font-weight:600">${esc(r.created_by || '—')}</span></td>
       <td>${priorityBadge(r.priority)}</td>
-      <td><span class="badge ${reqStatusColors[r.status] || 'badge-todo'}">${reqStatusLabels[r.status] || r.status}</span></td>
+      <td><span class="badge ${reqStatusColors[r.status] || 'badge-pending'}">${reqStatusLabels[r.status] || r.status}</span></td>
       <td style="font-size:12px;color:var(--muted)">${esc(reqAssigneeName(r) || '—')}</td>
       <td style="font-size:12px;color:var(--muted)">${new Date(r.created_at).toLocaleDateString()}</td>
       <td style="white-space:nowrap">
@@ -3672,8 +3965,12 @@ function adminChatUpdateNavBadge() {
   const el = document.getElementById('chat-nav-badge');
   if (!el) return;
   const count = adminChatUnread.size;
-  el.textContent = count > 99 ? '99+' : String(count);
-  el.style.display = count > 0 ? 'flex' : 'none';
+  const label = count > 99 ? '99+' : String(count);
+  [el, document.getElementById('chat-fav-badge')].forEach(n => {
+    if (!n) return;
+    n.textContent = label;
+    n.style.display = count > 0 ? 'flex' : 'none';
+  });
 }
 
 // ── Admin Reply ───────────────────────────────────────────────────────────────
@@ -4705,7 +5002,41 @@ function setLeadsPageSize(v) {
 let _leadsShown = leadsPageSize();
 function leadsShowMore() { _leadsShown += leadsPageSize(); renderCustomers(_lastRenderedLeads); }
 
+// The lead statuses already carry their own colours in columns.js; this shows
+// the shape of the filtered set before any row is read.
+function renderLeadMix(list) {
+  const el = document.getElementById('leads-mix');
+  if (!el) return;
+  const col = (typeof leadCol === 'function' ? leadCol('lead_status') : null)
+    || (_leadCols || []).find(c => c.key === 'lead_status');
+  const opts = (col && col.options) || [];
+  if (!opts.length || !list.length) { el.style.display = 'none'; return; }
+  const counts = new Map();
+  list.forEach(c => {
+    const k = String(c.lead_status || '').trim();
+    if (k) counts.set(k, (counts.get(k) || 0) + 1);
+  });
+  const rows = opts
+    .map(o => ({ label: o.label || o.key, n: counts.get(o.key) || 0, c: o.color || 'var(--muted)' }))
+    .filter(r => r.n > 0);
+  if (!rows.length) { el.style.display = 'none'; return; }
+  const total = rows.reduce((a, r) => a + r.n, 0) || 1;
+  el.style.display = '';
+  el.innerHTML = `
+    <div class="mix-total">
+      <span class="stat-value">${total.toLocaleString()}</span>
+      <span class="mix-unit">lead${total === 1 ? '' : 's'}</span>
+    </div>
+    <div class="mix-body">
+      <div class="mix-bar">${rows.map(r =>
+        `<span title="${esc(r.label)}: ${r.n}" style="flex:${r.n};background:${r.c}"></span>`).join('')}</div>
+      <div class="mix-legend">${rows.map(r =>
+        `<span class="mix-key"><i style="background:${r.c}"></i>${esc(r.label)}<b class="num">${r.n}</b></span>`).join('')}</div>
+    </div>`;
+}
+
 function renderCustomers(list) {
+  renderLeadMix(list);
   if (typeof mlTopScrollbar === 'function') mlTopScrollbar('leads-scroll');
   _lastRenderedLeads = list;
   const tbody = document.getElementById('customers-tbody');
@@ -4785,7 +5116,7 @@ function renderLeadDrawer() {
   const badge = document.getElementById('ld-status');
   badge.textContent = (stMap[stKey] || c.lead_status || 'Cold') + ' ▾';
   const stHex = leadOptColor(stCol, stKey);
-  badge.style.background = stHex ? hexA(stHex, 0.16) : 'rgba(255,255,255,.06)';
+  badge.style.background = stHex ? hexA(stHex, 0.12) : 'rgba(255,255,255,.06)';
   badge.style.color = stHex || '#b9b3a4';
   document.getElementById('ld-phone').textContent = c.phone || '';
   document.getElementById('ld-call').href = c.phone ? 'tel:' + c.phone : '#';
@@ -4827,7 +5158,7 @@ function renderLeadDrawer() {
     let bodyHtml = esc(a.body || '');
     if (a.type === 'status_change' && a.meta?.to) {
       const fk = normKey(a.meta.from, stMap), tk = normKey(a.meta.to, stMap);
-      const pill = k => { const h = leadOptColor(stCol, k); return `background:${h ? hexA(h, 0.16) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
+      const pill = k => { const h = leadOptColor(stCol, k); return `background:${h ? hexA(h, 0.12) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
       bodyHtml = `Status: <span class="ld-stage-pill" style="${pill(fk)}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="${pill(tk)}">${esc(stMap[tk] || a.meta.to)}</span>`;
     }
     return `<div class="ld-tl-item">
@@ -4891,7 +5222,7 @@ function renderLeadDrawer() {
         <div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title)}</div>
         <div style="font-size:10.5px;color:var(--muted);margin-top:2px">${d.budget_egp ? Number(d.budget_egp).toLocaleString() + ' EGP · ' : ''}${new Date(d.created_at).toLocaleDateString()}</div>
       </div>
-      <span class="ld-stage-pill">${esc(DEAL_STAGE_LABELS[d.stage] || d.stage)}</span>
+      <span class="ld-stage-pill" style="background:${hexA(DEAL_STAGE_HEX[d.stage] || '#c9a35e', 0.12)};color:${DEAL_STAGE_TEXT[d.stage] || DEAL_STAGE_HEX[d.stage] || 'var(--primary)'};border:1px solid ${hexA(DEAL_STAGE_HEX[d.stage] || '#c9a35e', 0.30)}">${esc(DEAL_STAGE_LABELS[d.stage] || d.stage)}</span>
     </div>`).join('') : '<div style="color:var(--muted);font-size:12px">No deals yet.</div>';
 
   document.getElementById('lead-drawer-body').innerHTML = `
@@ -5344,6 +5675,14 @@ async function confirmDedupe() {
 // ── Deals ─────────────────────────────────────────────────────────────────
 const DEAL_STAGES = ['lead','inquiry','quoted','negotiating','won','lost'];
 const DEAL_STAGE_LABELS = { lead:'Lead', inquiry:'Inquiry', quoted:'Quoted', negotiating:'Negotiating', won:'Won', lost:'Lost' };
+// The same six hues DEAL_STAGE_COLORS carries, at full opacity. That constant was
+// declared and never read, so every kanban column rendered the same grey and the
+// purple on Inquiry — which is in the source — had never been visible.
+const DEAL_STAGE_HEX = { lead:'#c9a35e', inquiry:'#7c6aff', quoted:'#5a78c8', negotiating:'#e69650', won:'#64b478', lost:'#ef4444' };
+// #5a78c8 is 4.34:1 on the panel: fine as an 8px dot or a 3px bar, not as 10.5px
+// type. The label takes a lighter tone of the same hue; the dot and bar keep the
+// declared value.
+const DEAL_STAGE_TEXT = { quoted:'#8aa4e0' };
 const DEAL_STAGE_COLORS = { lead:'rgba(201,163,94,.15)', inquiry:'rgba(124,106,255,.15)', quoted:'rgba(90,120,200,.15)', negotiating:'rgba(230,150,80,.15)', won:'rgba(100,180,120,.15)', lost:'rgba(239,68,68,.1)' };
 let _allDeals = [];
 let _dealsCustomerFilter = null;
@@ -5367,16 +5706,30 @@ function filterDealsByCustomer(customerId) {
 function renderDealsKanban() {
   const kanban = document.getElementById('deals-kanban');
   const deals = _dealsCustomerFilter ? _allDeals.filter(d => d.customer_id === _dealsCustomerFilter) : _allDeals;
+  const total = deals.length || 1;
   kanban.innerHTML = DEAL_STAGES.map(stage => {
     const stagDeals = deals.filter(d => d.stage === stage);
+    const c = DEAL_STAGE_HEX[stage] || 'var(--muted)';
+    const txt = DEAL_STAGE_TEXT[stage] || c;
+    const pct = Math.round((stagDeals.length / total) * 100);
+    const sum = stagDeals.reduce((a, d) => a + (Number(d.budget_egp) || 0), 0);
     return `<div class="deal-col" data-stage="${stage}"
         ondragover="dealDragOver(event)" ondragleave="dealDragLeave(event)" ondrop="dealDrop(event,'${stage}')"
-        style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:200px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${esc(DEAL_STAGE_LABELS[stage])}</div>
-        <div style="background:rgba(255,255,255,.07);border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">${stagDeals.length}</div>
+        style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);min-height:200px;overflow:hidden">
+      <div style="padding:13px 13px 12px;background:linear-gradient(180deg,${hexA(c, 0.12)},rgba(20,20,22,0))">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${c};flex-shrink:0"></span>
+          <span style="font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em">${esc(DEAL_STAGE_LABELS[stage])}</span>
+          <span style="margin-left:auto;display:inline-flex;align-items:center;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:700;background:${hexA(c, 0.12)};color:${txt};border:1px solid ${hexA(c, 0.30)}">${stagDeals.length}</span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-top:9px">
+          <span class="num" style="font-size:17px;font-weight:800;line-height:1">${sum ? Number(sum).toLocaleString() : '—'}</span>
+          <span style="font-size:10.5px;color:var(--muted)">EGP</span>
+          <span class="num" style="margin-left:auto;font-size:10.5px;font-weight:800;color:${txt}">${pct}% of deals</span>
+        </div>
+        <div style="height:3px;background:rgba(255,255,255,.07);border-radius:99px;margin-top:9px;overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:${c};border-radius:99px"></i></div>
       </div>
-      ${stagDeals.map(d => dealCard(d)).join('')}
+      <div style="padding:0 12px 12px;display:grid;gap:9px">${stagDeals.map(d => dealCard(d)).join('')}</div>
     </div>`;
   }).join('');
   requestAnimationFrame(() => lucide.createIcons());
@@ -5396,7 +5749,7 @@ function dealCard(d) {
     ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
       ${d.assigned_to ? `<div style="font-size:10px;color:var(--muted)">${esc(d.assigned_to)}</div>` : '<div></div>'}
-      <div style="font-size:10px;color:var(--muted)">${daysOpen}d</div>
+      <div style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;${daysOpen > 20 ? 'background:rgba(239,68,68,.12);color:#ef4444' : daysOpen > 10 ? 'background:rgba(245,158,11,.12);color:#f59e0b' : 'color:var(--muted)'}">${daysOpen}d</div>
     </div>
   </div>`;
 }
