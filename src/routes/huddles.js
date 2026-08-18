@@ -401,5 +401,12 @@ async function handleChatUpload(req, res) {
 receiver.router.post('/api/dashboard/chat/upload', requireAuth, chatUpload.single('file'), handleChatUpload);
 receiver.router.post('/api/employee/chat/upload',  requireEmployeeAuth, requirePerm('chat', 'upload'), chatUpload.single('file'), handleChatUpload);
 
+// Task attachments take the same handler, the same bucket and the same 10MB
+// limit — only the guard differs. Routing them through the chat upload would
+// have meant someone allowed to create a task but not to post in chat could not
+// attach a file to their own task.
+receiver.router.post('/api/dashboard/tasks/upload', requireAuth, chatUpload.single('file'), handleChatUpload);
+receiver.router.post('/api/employee/tasks/upload',  requireEmployeeAuth, requirePerm('tasks', 'create'), chatUpload.single('file'), handleChatUpload);
+
 
 module.exports = {};

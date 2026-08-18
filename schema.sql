@@ -417,6 +417,13 @@ ALTER TABLE employees ADD COLUMN IF NOT EXISTS avatar_url   TEXT DEFAULT '';
 -- Multiple assignees per task (array of employee ids as strings; assignee_id keeps the first for compat)
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assignee_ids JSONB DEFAULT NULL;
 
+-- Files attached to a task at creation. One JSONB array rather than the four flat
+-- columns task_comments uses, because a task takes several files where a comment
+-- takes one. Each element is what /api/*/chat/upload returns:
+--   { url, name, size, type }
+-- See migrations/016_task_attachments.sql.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'::jsonb;
+
 -- Task comments (with @mentions)
 CREATE TABLE IF NOT EXISTS task_comments (
   id BIGSERIAL PRIMARY KEY,

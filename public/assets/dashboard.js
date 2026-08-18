@@ -830,7 +830,7 @@ function renderTaskTable(tasks) {
       <td style="width:32px"><input type="checkbox" class="row-cb task-cb" data-id="${t.id}" onchange="onRowCheck()"></td>
       <td class="task-id">#${t.id}</td>
       <td>
-        <div class="task-title">${esc(t.title)}</div>
+        <div class="task-title">${esc(t.title)}${taskClip(t)}</div>
         ${t.description ? `<div class="task-desc" title="${esc(t.description)}">${esc(t.description)}</div>` : ''}
       </td>
       <td class="channel-tag">${esc(t.channel_name)}</td>
@@ -921,6 +921,11 @@ function paintTaskChrome() {
     b.classList.toggle('active', b.dataset.dens === _taskDensity));
 }
 
+function taskClip(t) {
+  const n = Array.isArray(t.attachments) ? t.attachments.length : 0;
+  return n ? `<span class="task-clip" title="${n} attachment${n === 1 ? '' : 's'}"><i data-lucide="paperclip"></i>${n}</span>` : '';
+}
+
 function taskDueCell(t) {
   const overdue = isOverdue(t.due_date, t.status);
   const soon = !overdue && isDueSoon(t.due_date, t.status);
@@ -934,7 +939,7 @@ function taskRowHtml(t) {
     <input type="checkbox" class="row-cb task-cb" data-id="${t.id}" onchange="onRowCheck()">
     ${statusBadge(t.status)}
     <div class="task-row-main" onclick="openTaskModal(${t.id})">
-      <div class="task-row-title">${esc(t.title)}</div>
+      <div class="task-row-title">${esc(t.title)}${taskClip(t)}</div>
       ${t.description ? `<div class="task-row-desc">${esc(t.description)}</div>` : ''}
     </div>
     ${priorityBadge(t.priority)}
@@ -984,7 +989,7 @@ function renderTaskBoard(tasks, container) {
       <div class="task-bcol-body">${rows.map(t => {
         const due = taskDueCell(t);
         return `<article class="task-card" onclick="openTaskModal(${t.id})">
-          <div class="task-card-title">${esc(t.title)}</div>
+          <div class="task-card-title">${esc(t.title)}${taskClip(t)}</div>
           <div class="task-card-meta">${priorityBadge(t.priority)}<span class="due-date ${due.cls}">${due.label}</span></div>
           <div class="task-card-foot">
             <span class="task-card-who">${resolvedNames(t)}</span>
@@ -1136,6 +1141,55 @@ function resolvedNames(t) {
 // Helpers for the task form's segmented controls. Each writes back to the
 // hidden <select>/<input> that saveTask() already reads, so the form's data
 // contract is untouched — only what you touch changes.
+// Files chosen in the task form, held until the task is saved. Same two-step
+// the comment composer uses: POST the file, keep the {url,name,size,type} the
+// server returns, then send those objects with the task's own JSON.
+let _taskFiles = [];
+const TASK_ATTACH_MAX = 10;
+function taskAttachPaint() {
+  const box = document.getElementById('t-files');
+  if (!box) return;
+  box.innerHTML = _taskFiles.map((f, i) => `
+    <span class="t-file" title="${esc(f.name)}">
+      <i data-lucide="${/^image\//.test(f.type || '') ? 'image' : 'paperclip'}"></i>
+      <span class="t-file-n">${esc(f.name)}</span>
+      <span class="t-file-s">${fmtBytes(f.size)}</span>
+      <button type="button" class="t-file-x" onclick="taskAttachRemove(${i})" aria-label="Remove ${esc(f.name)}">&times;</button>
+    </span>`).join('');
+  const add = document.getElementById('t-file-add');
+  if (add) add.style.display = _taskFiles.length >= TASK_ATTACH_MAX ? 'none' : '';
+  requestAnimationFrame(() => lucide.createIcons());
+}
+function fmtBytes(n) {
+  const b = Number(n) || 0;
+  if (!b) return '';
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return Math.round(b / 1024) + ' KB';
+  return (b / (1024 * 1024)).toFixed(1) + ' MB';
+}
+function taskAttachRemove(i) { _taskFiles.splice(i, 1); taskAttachPaint(); }
+async function taskAttachPick(input) {
+  const files = [...(input.files || [])];
+  input.value = '';
+  const room = TASK_ATTACH_MAX - _taskFiles.length;
+  if (files.length > room) showAdminToast(`Only ${room} more file${room === 1 ? '' : 's'} can be attached.`);
+  const status = document.getElementById('t-file-status');
+  for (const file of files.slice(0, Math.max(0, room))) {
+    if (file.size > 10 * 1024 * 1024) { showAdminToast(`${file.name} is over 10 MB.`); continue; }
+    if (status) status.textContent = `Uploading ${file.name}…`;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const r = await apiFetch('/api/dashboard/tasks/upload', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (!r.ok || d.error) { showAdminToast('Upload failed: ' + (d.error || r.status)); continue; }
+      _taskFiles.push(d);
+      taskAttachPaint();
+    } catch (e) { showAdminToast('Upload failed: ' + e.message); }
+  }
+  if (status) status.textContent = '';
+}
+
 function taskSeg(group, value) {
   const host = document.getElementById(group === 'priority' ? 't-priority' : 't-status');
   if (host) host.value = value;
@@ -1179,6 +1233,7 @@ async function openTaskModal(id) {
   const t = id ? allTasks.find(x => x.id === id) : null;
   const current = new Set((Array.isArray(t?.assignee_ids) && t.assignee_ids.length ? t.assignee_ids : (t?.assignee_id ? [t.assignee_id] : [])).map(String));
   const initials = n => String(n || '').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
+  _taskFiles = Array.isArray(t?.attachments) ? t.attachments.slice(0, TASK_ATTACH_MAX) : [];
 
   // A checkbox in a scrolling box tells you nothing until you read every line.
   // Same checkboxes — saveTask() still reads .t-assignee-cb — worn as chips.
@@ -1229,6 +1284,15 @@ async function openTaskModal(id) {
         <input class="form-control" id="t-milestone" value="${esc(t?.milestone || '')}" placeholder="Optional">
       </div>
 
+      <div>
+        <div class="t-lbl-row"><label class="form-label">Attachments</label><span class="form-hint" id="t-file-status">up to ${TASK_ATTACH_MAX} files, 10 MB each</span></div>
+        <div class="t-files" id="t-files"></div>
+        <input type="file" id="t-file-input" multiple hidden onchange="taskAttachPick(this)">
+        <button type="button" class="t-file-add" id="t-file-add" onclick="document.getElementById('t-file-input').click()">
+          <i data-lucide="paperclip"></i> Attach files
+        </button>
+      </div>
+
       <select id="t-priority" hidden>${PRI.map(([v]) => `<option value="${v}"${v === curPri ? ' selected' : ''}>${v}</option>`).join('')}</select>
       <select id="t-status" hidden>${ST.map(([v]) => `<option value="${v}"${v === curSt ? ' selected' : ''}>${v}</option>`).join('')}</select>
     </div>
@@ -1238,12 +1302,13 @@ async function openTaskModal(id) {
 
   taskAssigneePaint();
   taskDuePaint();
+  taskAttachPaint();
   requestAnimationFrame(() => lucide.createIcons());
 }
 
 async function saveTask(id) {
   const assignee_ids = [...document.querySelectorAll('.t-assignee-cb:checked')].map(cb => cb.value);
-  const body = { title: document.getElementById('t-title').value.trim(), description: document.getElementById('t-desc').value.trim(), assignee_ids, due_date: document.getElementById('t-due').value, priority: document.getElementById('t-priority').value, status: document.getElementById('t-status').value, milestone: document.getElementById('t-milestone').value.trim() };
+  const body = { title: document.getElementById('t-title').value.trim(), description: document.getElementById('t-desc').value.trim(), assignee_ids, due_date: document.getElementById('t-due').value, priority: document.getElementById('t-priority').value, status: document.getElementById('t-status').value, milestone: document.getElementById('t-milestone').value.trim(), attachments: _taskFiles };
   if (!body.title || !assignee_ids.length || !body.due_date) { alert('Title, at least one assignee, and due date are required'); return; }
   const url = id ? `/api/dashboard/tasks/${id}` : '/api/dashboard/tasks';
   const method = id ? 'PUT' : 'POST';

@@ -21,4 +21,25 @@ const PO_LINE_STATUS_KEYS = PO_LINE_STATUSES.map(s => s.key);
 
 const BRAND_LOGO_URL = 'https://images.motolinkers.com/avatar-11-max-reev/motolinkers-logo-black-text-preview.png';
 
-module.exports = { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL };
+// Attachments on a task. The client posts each file to /api/*/tasks/upload and
+// sends back the {url,name,size,type} objects that route returns, so this only
+// has to reject anything that did not come from there. Enforced server-side
+// because a hand-written POST does not go through the client's file picker.
+const TASK_ATTACH_MAX = 10;
+function sanitizeAttachments(v) {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter(a => a && typeof a === 'object')
+    // Only our own storage bucket. Without this the column is a stored-XSS
+    // vector the moment anything renders it as a link.
+    .filter(a => /^https:\/\//i.test(String(a.url || '')))
+    .slice(0, TASK_ATTACH_MAX)
+    .map(a => ({
+      url: String(a.url).slice(0, 2048),
+      name: String(a.name || 'file').slice(0, 200),
+      size: Number(a.size) > 0 ? Math.floor(Number(a.size)) : null,
+      type: String(a.type || '').slice(0, 100),
+    }));
+}
+
+module.exports = { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL, TASK_ATTACH_MAX, sanitizeAttachments };

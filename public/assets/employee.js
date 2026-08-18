@@ -794,6 +794,82 @@ async function loadMyHours() {
 }
 
 /* ── New Task Modal ── */
+// The segmented priority control and the due-date chips write back to the same
+// #nt-priority select and #nt-due input submitNewTask() already reads, so the
+// form's data contract is unchanged — only what you touch is.
+function empPriPick(v) {
+  const sel = document.getElementById('nt-priority');
+  if (sel) sel.value = v;
+  document.querySelectorAll('.t-seg[data-group="priority"]').forEach(b =>
+    b.classList.toggle('on', b.dataset.value === v));
+}
+function empDuePick(days) {
+  const el = document.getElementById('nt-due');
+  if (!el) return;
+  const d = new Date(); d.setDate(d.getDate() + days);
+  el.value = d.toISOString().slice(0, 10);
+  empDuePaint();
+}
+function empDuePaint() {
+  const el = document.getElementById('nt-due');
+  if (!el) return;
+  document.querySelectorAll('.t-due-chip').forEach(b => {
+    const d = new Date(); d.setDate(d.getDate() + Number(b.dataset.days));
+    b.classList.toggle('on', el.value === d.toISOString().slice(0, 10));
+  });
+}
+
+// Attachments. Same two-step as the comment composer: POST each file, keep the
+// {url,name,size,type} the server returns, send those with the task's JSON.
+// Raw fetch rather than ef(), which forces a JSON content-type and would
+// corrupt the multipart boundary.
+let _empTaskFiles = [];
+const EMP_TASK_ATTACH_MAX = 10;
+function empFmtBytes(n) {
+  const b = Number(n) || 0;
+  if (!b) return '';
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return Math.round(b / 1024) + ' KB';
+  return (b / (1024 * 1024)).toFixed(1) + ' MB';
+}
+function empTaskAttachPaint() {
+  const box = document.getElementById('nt-files');
+  if (!box) return;
+  box.innerHTML = _empTaskFiles.map((f, i) => `
+    <span class="t-file" title="${esc(f.name)}">
+      <i data-lucide="${/^image\//.test(f.type || '') ? 'image' : 'paperclip'}"></i>
+      <span class="t-file-n">${esc(f.name)}</span>
+      <span class="t-file-s">${empFmtBytes(f.size)}</span>
+      <button type="button" class="t-file-x" onclick="empTaskAttachRemove(${i})" aria-label="Remove ${esc(f.name)}">&times;</button>
+    </span>`).join('');
+  const add = document.getElementById('nt-file-add');
+  if (add) add.style.display = _empTaskFiles.length >= EMP_TASK_ATTACH_MAX ? 'none' : '';
+  if (window.lucide) requestAnimationFrame(() => lucide.createIcons());
+}
+function empTaskAttachRemove(i) { _empTaskFiles.splice(i, 1); empTaskAttachPaint(); }
+async function empTaskAttachPick(input) {
+  const files = [...(input.files || [])];
+  input.value = '';
+  const room = EMP_TASK_ATTACH_MAX - _empTaskFiles.length;
+  if (files.length > room) showToast(`Only ${room} more file${room === 1 ? '' : 's'} can be attached.`);
+  const status = document.getElementById('nt-file-status');
+  for (const file of files.slice(0, Math.max(0, room))) {
+    if (file.size > 10 * 1024 * 1024) { showToast(`${file.name} is over 10 MB.`); continue; }
+    if (status) status.textContent = `Uploading ${file.name}…`;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const r = await fetch('/api/employee/tasks/upload', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + empToken }, body: fd });
+      const d = await r.json();
+      if (!r.ok || d.error) { showToast('Upload failed: ' + (d.error || r.status)); continue; }
+      _empTaskFiles.push(d);
+      empTaskAttachPaint();
+    } catch (e) { showToast('Upload failed: ' + e.message); }
+  }
+  if (status) status.textContent = 'up to 10 files, 10 MB each';
+}
+
 async function openNewTaskModal() {
   document.getElementById('nt-title').value     = '';
   document.getElementById('nt-desc').value      = '';
@@ -802,6 +878,11 @@ async function openNewTaskModal() {
   document.getElementById('nt-priority').value  = 'medium';
   document.getElementById('task-modal-err').style.display = 'none';
   document.getElementById('task-modal-overlay').style.display = 'flex';
+  _empTaskFiles = [];
+  empPriPick('medium');
+  empDuePaint();
+  empTaskAttachPaint();
+  if (window.lucide) requestAnimationFrame(() => lucide.createIcons());
 }
 
 function closeTaskModal() {
@@ -824,6 +905,7 @@ async function submitNewTask() {
       due_date,
       priority:  document.getElementById('nt-priority').value,
       milestone: document.getElementById('nt-milestone').value.trim(),
+      attachments: _empTaskFiles,
     })});
     const d = await r.json();
     if (d.error) { err.textContent = d.error; err.style.display = 'block'; return; }

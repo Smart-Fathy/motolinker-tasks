@@ -2117,3 +2117,113 @@
     font-size:10.5px; font-weight:800; text-transform:uppercase;
     letter-spacing:.8px; margin-top:8px;
   }
+
+  /* ── Home widgets: the board treatment ─────────────────────────────────
+   * A widget wears the accent of the sidebar group whose screen it reports
+   * on, given as the same gradient wash the Tasks groups and Deals columns
+   * use — so a tile, a column head and a rail item read as one system.
+   * Shared verbatim with the team portal. */
+  :root{
+    --w-gold:#c9a35e; --w-mint:#6dd8a4; --w-blue:#9fb0bd; --w-slate:#94a3b8;
+    --w-amber:#f59e0b; --w-orange:#c98b5e; --w-muted:#8d897f;
+    --w-red:#ef4444;  --w-green:#10b981;
+  }
+
+  /* Real row bands, so two widgets in a row are the same height. data-h used
+   * to set only a min-height against align-items:start, which is why tiles
+   * that were nominally the same size did not line up. */
+  .home-grid{
+    grid-auto-rows:118px;
+    align-items:stretch;
+  }
+  .home-w{
+    min-height:0;
+    border-color:color-mix(in srgb, var(--c, var(--w-gold)) 26%, var(--border));
+    overflow:hidden;
+  }
+  .home-w[data-h="1"], .home-w[data-h="2"],
+  .home-w[data-h="3"], .home-w[data-h="4"]{ min-height:0; }
+
+  .home-w-head{
+    margin:-16px -18px 12px; padding:13px 18px 11px;
+    background:linear-gradient(180deg,
+      color-mix(in srgb, var(--c, var(--w-gold)) 15%, transparent), rgba(20,20,22,0));
+    border-bottom:1px solid rgba(255,255,255,.05);
+  }
+  .home-w-ic{
+    width:24px; height:24px; border-radius:7px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    background:color-mix(in srgb, var(--c, var(--w-gold)) 16%, transparent);
+    color:var(--c, var(--w-gold));
+  }
+  .home-w-ic i, .home-w-ic svg{ width:14px; height:14px; }
+  .home-w-title{ color:var(--text); }
+  .home-w-body{ min-height:0; }
+
+  /* ── Free resize ──────────────────────────────────────────────────────
+   * The four named widths remain in the select as presets; the grip drags
+   * against every one of the 12 columns and 4 row bands the server accepts. */
+  .home-w-grip{
+    position:absolute; right:3px; bottom:3px; width:18px; height:18px;
+    cursor:nwse-resize; border-radius:0 0 var(--r-lg) 0; opacity:.5;
+    background:
+      linear-gradient(135deg, transparent 46%, var(--c, var(--w-gold)) 46%, var(--c, var(--w-gold)) 58%, transparent 58%),
+      linear-gradient(135deg, transparent 70%, var(--c, var(--w-gold)) 70%, var(--c, var(--w-gold)) 82%, transparent 82%);
+    touch-action:none;
+  }
+  .home-w-grip:hover, .home-w-grip:focus-visible{ opacity:1; outline:none; }
+  .home-w-grip:focus-visible{ box-shadow:0 0 0 2px var(--c, var(--w-gold)); border-radius:4px; }
+  .home-grid.editing .home-w{ position:relative; }
+  .home-w.resizing{
+    border-style:solid; border-color:var(--c, var(--w-gold));
+    box-shadow:0 0 0 1px var(--c, var(--w-gold));
+    user-select:none;
+  }
+  .home-grid.editing{ cursor:default; }
+
+  @media (max-width:900px){
+    /* One column: every tile is full width, so a width grip has nothing to do. */
+    .home-w-grip{ display:none; }
+    .home-grid{ grid-auto-rows:auto; }
+    .home-w{ grid-row:auto !important; min-height:120px; }
+  }
+
+  /* ── Attachment chips (task form, both portals) ───────────────────────── */
+  .t-files{ display:flex; flex-wrap:wrap; gap:7px; }
+  .t-files:not(:empty){ margin-bottom:9px; }
+  .t-file{
+    display:inline-flex; align-items:center; gap:7px; max-width:100%;
+    padding:5px 6px 5px 10px; border-radius:var(--r-pill);
+    border:1px solid var(--border); background:var(--bg); font-size:12px;
+  }
+  .t-file i, .t-file svg{ width:13px; height:13px; color:var(--gold); flex-shrink:0; }
+  .t-file-n{
+    max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-weight:600; color:#b9b3a4;
+  }
+  .t-file-s{ font-size:11px; color:var(--muted); flex-shrink:0; font-variant-numeric:tabular-nums; }
+  .t-file-x{
+    width:20px; height:20px; border-radius:50%; border:none; cursor:pointer;
+    background:none; color:var(--muted); font-size:15px; line-height:1; flex-shrink:0;
+  }
+  .t-file-x:hover{ color:var(--danger); background:rgba(239,68,68,.12); }
+  .t-file-add{
+    display:inline-flex; align-items:center; gap:7px;
+    padding:8px 13px; border-radius:var(--r-sm); cursor:pointer; font-family:inherit;
+    font-size:12px; font-weight:600; color:#b9b3a4;
+    border:1px dashed rgba(255,255,255,.16); background:none;
+  }
+  .t-file-add:hover{ color:var(--gold); border-color:rgba(201,163,94,.45); }
+  .t-file-add i, .t-file-add svg{ width:13px; height:13px; }
+
+  /* A task that carries files says so wherever it is listed. */
+  .task-clip{
+    display:inline-flex; align-items:center; gap:4px; flex-shrink:0;
+    font-size:11px; font-weight:700; color:var(--muted);
+  }
+  .task-clip i, .task-clip svg{ width:12px; height:12px; }
+
+  @media (max-width:640px){
+    .t-file-add{ min-height:44px; }
+    .t-file-x{ width:32px; height:32px; }
+  }

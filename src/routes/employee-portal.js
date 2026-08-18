@@ -1,6 +1,7 @@
 // Employee Portal
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
+const { sanitizeAttachments } = require('../lib/constants');
 const { GOOGLE_CLIENT_ID, PUBLIC_DIR, SMTP_FROM, autoCreateSaleForWonDeal, createMailer, crypto, employeeSessions, express, generateToken, hashPassword, inventorySearch, multer, path, pendingDriveAuth, receiver, requireAuth, requireEmployeeAuth, supabase, verifyPassword } = ctx.need('GOOGLE_CLIENT_ID', 'PUBLIC_DIR', 'SMTP_FROM', 'autoCreateSaleForWonDeal', 'createMailer', 'crypto', 'employeeSessions', 'express', 'generateToken', 'hashPassword', 'inventorySearch', 'multer', 'path', 'pendingDriveAuth', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'verifyPassword');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
@@ -556,7 +557,7 @@ receiver.router.post('/api/employee/my-tasks', requireEmployeeAuth, requirePerm(
     const { title, description, due_date, priority, milestone } = req.body;
     if (!title || !due_date) return res.status(400).json({ error: 'Title and due date are required' });
     const { data: task, error } = await supabase.from('tasks')
-      .insert({ title, description: description || '', channel_id: '', channel_name: '', assignee_id: String(req.employee.id), assignee_ids: [String(req.employee.id)], due_date, priority: priority || 'medium', milestone: milestone || '', created_by: req.employee.username, status: 'todo' })
+      .insert({ title, description: description || '', channel_id: '', channel_name: '', assignee_id: String(req.employee.id), assignee_ids: [String(req.employee.id)], due_date, priority: priority || 'medium', milestone: milestone || '', created_by: req.employee.username, status: 'todo', attachments: sanitizeAttachments(req.body.attachments) })
       .select().single();
     if (error) return res.status(500).json({ error: error.message });
     runAutomations('task.created', taskCtx(task));
