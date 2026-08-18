@@ -1993,3 +1993,81 @@
     .table-header{ align-items:flex-start; gap:14px; }
     .table-filters{ justify-content:flex-end; }
   }
+
+  /* ── Task form ─────────────────────────────────────────────────────────
+   * A <select> hides its options until you click and can only ever hold one
+   * value. Priority, status and due date all have three or four choices, so
+   * they are shown rather than hidden. The hidden <select>s remain as the
+   * data contract saveTask() reads. */
+  .t-form{ display:grid; gap:18px; }
+  .t-title{
+    width:100%; padding:2px 0 10px; border:none;
+    border-bottom:1px solid rgba(255,255,255,.11); background:none;
+    color:var(--text); outline:none;
+    font-family:'Cormorant Garamond',serif; font-size:25px; font-weight:600; letter-spacing:.2px;
+  }
+  .t-title:focus{ border-bottom-color:var(--gold); }
+  .t-title::placeholder{ color:#6f6b63; }
+  .t-lbl-row{ display:flex; align-items:baseline; gap:8px; margin-bottom:9px; }
+  .t-lbl-row .form-label{ margin-bottom:0; }
+  .form-hint{ font-size:11px; color:var(--muted); }
+  .t-none{ padding:8px; color:var(--muted); font-size:12px; }
+  /* .form-control never set a family, so every textarea in the app rendered in
+   * the UA's monospace default. */
+  textarea.form-control, textarea.filter-input, textarea.form-input{ font-family:inherit; }
+
+  .t-whos{ display:flex; gap:8px; flex-wrap:wrap; }
+  .t-who{
+    display:inline-flex; align-items:center; gap:9px;
+    padding:6px 13px 6px 7px; border-radius:var(--r-pill); cursor:pointer;
+    border:1px solid var(--border); background:var(--bg);
+    transition:background .13s, border-color .13s;
+  }
+  .t-who input{ position:absolute; opacity:0; width:0; height:0; }
+  .t-who-av{
+    width:26px; height:26px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:9.5px; font-weight:800; letter-spacing:.3px;
+    background:#1a1a1c; color:var(--muted); border:1px solid var(--border);
+  }
+  .t-who-name{ font-size:12.5px; font-weight:600; white-space:nowrap; color:#b9b3a4; }
+  .t-who-tick{ width:13px; height:13px; color:var(--gold); display:none; flex-shrink:0; }
+  .t-who.on{ border-color:rgba(201,163,94,.55); background:rgba(201,163,94,.13); }
+  .t-who.on .t-who-av{ background:linear-gradient(150deg,var(--gold-soft),var(--gold)); color:#0c0c0e; border-color:transparent; }
+  .t-who.on .t-who-name{ color:var(--text); }
+  .t-who.on .t-who-tick{ display:block; }
+
+  .t-due-row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .t-due-chip{
+    padding:8px 13px; border-radius:var(--r-sm); cursor:pointer; font-family:inherit;
+    font-size:12px; font-weight:600; border:1px solid var(--border);
+    background:var(--bg); color:#b9b3a4;
+  }
+  .t-due-chip.on{ border-color:rgba(201,163,94,.5); background:rgba(201,163,94,.13); color:#e8cd93; }
+  .t-due-input{ flex:1; min-width:150px; width:auto; color-scheme:dark; }
+
+  .t-segs{
+    display:flex; gap:4px; padding:3px; border-radius:var(--r-md);
+    background:var(--bg); border:1px solid rgba(255,255,255,.07);
+  }
+  .t-seg{
+    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+    padding:8px 4px; border-radius:var(--r-sm); cursor:pointer; font-family:inherit;
+    font-size:12px; font-weight:700; border:1px solid transparent;
+    background:none; color:var(--muted); white-space:nowrap;
+  }
+  .t-seg i{ width:7px; height:7px; border-radius:50%; background:var(--c); opacity:.45; flex-shrink:0; }
+  .t-seg.on{ border-color:var(--c); background:color-mix(in srgb, var(--c) 13%, transparent); color:var(--c); }
+  .t-seg.on i{ opacity:1; }
+
+  .t-who-line{ flex:1; min-width:0; font-size:11.5px; color:var(--muted); text-align:left; }
+  .t-who-line.warn{ color:var(--danger); }
+  .modal-footer{ align-items:center; }
+
+  @media (max-width:640px){
+    .t-title{ font-size:22px; }
+    .t-segs{ flex-wrap:wrap; }
+    .t-seg{ min-height:44px; }
+    .t-due-chip{ min-height:44px; }
+    .t-who{ min-height:44px; }
+  }

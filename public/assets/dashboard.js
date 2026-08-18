@@ -1133,32 +1133,112 @@ function resolvedNames(t) {
 }
 
 // ── Task CRUD modals ──────────────────────────────────────────────────────────
+// Helpers for the task form's segmented controls. Each writes back to the
+// hidden <select>/<input> that saveTask() already reads, so the form's data
+// contract is untouched — only what you touch changes.
+function taskSeg(group, value) {
+  const host = document.getElementById(group === 'priority' ? 't-priority' : 't-status');
+  if (host) host.value = value;
+  document.querySelectorAll(`.t-seg[data-group="${group}"]`).forEach(b =>
+    b.classList.toggle('on', b.dataset.value === value));
+}
+function taskDuePick(days) {
+  const el = document.getElementById('t-due');
+  if (!el) return;
+  const d = new Date(); d.setDate(d.getDate() + days);
+  el.value = d.toISOString().slice(0, 10);
+  taskDuePaint();
+}
+function taskDuePaint() {
+  const el = document.getElementById('t-due');
+  if (!el) return;
+  document.querySelectorAll('.t-due-chip').forEach(b => {
+    const d = new Date(); d.setDate(d.getDate() + Number(b.dataset.days));
+    b.classList.toggle('on', el.value === d.toISOString().slice(0, 10));
+  });
+}
+// The footer says who this is about to land on, so the consequence of the
+// choice is visible at the moment of making it.
+function taskAssigneePaint() {
+  const picked = [...document.querySelectorAll('.t-assignee-cb:checked')];
+  picked.forEach(cb => cb.closest('.t-who')?.classList.add('on'));
+  [...document.querySelectorAll('.t-assignee-cb:not(:checked)')].forEach(cb =>
+    cb.closest('.t-who')?.classList.remove('on'));
+  const names = picked.map(cb => cb.dataset.name).filter(Boolean);
+  const line = document.getElementById('t-who-line');
+  if (!line) return;
+  line.textContent = names.length === 0 ? 'Pick at least one assignee.'
+    : names.length === 1 ? `${names[0]} gets a notification straight away.`
+    : names.length === 2 ? `${names[0]} and ${names[1]} get a notification straight away.`
+    : `${names.length} people get a notification straight away.`;
+  line.classList.toggle('warn', names.length === 0);
+}
+
 async function openTaskModal(id) {
   await preloadEmployeesForTasks();
   const t = id ? allTasks.find(x => x.id === id) : null;
   const current = new Set((Array.isArray(t?.assignee_ids) && t.assignee_ids.length ? t.assignee_ids : (t?.assignee_id ? [t.assignee_id] : [])).map(String));
-  const assigneeChecks = (employeesForTasks || []).map(e => `
-    <label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px" onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background='none'">
-      <input type="checkbox" class="t-assignee-cb" value="${e.id}" ${current.has(String(e.id)) ? 'checked' : ''} style="accent-color:var(--gold)"> ${esc(e.name)}
+  const initials = n => String(n || '').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
+
+  // A checkbox in a scrolling box tells you nothing until you read every line.
+  // Same checkboxes — saveTask() still reads .t-assignee-cb — worn as chips.
+  const who = (employeesForTasks || []).map(e => `
+    <label class="t-who${current.has(String(e.id)) ? ' on' : ''}">
+      <input type="checkbox" class="t-assignee-cb" value="${e.id}" data-name="${esc(e.name)}"
+             ${current.has(String(e.id)) ? 'checked' : ''} onchange="taskAssigneePaint()">
+      <span class="t-who-av">${esc(initials(e.name))}</span>
+      <span class="t-who-name">${esc(e.name)}</span>
+      <i data-lucide="check" class="t-who-tick"></i>
     </label>`).join('');
-  showModal(t ? `Edit Task #${t.id}` : 'Add New Task', `
-    <div class="form-group"><label class="form-label">Title *</label><input class="form-control" id="t-title" value="${esc(t?.title||'')}" placeholder="Task title…"></div>
-    <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="t-desc" rows="2">${esc(t?.description||'')}</textarea></div>
-    <div class="form-group"><label class="form-label">Assignees * <span style="color:var(--muted);font-size:11px">(select one or more)</span></label>
-      <div id="t-assignees" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px">${assigneeChecks || '<div style="padding:8px;color:var(--muted);font-size:12px">No employees yet</div>'}</div>
+
+  const PRI = [['high', 'High', 'var(--pri-high)'], ['medium', 'Medium', 'var(--pri-med)'], ['low', 'Low', 'var(--pri-low)']];
+  const ST = [['todo', 'To Do', 'var(--st-todo)'], ['in_progress', 'In Progress', 'var(--st-progress)'], ['done', 'Done', 'var(--st-done)']];
+  const curPri = t?.priority || 'medium';
+  const curSt = t?.status || 'todo';
+  const seg = (group, opts, cur) => `<div class="t-segs">${opts.map(([v, l, c]) => `
+      <button type="button" class="t-seg${v === cur ? ' on' : ''}" data-group="${group}" data-value="${v}"
+              style="--c:${c}" onclick="taskSeg('${group}','${v}')"><i></i>${l}</button>`).join('')}</div>`;
+
+  showModal(t ? `Edit Task #${t.id}` : 'New task', `
+    <div class="t-form">
+      <input class="t-title" id="t-title" value="${esc(t?.title || '')}" placeholder="What needs doing?" autocomplete="off">
+      <textarea class="form-control" id="t-desc" rows="2" placeholder="Any detail the assignee needs">${esc(t?.description || '')}</textarea>
+
+      <div>
+        <div class="t-lbl-row"><label class="form-label">Assignees</label><span class="form-hint">tap to add or remove</span></div>
+        <div class="t-whos" id="t-assignees">${who || '<div class="t-none">No employees yet</div>'}</div>
+      </div>
+
+      <div>
+        <label class="form-label">Due date</label>
+        <div class="t-due-row">
+          <button type="button" class="t-due-chip" data-days="0" onclick="taskDuePick(0)">Today</button>
+          <button type="button" class="t-due-chip" data-days="1" onclick="taskDuePick(1)">Tomorrow</button>
+          <button type="button" class="t-due-chip" data-days="7" onclick="taskDuePick(7)">Next week</button>
+          <input class="form-control t-due-input" id="t-due" type="date" value="${t?.due_date || ''}" onchange="taskDuePaint()">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div><label class="form-label">Priority</label>${seg('priority', PRI, curPri)}</div>
+        <div><label class="form-label">Status</label>${seg('status', ST, curSt)}</div>
+      </div>
+
+      <div>
+        <label class="form-label">Milestone</label>
+        <input class="form-control" id="t-milestone" value="${esc(t?.milestone || '')}" placeholder="Optional">
+      </div>
+
+      <select id="t-priority" hidden>${PRI.map(([v]) => `<option value="${v}"${v === curPri ? ' selected' : ''}>${v}</option>`).join('')}</select>
+      <select id="t-status" hidden>${ST.map(([v]) => `<option value="${v}"${v === curSt ? ' selected' : ''}>${v}</option>`).join('')}</select>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Due Date *</label><input class="form-control" id="t-due" type="date" value="${t?.due_date||''}"></div>
-      <div class="form-group"><label class="form-label">Priority</label>
-        <select class="form-control" id="t-priority">${['high','medium','low'].map(p=>`<option value="${p}"${(t?.priority||'medium')===p?' selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('')}</select></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Status</label>
-        <select class="form-control" id="t-status">${[['todo','To Do'],['in_progress','In Progress'],['done','Done']].map(([v,l])=>`<option value="${v}"${(t?.status||'todo')===v?' selected':''}>${l}</option>`).join('')}</select></div>
-      <div class="form-group"><label class="form-label">Milestone</label><input class="form-control" id="t-milestone" value="${esc(t?.milestone||'')}" placeholder="e.g. Sprint 3…"></div>
-    </div>
-  `, `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveTask(${id||'null'})">Save</button>`);
+  `, `<span class="t-who-line" id="t-who-line"></span>
+      <button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTask(${id || 'null'})">${t ? 'Save' : 'Create'}</button>`);
+
+  taskAssigneePaint();
+  taskDuePaint();
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 async function saveTask(id) {
