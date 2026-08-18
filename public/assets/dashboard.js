@@ -2469,7 +2469,7 @@ async function deleteEmployee(id) {
 
 // ── Requests ──────────────────────────────────────────────────────────────────
 let allRequests = [];
-const reqStatusColors = { pending: 'badge-todo', in_review: 'badge-in_progress', approved: 'badge-done', rejected: 'badge-high' };
+const reqStatusColors = { pending: 'badge-pending', in_review: 'badge-in_review', approved: 'badge-approved', rejected: 'badge-rejected' };
 const reqStatusLabels = { pending: 'Pending', in_review: 'In Review', approved: 'Approved', rejected: 'Rejected' };
 
 function reqAssigneeName(r) {
@@ -2501,7 +2501,7 @@ function renderRequestsTable() {
       <td><div class="task-title">${esc(r.title)}</div>${r.description ? `<div class="task-desc">${esc(r.description)}</div>` : ''}${r.category ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(r.category)}</div>` : ''}</td>
       <td style="font-size:13px"><span style="background:rgba(99,102,241,.12);color:var(--primary);padding:3px 8px;border-radius:6px;font-size:12px;font-weight:600">${esc(r.created_by || '—')}</span></td>
       <td>${priorityBadge(r.priority)}</td>
-      <td><span class="badge ${reqStatusColors[r.status] || 'badge-todo'}">${reqStatusLabels[r.status] || r.status}</span></td>
+      <td><span class="badge ${reqStatusColors[r.status] || 'badge-pending'}">${reqStatusLabels[r.status] || r.status}</span></td>
       <td style="font-size:12px;color:var(--muted)">${esc(reqAssigneeName(r) || '—')}</td>
       <td style="font-size:12px;color:var(--muted)">${new Date(r.created_at).toLocaleDateString()}</td>
       <td style="white-space:nowrap">
@@ -4785,7 +4785,7 @@ function renderLeadDrawer() {
   const badge = document.getElementById('ld-status');
   badge.textContent = (stMap[stKey] || c.lead_status || 'Cold') + ' ▾';
   const stHex = leadOptColor(stCol, stKey);
-  badge.style.background = stHex ? hexA(stHex, 0.16) : 'rgba(255,255,255,.06)';
+  badge.style.background = stHex ? hexA(stHex, 0.12) : 'rgba(255,255,255,.06)';
   badge.style.color = stHex || '#b9b3a4';
   document.getElementById('ld-phone').textContent = c.phone || '';
   document.getElementById('ld-call').href = c.phone ? 'tel:' + c.phone : '#';
@@ -4827,7 +4827,7 @@ function renderLeadDrawer() {
     let bodyHtml = esc(a.body || '');
     if (a.type === 'status_change' && a.meta?.to) {
       const fk = normKey(a.meta.from, stMap), tk = normKey(a.meta.to, stMap);
-      const pill = k => { const h = leadOptColor(stCol, k); return `background:${h ? hexA(h, 0.16) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
+      const pill = k => { const h = leadOptColor(stCol, k); return `background:${h ? hexA(h, 0.12) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
       bodyHtml = `Status: <span class="ld-stage-pill" style="${pill(fk)}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="${pill(tk)}">${esc(stMap[tk] || a.meta.to)}</span>`;
     }
     return `<div class="ld-tl-item">
@@ -4891,7 +4891,7 @@ function renderLeadDrawer() {
         <div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title)}</div>
         <div style="font-size:10.5px;color:var(--muted);margin-top:2px">${d.budget_egp ? Number(d.budget_egp).toLocaleString() + ' EGP · ' : ''}${new Date(d.created_at).toLocaleDateString()}</div>
       </div>
-      <span class="ld-stage-pill">${esc(DEAL_STAGE_LABELS[d.stage] || d.stage)}</span>
+      <span class="ld-stage-pill" style="background:${hexA(DEAL_STAGE_HEX[d.stage] || '#c9a35e', 0.12)};color:${DEAL_STAGE_TEXT[d.stage] || DEAL_STAGE_HEX[d.stage] || 'var(--primary)'};border:1px solid ${hexA(DEAL_STAGE_HEX[d.stage] || '#c9a35e', 0.30)}">${esc(DEAL_STAGE_LABELS[d.stage] || d.stage)}</span>
     </div>`).join('') : '<div style="color:var(--muted);font-size:12px">No deals yet.</div>';
 
   document.getElementById('lead-drawer-body').innerHTML = `
@@ -5344,6 +5344,14 @@ async function confirmDedupe() {
 // ── Deals ─────────────────────────────────────────────────────────────────
 const DEAL_STAGES = ['lead','inquiry','quoted','negotiating','won','lost'];
 const DEAL_STAGE_LABELS = { lead:'Lead', inquiry:'Inquiry', quoted:'Quoted', negotiating:'Negotiating', won:'Won', lost:'Lost' };
+// The same six hues DEAL_STAGE_COLORS carries, at full opacity. That constant was
+// declared and never read, so every kanban column rendered the same grey and the
+// purple on Inquiry — which is in the source — had never been visible.
+const DEAL_STAGE_HEX = { lead:'#c9a35e', inquiry:'#7c6aff', quoted:'#5a78c8', negotiating:'#e69650', won:'#64b478', lost:'#ef4444' };
+// #5a78c8 is 4.34:1 on the panel: fine as an 8px dot or a 3px bar, not as 10.5px
+// type. The label takes a lighter tone of the same hue; the dot and bar keep the
+// declared value.
+const DEAL_STAGE_TEXT = { quoted:'#8aa4e0' };
 const DEAL_STAGE_COLORS = { lead:'rgba(201,163,94,.15)', inquiry:'rgba(124,106,255,.15)', quoted:'rgba(90,120,200,.15)', negotiating:'rgba(230,150,80,.15)', won:'rgba(100,180,120,.15)', lost:'rgba(239,68,68,.1)' };
 let _allDeals = [];
 let _dealsCustomerFilter = null;
@@ -5367,16 +5375,30 @@ function filterDealsByCustomer(customerId) {
 function renderDealsKanban() {
   const kanban = document.getElementById('deals-kanban');
   const deals = _dealsCustomerFilter ? _allDeals.filter(d => d.customer_id === _dealsCustomerFilter) : _allDeals;
+  const total = deals.length || 1;
   kanban.innerHTML = DEAL_STAGES.map(stage => {
     const stagDeals = deals.filter(d => d.stage === stage);
+    const c = DEAL_STAGE_HEX[stage] || 'var(--muted)';
+    const txt = DEAL_STAGE_TEXT[stage] || c;
+    const pct = Math.round((stagDeals.length / total) * 100);
+    const sum = stagDeals.reduce((a, d) => a + (Number(d.budget_egp) || 0), 0);
     return `<div class="deal-col" data-stage="${stage}"
         ondragover="dealDragOver(event)" ondragleave="dealDragLeave(event)" ondrop="dealDrop(event,'${stage}')"
-        style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:200px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${esc(DEAL_STAGE_LABELS[stage])}</div>
-        <div style="background:rgba(255,255,255,.07);border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">${stagDeals.length}</div>
+        style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);min-height:200px;overflow:hidden">
+      <div style="padding:13px 13px 12px;background:linear-gradient(180deg,${hexA(c, 0.12)},rgba(20,20,22,0))">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${c};flex-shrink:0"></span>
+          <span style="font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em">${esc(DEAL_STAGE_LABELS[stage])}</span>
+          <span style="margin-left:auto;display:inline-flex;align-items:center;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:700;background:${hexA(c, 0.12)};color:${txt};border:1px solid ${hexA(c, 0.30)}">${stagDeals.length}</span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-top:9px">
+          <span class="num" style="font-size:17px;font-weight:800;line-height:1">${sum ? Number(sum).toLocaleString() : '—'}</span>
+          <span style="font-size:10.5px;color:var(--muted)">EGP</span>
+          <span class="num" style="margin-left:auto;font-size:10.5px;font-weight:800;color:${txt}">${pct}% of deals</span>
+        </div>
+        <div style="height:3px;background:rgba(255,255,255,.07);border-radius:99px;margin-top:9px;overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:${c};border-radius:99px"></i></div>
       </div>
-      ${stagDeals.map(d => dealCard(d)).join('')}
+      <div style="padding:0 12px 12px;display:grid;gap:9px">${stagDeals.map(d => dealCard(d)).join('')}</div>
     </div>`;
   }).join('');
   requestAnimationFrame(() => lucide.createIcons());
@@ -5396,7 +5418,7 @@ function dealCard(d) {
     ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
       ${d.assigned_to ? `<div style="font-size:10px;color:var(--muted)">${esc(d.assigned_to)}</div>` : '<div></div>'}
-      <div style="font-size:10px;color:var(--muted)">${daysOpen}d</div>
+      <div style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;${daysOpen > 20 ? 'background:rgba(239,68,68,.12);color:#ef4444' : daysOpen > 10 ? 'background:rgba(245,158,11,.12);color:#f59e0b' : 'color:var(--muted)'}">${daysOpen}d</div>
     </div>
   </div>`;
 }
