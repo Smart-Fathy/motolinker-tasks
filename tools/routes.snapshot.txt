@@ -369,3 +369,5 @@ POST /api/dashboard/customers/:id/folder
 GET /api/employee/leads/:id/folder
 POST /api/employee/leads/:id/folder
 PUT /api/dashboard/customers/:id/folder/viewers
+GET /api/dashboard/calendar
+GET /api/employee/calendar

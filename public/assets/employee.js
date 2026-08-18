@@ -504,7 +504,7 @@ async function logout() {
 const pageTitles = { home: 'Home', chat: 'Chat', log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', gchat: 'Google Chat', notif: 'Notifications', issues: 'Issues',
   suppliers: 'Suppliers', rfq: 'RFQ', purchaseorders: 'Purchase Orders',
   contracts: 'Contracts', submissions: 'Website Submissions', stock: 'Inventory' };
-const pageLoaders = { home: loadHome, requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: () => initQuotationPage(), leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, gchat: loadGChat, notif: loadNotifPage, issues: loadIssues,
+const pageLoaders = { calendar: () => loadCalendar(), home: loadHome, requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: () => initQuotationPage(), leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, gchat: loadGChat, notif: loadNotifPage, issues: loadIssues,
   // Operations: the renderers live in the shared procurement.js, which both
   // portals load, so these are the same functions the dashboard calls.
   suppliers: () => loadSuppliers(), rfq: () => loadRfqs(), purchaseorders: () => loadPurchaseOrders(),
@@ -4121,6 +4121,19 @@ const CFCFG = {
   can: (section, action) => empCan(section, action),
   isAdmin: false,
   people: () => [],
+};
+
+// The calendar's portal adapter for the team. Everything is scoped server-side
+// to this employee; the gates here only decide which affordances to draw.
+const CALCFG = {
+  base: '/api/employee',
+  fetch: (url, opts) => ef(url, opts),
+  can: (section, action) => empCan(section, action),
+  modal: (...a) => showModal(...a),
+  closeModal: () => hideModal(),
+  toast: msg => showToast(msg),
+  openTask: () => navigate('tasks'),
+  openLead: id => { if (id && typeof openLeadProfile === 'function') openLeadProfile(id); },
 };
 
 const PROCFG = {

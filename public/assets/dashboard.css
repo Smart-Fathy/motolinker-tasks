@@ -1414,3 +1414,61 @@
   #hd-join-chip .hd-chip-clock { font-size:11px; font-weight:600; color:var(--muted);
                                  font-variant-numeric:tabular-nums; }
   @keyframes hd-live-pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
+
+  /* ── The calendar ────────────────────────────────────────────────────────────
+     MotoLinker's own month/week grid. What was here was an iframe of Google's
+     public embed, which knew nothing about this company's meetings or tasks. */
+  .cal-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .cal-nav { background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:9px;
+             font-size:12.5px; padding:7px 13px; cursor:pointer; font-family:inherit; }
+  .cal-nav:hover { border-color:var(--primary); color:var(--primary); }
+  .cal-arrow { padding:4px 12px; font-size:18px; line-height:1.2; display:inline-flex; align-items:center; }
+  .cal-title { font-size:16px; font-weight:700; margin-left:4px; white-space:nowrap; }
+  .cal-legend { display:flex; gap:6px; flex-wrap:wrap; margin-left:auto; }
+  .cal-key { font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; white-space:nowrap; }
+  .cal-key.cal-meeting  { background:rgba(201,163,94,.14); color:var(--primary); }
+  .cal-key.cal-task     { background:rgba(96,165,250,.14); color:#60a5fa; }
+  .cal-key.cal-followup { background:rgba(230,150,80,.16); color:#e69650; }
+  .cal-views { display:inline-flex; border:1px solid var(--border); border-radius:9px; overflow:hidden; }
+  .cal-view { background:none; border:none; color:var(--muted); font-size:12.5px; padding:7px 13px;
+              cursor:pointer; font-family:inherit; }
+  .cal-view.on { background:var(--primary); color:#1b1608; font-weight:600; }
+
+  .cal-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:1px;
+              background:var(--border); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .cal-dow { background:var(--surface); font-size:11px; font-weight:700; letter-spacing:.06em;
+             text-transform:uppercase; color:var(--muted); padding:8px 10px; text-align:center; }
+  .cal-day { background:var(--bg); min-height:104px; padding:6px 7px; display:flex; flex-direction:column; gap:4px; }
+  .cal-grid.week .cal-day { min-height:220px; }
+  .cal-day.other { opacity:.42; }
+  .cal-day.today { background:rgba(201,163,94,.07); box-shadow:inset 0 0 0 1px rgba(201,163,94,.35); }
+  .cal-daynum { font-size:12px; font-weight:700; color:var(--muted); }
+  .cal-day.today .cal-daynum { color:var(--primary); }
+  .cal-items { display:flex; flex-direction:column; gap:3px; min-width:0; }
+  .cal-chip { display:flex; align-items:center; gap:4px; width:100%; text-align:left; border:none; cursor:pointer;
+              font-family:inherit; font-size:11.5px; padding:3px 7px; border-radius:6px; white-space:nowrap;
+              overflow:hidden; text-overflow:ellipsis; }
+  .cal-chip-t { font-variant-numeric:tabular-nums; opacity:.75; flex-shrink:0; }
+  .cal-chip.cal-meeting  { background:rgba(201,163,94,.16); color:var(--primary); }
+  .cal-chip.cal-task     { background:rgba(96,165,250,.14); color:#8ec0ff; }
+  .cal-chip.cal-task.overdue { background:rgba(248,113,113,.16); color:#f87171; }
+  .cal-chip.cal-task.done { opacity:.5; text-decoration:line-through; }
+  .cal-chip.cal-followup { background:rgba(230,150,80,.16); color:#e69650; }
+  .cal-chip:hover { filter:brightness(1.25); }
+  .cal-more { background:none; border:none; color:var(--muted); font-size:11px; cursor:pointer;
+              font-family:inherit; text-align:left; padding:1px 7px; }
+  .cal-more:hover { color:var(--primary); }
+  .cal-loading { font-size:12.5px; color:var(--muted); padding:10px 2px; }
+  .cal-daylist { display:grid; gap:6px; }
+  .cal-dayrow .cal-chip { font-size:12.5px; padding:7px 10px; }
+
+  @media (max-width:760px) {
+    /* A month of seven columns is unreadable on a phone: keep the grid, drop the
+       chips to dots, and let the day sheet carry the detail. */
+    .cal-day { min-height:62px; }
+    .cal-chip { font-size:0; gap:0; padding:3px; justify-content:center; }
+    .cal-chip svg { width:9px; height:9px; }
+    .cal-chip-t { display:none; }
+    .cal-legend { width:100%; margin-left:0; }
+    .cal-title { font-size:14px; }
+  }

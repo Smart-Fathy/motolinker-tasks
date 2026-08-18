@@ -43,6 +43,7 @@ run navtest     node tests/navtest.js
 run colengine   node tests/colengine.js
 run quotetest   node tests/quotetest.js
 run meetstest   node tests/meetstest.js
+run caltest     node tests/caltest.js
 run availtest   node tests/availtest.js
 run mobiletest  node tests/mobiletest.js
 run homecache   node tests/homecache.js

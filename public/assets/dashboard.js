@@ -1898,7 +1898,7 @@ async function calendarSyncToggle() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { home: loadHome, tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: () => initQuotationPage(), calendar: loadCalendarSync, gchat: loadGChat, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, meet: () => loadMeetings(), reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
+const pageLoaders = { home: loadHome, tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: () => initQuotationPage(), calendar: () => { loadCalendarSync(); loadCalendar(); }, gchat: loadGChat, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, meet: () => loadMeetings(), reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
@@ -5911,6 +5911,19 @@ const PROCFG = {
   closeModal: () => hideModal(),
   toast: (m) => showAdminToast(m),
   can: () => true,
+};
+
+// The calendar's portal adapter. The admin is not gated; opening a task means
+// the tasks page, and a follow-up means the lead it belongs to.
+const CALCFG = {
+  base: '/api/dashboard',
+  fetch: (url, opts) => apiFetch(url, opts),
+  can: () => true,
+  modal: (...a) => showModal(...a),
+  closeModal: () => hideModal(),
+  toast: msg => showAdminToast(msg),
+  openTask: id => { navigate('tasks'); setTimeout(() => { if (typeof openTaskModal === 'function') openTaskModal(id); }, 250); },
+  openLead: id => { if (id) openLeadProfile(id); },
 };
 
 const HDCFG = {

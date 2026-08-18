@@ -1831,6 +1831,10 @@ Object.assign(ctx, require('./src/routes/employee-quote'));
 // Last of the document modules: it renders PDFs with their builders and files
 // them with the supplier module's Drive helpers, so both must be on ctx first.
 Object.assign(ctx, require('./src/routes/client-folder'));
+
+// The calendar feed  → src/routes/calendar-feed.js
+// Reads tasks, meetings and follow-ups; every one of those modules is loaded.
+Object.assign(ctx, require('./src/routes/calendar-feed'));
 // ─── Lead follow-up reminders ─────────────────────────────────────────────────
 // Fires within ~5 minutes of a follow-up's due time: notifies the assigned
 // employee (or admin when unassigned) once per follow-up.

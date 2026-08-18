@@ -1358,4 +1358,4 @@ receiver.router.put('/api/dashboard/deletion-requests/:id', requireAuth, express
 Object.assign(ctx, { express, logLeadActivity, normalizePhone, parseBudget, path, receiver, requireAuth, supabase });
 Object.assign(ctx, require('./automation'));
 
-module.exports = { DEFAULT_PERMISSIONS, PERM_ACTIONS, backfillHotLeadDeals, customerInScope, dealInScope, empCan, empHasScope, importLeadRows, loadLeadsColsConfig, logLeadActivity, multerCsv, normEmpPerms, normalizePhone, parseBudget, parseLeadsCsv, scopedQuotedIds };
+module.exports = { fetchEmployeeTasks, DEFAULT_PERMISSIONS, PERM_ACTIONS, backfillHotLeadDeals, customerInScope, dealInScope, empCan, empHasScope, importLeadRows, loadLeadsColsConfig, logLeadActivity, multerCsv, normEmpPerms, normalizePhone, parseBudget, parseLeadsCsv, scopedQuotedIds };

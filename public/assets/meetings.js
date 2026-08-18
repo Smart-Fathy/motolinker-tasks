@@ -42,7 +42,9 @@
                 <div style="font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.title)}</div>
                 <div style="font-size:12px;color:var(--muted)">${t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${m.duration_min} min · ${(m.attendee_ids || []).length} attendee(s)</div>
               </div>
-              ${m.meet_link ? `<a class="btn btn-primary btn-sm" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Join</a>` : ''}
+              ${/^huddle:(\d+)$/.test(String(m.meet_link || ''))
+                ? `<button class="btn btn-primary btn-sm" onclick="calJoinHuddle(${/^huddle:(\d+)$/.exec(m.meet_link)[1]})"><i data-lucide="radio" style="width:13px;height:13px"></i> Join huddle</button>`
+                : (m.meet_link ? `<a class="btn btn-primary btn-sm" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Join</a>` : '')}
               ${mine ? `<button class="btn btn-outline btn-sm" onclick="openMeetingForm(${m.id})">Edit</button>
               <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteMeeting(${m.id})">Cancel</button>` : ''}
             </div>`;
@@ -50,12 +52,23 @@
     requestAnimationFrame(() => lucide.createIcons());
   }
 
-  async function openMeetingForm(id) {
+  async function openMeetingForm(id, opts) {
     const m = id ? _meetings.find(x => x.id === id) : null;
     let people = [];
     try { people = await MEETCFG.people(); } catch (_) {}
+    // Chat rooms, for a meeting that happens as an in-app huddle rather than on
+    // Google Meet — nobody needs a Google account to be in one.
+    const rooms = (typeof HDCFG !== 'undefined' && HDCFG.rooms && HDCFG.rooms()) || [];
+    const huddleOf = x => { const k = /^huddle:(\d+)$/.exec(String((x && x.meet_link) || '')); return k ? k[1] : ''; };
+    const curRoom = huddleOf(m);
+    const where = curRoom ? 'huddle' : ((m && m.meet_link) ? 'link' : 'meet');
     const picked = new Set(((m && m.attendee_ids) || []).map(String));
-    const start = m ? new Date(m.starts_at) : new Date(Date.now() + 3600e3);
+    // A day picked on the calendar seeds the sheet; the hour is the next one.
+    let start = m ? new Date(m.starts_at) : new Date(Date.now() + 3600e3);
+    if (!m && opts && opts.date) {
+      const seeded = new Date(opts.date + 'T10:00:00');
+      if (!isNaN(seeded)) start = seeded;
+    }
     const pad = n => String(n).padStart(2, '0');
     const dateVal = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
     const timeVal = `${pad(start.getHours())}:${pad(start.getMinutes())}`;
@@ -79,8 +92,21 @@
         <div style="font-size:11.5px;color:var(--muted);margin-top:6px">
           Lands on each attendee's Google Calendar; anyone without a connected calendar is invited by email.
           Leave the link empty and a Google Meet link is created automatically.</div></div>
-      <div class="form-group"><label class="form-label">Meet link (optional)</label>
-        <input class="form-control" id="mt-link" value="${esc(m ? m.meet_link : '')}" placeholder="https://meet.google.com/…"></div>
+      <div class="form-group"><label class="form-label">Where</label>
+        <select class="form-control" id="mt-where" onchange="mtWhereChanged()">
+          <option value="meet" ${where === 'meet' ? 'selected' : ''}>Google Meet — a link is created automatically</option>
+          <option value="huddle" ${where === 'huddle' ? 'selected' : ''} ${rooms.length ? '' : 'disabled'}>In-app huddle${rooms.length ? '' : ' (no chat rooms yet)'}</option>
+          <option value="link" ${where === 'link' ? 'selected' : ''}>A link I already have</option>
+        </select></div>
+      <div class="form-group" id="mt-room-wrap" style="display:${where === 'huddle' ? '' : 'none'}">
+        <label class="form-label">Huddle in</label>
+        <select class="form-control" id="mt-room">
+          ${rooms.map(r => `<option value="${r.id}" ${String(curRoom) === String(r.id) ? 'selected' : ''}>${esc(r.name || 'Conversation')}</option>`).join('')}
+        </select>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:6px">At the time, everyone gets a Join button that opens the huddle here — no Google account needed.</div></div>
+      <div class="form-group" id="mt-link-wrap" style="display:${where === 'link' ? '' : 'none'}">
+        <label class="form-label">Link</label>
+        <input class="form-control" id="mt-link" value="${esc(where === 'link' && m ? m.meet_link : '')}" placeholder="https://meet.google.com/…"></div>
       <div class="form-group"><label class="form-label">Notes</label>
         <textarea class="form-control" id="mt-desc" rows="2">${esc(m ? m.description : '')}</textarea></div>
       <div id="mt-err" class="error-msg" style="display:none"></div>`,
@@ -96,7 +122,7 @@
       starts_at: g('mt-date') && g('mt-time') ? new Date(`${g('mt-date')}T${g('mt-time')}`).toISOString() : '',
       duration_min: parseInt(g('mt-duration')) || 30,
       attendee_ids: [...document.querySelectorAll('.mt-att:checked')].map(c => c.value),
-      meet_link: g('mt-link').trim(),
+      meet_link: mtWhereLink(),
       description: g('mt-desc'),
     };
     if (!payload.title) { err.textContent = 'Title is required.'; err.style.display = 'block'; return; }
@@ -110,11 +136,26 @@
     loadMeetings();
   }
 
+  // Where the meeting happens, as the one field that answers "how do I join".
+  function mtWhereLink() {
+    const w = (document.getElementById('mt-where') || {}).value || 'meet';
+    if (w === 'huddle') { const r = (document.getElementById('mt-room') || {}).value; return r ? `huddle:${r}` : ''; }
+    if (w === 'link') return ((document.getElementById('mt-link') || {}).value || '').trim();
+    return '';                       // Google mints one on sync
+  }
+  function mtWhereChanged() {
+    const w = (document.getElementById('mt-where') || {}).value;
+    const room = document.getElementById('mt-room-wrap');
+    const link = document.getElementById('mt-link-wrap');
+    if (room) room.style.display = w === 'huddle' ? '' : 'none';
+    if (link) link.style.display = w === 'link' ? '' : 'none';
+  }
+
   async function deleteMeeting(id) {
     if (!confirm('Cancel this meeting? Calendar events are removed for everyone.')) return;
     await mFetch(`/api/dashboard/meetings/${id}`, { method: 'DELETE' });
     loadMeetings();
   }
 
-  Object.assign(window, { loadMeetings, openMeetingForm, saveMeeting, deleteMeeting });
+  Object.assign(window, { loadMeetings, openMeetingForm, saveMeeting, deleteMeeting, mtWhereChanged, mtWhereLink });
 })();
