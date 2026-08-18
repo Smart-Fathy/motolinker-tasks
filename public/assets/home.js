@@ -64,6 +64,25 @@ const HOME_WIDGETS = {
   email_unread:       { title: 'Unread email',        icon: 'mail',            w: 4, h: 2, perm: 'email',   async: 'email' },
 };
 
+// A widget wears the accent of the sidebar group whose screen it reports on, so
+// the rail and the board agree and you can find a tile by colour. The exceptions
+// are the two that are attributes rather than destinations: overdue is red
+// wherever it appears, and availability is green.
+const HOME_TONE = {
+  my_tasks: 'gold', task_status: 'gold', overdue_tasks: 'red', my_requests: 'gold',
+  approvals: 'gold', team_roster: 'gold', hours_week: 'gold', quick_actions: 'gold',
+  team_availability: 'green',
+  leads_status: 'mint', recent_leads: 'mint', followups: 'mint', pipeline: 'mint',
+  won_month: 'mint', sales_month: 'mint', submissions_recent: 'mint', automations_active: 'mint',
+  stock_summary: 'blue', stock_models: 'blue', suppliers_top: 'blue',
+  quotation_recent: 'slate', contracts_recent: 'slate', rfq_open: 'slate', po_status: 'slate',
+  unread_chat: 'amber', whatsapp_recent: 'amber',
+  calendar: 'orange', meet_quick: 'orange', drive_recent: 'orange',
+  sheets_recent: 'orange', email_unread: 'orange',
+  notifications: 'muted', issues_open: 'muted',
+};
+const homeTone = id => `var(--w-${HOME_TONE[id] || 'gold'})`;
+
 const HOME_DEFAULT = [
   { id: 'my_tasks', w: 4, h: 2 }, { id: 'task_status', w: 4, h: 1 },
   { id: 'overdue_tasks', w: 4, h: 1 }, { id: 'pipeline', w: 6, h: 2 },
@@ -173,22 +192,27 @@ function homeRender() {
   grid.innerHTML = notice + _home.widgets.map((w, i) => {
     const def = HOME_WIDGETS[w.id];
     if (!def) return '';
-    return `<section class="home-w" style="grid-column:span ${w.w}" data-h="${w.h}" data-i="${i}"
+    return `<section class="home-w" data-h="${w.h}" data-i="${i}"
+              style="grid-column:span ${w.w};grid-row:span ${w.h};--c:${homeTone(w.id)}"
               ${_home.editing ? 'draggable="true"' : ''}>
       <header class="home-w-head">
-        <i data-lucide="${def.icon}" style="width:14px;height:14px"></i>
+        <span class="home-w-ic"><i data-lucide="${def.icon}"></i></span>
         <span class="home-w-title">${esc(def.title)}</span>
         ${_home.editing ? `<span class="home-w-tools">
           <select class="home-w-size" onchange="homeSetSize(${i}, this.value)" title="Width">
-            ${HOME_SIZES.map(s => `<option value="${s.w}"${s.w === w.w ? ' selected' : ''}>${s.label}</option>`).join('')}
+            ${HOME_SIZES.map(sz => `<option value="${sz.w}"${sz.w === w.w ? ' selected' : ''}>${sz.label}</option>`).join('')}
+            ${HOME_SIZES.some(sz => sz.w === w.w) ? '' : `<option value="${w.w}" selected>${w.w}/12</option>`}
           </select>
-          <button class="home-w-btn" onclick="homeSetHeight(${i})" title="Toggle height">
-            <i data-lucide="${w.h === 2 ? 'chevrons-down-up' : 'chevrons-up-down'}" style="width:13px;height:13px"></i></button>
           <button class="home-w-btn" onclick="homeRemove(${i})" title="Remove">
             <i data-lucide="x" style="width:13px;height:13px"></i></button>
         </span>` : ''}
       </header>
       <div class="home-w-body">${homeWidgetBody(w.id)}</div>
+      ${_home.editing ? `<span class="home-w-grip" title="Drag to resize"
+            onpointerdown="homeResizeStart(event, ${i})"
+            role="slider" tabindex="0" aria-label="Resize ${esc(def.title)}"
+            aria-valuenow="${w.w}" aria-valuemin="1" aria-valuemax="12"
+            onkeydown="homeResizeKey(event, ${i})"></span>` : ''}
     </section>`;
   }).join('');
 
@@ -421,12 +445,75 @@ function homeToggleEdit() {
   if (!_home.editing) homeSaveLayout();
   homeRender();
 }
+// Drag the bottom-right grip to any of the 12 columns and 4 row bands. The
+// snap is computed from the grid's own measured track size rather than a
+// hard-coded column width, so it stays correct at any viewport.
+let _homeResize = null;
+function homeGridMetrics(grid) {
+  const cs = getComputedStyle(grid);
+  const gap = parseFloat(cs.columnGap) || 14;
+  const rowGap = parseFloat(cs.rowGap) || gap;
+  const cols = (cs.gridTemplateColumns || '').split(' ').filter(Boolean).length || 12;
+  const inner = grid.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0);
+  const colW = (inner - gap * (cols - 1)) / cols;
+  const rowH = parseFloat(cs.gridAutoRows) || 118;
+  return { gap, rowGap, cols, colW, rowH };
+}
+function homeResizeStart(e, i) {
+  const grid = document.getElementById('home-grid');
+  const el = e.currentTarget.closest('.home-w');
+  if (!grid || !el || !_home.widgets[i]) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const m = homeGridMetrics(grid);
+  const r = el.getBoundingClientRect();
+  _homeResize = { i, el, grid, m, left: r.left, top: r.top };
+  el.classList.add('resizing');
+  el.setAttribute('draggable', 'false');       // native DnD would hijack the drag
+  e.currentTarget.setPointerCapture?.(e.pointerId);
+  window.addEventListener('pointermove', homeResizeMove);
+  window.addEventListener('pointerup', homeResizeEnd, { once: true });
+}
+function homeResizeMove(e) {
+  if (!_homeResize) return;
+  const { i, el, m, left, top } = _homeResize;
+  const w = Math.max(1, Math.min(m.cols, Math.round((e.clientX - left + m.gap) / (m.colW + m.gap))));
+  const h = Math.max(1, Math.min(4, Math.round((e.clientY - top + m.rowGap) / (m.rowH + m.rowGap))));
+  const cur = _home.widgets[i];
+  if (!cur || (cur.w === w && cur.h === h)) return;
+  cur.w = w; cur.h = h;
+  el.style.gridColumn = 'span ' + w;
+  el.style.gridRow = 'span ' + h;
+  el.dataset.h = h;
+  el.setAttribute('aria-valuenow', w);
+}
+function homeResizeEnd() {
+  window.removeEventListener('pointermove', homeResizeMove);
+  if (!_homeResize) return;
+  _homeResize.el.classList.remove('resizing');
+  _homeResize = null;
+  homeRender();                                 // repaint the select and the grip
+}
+// Keyboard equivalent, because a drag handle alone is not reachable.
+function homeResizeKey(e, i) {
+  const cur = _home.widgets[i];
+  if (!cur) return;
+  const step = { ArrowRight: ['w', 1], ArrowLeft: ['w', -1], ArrowDown: ['h', 1], ArrowUp: ['h', -1] }[e.key];
+  if (!step) return;
+  e.preventDefault();
+  const [k, d] = step;
+  const max = k === 'w' ? 12 : 4;
+  cur[k] = Math.max(1, Math.min(max, (Number(cur[k]) || 1) + d));
+  homeRender();
+  document.querySelector(`.home-w[data-i="${i}"] .home-w-grip`)?.focus();
+}
+
 function homeSetSize(i, w) {
-  if (_home.widgets[i]) _home.widgets[i].w = Number(w) || 4;
+  if (_home.widgets[i]) _home.widgets[i].w = Math.max(1, Math.min(12, Number(w) || 4));
   homeRender();
 }
 function homeSetHeight(i) {
-  if (_home.widgets[i]) _home.widgets[i].h = _home.widgets[i].h === 2 ? 1 : 2;
+  if (_home.widgets[i]) _home.widgets[i].h = (Number(_home.widgets[i].h) || 1) % 4 + 1;
   homeRender();
 }
 function homeRemove(i) {

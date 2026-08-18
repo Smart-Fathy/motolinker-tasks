@@ -75,8 +75,13 @@ const HOME_WIDGET_IDS = Object.keys(HOME_WIDGETS);
 // arranged theirs, so a first load is not a scan of every table in the catalogue.
 const HOME_DEFAULT_IDS = ['my_tasks', 'task_status', 'overdue_tasks', 'pipeline', 'recent_leads', 'quick_actions'];
 
-const HOME_W = [3, 4, 6, 12];
-const HOME_H = [1, 2];
+// Every column of the 12-column grid, and up to four row bands. These used to be
+// four named widths and two heights, which is why two widgets side by side could
+// not be made to match: the sizes you could ask for did not include the one you
+// wanted. The client drags freely against these bounds; the server still clamps,
+// because a hand-written PUT does not go through the client's resize handle.
+const HOME_W = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const HOME_H = [1, 2, 3, 4];
 // Ceiling on rows pulled per table for the summary. Well above today's volumes (806
 // customers), low enough that Home cannot become an unbounded table scan later.
 const HOME_SCAN_CAP = 2000;

@@ -1074,3 +1074,73 @@
     content:''; width:6px; height:6px; border-radius:50%;
     background:currentColor; flex-shrink:0;
   }
+
+  /* ── Home widgets: the board treatment ─────────────────────────────────
+   * A widget wears the accent of the sidebar group whose screen it reports
+   * on, given as the same gradient wash the Tasks groups and Deals columns
+   * use — so a tile, a column head and a rail item read as one system.
+   * Shared verbatim with the team portal. */
+  :root{
+    --w-gold:#c9a35e; --w-mint:#6dd8a4; --w-blue:#9fb0bd; --w-slate:#94a3b8;
+    --w-amber:#f59e0b; --w-orange:#c98b5e; --w-muted:#8d897f;
+    --w-red:#ef4444;  --w-green:#10b981;
+  }
+
+  /* Real row bands, so two widgets in a row are the same height. data-h used
+   * to set only a min-height against align-items:start, which is why tiles
+   * that were nominally the same size did not line up. */
+  .home-grid{
+    grid-auto-rows:118px;
+    align-items:stretch;
+  }
+  .home-w{
+    min-height:0;
+    border-color:color-mix(in srgb, var(--c, var(--w-gold)) 26%, var(--border));
+    overflow:hidden;
+  }
+  .home-w[data-h="1"], .home-w[data-h="2"],
+  .home-w[data-h="3"], .home-w[data-h="4"]{ min-height:0; }
+
+  .home-w-head{
+    margin:-16px -18px 12px; padding:13px 18px 11px;
+    background:linear-gradient(180deg,
+      color-mix(in srgb, var(--c, var(--w-gold)) 15%, transparent), rgba(20,20,22,0));
+    border-bottom:1px solid rgba(255,255,255,.05);
+  }
+  .home-w-ic{
+    width:24px; height:24px; border-radius:7px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    background:color-mix(in srgb, var(--c, var(--w-gold)) 16%, transparent);
+    color:var(--c, var(--w-gold));
+  }
+  .home-w-ic i, .home-w-ic svg{ width:14px; height:14px; }
+  .home-w-title{ color:var(--text); }
+  .home-w-body{ min-height:0; }
+
+  /* ── Free resize ──────────────────────────────────────────────────────
+   * The four named widths remain in the select as presets; the grip drags
+   * against every one of the 12 columns and 4 row bands the server accepts. */
+  .home-w-grip{
+    position:absolute; right:3px; bottom:3px; width:18px; height:18px;
+    cursor:nwse-resize; border-radius:0 0 var(--r-lg) 0; opacity:.5;
+    background:
+      linear-gradient(135deg, transparent 46%, var(--c, var(--w-gold)) 46%, var(--c, var(--w-gold)) 58%, transparent 58%),
+      linear-gradient(135deg, transparent 70%, var(--c, var(--w-gold)) 70%, var(--c, var(--w-gold)) 82%, transparent 82%);
+    touch-action:none;
+  }
+  .home-w-grip:hover, .home-w-grip:focus-visible{ opacity:1; outline:none; }
+  .home-w-grip:focus-visible{ box-shadow:0 0 0 2px var(--c, var(--w-gold)); border-radius:4px; }
+  .home-grid.editing .home-w{ position:relative; }
+  .home-w.resizing{
+    border-style:solid; border-color:var(--c, var(--w-gold));
+    box-shadow:0 0 0 1px var(--c, var(--w-gold));
+    user-select:none;
+  }
+  .home-grid.editing{ cursor:default; }
+
+  @media (max-width:900px){
+    /* One column: every tile is full width, so a width grip has nothing to do. */
+    .home-w-grip{ display:none; }
+    .home-grid{ grid-auto-rows:auto; }
+    .home-w{ grid-row:auto !important; min-height:120px; }
+  }
