@@ -1612,3 +1612,188 @@
   .chat-reply-quote{ background:rgba(201,163,94,.12); border-left-color:var(--gold); }
   .chat-reply-quote-sender{ color:var(--gold); }
   .chat-reply-bar{ background:rgba(201,163,94,.10); border-top-color:var(--hair-gold); }
+
+  /* ── Shell: sidebar ────────────────────────────────────────────────────
+   * The rail keeps all 7 groups and all 26 destinations — the brief was
+   * "easier to scan", not "fewer things". What changes is that each family
+   * carries its own accent, so you match a colour instead of reading 26
+   * words, and each group says how many destinations it holds. */
+  .sidebar{ width:248px; }
+  /* Scoped: the base sheet resets this margin to 0 at <=900px and that reset
+   * sits ABOVE here, so an unscoped rule would re-apply the rail on phones. */
+  @media (min-width:901px){ .app-content{ margin-left:248px; } }
+  @media (max-width:900px){ .sidebar{ transform:translateX(-248px); } }
+
+  .sidebar-logo{ padding:16px 16px 14px; }
+  .sidebar-logo-sub{ letter-spacing:.9px; }
+
+  .sidebar-nav{ padding:4px 10px 10px; }
+  .nav-item{
+    padding:8px 10px; border-radius:var(--r-md); font-size:13px;
+    font-weight:600; gap:10px; margin-bottom:2px;
+  }
+  .nav-item.active{
+    background:rgba(201,163,94,.13)!important; color:var(--text)!important;
+    box-shadow:inset 0 0 0 1px rgba(201,163,94,.26);
+  }
+  /* The icon is a chip, not a bare glyph — this is the thing you scan. */
+  .nav-item .nav-icon{
+    width:24px; height:24px; border-radius:7px;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(255,255,255,.05); color:var(--muted);
+    transition:background .15s, color .15s;
+  }
+  .nav-item .nav-icon i, .nav-item .nav-icon svg{ width:14px; height:14px; }
+  .nav-item:hover .nav-icon{ color:var(--text); }
+
+  /* One accent per family. data-group is already the stable hook the
+   * nav-config feature reorders on, so nothing new is introduced. */
+  .nav-group[data-group="management"]  .nav-icon{ background:rgba(201,163,94,.14); color:#c9a35e; }
+  .nav-group[data-group="crm"]         .nav-icon{ background:rgba(109,216,164,.14); color:#6dd8a4; }
+  .nav-group[data-group="logistics"]   .nav-icon{ background:rgba(159,176,189,.14); color:#9fb0bd; }
+  .nav-group[data-group="integrations"] .nav-icon{ background:rgba(148,163,184,.14); color:#94a3b8; }
+  .nav-group[data-group="chat"]        .nav-icon{ background:rgba(245,158,11,.14); color:#f59e0b; }
+  .nav-group[data-group="google"]      .nav-icon{ background:rgba(201,139,94,.14); color:#c98b5e; }
+  .nav-group[data-group="system"]      .nav-icon{ background:rgba(141,137,127,.16); color:#8d897f; }
+  .nav-group[data-group="operations"]  .nav-icon{ background:rgba(159,176,189,.14); color:#9fb0bd; }
+
+  .nav-group-head{ padding:11px 10px 6px; gap:8px; letter-spacing:1px; color:#8d897f; }
+  .nav-group.open > .nav-group-head{ color:#b9b3a4; }
+  .nav-group-head:hover{ color:var(--text); }
+  .nav-group-label{ flex:1; }
+  .nav-group-count{
+    font-size:9.5px; font-weight:700; color:#8d897f;
+    font-variant-numeric:tabular-nums; margin-left:auto;
+  }
+  /* 640px was a hard cap; the Google group plus a count row can exceed it. */
+  .nav-group.open .nav-group-items{ max-height:1200px; }
+
+  /* ── Jump-to search + favourites ───────────────────────────────────────
+   * Both are real: the search filters the rail and Enter navigates to the
+   * first hit, ⌘K focuses it. The stated pain was "too many items to scan". */
+  .nav-quick{ padding:0 14px 10px; }
+  .nav-search-wrap{
+    display:flex; align-items:center; gap:9px;
+    background:var(--bg); border:1px solid var(--border);
+    border-radius:var(--r-md); padding:8px 11px;
+    transition:border-color .15s;
+  }
+  .nav-search-wrap:focus-within{ border-color:var(--gold); }
+  .nav-search-ic{ width:15px; height:15px; color:var(--muted); flex-shrink:0; }
+  .nav-search{
+    flex:1; min-width:0; background:none; border:none; outline:none;
+    color:var(--text); font-size:12.5px; font-family:inherit;
+  }
+  .nav-search-kbd{ font-size:10px; font-weight:700; color:var(--muted); flex-shrink:0; }
+  /* iOS zooms any input under 16px; the rail is reachable on a phone via the
+   * drawer, so the box has to clear that floor there. */
+  @media (max-width:700px){ .nav-search{ font-size:16px; } .nav-search-kbd{ display:none; } }
+
+  .nav-fav-label, .nav-quick .nav-fav-label{
+    font-size:9.5px; font-weight:800; text-transform:uppercase;
+    letter-spacing:1px; color:var(--muted); padding:12px 0 6px;
+  }
+  .nav-fav .nav-item .nav-icon{ background:rgba(255,255,255,.05); color:var(--muted); }
+  .nav-fav #fav-home .nav-icon     { background:rgba(201,163,94,.16); color:#c9a35e; }
+  .nav-fav #fav-tasks .nav-icon    { background:rgba(245,158,11,.16); color:#f59e0b; }
+  .nav-fav #fav-customers .nav-icon{ background:rgba(109,216,164,.16); color:#6dd8a4; }
+  .nav-fav #fav-deals .nav-icon    { background:rgba(159,176,189,.16); color:#9fb0bd; }
+  .nav-fav #fav-chat .nav-icon     { background:rgba(148,163,184,.16); color:#94a3b8; }
+  .nav-fav{ border-bottom:1px solid rgba(255,255,255,.07); padding-bottom:10px; }
+
+  /* Search results: misses collapse, empty groups disappear entirely. */
+  .sidebar-nav.searching .nav-item.nav-miss{ display:none; }
+  .sidebar-nav.searching .nav-group.nav-group-empty{ display:none; }
+  .sidebar-nav.searching .nav-item.nav-hit{ background:rgba(201,163,94,.07); }
+
+  /* The collapsed rail is icon-only, so neither control has anything to show. */
+  @media (min-width:901px){
+    .sidebar.collapsed{ width:64px; }
+    .sidebar.collapsed ~ .app-content{ margin-left:64px; }
+    .sidebar.collapsed .nav-quick{ display:none; }
+    .sidebar.collapsed .nav-group-count{ display:none; }
+    .sidebar.collapsed .nav-item .nav-icon{ background:none; }
+  }
+
+  /* ── Shell: header ─────────────────────────────────────────────────────
+   * The auto-refresh countdown becomes a status pill that reads as healthy
+   * at a glance, rather than a grey line of text. */
+  .header{ height:60px; }
+  .refresh-indicator{
+    display:inline-flex; align-items:center; gap:7px;
+    background:rgba(16,185,129,.09); border:1px solid rgba(16,185,129,.22);
+    border-radius:var(--r-pill); padding:4px 11px;
+    font-size:11.5px; font-weight:700; color:#10b981; white-space:nowrap;
+  }
+  .refresh-dot{
+    width:6px; height:6px; border-radius:50%; background:#10b981; flex-shrink:0;
+  }
+  .header-badge{ border-radius:var(--r-pill); }
+  .notif-bell{ border-radius:var(--r-md); }
+
+  /* ── Tasks: one summary instead of six cards ───────────────────────────
+   * Total / Completed / In Progress / To Do were four cards showing one
+   * number partitioned, so they are one bar. Overdue and High priority are
+   * attributes rather than statuses — different in kind — so they sit apart. */
+  .stats-grid:has(.task-summary){ display:block; }
+  .task-summary{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-xl); padding:20px 24px; margin-bottom:18px;
+    display:flex; align-items:center; gap:34px; flex-wrap:wrap;
+  }
+  .task-summary-total{ flex-shrink:0; }
+  .task-summary-n{ display:flex; align-items:baseline; gap:9px; }
+  .task-summary-n .stat-value{ font-size:42px; line-height:.9; margin:0; }
+  .task-summary-unit{ font-size:13px; color:var(--muted); }
+  .task-summary-sub{ font-size:11.5px; color:var(--muted); margin-top:6px; }
+
+  .task-summary-mix{ flex:1; min-width:260px; }
+  .task-summary-bar{
+    display:flex; height:10px; border-radius:var(--r-pill);
+    overflow:hidden; background:var(--bg);
+  }
+  .task-summary-bar span{ display:block; transition:flex .3s ease; }
+  .task-summary-legend{ display:flex; gap:24px; margin-top:14px; flex-wrap:wrap; }
+  .task-summary-key{
+    display:inline-flex; align-items:center; gap:8px;
+    font-size:12.5px; font-weight:600; white-space:nowrap;
+  }
+  .task-summary-key i{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .task-summary-key b{ font-weight:700; }
+  .task-summary-key em{ font-style:normal; color:var(--muted); font-weight:600; }
+
+  .task-summary-exc{ display:flex; gap:10px; flex-shrink:0; }
+  .task-exc{
+    display:block; text-align:left; cursor:pointer; font-family:inherit;
+    padding:12px 16px; border-radius:var(--r-lg); min-width:104px;
+    background:color-mix(in srgb, var(--c) 8%, transparent);
+    border:1px solid color-mix(in srgb, var(--c) 22%, transparent);
+    transition:background .15s, border-color .15s;
+  }
+  .task-exc:hover{
+    background:color-mix(in srgb, var(--c) 14%, transparent);
+    border-color:color-mix(in srgb, var(--c) 40%, transparent);
+  }
+  .task-exc-n{ display:block; font-size:28px; font-weight:700; line-height:.9; color:var(--c); }
+  .task-exc-l{
+    display:block; font-size:11px; font-weight:700; text-transform:uppercase;
+    letter-spacing:.7px; color:var(--muted); margin-top:5px; white-space:nowrap;
+  }
+
+  /* The completion rate now reads in the summary above; the standalone bar
+   * said the same thing twice. Kept in the DOM — renderStats writes to it. */
+  .progress-card{ display:none; }
+
+  /* 44px is the tap-target floor the mobile layer enforces on every control. */
+  .task-exc{ min-height:44px; }
+  @media (max-width:700px){
+    /* Stack rather than wrap: as a row, the 100%-wide mix still sat beside the
+     * total and pushed the legend past the viewport. */
+    .task-summary{ gap:16px; padding:16px; flex-direction:column; align-items:stretch; }
+    /* The 260px floor is a desktop comfort minimum; on a phone it is wider than
+     * the column it sits in and forced the page to scroll sideways. */
+    .task-summary-mix{ min-width:0; width:100%; }
+    .task-summary-legend{ gap:14px; }
+    .task-summary-exc{ width:100%; }
+    .task-exc{ flex:1; min-width:0; }
+  }

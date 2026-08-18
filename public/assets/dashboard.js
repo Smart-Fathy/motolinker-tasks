@@ -142,37 +142,46 @@ function priorityBadge(p) {
 
 // ── Render Stats ─────────────────────────────────────────────────────────────
 function renderStats(s) {
+  // Four of the six cards were one number sliced — total = done + inProgress +
+  // todo — so they are one bar weighted by the counts, with the legend inline.
+  // Overdue and High priority are attributes rather than statuses: different in
+  // kind, so they sit apart as exceptions instead of posing as peers.
+  const seg = [
+    { key: 'done',        label: 'Done',        n: Number(s.done) || 0,       c: 'var(--st-done)' },
+    { key: 'in_progress', label: 'In Progress', n: Number(s.inProgress) || 0, c: 'var(--st-progress)' },
+    { key: 'todo',        label: 'To Do',       n: Number(s.todo) || 0,       c: 'var(--st-todo)' },
+  ];
+  const partitioned = seg.reduce((a, x) => a + x.n, 0) || 1;
+  const exc = [
+    { label: 'Overdue',       n: Number(s.overdue) || 0,      c: 'var(--danger)', page: 'tasks' },
+    { label: 'High priority', n: Number(s.highPriority) || 0, c: 'var(--orange)', page: 'tasks' },
+  ];
+
   document.getElementById('stats-grid').innerHTML = `
-    <div class="stat-card total">
-      <div class="stat-label">Total Tasks</div>
-      <div class="stat-value">${s.total}</div>
-      <div class="stat-sub">All time</div>
-    </div>
-    <div class="stat-card done">
-      <div class="stat-label">Completed</div>
-      <div class="stat-value">${s.done}</div>
-      <div class="stat-sub">${s.completionRate}% rate</div>
-    </div>
-    <div class="stat-card in-progress">
-      <div class="stat-label">In Progress</div>
-      <div class="stat-value">${s.inProgress}</div>
-      <div class="stat-sub">Active now</div>
-    </div>
-    <div class="stat-card todo">
-      <div class="stat-label">To Do</div>
-      <div class="stat-value">${s.todo}</div>
-      <div class="stat-sub">Pending start</div>
-    </div>
-    <div class="stat-card high-pri">
-      <div class="stat-label">High Priority</div>
-      <div class="stat-value">${s.highPriority}</div>
-      <div class="stat-sub">Open issues</div>
-    </div>
-    <div class="stat-card overdue">
-      <div class="stat-label">Overdue</div>
-      <div class="stat-value">${s.overdue}</div>
-      <div class="stat-sub">Past due date</div>
-    </div>
+    <section class="task-summary">
+      <div class="task-summary-total">
+        <div class="task-summary-n"><span class="stat-value">${s.total}</span><span class="task-summary-unit">tasks</span></div>
+        <div class="task-summary-sub">${s.completionRate}% complete</div>
+      </div>
+      <div class="task-summary-mix">
+        <div class="task-summary-bar">
+          ${seg.map(x => `<span title="${x.label}: ${x.n}" style="flex:${x.n || 0.001};background:${x.c}"></span>`).join('')}
+        </div>
+        <div class="task-summary-legend">
+          ${seg.map(x => `<span class="task-summary-key">
+            <i style="background:${x.c}"></i>${x.label}
+            <b class="num">${x.n}</b>
+            <em class="num">${Math.round((x.n / partitioned) * 100)}%</em>
+          </span>`).join('')}
+        </div>
+      </div>
+      <div class="task-summary-exc">
+        ${exc.map(x => `<button class="task-exc" style="--c:${x.c}" onclick="navigate('${x.page}')">
+          <span class="task-exc-n num">${x.n}</span>
+          <span class="task-exc-l">${x.label}</span>
+        </button>`).join('')}
+      </div>
+    </section>
   `;
 
   document.getElementById('progress-fill').style.width = s.completionRate + '%';
@@ -1916,11 +1925,16 @@ function navigate(page) {
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
   const bnav = document.getElementById('bnav-' + page);
   if (bnav) bnav.classList.add('active');
+  const fav = document.getElementById('fav-' + page);
+  if (fav) fav.classList.add('active');
   currentPage = page;
   openGroupForPage(page); // reveal the group containing the active item
   rememberPage(page);
   if (pageLoaders[page]) pageLoaders[page]();
   closeSidebar(); // close on mobile after navigation
+  // Counts are repainted here rather than once at boot: permission gating and
+  // applyNavConfig() both hide items after the rail is first drawn.
+  navPaintCounts();
   requestAnimationFrame(() => lucide.createIcons());
 }
 
@@ -1963,6 +1977,72 @@ function toggleSidebarCollapse() {
   const collapsed = document.getElementById('sidebar').classList.toggle('collapsed');
   try { localStorage.setItem('ml_admin_sidebar', collapsed ? 'collapsed' : 'expanded'); } catch (_) {}
 }
+// Each group head shows how many destinations it holds, so a collapsed group
+// still tells you whether it is worth opening. Written into a span of its own —
+// applyNavConfig() rewrites .nav-group-label's textContent and would eat it.
+function navPaintCounts() {
+  document.querySelectorAll('.nav-group').forEach(g => {
+    const head = g.querySelector('.nav-group-head');
+    if (!head) return;
+    const n = [...g.querySelectorAll('.nav-item')].filter(i => i.style.display !== 'none').length;
+    let tag = head.querySelector('.nav-group-count');
+    if (!tag) {
+      tag = document.createElement('span');
+      tag.className = 'nav-group-count';
+      head.insertBefore(tag, head.querySelector('.nav-group-chevron'));
+    }
+    tag.textContent = n || '';
+  });
+}
+
+// Filter the rail by label. Matching groups open themselves so the hit is
+// visible; clearing restores whatever was open before the search started.
+let _navSearchPrev = null;
+function navSearch(q) {
+  const term = String(q || '').trim().toLowerCase();
+  const nav = document.querySelector('.sidebar-nav');
+  if (!nav) return;
+  if (!term) {
+    nav.classList.remove('searching');
+    nav.querySelectorAll('.nav-item').forEach(i => i.classList.remove('nav-hit', 'nav-miss'));
+    if (_navSearchPrev) {
+      nav.querySelectorAll('.nav-group').forEach(g => g.classList.toggle('open', _navSearchPrev.includes(g.dataset.group)));
+      _navSearchPrev = null;
+    }
+    navPaintCounts();
+    return;
+  }
+  if (!_navSearchPrev) _navSearchPrev = [...nav.querySelectorAll('.nav-group.open')].map(g => g.dataset.group);
+  nav.classList.add('searching');
+  nav.querySelectorAll('.nav-group').forEach(g => {
+    let any = false;
+    g.querySelectorAll('.nav-item').forEach(i => {
+      const hit = i.textContent.trim().toLowerCase().includes(term);
+      i.classList.toggle('nav-hit', hit);
+      i.classList.toggle('nav-miss', !hit);
+      if (hit) any = true;
+    });
+    g.classList.toggle('open', any);
+    g.classList.toggle('nav-group-empty', !any);
+  });
+}
+function navSearchFirstHit() {
+  return document.querySelector('.sidebar-nav .nav-item.nav-hit');
+}
+function navSearchKey(e) {
+  if (e.key === 'Escape') { e.target.value = ''; navSearch(''); e.target.blur(); return; }
+  if (e.key === 'Enter') {
+    const hit = navSearchFirstHit();
+    if (hit) { hit.click(); e.target.value = ''; navSearch(''); e.target.blur(); }
+  }
+}
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    const box = document.getElementById('nav-search');
+    if (box) { e.preventDefault(); box.focus(); box.select(); }
+  }
+});
+
 function toggleNavGroup(head) {
   const group = head.closest('.nav-group');
   if (!group) return;
@@ -3672,8 +3752,12 @@ function adminChatUpdateNavBadge() {
   const el = document.getElementById('chat-nav-badge');
   if (!el) return;
   const count = adminChatUnread.size;
-  el.textContent = count > 99 ? '99+' : String(count);
-  el.style.display = count > 0 ? 'flex' : 'none';
+  const label = count > 99 ? '99+' : String(count);
+  [el, document.getElementById('chat-fav-badge')].forEach(n => {
+    if (!n) return;
+    n.textContent = label;
+    n.style.display = count > 0 ? 'flex' : 'none';
+  });
 }
 
 // ── Admin Reply ───────────────────────────────────────────────────────────────
