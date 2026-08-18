@@ -1404,3 +1404,13 @@
   .lead-menu button.lead-col-edit { width:auto; flex:0 0 auto; padding:6px; color:var(--muted);
                                     border-radius:5px; }
   .lead-menu button.lead-col-edit:hover { color:var(--primary); background:rgba(255,255,255,.07); }
+
+  /* Huddle duration — in the bar while you are in it, and on the rejoin chip so
+     you can see how long you would be joining late to. */
+  .hd-clock { font-size:11px; font-weight:600; color:var(--muted); font-variant-numeric:tabular-nums;
+              margin-left:2px; }
+  #hd-join-chip .hd-chip-live { width:7px; height:7px; border-radius:50%; background:var(--danger);
+                                flex-shrink:0; animation:hd-live-pulse 1.6s ease-in-out infinite; }
+  #hd-join-chip .hd-chip-clock { font-size:11px; font-weight:600; color:var(--muted);
+                                 font-variant-numeric:tabular-nums; }
+  @keyframes hd-live-pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }

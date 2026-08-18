@@ -2987,6 +2987,9 @@ let notifUnread = 0;
     loadNotifs();
     openNotifStream();
     initSidebarState();
+    // A huddle that was running when this page last unloaded is still running;
+    // offer it back rather than leaving people to guess.
+    if (typeof hdBootLive === 'function') hdBootLive();
     // Cosmetic — a failure here must not stop the app from opening.
     try { await loadNavConfig(); } catch (_) {}
     gchatInitNav();          // Google Chat nav appears only when it's configured

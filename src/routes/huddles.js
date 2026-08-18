@@ -91,6 +91,20 @@ function mountChatAdminRoutes(base, guard) {
   // ── Huddles ──────────────────────────────────────────────────────────────
   // WebRTC signalling rides the existing chat SSE: each payload is relayed to one
   // peer. Roster is in-memory and ephemeral — a restart simply ends the call.
+  // A refresh drops you out of the call without telling anybody's page. This is
+  // how a freshly-loaded portal finds the huddle it was just in and offers it
+  // back, instead of leaving people to guess whether one is still running.
+  receiver.router.get(`${base}/huddle/live`, guard, requirePerm('chat', 'huddle'), async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const live = [];
+    for (const roomId of huddles.keys()) {
+      const members = await chatRoomMemberKeys(roomId);
+      if (!huddleMaySignal(roomId, key, members)) continue;
+      live.push({ roomId, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
+    }
+    res.json(live);
+  });
+
   receiver.router.get(`${base}/huddle/ice`, guard, requirePerm('chat', 'huddle'), async (_req, res) => {
     res.json(await huddleIceConfig());
   });
@@ -99,7 +113,7 @@ function mountChatAdminRoutes(base, guard) {
     const { key } = chatCallerIdentity(req);
     const roomId = parseInt(req.params.roomId);
     if (!huddleMaySignal(roomId, key, await chatRoomMemberKeys(roomId))) return res.status(403).json({ error: 'Not a member' });
-    res.json({ participants: huddleRoster(roomId) });
+    res.json({ participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
   });
 
   receiver.router.post(`${base}/huddle/signal`, guard, requirePerm('chat', 'huddle'), express.json({ limit: '256kb' }), async (req, res) => {
@@ -115,14 +129,15 @@ function mountChatAdminRoutes(base, guard) {
       if (set.size >= HUDDLE_MAX && !set.has(key)) return res.status(409).json({ error: 'Huddle is full', max: HUDDLE_MAX });
       set.set(key, name);
       huddles.set(roomId, set);
-      chatBroadcast(huddleAudience(roomId, members), 'huddle', { type: 'roster', roomId, participants: huddleRoster(roomId), joined: key });
-      return res.json({ ok: true, participants: huddleRoster(roomId) });
+      if (!huddleStarted.has(roomId)) huddleStarted.set(roomId, Date.now());
+      chatBroadcast(huddleAudience(roomId, members), 'huddle', { type: 'roster', roomId, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), joined: key });
+      return res.json({ ok: true, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
     }
     if (type === 'leave') {
       const set = huddles.get(roomId);
-      if (set) { set.delete(key); if (!set.size) { huddles.delete(roomId); huddleGuests.delete(roomId); } }
+      if (set) { set.delete(key); if (!set.size) { huddles.delete(roomId); huddleGuests.delete(roomId); huddleStarted.delete(roomId); } }
       const g = huddleGuests.get(roomId); if (g) g.delete(key);
-      chatBroadcast(huddleAudience(roomId, members), 'huddle', { type: 'roster', roomId, participants: huddleRoster(roomId), left: key });
+      chatBroadcast(huddleAudience(roomId, members), 'huddle', { type: 'roster', roomId, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), left: key });
       return res.json({ ok: true });
     }
     // invite/offer/answer/ice/decline/media are point-to-point
@@ -234,6 +249,11 @@ async function huddleIceConfig() {
 const HUDDLE_MAX = 6;   // mesh topology: every peer connects to every other
 const HUDDLE_TYPES = ['join', 'leave', 'invite', 'decline', 'offer', 'answer', 'ice', 'media'];
 const huddles = new Map();   // roomId -> Map<memberKey, name>
+// When each huddle began. The timer must not count from "when I joined" — three
+// people in one call would read three different durations — and a page that
+// reloads has to be able to say how long the thing it is offering to rejoin has
+// been going. Cleared with the roster.
+const huddleStarted = new Map();   // roomId -> epoch ms
 // Anyone in the workspace can be pulled into a call by someone already in it.
 // The grant lives only as long as the huddle and never touches chat_room_members,
 // so a guest joins the call without gaining the room's message history.
@@ -248,6 +268,7 @@ function huddleRoster(roomId) {
   const set = huddles.get(roomId);
   return set ? [...set.entries()].map(([key, name]) => ({ key, name })) : [];
 }
+function huddleStartedAt(roomId) { return huddleStarted.get(roomId) || null; }
 
 mountChatAdminRoutes('/api/dashboard/chat', requireAuth);
 mountChatAdminRoutes('/api/employee/chat', requireEmployeeAuth);

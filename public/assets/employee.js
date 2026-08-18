@@ -485,6 +485,9 @@ async function showApp() {
   loadNotifs();
   openNotifStream();
   // After applyPermissions(), so a gated section falls back instead of erroring
+  // A huddle that was running when this page last unloaded is still running;
+  // offer it back rather than leaving people to guess.
+  if (typeof hdBootLive === 'function') hdBootLive();
   navigate(lastPage('home'));
   await Promise.all([loadDropdownTasks(), loadMyTasks(), loadMyHours()]);
   requestAnimationFrame(() => lucide.createIcons());

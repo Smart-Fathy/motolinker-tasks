@@ -45,7 +45,7 @@ ${MODULE}
   return { huddleStart, huddleJoinExisting, huddleLeave, huddleOnSignal, huddleToggleMute,
            huddleToggleCam, huddleToggleShare, hdRenderBar, hdIncoming, hdIce, hdOpenInvite,
            hdPollStats, hdQuality, hdCanShareScreen, hdAvatarFor, hdInitialsFor, hdRingOnce,
-           hdRenderBar, hdDialRoster, hdAudioBlocked,
+           hdRenderBar, hdDialRoster, hdAudioBlocked, hdBootLive, hdCheckLive, hdElapsed,
            state: () => _hd, peers: () => _hd.peers };
 }
 
@@ -57,6 +57,12 @@ const bus = { inbox: {}, rosters: {} };
 
 function makeFetch(key) {
   return async (url, opts) => {
+    if (url.endsWith('/huddle/live')) {
+      const live = Object.entries(bus.rosters).filter(([, set]) => set.size)
+        .map(([rid, set]) => ({ roomId: Number(rid), started_at: window.__hdStarted || Date.now() - 125000,
+                                participants: [...set].map(k => ({ key: k, name: k })) }));
+      return { ok: true, json: async () => live };
+    }
     if (url.endsWith('/huddle/ice')) {
       window.__iceCalls = (window.__iceCalls || 0) + 1;
       return { ok: true, json: async () => ({ iceServers: [], hasTurn: false, provider: 'none', ttl: 7200, max: 6 }) };
@@ -67,13 +73,19 @@ function makeFetch(key) {
     if (body.type === 'join') {
       (bus.rosters[rid] = bus.rosters[rid] || new Set()).add(key);
       const participants = [...bus.rosters[rid]].map(k => ({ key: k, name: k }));
-      setTimeout(() => ['A','B','C'].forEach(k => bus.inbox[k] && bus.inbox[k]({ type:'roster', roomId: rid, participants })), 0);
-      return { ok: true, json: async () => ({ ok: true, participants }) };
+      // The server stamps the huddle's start once; everybody reads the same one.
+      window.__hdStarted = window.__hdStarted || Date.now() - 125000;
+      const started_at = window.__hdStarted;
+      setTimeout(() => ['A','B','C'].forEach(k => bus.inbox[k] && bus.inbox[k]({ type:'roster', roomId: rid, participants, started_at })), 0);
+      return { ok: true, json: async () => ({ ok: true, participants, started_at }) };
     }
     if (body.type === 'leave') {
       if (bus.rosters[rid]) bus.rosters[rid].delete(key);
       const participants = [...(bus.rosters[rid] || [])].map(k => ({ key: k, name: k }));
-      setTimeout(() => ['A','B','C'].forEach(k => bus.inbox[k] && bus.inbox[k]({ type:'roster', roomId: rid, participants })), 0);
+      // The server sends the start time on every roster frame, leave included —
+      // otherwise the chip a leaver is left looking at loses its clock.
+      const startedLeave = participants.length ? window.__hdStarted : (window.__hdStarted = null);
+      setTimeout(() => ['A','B','C'].forEach(k => bus.inbox[k] && bus.inbox[k]({ type:'roster', roomId: rid, participants, started_at: startedLeave })), 0);
       return { ok: true, json: async () => ({ ok: true }) };
     }
     setTimeout(() => {
@@ -980,6 +992,52 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check('the watchdog re-offers and the pair recovers', r4.after >= 2 && r4.gotAnswer, JSON.stringify(r4));
   }
   await sleep(200);
+
+  // ── 24. How long has this been going, and is it still going ─────────────────
+  // Two reports in one: a huddle with no clock, and a refresh that made the call
+  // vanish from the page while it was still running for everybody else.
+  {
+    const r5 = await page.evaluate(async () => {
+      window.__hdStarted = Date.now() - 125000;          // 2:05 ago
+      await window.A.huddleStart(1, false);
+      await new Promise(r => setTimeout(r, 300));
+      const clock = document.querySelector('#hd-bar .hd-clock');
+      const shown = clock ? clock.textContent.trim() : null;
+      // The duration is the HUDDLE's, not "since I joined" — B arrives late and
+      // must read the same number.
+      await window.B.huddleStart(1, false);
+      await new Promise(r => setTimeout(r, 300));
+      const bSees = window.B.state().startedAt;
+      const same = bSees === window.__hdStarted;
+      const fmt = window.A.hdElapsed(Date.now() - 3725000);   // 1:02:05
+      // Now the refresh: A's page is gone, the huddle is not.
+      window.A.huddleLeave();
+      const gone = !!document.querySelector('#hd-bar .hd-clock');
+      // A real reload starts with nothing on screen and no roster frame coming:
+      // the page has to ASK. Clearing the chip first is what makes this a test of
+      // the boot check rather than of the broadcast that happened to precede it.
+      await new Promise(r => setTimeout(r, 60));
+      document.getElementById('hd-join-chip').style.display = 'none';
+      document.getElementById('hd-join-chip').innerHTML = '';
+      await window.A.hdBootLive();
+      await new Promise(r => setTimeout(r, 250));
+      const chip = document.getElementById('hd-join-chip');
+      const chipText = chip ? chip.textContent.replace(/\s+/g, ' ').trim() : '';
+      const chipShown = !!chip && chip.style.display === 'flex';
+      const rejoinable = !!chip.querySelector('.hd-chip-btn');
+      window.B.huddleLeave();
+      return { shown, same, fmt, gone, chipText, chipShown, rejoinable };
+    });
+    check('the huddle bar shows a running clock', /^\d+:\d\d$/.test(String(r5.shown)), String(r5.shown));
+    check('…reading about two minutes in, not zero',
+      /^(2:0[4-9]|2:1\d)$/.test(String(r5.shown)), String(r5.shown));
+    check('…the same duration for somebody who joined late', r5.same === true);
+    check('…and hours are formatted, not counted in minutes', r5.fmt === '1:02:05', r5.fmt);
+    check('after a reload the still-running huddle is offered back',
+      r5.chipShown === true && r5.rejoinable === true && /Huddle in/.test(r5.chipText), JSON.stringify(r5.chipText));
+    check('…with how long it has been running', /\d+:\d\d/.test(r5.chipText), r5.chipText);
+  }
+  await sleep(150);
 
   check('no page errors', errs.length === 0, errs.slice(0, 4).join(' | '));
 
