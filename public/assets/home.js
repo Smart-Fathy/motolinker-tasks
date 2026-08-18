@@ -512,8 +512,12 @@ function homeSetSize(i, w) {
   if (_home.widgets[i]) _home.widgets[i].w = Math.max(1, Math.min(12, Number(w) || 4));
   homeRender();
 }
+// Kept as a toggle, deliberately. The header button that drove it is gone —
+// height is part of the resize grip now — but this stays an involution because
+// that is what a "toggle height" call means, and phase2test asserts it. Free
+// heights 1-4 come from the grip and the arrow keys.
 function homeSetHeight(i) {
-  if (_home.widgets[i]) _home.widgets[i].h = (Number(_home.widgets[i].h) || 1) % 4 + 1;
+  if (_home.widgets[i]) _home.widgets[i].h = _home.widgets[i].h === 2 ? 1 : 2;
   homeRender();
 }
 function homeRemove(i) {

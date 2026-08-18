@@ -1,6 +1,7 @@
 // Sales & revenue analytics
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
+const { sanitizeAttachments } = require('../lib/constants');
 const { GOOGLE_CLIENT_ID, crypto, express, getCalendarToken, getDriveToken, getEmployeeCalendarToken, multer, parseCSV, receiver, requireAuth, supabase, syncTaskToCalendar, upload } = ctx.need('GOOGLE_CLIENT_ID', 'crypto', 'express', 'getCalendarToken', 'getDriveToken', 'getEmployeeCalendarToken', 'multer', 'parseCSV', 'receiver', 'requireAuth', 'supabase', 'syncTaskToCalendar', 'upload');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
@@ -348,7 +349,7 @@ receiver.router.post('/api/dashboard/tasks', requireAuth, express.json(), async 
   if (!title || !primary || !due_date || !priority)
     return res.status(400).json({ error: 'Missing required fields: title, assignee(s), due_date, priority' });
   const { data: task, error } = await supabase.from('tasks')
-    .insert({ title, description: description || '', channel_id: '', channel_name: '', assignee_id: primary, assignee_ids: list, due_date, priority, milestone: milestone || '', created_by: 'dashboard', status: 'todo' })
+    .insert({ title, description: description || '', channel_id: '', channel_name: '', assignee_id: primary, assignee_ids: list, due_date, priority, milestone: milestone || '', created_by: 'dashboard', status: 'todo', attachments: sanitizeAttachments(req.body.attachments) })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   // Notify every assignee via SSE (if portal is open) and push (always)
@@ -360,6 +361,9 @@ receiver.router.post('/api/dashboard/tasks', requireAuth, express.json(), async 
 
 receiver.router.put('/api/dashboard/tasks/:id', requireAuth, express.json(), async (req, res) => {
   const updates = { ...req.body, updated_at: new Date().toISOString() };
+  // This handler passes the body straight to Postgres, so the one field that is
+  // a structured document has to be validated here rather than trusted.
+  if ('attachments' in updates) updates.attachments = sanitizeAttachments(updates.attachments);
   if (updates.status === 'done' && !updates.completed_at) updates.completed_at = new Date().toISOString();
   if (updates.status && updates.status !== 'done') updates.completed_at = null;
   if (updates.assignee_ids !== undefined || updates.assignee_id !== undefined) {

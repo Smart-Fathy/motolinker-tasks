@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=88">
+  <link rel="stylesheet" href="/assets/employee.css?v=89">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=88">
+  <link rel="stylesheet" href="/assets/mobile.css?v=89">
 </head>
 <body>
 
@@ -1166,31 +1166,52 @@
     </div>
     <div style="padding:24px">
       <div id="task-modal-err" style="display:none;background:rgba(239,68,68,.1);border:1px solid var(--danger);color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px"></div>
-      <div class="form-group">
-        <label class="form-label">Title *</label>
-        <input class="form-control" id="nt-title" placeholder="What needs to be done?">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Description</label>
-        <textarea class="form-control" id="nt-desc" rows="2" placeholder="More details…" style="resize:vertical"></textarea>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Due Date *</label>
-        <input class="form-control" id="nt-due" type="date">
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Priority</label>
-          <select class="form-control" id="nt-priority">
-            <option value="high">High</option>
-            <option value="medium" selected>Medium</option>
-            <option value="low">Low</option>
-          </select>
+      <!-- Same form as the admin portal: controls that show their options
+           rather than hiding them behind a <select>. Ids are unchanged, so
+           submitNewTask() reads exactly what it always did. -->
+      <div class="t-form">
+        <input class="t-title" id="nt-title" placeholder="What needs doing?" autocomplete="off">
+        <textarea class="form-control" id="nt-desc" rows="2" placeholder="Any detail you will want later" style="resize:vertical"></textarea>
+
+        <div>
+          <label class="form-label">Due date *</label>
+          <div class="t-due-row">
+            <button type="button" class="t-due-chip" data-days="0" onclick="empDuePick(0)">Today</button>
+            <button type="button" class="t-due-chip" data-days="1" onclick="empDuePick(1)">Tomorrow</button>
+            <button type="button" class="t-due-chip" data-days="7" onclick="empDuePick(7)">Next week</button>
+            <input class="form-control t-due-input" id="nt-due" type="date" onchange="empDuePaint()">
+          </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Milestone</label>
-          <input class="form-control" id="nt-milestone" placeholder="e.g. Q2 Launch">
+
+        <div class="form-row">
+          <div>
+            <label class="form-label">Priority</label>
+            <div class="t-segs">
+              <button type="button" class="t-seg"    data-group="priority" data-value="high"   style="--c:var(--pri-high)" onclick="empPriPick('high')"><i></i>High</button>
+              <button type="button" class="t-seg on" data-group="priority" data-value="medium" style="--c:var(--pri-med)"  onclick="empPriPick('medium')"><i></i>Medium</button>
+              <button type="button" class="t-seg"    data-group="priority" data-value="low"    style="--c:var(--pri-low)"  onclick="empPriPick('low')"><i></i>Low</button>
+            </div>
+          </div>
+          <div>
+            <label class="form-label">Milestone</label>
+            <input class="form-control" id="nt-milestone" placeholder="Optional">
+          </div>
         </div>
+
+        <div>
+          <div class="t-lbl-row"><label class="form-label">Attachments</label><span class="form-hint" id="nt-file-status">up to 10 files, 10 MB each</span></div>
+          <div class="t-files" id="nt-files"></div>
+          <input type="file" id="nt-file-input" multiple hidden onchange="empTaskAttachPick(this)">
+          <button type="button" class="t-file-add" id="nt-file-add" onclick="document.getElementById('nt-file-input').click()">
+            <i data-lucide="paperclip"></i> Attach files
+          </button>
+        </div>
+
+        <select id="nt-priority" hidden>
+          <option value="high">High</option>
+          <option value="medium" selected>Medium</option>
+          <option value="low">Low</option>
+        </select>
       </div>
     </div>
     <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px">
@@ -1202,12 +1223,12 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=88"></script>
-<script src="/assets/columns.js?v=88"></script>
-<script src="/assets/client-folder.js?v=88"></script>
-<script src="/assets/lead-filters.js?v=88"></script>
-<script src="/assets/chat-extras.js?v=88"></script>
-<script src="/assets/home.js?v=88"></script>
+<script src="/assets/mobile.js?v=89"></script>
+<script src="/assets/columns.js?v=89"></script>
+<script src="/assets/client-folder.js?v=89"></script>
+<script src="/assets/lead-filters.js?v=89"></script>
+<script src="/assets/chat-extras.js?v=89"></script>
+<script src="/assets/home.js?v=89"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1245,13 +1266,13 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=88"></script>
-<script src="/assets/procurement.js?v=88"></script>
-<script src="/assets/quote.js?v=88"></script>
-<script src="/assets/meetings.js?v=88"></script>
-<script src="/assets/calendar.js?v=88"></script>
-<script src="/assets/availability.js?v=88"></script>
-<script src="/assets/employee.js?v=88"></script>
+<script src="/assets/huddle.js?v=89"></script>
+<script src="/assets/procurement.js?v=89"></script>
+<script src="/assets/quote.js?v=89"></script>
+<script src="/assets/meetings.js?v=89"></script>
+<script src="/assets/calendar.js?v=89"></script>
+<script src="/assets/availability.js?v=89"></script>
+<script src="/assets/employee.js?v=89"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1313,6 +1334,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=88"></script>
+<script src="/help-docs.js?v=89"></script>
 </body>
 </html>
