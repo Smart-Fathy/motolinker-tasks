@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=89">
+  <link rel="stylesheet" href="/assets/employee.css?v=90">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=89">
+  <link rel="stylesheet" href="/assets/mobile.css?v=90">
 </head>
 <body>
 
@@ -232,6 +232,17 @@
         <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
         <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu" aria-label="Close menu">&times;</button>
       </div>
+    </div>
+    <!-- Per-employee shortcuts. Outside .sidebar-nav on purpose: the nav-config
+         arrangement reorders the .nav-group children and must not see these. -->
+    <div class="nav-quick">
+      <div class="nav-fav-head">
+        <span class="nav-fav-label">Favourites</span>
+        <button class="nav-fav-edit" onclick="navFavEdit()" title="Choose favourites" aria-label="Choose favourites">
+          <i data-lucide="settings-2"></i>
+        </button>
+      </div>
+      <div class="nav-fav" id="fav-list"></div>
     </div>
     <nav class="sidebar-nav">
       <div class="nav-group" data-group="management">
@@ -1223,12 +1234,12 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=89"></script>
-<script src="/assets/columns.js?v=89"></script>
-<script src="/assets/client-folder.js?v=89"></script>
-<script src="/assets/lead-filters.js?v=89"></script>
-<script src="/assets/chat-extras.js?v=89"></script>
-<script src="/assets/home.js?v=89"></script>
+<script src="/assets/mobile.js?v=90"></script>
+<script src="/assets/columns.js?v=90"></script>
+<script src="/assets/client-folder.js?v=90"></script>
+<script src="/assets/lead-filters.js?v=90"></script>
+<script src="/assets/chat-extras.js?v=90"></script>
+<script src="/assets/home.js?v=90"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1266,13 +1277,13 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=89"></script>
-<script src="/assets/procurement.js?v=89"></script>
-<script src="/assets/quote.js?v=89"></script>
-<script src="/assets/meetings.js?v=89"></script>
-<script src="/assets/calendar.js?v=89"></script>
-<script src="/assets/availability.js?v=89"></script>
-<script src="/assets/employee.js?v=89"></script>
+<script src="/assets/huddle.js?v=90"></script>
+<script src="/assets/procurement.js?v=90"></script>
+<script src="/assets/quote.js?v=90"></script>
+<script src="/assets/meetings.js?v=90"></script>
+<script src="/assets/calendar.js?v=90"></script>
+<script src="/assets/availability.js?v=90"></script>
+<script src="/assets/employee.js?v=90"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1334,6 +1345,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=89"></script>
+<script src="/help-docs.js?v=90"></script>
 </body>
 </html>

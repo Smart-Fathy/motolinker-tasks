@@ -1231,3 +1231,64 @@
     .t-segs{ flex-wrap:wrap; }
     .t-seg, .t-due-chip{ min-height:44px; }
   }
+
+  /* ── Favourites (per employee) ─────────────────────────────────────────
+   * Mirrors the admin rail. Accents are keyed off data-group so a favourite
+   * inherits the colour of the rail item it points at. */
+  .nav-quick{ padding:0 12px 6px; }
+  .nav-fav{ border-bottom:1px solid rgba(255,255,255,.07); padding-bottom:10px; }
+  .nav-fav:empty{ border-bottom:none; padding-bottom:0; }
+  .nav-fav-head{ display:flex; align-items:center; gap:6px; padding:12px 0 6px; }
+  .nav-fav-label{
+    flex:1; font-size:9.5px; font-weight:800; text-transform:uppercase;
+    letter-spacing:1px; color:var(--muted);
+  }
+  .nav-fav-edit{
+    display:flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:var(--r-xs); flex-shrink:0;
+    border:none; background:none; color:var(--muted); cursor:pointer;
+  }
+  .nav-fav-edit:hover{ color:var(--gold); background:rgba(201,163,94,.12); }
+  .nav-fav-edit i, .nav-fav-edit svg{ width:14px; height:14px; }
+  .nav-fav-empty{
+    display:block; width:100%; text-align:left; cursor:pointer; font-family:inherit;
+    padding:9px 10px; border-radius:var(--r-md); font-size:12.5px; font-weight:600;
+    color:var(--muted); background:none; border:1px dashed rgba(255,255,255,.14);
+  }
+  .nav-fav-empty:hover{ color:var(--gold); border-color:rgba(201,163,94,.4); }
+  .nav-fav .nav-item{ width:100%; }
+  .nav-fav-hint{ font-size:12px; color:var(--muted); margin-bottom:10px; }
+  .nav-fav-hint b{ color:var(--text); font-weight:700; }
+  .nav-fav-pick{ display:flex; align-items:center; gap:10px; }
+  .nav-fav-pick .nav-icon,
+  .nav-fav .nav-item .nav-icon{
+    width:24px; height:24px; border-radius:7px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    background:color-mix(in srgb, var(--nav-c, #8d897f) 15%, transparent);
+    color:var(--nav-c, var(--muted));
+  }
+  .nav-fav-pick .nav-icon i, .nav-fav-pick .nav-icon svg,
+  .nav-fav .nav-item .nav-icon i, .nav-fav .nav-item .nav-icon svg{ width:14px; height:14px; }
+  .nav-fav-pick input:disabled ~ span{ opacity:.45; }
+
+  /* Inherited, not a colour rule — see the same note in dashboard.css. */
+  [data-group="management"]  { --nav-c:#c9a35e; }
+  [data-group="crm"]         { --nav-c:#6dd8a4; }
+  [data-group="operations"]  { --nav-c:#9fb0bd; }
+  [data-group="integrations"]{ --nav-c:#94a3b8; }
+  [data-group="chat"]        { --nav-c:#f59e0b; }
+  [data-group="google"]      { --nav-c:#c98b5e; }
+  [data-group="system"]      { --nav-c:#8d897f; }
+
+  @media (min-width:769px){ .sidebar.collapsed .nav-quick{ display:none; } }
+
+  /* The rail gets the same icon chip as the admin portal and as its own
+   * favourites row, so a destination looks the same wherever it appears. */
+  .nav-item .nav-icon{
+    width:24px; height:24px; border-radius:7px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    background:color-mix(in srgb, var(--nav-c, #8d897f) 15%, transparent);
+    color:var(--nav-c, var(--muted));
+    transition:background .15s, color .15s;
+  }
+  .nav-item .nav-icon i, .nav-item .nav-icon svg{ width:14px; height:14px; }

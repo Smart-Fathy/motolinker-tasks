@@ -173,6 +173,9 @@ function applyPermissions(permissions) {
   const repPage = document.getElementById('page-reports');
   if (repNav) repNav.style.display = anyReport ? '' : 'none';
   if (repPage) repPage.dataset.permitted = anyReport ? '1' : '0';
+  // Last, because favourites are rendered from whatever the rail still holds
+  // once every permission gate above has hidden what it needs to.
+  loadNavFavs();
 }
 
 /* ── Issues center (CTO only) ── */
@@ -511,6 +514,95 @@ const pageLoaders = { calendar: () => loadCalendar(), home: loadHome, requests: 
   contracts: () => loadContracts(), submissions: () => loadSubmissions(), meet: () => loadMeetings(),
   stock: () => loadStock() };
 let _currentEmpPage = 'log';
+// ── Favourites ────────────────────────────────────────────────────────────────
+// Per employee. Built from whatever they saved, intersected with the
+// destinations actually present in their own rail — which is already filtered
+// by their permissions — so a favourite can never point somewhere they cannot
+// go, and one for a screen they lost access to simply stops rendering.
+let _navFavs = null;
+const NAV_FAV_MAX = 8;
+const NAV_FAV_DEFAULT = ['home', 'log', 'tasks', 'hours', 'requests'];
+
+function navFavLabel(el) {
+  const c = el.cloneNode(true);
+  c.querySelectorAll('.nav-icon, .chat-nav-badge, [id$="-badge"]').forEach(n => n.remove());
+  return (c.textContent || '').trim();
+}
+function navFavCandidates() {
+  return [...document.querySelectorAll('#sidebar .nav-group')]
+    .filter(g => g.style.display !== 'none')
+    .flatMap(g => [...g.querySelectorAll('.nav-item')]
+      .filter(el => el.style.display !== 'none' && /^nav-./.test(el.id || ''))
+      .map(el => ({
+        key: el.id.slice(4),
+        label: navFavLabel(el),
+        icon: el.querySelector('.nav-icon')?.innerHTML || '',
+        group: g.dataset.group || '',
+      })));
+}
+function renderNavFavs() {
+  const box = document.getElementById('fav-list');
+  if (!box) return;
+  const byKey = new Map(navFavCandidates().map(c => [c.key, c]));
+  const want = (_navFavs && _navFavs.length ? _navFavs : NAV_FAV_DEFAULT);
+  const picked = want.filter(k => byKey.has(k)).slice(0, NAV_FAV_MAX);
+  if (!picked.length) {
+    box.innerHTML = '<button class="nav-fav-empty" onclick="navFavEdit()">Choose your shortcuts</button>';
+    return;
+  }
+  box.innerHTML = picked.map(k => {
+    const c = byKey.get(k);
+    return `<button class="nav-item fav-item" id="fav-${esc(k)}" data-group="${esc(c.group)}"
+              onclick="navigate('${esc(k)}')">
+        <span class="nav-icon">${c.icon}</span>${esc(c.label)}</button>`;
+  }).join('');
+  const cur = document.getElementById('fav-' + _currentEmpPage);
+  if (cur) cur.classList.add('active');
+  if (window.lucide) requestAnimationFrame(() => lucide.createIcons());
+}
+async function loadNavFavs() {
+  try {
+    const d = await ef('/api/employee/nav-favourites').then(r => r.json());
+    _navFavs = Array.isArray(d.favourites) ? d.favourites : [];
+  } catch (_) { _navFavs = []; }
+  renderNavFavs();
+}
+function navFavEdit() {
+  const chosen = new Set((_navFavs && _navFavs.length ? _navFavs : NAV_FAV_DEFAULT));
+  const rows = navFavCandidates().map(c => `
+    <label class="hd-row nav-fav-pick" data-group="${esc(c.group)}">
+      <input type="checkbox" class="nav-fav-cb" value="${esc(c.key)}" ${chosen.has(c.key) ? 'checked' : ''}
+             onchange="navFavCount()">
+      <span class="nav-icon">${c.icon}</span>
+      <span style="flex:1">${esc(c.label)}</span>
+    </label>`).join('');
+  hdSheet('Favourites',
+    `<div class="nav-fav-hint">Pick up to ${NAV_FAV_MAX}. <b id="nav-fav-count"></b></div>
+     <div class="hd-list">${rows}</div>`,
+    `<button class="btn btn-outline btn-sm" onclick="hdSheetClose()">Cancel</button>
+     <button class="btn btn-primary btn-sm" onclick="navFavSave()">Save</button>`);
+  navFavCount();
+  if (window.lucide) requestAnimationFrame(() => lucide.createIcons());
+}
+function navFavCount() {
+  const boxes = [...document.querySelectorAll('.nav-fav-cb')];
+  const on = boxes.filter(b => b.checked);
+  boxes.forEach(b => { b.disabled = !b.checked && on.length >= NAV_FAV_MAX; });
+  const el = document.getElementById('nav-fav-count');
+  if (el) el.textContent = `${on.length} of ${NAV_FAV_MAX} chosen`;
+}
+async function navFavSave() {
+  const favourites = [...document.querySelectorAll('.nav-fav-cb:checked')].map(b => b.value).slice(0, NAV_FAV_MAX);
+  try {
+    const r = await ef('/api/employee/nav-favourites', { method: 'PUT', body: JSON.stringify({ favourites }) });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || r.status);
+    _navFavs = Array.isArray(d.favourites) ? d.favourites : favourites;
+  } catch (e) { showToast('Could not save your favourites: ' + e.message); return; }
+  hdSheetClose();
+  renderNavFavs();
+}
+
 function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
   if (_currentEmpPage === 'gchat' && page !== 'gchat') gchatStopPoll();
@@ -528,6 +620,8 @@ function navigate(page) {
   (pageEl || document.getElementById('page-log')).classList.add('active');
   const sideNav = document.getElementById('nav-' + page);
   if (sideNav) sideNav.classList.add('active');
+  const favNav = document.getElementById('fav-' + page);
+  if (favNav) favNav.classList.add('active');
   openGroupForPage(page); // reveal the group containing the active item
   const bottomNav = document.getElementById('bnav-' + page);
   if (bottomNav) bottomNav.classList.add('active');

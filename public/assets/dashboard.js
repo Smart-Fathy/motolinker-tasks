@@ -2255,6 +2255,105 @@ function toggleSidebarCollapse() {
   const collapsed = document.getElementById('sidebar').classList.toggle('collapsed');
   try { localStorage.setItem('ml_admin_sidebar', collapsed ? 'collapsed' : 'expanded'); } catch (_) {}
 }
+// ── Favourites ────────────────────────────────────────────────────────────────
+// Per user, not per install. The row is built from whatever that user saved,
+// intersected with the destinations actually present in their own rail — so a
+// stale entry, or one for a screen their permissions hide, simply does not
+// render. Nothing here grants access; it is a shortcut to a nav item that is
+// already there.
+let _navFavs = null;
+const NAV_FAV_MAX = 8;
+const NAV_FAV_DEFAULT = ['home', 'tasks', 'customers', 'deals', 'chat'];
+const NAV_FAV_BASE = '/api/dashboard';
+
+function navFavCandidates() {
+  return [...document.querySelectorAll('#sidebar .nav-group')]
+    .filter(g => g.style.display !== 'none')
+    .flatMap(g => [...g.querySelectorAll('.nav-item')]
+      .filter(el => el.style.display !== 'none' && /^nav-./.test(el.id || ''))
+      .map(el => ({
+        key: el.id.slice(4),
+        label: navItemLabelText(el),
+        icon: el.querySelector('.nav-icon')?.innerHTML || '',
+        group: g.dataset.group || '',
+      })));
+}
+
+function renderNavFavs() {
+  const box = document.getElementById('fav-list');
+  if (!box) return;
+  const byKey = new Map(navFavCandidates().map(c => [c.key, c]));
+  const want = (_navFavs && _navFavs.length ? _navFavs : NAV_FAV_DEFAULT);
+  const picked = want.filter(k => byKey.has(k)).slice(0, NAV_FAV_MAX);
+  if (!picked.length) {
+    box.innerHTML = `<button class="nav-fav-empty" onclick="navFavEdit()">Choose your shortcuts</button>`;
+    return;
+  }
+  box.innerHTML = picked.map(k => {
+    const c = byKey.get(k);
+    const badge = k === 'chat'
+      ? '<span class="chat-nav-badge" id="chat-fav-badge" style="display:none">0</span>' : '';
+    return `<div class="nav-item fav-item" id="fav-${esc(k)}" data-group="${esc(c.group)}"
+              onclick="navigate('${esc(k)}')">
+        <span class="nav-icon">${c.icon}</span>${esc(c.label)}${badge}</div>`;
+  }).join('');
+  const cur = document.getElementById('fav-' + currentPage);
+  if (cur) cur.classList.add('active');
+  if (typeof adminChatUpdateNavBadge === 'function') adminChatUpdateNavBadge();
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+async function loadNavFavs() {
+  try {
+    const d = await apiFetch(NAV_FAV_BASE + '/nav-favourites').then(r => r.json());
+    _navFavs = Array.isArray(d.favourites) ? d.favourites : [];
+  } catch (_) { _navFavs = []; }
+  renderNavFavs();
+}
+
+function navFavEdit() {
+  const chosen = new Set((_navFavs && _navFavs.length ? _navFavs : NAV_FAV_DEFAULT));
+  const rows = navFavCandidates().map(c => `
+    <label class="hd-row nav-fav-pick" data-group="${esc(c.group)}">
+      <input type="checkbox" class="nav-fav-cb" value="${esc(c.key)}" ${chosen.has(c.key) ? 'checked' : ''}
+             onchange="navFavCount()">
+      <span class="nav-icon">${c.icon}</span>
+      <span style="flex:1">${esc(c.label)}</span>
+    </label>`).join('');
+  hdSheet('Favourites',
+    `<div class="nav-fav-hint">Pick up to ${NAV_FAV_MAX}. <b id="nav-fav-count"></b></div>
+     <div class="hd-list">${rows}</div>`,
+    `<button class="btn btn-outline btn-sm" onclick="hdSheetClose()">Cancel</button>
+     <button class="btn btn-primary btn-sm" onclick="navFavSave()">Save</button>`);
+  navFavCount();
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+// Over the cap the extra ticks are refused rather than silently dropped on save.
+function navFavCount() {
+  const boxes = [...document.querySelectorAll('.nav-fav-cb')];
+  const on = boxes.filter(b => b.checked);
+  boxes.forEach(b => { b.disabled = !b.checked && on.length >= NAV_FAV_MAX; });
+  const el = document.getElementById('nav-fav-count');
+  if (el) el.textContent = `${on.length} of ${NAV_FAV_MAX} chosen`;
+}
+
+async function navFavSave() {
+  const favourites = [...document.querySelectorAll('.nav-fav-cb:checked')].map(b => b.value).slice(0, NAV_FAV_MAX);
+  try {
+    const r = await apiFetch(NAV_FAV_BASE + '/nav-favourites',
+      { method: 'PUT', body: JSON.stringify({ favourites }) });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || r.status);
+    _navFavs = Array.isArray(d.favourites) ? d.favourites : favourites;
+  } catch (e) {
+    showAdminToast('Could not save your favourites: ' + e.message);
+    return;
+  }
+  hdSheetClose();
+  renderNavFavs();
+}
+
 // Each group head shows how many destinations it holds, so a collapsed group
 // still tells you whether it is worth opening. Written into a span of its own —
 // applyNavConfig() rewrites .nav-group-label's textContent and would eat it.
@@ -3350,6 +3449,9 @@ let notifUnread = 0;
     if (typeof hdBootLive === 'function') hdBootLive();
     // Cosmetic — a failure here must not stop the app from opening.
     try { await loadNavConfig(); } catch (_) {}
+    // After the config, because favourites are rendered from whatever the rail
+    // ends up holding once arrangement and permission hiding have been applied.
+    try { await loadNavFavs(); } catch (_) {}
     gchatInitNav();          // Google Chat nav appears only when it's configured
     const validPages = ['home','tasks','employees','requests','submissions','hours','email','drive','sheets','chat','calendar','meet','quotation','customers','deals','stock','suppliers','rfqs','contracts','purchaseorders','reports','automations','deletions','whatsapp','gchat','notif'];
     navigate(lastPage(validPages, 'home'));

@@ -1326,6 +1326,43 @@ receiver.router.delete('/api/dashboard/nav-config', requireAuth, async (_req, re
   res.json({ ok: true });
 });
 
+// Favourites are PER USER, unlike nav_config above — that is one org-wide
+// arrangement only an admin may write, which is exactly why it is the wrong
+// place for "whatever I want in my own shortcuts". Keyed the same way the Home
+// layout is (quotation_settings, one row per owner).
+//
+// Only page keys are stored. Nothing is granted by being in this list: the rail
+// is already permission-filtered per user and the client renders a favourite
+// only when that destination exists in their own rail, so a stale or
+// hand-written entry shows nothing rather than becoming a way in.
+function navFavKey(ownerKey) { return `nav_favs:${ownerKey}`; }
+const NAV_FAV_MAX = 8;
+function sanitizeNavFavs(body) {
+  const seen = new Set();
+  return (Array.isArray(body && body.favourites) ? body.favourites : [])
+    .map(v => String(v || '').trim())
+    .filter(v => /^[a-z0-9_-]{1,32}$/i.test(v) && !seen.has(v) && seen.add(v))
+    .slice(0, NAV_FAV_MAX);
+}
+function mountNavFavRoutes(base, guard, resolve) {
+  receiver.router.get(`${base}/nav-favourites`, guard, async (req, res) => {
+    try {
+      const { data } = await supabase.from('quotation_settings').select('value')
+        .eq('key', navFavKey(resolve(req))).single();
+      res.json({ favourites: sanitizeNavFavs(data && data.value ? JSON.parse(data.value) : null) });
+    } catch (_) { res.json({ favourites: [] }); }
+  });
+  receiver.router.put(`${base}/nav-favourites`, guard, express.json({ limit: '8kb' }), async (req, res) => {
+    const clean = { favourites: sanitizeNavFavs(req.body) };
+    const { error } = await supabase.from('quotation_settings')
+      .upsert({ key: navFavKey(resolve(req)), value: JSON.stringify(clean) }, { onConflict: 'key' });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(clean);
+  });
+}
+mountNavFavRoutes('/api/dashboard', requireAuth, () => 'admin');
+mountNavFavRoutes('/api/employee', requireEmployeeAuth, req => `employee_${req.employee.id}`);
+
 // Home dashboards  → src/routes/home.js
 Object.assign(ctx, { express, receiver, requireAuth, requireEmployeeAuth, supabase });
 require('./src/routes/home');
