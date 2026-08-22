@@ -5362,10 +5362,172 @@ function renderLeadMix(list) {
     </div>`;
 }
 
+// ── Leads: Table / Board / Follow-ups ─────────────────────────────────
+// The table answers "what do I have". It could not answer "where is the
+// money sitting" or "who am I supposed to ring today" without reading
+// every row, so those are now views of the same filtered list rather
+// than reports somewhere else.
+let _leadView = 'table';
+
+function setLeadView(v) {
+  _leadView = v;
+  document.querySelectorAll('#lead-views .task-view-tab')
+    .forEach(b => b.classList.toggle('active', b.dataset.lview === v));
+  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+  show('leads-scroll', v === 'table');
+  show('leads-pane-board', v === 'board');
+  show('leads-pane-follow', v === 'follow');
+  // Columns and rows-per-page describe the table specifically; leaving them
+  // over a board would offer settings that change nothing on screen.
+  show('leads-toolbar', v === 'table');
+  if (_lastRenderedLeads) renderCustomers(_lastRenderedLeads);
+}
+
+function leadOwnerName(c) {
+  if (!c.assigned_to) return '';
+  const e = (employeesForTasks || []).find(x => String(x.id) === String(c.assigned_to));
+  return e ? e.name : '#' + c.assigned_to;
+}
+
+function leadInitials(n) {
+  return String(n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
+}
+
+// Money on a board card is a scale read, not an accounting figure: 4.2M
+// beats 4,200,000 when six of them sit side by side in a 250px column.
+function leadShortMoney(n) {
+  const v = Number(n) || 0;
+  if (!v) return '—';
+  if (v >= 1e9) return 'EGP ' + (v / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (v >= 1e6) return 'EGP ' + (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (v >= 1e3) return 'EGP ' + Math.round(v / 1e3) + 'K';
+  return 'EGP ' + v.toLocaleString();
+}
+
+function renderLeadBoard(list) {
+  const host = document.getElementById('leads-pane-board');
+  if (!host) return;
+  // Columns come from the column engine, not a hardcoded list, so a status
+  // added in Columns appears here without touching this function.
+  const col = (typeof leadCol === 'function' ? leadCol('lead_status') : null)
+    || (_leadCols || []).find(c => c.key === 'lead_status');
+  const opts = (col && col.options) || [];
+  if (!opts.length) { host.innerHTML = '<div class="fu-none">No lead statuses configured.</div>'; return; }
+  const m = colOptMap(col);
+  const total = list.length || 1;
+  const srcMap = {};
+  ((_leadCols || []).find(c => c.key === 'source')?.options || []).forEach(o => { srcMap[o.key] = o.label; });
+
+  host.innerHTML = `<div class="lead-board">${opts.map(o => {
+    const rows = list.filter(c => normKey(c.lead_status || 'cold', m) === o.key);
+    const value = rows.reduce((a, c) => a + (Number(c.budget_lead) || 0), 0);
+    const pct = Math.round((rows.length / total) * 100);
+    const c0 = o.color || 'var(--muted)';
+    return `<section class="lb-col" style="--c:${c0}">
+      <div class="lb-head">
+        <div class="lb-head-top">
+          ${CE('leads').badgeHtml(col, o.key, o.label || o.key)}
+          <span class="lb-n num">${rows.length}</span>
+        </div>
+        <div><span class="lb-val num">${leadShortMoney(value)}</span><span class="lb-share num">${pct}% of leads</span></div>
+      </div>
+      <div class="lb-body">
+        ${rows.map(c => {
+          const owner = leadOwnerName(c);
+          return `<article class="lb-card" onclick="openLeadProfile(${c.id})">
+            <div class="lb-name">${esc(c.name || '—')}</div>
+            ${c.car_in_question ? `<div class="lb-meta"><i data-lucide="car"></i><span>${esc(c.car_in_question)}</span></div>` : ''}
+            ${c.source ? `<div class="lb-meta"><i data-lucide="tag"></i><span>${esc(srcMap[c.source] || c.source)}</span></div>` : ''}
+            <div class="lb-budget num">${leadShortMoney(c.budget_lead)}</div>
+            ${owner ? `<div class="lb-foot"><span class="td-av">${esc(leadInitials(owner))}</span>${esc(owner)}</div>` : ''}
+          </article>`;
+        }).join('')}
+        <button class="lb-add" onclick="openCustomerModal(null, '${esc(o.key)}')">
+          <i data-lucide="plus"></i> Add</button>
+      </div>
+    </section>`;
+  }).join('')}</div>`;
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+// Buckets are relative to now, so "this week" means the next seven days
+// rather than "before Sunday" — a Friday lead should not fall out of the
+// list because the calendar week happens to end.
+function fuBucket(due) {
+  const t = new Date(due).getTime();
+  if (Number.isNaN(t)) return null;
+  const now = Date.now();
+  const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
+  if (t < now) return 'overdue';
+  if (t <= endOfDay.getTime()) return 'today';
+  if (t <= now + 7 * 86400000) return 'week';
+  return 'later';
+}
+
+function fuWhen(due) {
+  const t = new Date(due).getTime();
+  const now = Date.now();
+  const day = 86400000;
+  const days = Math.round((t - now) / day);
+  if (t < now) {
+    const late = Math.max(1, Math.round((now - t) / day));
+    return late === 1 ? '1 day late' : late + ' days late';
+  }
+  const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
+  if (t <= endOfDay.getTime()) return 'Today';
+  if (days <= 1) return 'Tomorrow';
+  return 'In ' + days + ' days';
+}
+
+function renderLeadFollow(list) {
+  const host = document.getElementById('leads-pane-follow');
+  if (!host) return;
+  const col = (typeof leadCol === 'function' ? leadCol('lead_status') : null)
+    || (_leadCols || []).find(c => c.key === 'lead_status');
+  const m = colOptMap(col);
+  const due = list
+    .map(c => ({ c, at: _pendingFollowups[c.id] }))
+    .filter(x => x.at)
+    .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+
+  const GROUPS = [
+    { key: 'overdue', label: 'Overdue',   c: 'var(--danger)' },
+    { key: 'today',   label: 'Due today', c: 'var(--warning)' },
+    { key: 'week',    label: 'This week', c: 'var(--success)' },
+    { key: 'later',   label: 'Later',     c: 'var(--muted)' },
+  ];
+  const body = GROUPS.map(g => {
+    const rows = due.filter(x => fuBucket(x.at) === g.key);
+    if (!rows.length) return '';
+    return `<section class="fu-group" style="--c:${g.c}">
+      <div class="fu-group-head"><i class="dot"></i>${g.label}<span class="fu-group-n num">${rows.length}</span></div>
+      ${rows.map(({ c, at }) => {
+        const parts = [c.car_in_question, c.phone].filter(Boolean).map(esc).join(' · ');
+        return `<div class="fu-row">
+          <span class="td-av">${esc(leadInitials(c.name))}</span>
+          <div class="fu-main" onclick="openLeadProfile(${c.id})">
+            <div class="fu-name">${esc(c.name || '—')}</div>
+            ${parts ? `<div class="fu-sub">${parts}</div>` : ''}
+          </div>
+          ${col ? CE('leads').badgeHtml(col, normKey(c.lead_status || 'cold', m), m[normKey(c.lead_status || 'cold', m)] || c.lead_status || '—') : ''}
+          <span class="fu-when num" title="${esc(new Date(at).toLocaleString())}">${fuWhen(at)}</span>
+          ${c.phone ? `<a class="fu-call" href="tel:${esc(c.phone)}" onclick="event.stopPropagation()">
+            <i data-lucide="phone"></i> Call</a>` : ''}
+        </div>`;
+      }).join('')}
+    </section>`;
+  }).join('');
+
+  host.innerHTML = body || '<div class="fu-none">Nothing scheduled. Follow-ups you set on a lead show up here.</div>';
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
 function renderCustomers(list) {
   renderLeadMix(list);
-  if (typeof mlTopScrollbar === 'function') mlTopScrollbar('leads-scroll');
   _lastRenderedLeads = list;
+  if (_leadView === 'board')  { renderLeadBoard(list);  return; }
+  if (_leadView === 'follow') { renderLeadFollow(list); return; }
+  if (typeof mlTopScrollbar === 'function') mlTopScrollbar('leads-scroll');
   const tbody = document.getElementById('customers-tbody');
   const vis = visibleLeadCols();
   const span = vis.length + 3; // select-all + add-column + actions
@@ -5783,7 +5945,9 @@ function attachVehicleSearch(inputId, priceId, resultsId, endpoint, hintId, imag
   input.addEventListener('blur', () => setTimeout(hide, 200));
 }
 
-function openCustomerModal(id) {
+// presetStatus: the board's per-column "+ Add" knows which column it sits
+// in, and losing that on the way to the form makes the button a lie.
+function openCustomerModal(id, presetStatus) {
   const c = id ? _allCustomers.find(x => x.id === id) : null;
   document.getElementById('customer-modal-title').textContent = c ? 'Edit Lead' : 'Add Lead';
   document.getElementById('cm-id').value = c?.id || '';
@@ -5791,7 +5955,7 @@ function openCustomerModal(id) {
   document.getElementById('cm-phone').value = c?.phone || '';
   document.getElementById('cm-date').value = c?.lead_date || '';
   document.getElementById('cm-time').value = c?.lead_time || '';
-  fillLeadSelect('cm-lead-status', 'lead_status', null, c?.lead_status || 'cold');
+  fillLeadSelect('cm-lead-status', 'lead_status', null, c?.lead_status || presetStatus || 'cold');
   fillLeadSelect('cm-source', 'source', '— Unknown —', c?.source);
   fillLeadSelect('cm-next-action', 'next_action', '— None —', c?.next_action);
   document.getElementById('cm-car').value = c?.car_in_question || '';
