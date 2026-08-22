@@ -926,10 +926,34 @@ function taskClip(t) {
   return n ? `<span class="task-clip" title="${n} attachment${n === 1 ? '' : 's'}"><i data-lucide="paperclip"></i>${n}</span>` : '';
 }
 
+// A due date is read as "how long have I got", not as a calendar value, so
+// the near dates — the ones that decide what you do today — are named and
+// only the far ones fall back to a date. The colour classes are unchanged.
+function taskDueLabel(d, status) {
+  if (!d) return '—';
+  const day = 86400000;
+  const at = Date.parse(d + 'T00:00:00Z');
+  if (Number.isNaN(at)) return d;
+  const diff = Math.round((at - Date.parse(TODAY + 'T00:00:00Z')) / day);
+  // en-GB, not the browser locale: the design reads "25 Aug", and a
+  // US-locale visitor would otherwise silently get "Aug 25".
+  const short = new Date(at).toLocaleDateString('en-GB',
+    { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  if (status === 'done') return short;
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  if (diff < 0) return Math.abs(diff) === 1 ? '1 day late' : Math.abs(diff) + ' days late';
+  return short;
+}
+
 function taskDueCell(t) {
   const overdue = isOverdue(t.due_date, t.status);
   const soon = !overdue && isDueSoon(t.due_date, t.status);
-  return { cls: overdue ? 'overdue' : (soon ? 'due-soon' : ''), label: t.due_date || '—' };
+  return {
+    cls: overdue ? 'overdue' : (soon ? 'due-soon' : ''),
+    label: taskDueLabel(t.due_date, t.status),
+    title: t.due_date || '',
+  };
 }
 
 function taskRowHtml(t) {
@@ -938,20 +962,156 @@ function taskRowHtml(t) {
   return `<div class="task-row" id="row-${t.id}">
     <input type="checkbox" class="row-cb task-cb" data-id="${t.id}" onchange="onRowCheck()">
     ${statusBadge(t.status)}
-    <div class="task-row-main" onclick="openTaskModal(${t.id})">
+    <div class="task-row-main" onclick="openTaskDrawer(${t.id})">
       <div class="task-row-title">${esc(t.title)}${taskClip(t)}</div>
       ${t.description ? `<div class="task-row-desc">${esc(t.description)}</div>` : ''}
     </div>
     ${priorityBadge(t.priority)}
     ${t.milestone ? `<span class="milestone-tag task-row-ms">${esc(t.milestone)}</span>` : ''}
     <span class="task-row-who">${resolvedNames(t)}</span>
-    <span class="due-date ${due.cls} task-row-due">${due.label}</span>
+    <span class="due-date ${due.cls} task-row-due" title="${esc(due.title)}">${due.label}</span>
     <span class="task-row-acts">
       ${isDone ? '' : `<button class="btn btn-success btn-sm" onclick="quickDone(${t.id})">Done</button>`}
       <button class="btn btn-outline btn-sm" onclick="openTaskComments(${t.id})" title="Comments"><i data-lucide="message-square" style="width:13px;height:13px"></i></button>
       <button class="btn btn-outline btn-sm" onclick="deleteTask(${t.id})" title="Delete"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
     </span>
   </div>`;
+}
+
+// ── Task detail drawer ────────────────────────────────────────────────
+// Opening a task used to mean opening the edit form, so reading one and
+// changing one were the same gesture. This splits them: the row opens a
+// read view beside the list, and Edit inside it opens the form that was
+// always there. saveTask() is untouched.
+let _drawerTaskId = null;
+
+function tdInitials(n) {
+  return String(n || '').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
+}
+
+function tdDuePill(t) {
+  if (!t.due_date) return '<span class="td-fact-v none">No due date</span>';
+  const due = taskDueCell(t);
+  return `<span class="due-date ${due.cls}">${esc(due.label)}</span>`;
+}
+
+function taskDrawerHtml(t) {
+  const names = resolvedNames(t);
+  return `
+    <h2 class="td-title" id="td-title">${esc(t.title)}</h2>
+    ${t.description ? `<div class="td-desc">${esc(t.description)}</div>` : ''}
+    <div class="td-facts">
+      <div class="td-fact">
+        <span class="td-fact-k">Assignee</span>
+        <span class="td-fact-v${names ? '' : ' none'}">${names || 'Unassigned'}</span>
+      </div>
+      <div class="td-fact">
+        <span class="td-fact-k">Due</span>
+        <span class="td-fact-v">${tdDuePill(t)}</span>
+      </div>
+      <div class="td-fact">
+        <span class="td-fact-k">Priority</span>
+        <span class="td-fact-v">${priorityBadge(t.priority)}</span>
+      </div>
+      <div class="td-fact">
+        <span class="td-fact-k">Channel</span>
+        <span class="td-fact-v${t.channel_name ? '' : ' none'}">${t.channel_name
+          ? `<span class="td-ch">#${esc(t.channel_name)}</span>` : '—'}</span>
+      </div>
+      <div class="td-fact">
+        <span class="td-fact-k">Milestone</span>
+        <span class="td-fact-v${t.milestone ? '' : ' none'}">${t.milestone
+          ? `<span class="milestone-tag">${esc(t.milestone)}</span>` : '—'}</span>
+      </div>
+    </div>
+    <div class="td-acts">
+      ${t.status === 'done' ? '' : `<button class="td-done" onclick="tdMarkDone(${t.id})">
+        <i data-lucide="check"></i> Mark done</button>`}
+      <button class="td-edit" onclick="openTaskModal(${t.id})">Edit</button>
+    </div>
+    <div class="td-sec">Activity</div>
+    <div id="td-activity"><div class="td-act-none">Loading…</div></div>
+    <div class="td-composer">
+      <input id="td-comment" placeholder="Write a comment…"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();tdPostComment()}">
+      <button class="td-send" onclick="tdPostComment()" title="Send" aria-label="Send">
+        <i data-lucide="send"></i>
+      </button>
+    </div>`;
+}
+
+async function openTaskDrawer(id) {
+  const t = allTasks.find(x => x.id === id);
+  if (!t) return;
+  _drawerTaskId = id;
+  const el = document.getElementById('task-drawer');
+  const body = document.getElementById('task-drawer-body');
+  if (!el || !body) return;
+  el.hidden = false;
+  document.getElementById('td-id').textContent = '#' + t.id;
+  document.getElementById('td-status').innerHTML = statusBadge(t.status);
+  body.innerHTML = taskDrawerHtml(t);
+  body.scrollTop = 0;
+  // The class drives the transform, so it has to land after `hidden` is
+  // cleared or the transition has nothing to animate from.
+  requestAnimationFrame(() => {
+    el.classList.add('open');
+    document.getElementById('task-drawer-overlay').classList.add('open');
+    document.body.classList.add('task-drawer-open');
+  });
+  if (window.lucide) lucide.createIcons();
+  tdLoadActivity(id);
+}
+
+function closeTaskDrawer() {
+  const el = document.getElementById('task-drawer');
+  if (!el) return;
+  el.classList.remove('open');
+  document.getElementById('task-drawer-overlay').classList.remove('open');
+  document.body.classList.remove('task-drawer-open');
+  _drawerTaskId = null;
+  // Keep it out of the tab order once it is off screen, but only after the
+  // slide-out has finished so the animation is not cut short.
+  setTimeout(() => { if (!el.classList.contains('open')) el.hidden = true; }, 320);
+}
+
+async function tdLoadActivity(id) {
+  const rows = await apiFetch(`/api/dashboard/tasks/${id}/comments`)
+    .then(r => r.json()).catch(() => []);
+  const box = document.getElementById('td-activity');
+  if (!box || _drawerTaskId !== id) return;
+  box.innerHTML = (Array.isArray(rows) && rows.length) ? rows.map(c => `
+    <div class="td-act">
+      <span class="td-av">${esc(tdInitials(c.author_name))}</span>
+      <div class="td-act-txt">
+        <b>${esc(c.author_name || '—')}</b> ${c.body ? tcRenderBody(c.body) : 'commented'}
+        <div class="td-act-when">${new Date(c.created_at).toLocaleString()}</div>
+      </div>
+    </div>`).join('') : '<div class="td-act-none">Nothing yet.</div>';
+}
+
+async function tdPostComment() {
+  const input = document.getElementById('td-comment');
+  const body = (input?.value || '').trim();
+  if (!body || !_drawerTaskId) return;
+  const id = _drawerTaskId;
+  input.value = '';
+  await apiFetch(`/api/dashboard/tasks/${id}/comments`, {
+    method: 'POST', body: JSON.stringify({ body }),
+  }).catch(() => {});
+  tdLoadActivity(id);
+}
+
+// Escape closes the drawer, matching every other overlay in the portal.
+// Bound once at load rather than per-open, so repeated opens do not stack
+// listeners.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && _drawerTaskId !== null) closeTaskDrawer();
+});
+
+async function tdMarkDone(id) {
+  await quickDone(id);
+  closeTaskDrawer();
 }
 
 function renderTaskList(tasks, container) {
@@ -988,7 +1148,7 @@ function renderTaskBoard(tasks, container) {
       </div>
       <div class="task-bcol-body">${rows.map(t => {
         const due = taskDueCell(t);
-        return `<article class="task-card" onclick="openTaskModal(${t.id})">
+        return `<article class="task-card" onclick="openTaskDrawer(${t.id})">
           <div class="task-card-title">${esc(t.title)}${taskClip(t)}</div>
           <div class="task-card-meta">${priorityBadge(t.priority)}<span class="due-date ${due.cls}">${due.label}</span></div>
           <div class="task-card-foot">
