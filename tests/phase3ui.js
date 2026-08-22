@@ -70,8 +70,14 @@ function api(p, method, body) {
   await sleep(900);
 
   // ── Stock cards ──
+  // Inventory now opens on the flat unit register ("All vehicles"), which is
+  // what the design shows. The model cards these checks are about live under
+  // "By model", so the view is selected before asserting on them — the
+  // assertions themselves are unchanged.
   await page.evaluate(() => navigate('stock'));
   await sleep(700);
+  await page.evaluate(() => setStockView('model'));
+  await sleep(500);
   const cards = await page.evaluate(() => [...document.querySelectorAll('.stock-card')].map(c => ({
     title: c.querySelector('.stock-title').textContent.trim(),
     qty: c.querySelector('.stock-qty').textContent.trim(),

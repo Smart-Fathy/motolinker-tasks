@@ -2727,3 +2727,59 @@
   }
   .lr-bar-cell span{ position:relative; display:inline-flex; align-items:center; gap:7px; }
   .lr-bar-cell b{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+
+  /* ── Inventory: All vehicles / By status / By model ───────────────────
+   * procurement.js renders this into both portals, so every class here
+   * needs a rule in both stylesheets — an omission shows up as an
+   * unstyled register in whichever portal was forgotten. */
+  .stk-views{ display:flex; align-items:center; gap:2px; border-bottom:1px solid var(--border); margin-bottom:12px; }
+  .stk-controls{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .stk-none{ padding:24px; text-align:center; color:var(--muted); font-size:13px; }
+
+  .stk-table td{ vertical-align:middle; }
+  .stk-veh{ font-size:13px; font-weight:700; }
+  .stk-trim{ font-size:11px; color:var(--muted); margin-top:2px; }
+  .stk-vin{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; color:var(--muted); white-space:nowrap; }
+  .stk-col{ display:inline-flex; align-items:center; gap:7px; font-size:12.5px; white-space:nowrap; }
+  .stk-col i{ width:11px; height:11px; border-radius:50%; flex-shrink:0; border:1px solid rgba(255,255,255,.22); }
+  .stk-muted{ color:var(--muted); }
+  .stk-price{ text-align:right; font-weight:700; font-variant-numeric:tabular-nums lining-nums; white-space:nowrap; }
+  .stk-pill{
+    display:inline-flex; align-items:center; padding:3px 9px; border-radius:99px;
+    font-size:11px; font-weight:700; white-space:nowrap;
+    background:color-mix(in srgb, var(--c) 13%, transparent);
+    color:var(--c); border:1px solid color-mix(in srgb, var(--c) 28%, transparent);
+  }
+  .stk-edit{ padding:4px 9px; font-size:11px; }
+  .stk-edit i, .stk-edit svg{ width:13px; height:13px; }
+
+  .stk-group{ margin-bottom:18px; }
+  .stk-group-head{
+    display:flex; align-items:center; gap:9px; margin-bottom:8px;
+    font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--muted);
+  }
+  .stk-group-n{ background:rgba(255,255,255,.06); border-radius:99px; padding:1px 7px; font-size:11px; font-weight:700; }
+
+  /* The unmatched-units prompt was one line inside each affected card, so
+   * the size of the problem was only visible by counting cards. */
+  .stk-notice{
+    display:flex; align-items:center; gap:11px; margin-top:12px; padding:11px 14px;
+    background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.28);
+    border-radius:10px; font-size:12.5px; color:#e9c98a;
+  }
+  .stk-notice i, .stk-notice svg{ width:16px; height:16px; flex-shrink:0; color:#f59e0b; }
+  .stk-notice span{ flex:1; min-width:0; }
+  .stk-notice strong{ color:#f8dfae; }
+  .stk-review{ flex-shrink:0; padding:5px 12px; font-size:12px; }
+
+  .mix-side{ flex-shrink:0; display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+  .mix-side-v{ font-size:14px; font-weight:800; font-variant-numeric:tabular-nums lining-nums; }
+  .mix-side-l{ font-size:11px; color:var(--muted); }
+
+  @media (max-width:640px){
+    .stk-views{ overflow-x:auto; }
+    .stk-controls .tbar-btn{ min-height:44px; }
+    .stk-review{ min-height:44px; }
+    .stk-notice{ flex-wrap:wrap; }
+    .mix-side{ align-items:flex-start; }
+  }
