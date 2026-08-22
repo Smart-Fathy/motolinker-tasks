@@ -798,6 +798,199 @@ function populateChannelFilter(tasks) {
   });
 }
 
+// ── Tasks toolbar: filter, group, sort, columns ───────────────────────
+// The list had one shape decided for it: grouped by status, ordered by
+// whatever the server returned, showing eleven columns whether or not you
+// wanted them. These four controls hand that back, and each persists.
+const TASK_GROUP_BYS = {
+  status: { label: 'Status', groups: () => TASK_GROUPS.map(g => ({ ...g, match: t => t.status === g.key })) },
+  priority: {
+    label: 'Priority',
+    groups: () => [
+      { key: 'high',   label: 'High',   tone: 'var(--pri-high)' },
+      { key: 'medium', label: 'Medium', tone: 'var(--pri-med)' },
+      { key: 'low',    label: 'Low',    tone: 'var(--pri-low)' },
+    ].map(g => ({ ...g, match: t => t.priority === g.key })),
+  },
+  assignee: {
+    label: 'Assignee',
+    groups: tasks => {
+      const names = new Map();
+      tasks.forEach(t => names.set(taskAssigneeLabel(t), true));
+      return [...names.keys()].sort((a, b) => a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b))
+        .map(n => ({
+          // Slugged: the key ends up inside an inline onclick, and a name
+          // like O'Brien would otherwise close the JS string early.
+          key: 'who-' + n.replace(/[^a-z0-9]+/gi, '-').toLowerCase(),
+          label: n, tone: n === 'Unassigned' ? 'var(--muted)' : 'var(--gold)',
+          match: t => taskAssigneeLabel(t) === n,
+        }));
+    },
+  },
+  due: {
+    label: 'Due date',
+    groups: () => [
+      { key: 'overdue', label: 'Overdue',   tone: 'var(--danger)',  match: t => isOverdue(t.due_date, t.status) },
+      { key: 'today',   label: 'Today',     tone: 'var(--warning)', match: t => t.due_date === TODAY && !isOverdue(t.due_date, t.status) },
+      { key: 'week',    label: 'This week', tone: 'var(--success)', match: t => {
+        if (!t.due_date || t.due_date <= TODAY) return false;
+        return (Date.parse(t.due_date) - Date.parse(TODAY)) <= 7 * 86400000;
+      } },
+      { key: 'later',   label: 'Later',     tone: 'var(--st-todo)', match: t => {
+        if (!t.due_date || t.due_date <= TODAY) return false;
+        return (Date.parse(t.due_date) - Date.parse(TODAY)) > 7 * 86400000;
+      } },
+      { key: 'nodate',  label: 'No date',   tone: 'var(--muted)',   match: t => !t.due_date },
+    ],
+  },
+  none: { label: 'None', groups: () => [] },
+};
+
+const TASK_SORTS = {
+  due:      { label: 'Due date', cmp: (a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999') },
+  // High first: a priority sort that buries High under Low is not a sort
+  // anyone asked for.
+  priority: { label: 'Priority', cmp: (a, b) => (['high', 'medium', 'low'].indexOf(a.priority) + 3) % 3 - (['high', 'medium', 'low'].indexOf(b.priority) + 3) % 3 },
+  created:  { label: 'Newest',   cmp: (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) },
+  title:    { label: 'Title',    cmp: (a, b) => String(a.title || '').localeCompare(String(b.title || '')) },
+};
+
+// Title carries the row's identity and Actions its verbs; hiding either
+// leaves a row you cannot read or cannot act on, so neither is offered.
+const TASK_COLS = [
+  { key: 'id',        label: 'ID' },
+  { key: 'title',     label: 'Title',     locked: true },
+  { key: 'channel',   label: 'Channel' },
+  { key: 'assignee',  label: 'Assignee' },
+  { key: 'due',       label: 'Due Date' },
+  { key: 'priority',  label: 'Priority' },
+  { key: 'status',    label: 'Status' },
+  { key: 'milestone', label: 'Milestone' },
+  { key: 'created',   label: 'Created' },
+  { key: 'completed', label: 'Completed' },
+];
+
+let _taskGroupBy = 'status';
+let _taskSort = 'due';
+let _taskColsHidden = [];
+try {
+  _taskGroupBy = localStorage.getItem('ml_task_group') || 'status';
+  _taskSort = localStorage.getItem('ml_task_sort') || 'due';
+  _taskColsHidden = JSON.parse(localStorage.getItem('ml_task_cols') || '[]');
+} catch (_) {}
+if (!TASK_GROUP_BYS[_taskGroupBy]) _taskGroupBy = 'status';
+if (!TASK_SORTS[_taskSort]) _taskSort = 'due';
+if (!Array.isArray(_taskColsHidden)) _taskColsHidden = [];
+
+function visibleTaskCols() {
+  return TASK_COLS.filter(c => c.locked || !_taskColsHidden.includes(c.key));
+}
+
+// One panel open at a time, dismissed by the next click anywhere else.
+function tbarPanel(anchorEl, panelId, html) {
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  const open = panel.classList.contains('open');
+  document.querySelectorAll('.tbar-panel.open').forEach(p => p.classList.remove('open'));
+  if (open) return;
+  if (html != null) panel.innerHTML = html;
+  const r = anchorEl.getBoundingClientRect();
+  panel.style.top = (r.bottom + 6) + 'px';
+  // Keep it on screen when the button sits near the right edge.
+  panel.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 268)) + 'px';
+  panel.classList.add('open');
+  if (window.lucide) lucide.createIcons();
+  setTimeout(() => document.addEventListener('click', tbarPanelAway, { once: true }), 0);
+}
+function tbarPanelAway(e) {
+  if (e.target.closest && e.target.closest('.tbar-panel')) {
+    document.addEventListener('click', tbarPanelAway, { once: true });
+    return;
+  }
+  document.querySelectorAll('.tbar-panel.open').forEach(p => p.classList.remove('open'));
+}
+
+function openTaskFilter(e) { e.stopPropagation(); tbarPanel(e.currentTarget, 'task-filter-panel', null); }
+
+function openTaskGroup(e) {
+  e.stopPropagation();
+  document.querySelectorAll('.tbar-panel.open').forEach(p => p.classList.remove('open'));
+  window.brandMenu(e.currentTarget, Object.entries(TASK_GROUP_BYS).map(([k, g]) =>
+    ({ key: k, label: g.label, selected: k === _taskGroupBy })), key => {
+    _taskGroupBy = key;
+    try { localStorage.setItem('ml_task_group', key); } catch (_) {}
+    filterTasks();
+  });
+}
+
+function openTaskSort(e) {
+  e.stopPropagation();
+  document.querySelectorAll('.tbar-panel.open').forEach(p => p.classList.remove('open'));
+  window.brandMenu(e.currentTarget, Object.entries(TASK_SORTS).map(([k, v]) =>
+    ({ key: k, label: v.label, selected: k === _taskSort })), key => {
+    _taskSort = key;
+    try { localStorage.setItem('ml_task_sort', key); } catch (_) {}
+    filterTasks();
+  });
+}
+
+function openTaskCols(e) {
+  e.stopPropagation();
+  tbarPanel(e.currentTarget, 'task-cols-panel', `
+    <div class="tbar-panel-title">Columns in Table view</div>
+    ${TASK_COLS.map(c => `<label class="tbar-check">
+      <input type="checkbox" ${c.locked || !_taskColsHidden.includes(c.key) ? 'checked' : ''}
+             ${c.locked ? 'disabled' : ''} onchange="toggleTaskCol('${c.key}', this.checked)">
+      <span>${esc(c.label)}</span>${c.locked ? '<em>always</em>' : ''}
+    </label>`).join('')}`);
+}
+
+function toggleTaskCol(key, on) {
+  _taskColsHidden = on ? _taskColsHidden.filter(k => k !== key) : [...new Set([..._taskColsHidden, key])];
+  try { localStorage.setItem('ml_task_cols', JSON.stringify(_taskColsHidden)); } catch (_) {}
+  filterTasks();
+}
+
+function clearTaskFilters() {
+  ['f-status', 'f-priority', 'f-channel'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const s = document.getElementById('search'); if (s) s.value = '';
+  filterTasks();
+}
+
+function removeTaskFilter(id) {
+  const el = document.getElementById(id); if (el) el.value = '';
+  filterTasks();
+}
+
+// The toolbar has to say what it is doing, or the state it holds is
+// invisible until the list surprises you.
+function paintTaskToolbar() {
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  set('task-group-label', 'Group: ' + TASK_GROUP_BYS[_taskGroupBy].label);
+  set('task-sort-label', 'Sort: ' + TASK_SORTS[_taskSort].label);
+  const on = (id, active) => { const el = document.getElementById(id); if (el) el.classList.toggle('on', active); };
+  on('task-group-btn', _taskGroupBy !== 'status');
+  on('task-sort-btn', _taskSort !== 'due');
+  on('task-cols-btn', _taskColsHidden.length > 0);
+
+  const chips = [];
+  const label = { 'f-status': 'Status', 'f-priority': 'Priority', 'f-channel': 'Channel' };
+  Object.keys(label).forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value) {
+      const text = el.options[el.selectedIndex].text;
+      chips.push(`<button class="filter-chip" onclick="removeTaskFilter('${id}')">
+        ${label[id]}: ${esc(text)} <span aria-hidden="true">&times;</span></button>`);
+    }
+  });
+  on('task-filter-btn', chips.length > 0);
+  set('task-filter-label', chips.length ? `Filter · ${chips.length}` : 'Filter');
+  const box = document.getElementById('task-filter-chips');
+  if (box) { box.style.display = chips.length ? 'flex' : 'none'; box.innerHTML = chips.join(''); }
+}
+
 function filterTasks() {
   const search   = document.getElementById('search').value.toLowerCase();
   const status   = document.getElementById('f-status').value;
@@ -813,6 +1006,8 @@ function filterTasks() {
     return true;
   });
 
+  filtered.sort(TASK_SORTS[_taskSort].cmp);
+  paintTaskToolbar();
   renderTable(filtered);
 }
 
@@ -913,37 +1108,47 @@ function renderTaskCalendar(tasks, container) {
 
 function renderTaskTable(tasks) {
   const container = document.getElementById('table-container');
-  const rows = tasks.map(t => {
+  // Header and body are generated from one list. mobile.js turns a table
+  // into cards by mapping heads[i] onto cell[i], so a column hidden in one
+  // and not the other would relabel every cell after it on a phone.
+  const cols = visibleTaskCols();
+  const cell = (t, key) => {
     const overdue = isOverdue(t.due_date, t.status);
-    const soon    = !overdue && isDueSoon(t.due_date, t.status);
-    const dueCls  = overdue ? 'overdue' : (soon ? 'due-soon' : '');
-    const dueLabel = overdue ? `${t.due_date}` : t.due_date;
-    const createdDate = new Date(t.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-
-    const isDone = t.status === 'done';
-    return `<tr id="row-${t.id}">
-      <td style="width:32px"><input type="checkbox" class="row-cb task-cb" data-id="${t.id}" onchange="onRowCheck()"></td>
-      <td class="task-id">#${t.id}</td>
-      <td>
+    const soon = !overdue && isDueSoon(t.due_date, t.status);
+    const day = d => d ? new Date(d).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+    switch (key) {
+      case 'id': return `<td class="task-id">#${t.id}</td>`;
+      case 'title': return `<td>
         <div class="task-title">${esc(t.title)}${taskClip(t)}</div>
         ${t.description ? `<div class="task-desc" title="${esc(t.description)}">${esc(t.description)}</div>` : ''}
-      </td>
-      <td class="channel-tag">${esc(t.channel_name)}</td>
-      <td class="assignee-id">${resolvedNames(t)}</td>
-      <td class="due-date ${dueCls}">${dueLabel}</td>
-      <td>${priorityBadge(t.priority)}</td>
-      <td>${statusBadge(t.status)}</td>
-      <td>${t.milestone ? `<span class="milestone-tag">${esc(t.milestone)}</span>` : `<span style="color:var(--muted)">—</span>`}</td>
-      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${createdDate}</td>
-      <td style="font-size:12px;white-space:nowrap">${t.completed_at ? `<span style="color:var(--success)">${new Date(t.completed_at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}</span>` : `<span style="color:var(--muted)">—</span>`}</td>
+      </td>`;
+      case 'channel': return `<td class="channel-tag">${esc(t.channel_name)}</td>`;
+      case 'assignee': return `<td class="assignee-id">${resolvedNames(t)}</td>`;
+      case 'due': return `<td class="due-date ${overdue ? 'overdue' : (soon ? 'due-soon' : '')}"
+        title="${esc(t.due_date || '')}">${taskDueLabel(t.due_date, t.status)}</td>`;
+      case 'priority': return `<td>${priorityBadge(t.priority)}</td>`;
+      case 'status': return `<td>${statusBadge(t.status)}</td>`;
+      case 'milestone': return `<td>${t.milestone
+        ? `<span class="milestone-tag">${esc(t.milestone)}</span>`
+        : '<span style="color:var(--muted)">—</span>'}</td>`;
+      case 'created': return `<td style="font-size:12px;color:var(--muted);white-space:nowrap">${day(t.created_at)}</td>`;
+      case 'completed': return `<td style="font-size:12px;white-space:nowrap">${t.completed_at
+        ? `<span style="color:var(--success)">${day(t.completed_at)}</span>`
+        : '<span style="color:var(--muted)">—</span>'}</td>`;
+      default: return '<td></td>';
+    }
+  };
+
+  const rows = tasks.map(t => `<tr id="row-${t.id}">
+      <td style="width:32px"><input type="checkbox" class="row-cb task-cb" data-id="${t.id}" onchange="onRowCheck()"></td>
+      ${cols.map(c => cell(t, c.key)).join('')}
       <td style="white-space:nowrap">
-        ${isDone ? '' : `<button class="btn btn-success" style="padding:4px 10px;font-size:11px" onclick="quickDone(${t.id})">Done</button> `}
+        ${t.status === 'done' ? '' : `<button class="btn btn-success" style="padding:4px 10px;font-size:11px" onclick="quickDone(${t.id})">Done</button> `}
         <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openTaskModal(${t.id})">Edit</button>
         <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="openTaskComments(${t.id})" title="Comments"><i data-lucide="message-square" style="width:13px;height:13px"></i></button>
         <button class="btn btn-danger"  style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteTask(${t.id})">Delete</button>
       </td>
-    </tr>`;
-  }).join('');
+    </tr>`).join('');
 
   container.innerHTML = `
     <div class="table-scroll">
@@ -951,23 +1156,13 @@ function renderTaskTable(tasks) {
         <thead>
           <tr>
             <th style="width:32px"><input type="checkbox" class="row-cb" id="cb-all" onchange="toggleSelectAll(this)"></th>
-            <th>ID</th>
-            <th>Title</th>
-            <th>Channel</th>
-            <th>Assignee</th>
-            <th>Due Date</th>
-            <th>Priority</th>
-            <th>Status</th>
-            <th>Milestone</th>
-            <th>Created</th>
-            <th>Completed</th>
+            ${cols.map(c => `<th>${esc(c.label)}</th>`).join('')}
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
-
 }
 
 // ── Task views ────────────────────────────────────────────────────────────────
@@ -1004,8 +1199,13 @@ function setTaskDensity(d) {
   try { localStorage.setItem('ml_task_density', _taskDensity); } catch (_) {}
   filterTasks();
 }
+// The renderer reads "open unless explicitly false", so the toggle has to
+// use the same rule. Flipping !undefined yielded true — open — which made
+// the first click on any group that was not in the seed map do nothing.
+function taskGroupIsOpen(key) { return _taskGroupOpen[key] !== false; }
+
 function toggleTaskGroup(key) {
-  _taskGroupOpen[key] = !_taskGroupOpen[key];
+  _taskGroupOpen[key] = !taskGroupIsOpen(key);
   try { localStorage.setItem('ml_task_groups', JSON.stringify(_taskGroupOpen)); } catch (_) {}
   filterTasks();
 }
@@ -1211,14 +1411,21 @@ async function tdMarkDone(id) {
 
 function renderTaskList(tasks, container) {
   const total = tasks.length || 1;
-  container.innerHTML = TASK_GROUPS.map(g => {
-    const rows = tasks.filter(t => t.status === g.key);
+  const groups = TASK_GROUP_BYS[_taskGroupBy].groups(tasks);
+  // "None" is a real answer: a flat list, no headers to skim past.
+  if (!groups.length) {
+    container.innerHTML = `<section class="task-group"><div class="task-group-body">${
+      tasks.map(taskRowHtml).join('') || '<div class="task-group-none">Nothing here</div>'}</div></section>`;
+    return;
+  }
+  container.innerHTML = groups.map(g => {
+    const rows = tasks.filter(g.match);
     const pct = Math.round((rows.length / total) * 100);
-    const open = _taskGroupOpen[g.key] !== false;
+    const open = taskGroupIsOpen(g.key);
     return `<section class="task-group" style="--c:${g.tone}">
       <button class="task-group-head" onclick="toggleTaskGroup('${g.key}')" aria-expanded="${open}">
         <i data-lucide="chevron-down" class="task-group-chev${open ? '' : ' shut'}"></i>
-        <span class="badge badge-${g.key}">${g.label}</span>
+        <span class="task-group-tag">${esc(g.label)}</span>
         <span class="task-group-n num">${rows.length}</span>
         <span class="task-group-share"><i style="width:${pct}%"></i></span>
         <span class="task-group-pct num">${pct}%</span>
@@ -1387,6 +1594,17 @@ function resolvedName(id) {
   }
   return `<span class="assignee-id">${esc(id)}</span>`;
 }
+// Plain text, for grouping and comparison. resolvedNames() is the HTML one.
+function taskAssigneeLabel(t) {
+  const list = Array.isArray(t.assignee_ids) && t.assignee_ids.length
+    ? t.assignee_ids : (t.assignee_id ? [t.assignee_id] : []);
+  const names = [...new Set(list.map(String))].map(id => {
+    const e = (employeesForTasks || []).find(x => String(x.id) === String(id));
+    return e ? e.name : '#' + id;
+  });
+  return names.join(', ') || 'Unassigned';
+}
+
 // Render every assignee of a task (multi-assignee aware)
 function resolvedNames(t) {
   const list = Array.isArray(t.assignee_ids) && t.assignee_ids.length ? t.assignee_ids : (t.assignee_id ? [t.assignee_id] : []);

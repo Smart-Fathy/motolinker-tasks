@@ -22,10 +22,10 @@
     if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=112">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=113">
   <!-- Shared with the team portal. Last on purpose: several mobile rules were being
        beaten by later same-specificity rules in the sheet above. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=112">
+  <link rel="stylesheet" href="/assets/mobile.css?v=113">
 </head>
 <body>
 
@@ -277,26 +277,10 @@
           <button class="btn btn-primary" onclick="openTaskModal()" style="margin-right:4px">+ Add Task</button>
           <button class="btn btn-outline"  onclick="openRecurringTasksModal()" style="margin-right:4px"><i data-lucide="repeat" style="width:14px;height:14px;vertical-align:-2px"></i> Recurring</button>
           <button class="btn btn-outline"  onclick="openCSVModal()"  style="margin-right:4px">CSV Upload</button>
-          <input  type="text"   id="search"         class="filter-input search-input" placeholder="Search title or description…" oninput="filterTasks()">
-          <select id="f-status"   class="filter-input" onchange="filterTasks()">
-            <option value="">All Status</option>
-            <option value="todo">To Do</option>
-            <option value="in_progress">In Progress</option>
-            <option value="done">Done</option>
-          </select>
-          <select id="f-priority" class="filter-input" onchange="filterTasks()">
-            <option value="">All Priority</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
-          <select id="f-channel"  class="filter-input" onchange="filterTasks()">
-            <option value="">All Channels</option>
-          </select>
         </div>
       </div>
-      <!-- One set of tasks, three shapes. Both controls change real state and
-           persist; neither is decoration. -->
+      <!-- One set of tasks, four shapes. Every control here changes real
+           state and persists; none is decoration. -->
       <div class="task-toolbar">
         <div class="task-views" role="tablist" aria-label="Task view">
           <button class="task-view-tab active" data-view="list"  onclick="setTaskView('list')"><i data-lucide="list"></i> List</button>
@@ -304,11 +288,63 @@
           <button class="task-view-tab"        data-view="table" onclick="setTaskView('table')"><i data-lucide="table"></i> Table</button>
           <button class="task-view-tab"        data-view="calendar" onclick="setTaskView('calendar')"><i data-lucide="calendar"></i> Calendar</button>
         </div>
+      </div>
+
+      <!-- Search, then the four things you do to a list: narrow it, group it,
+           order it, choose what it shows. The three dropdowns that used to
+           sit in the table header now live inside Filter — same elements,
+           same filterTasks(), one control instead of three. -->
+      <div class="task-controls">
+        <div class="task-search">
+          <i data-lucide="search"></i>
+          <input type="text" id="search" placeholder="Search tasks…" oninput="filterTasks()">
+        </div>
+        <button class="tbar-btn" id="task-filter-btn" onclick="openTaskFilter(event)">
+          <i data-lucide="filter"></i> <span id="task-filter-label">Filter</span>
+        </button>
+        <button class="tbar-btn" id="task-group-btn" onclick="openTaskGroup(event)">
+          <i data-lucide="rows-3"></i> <span id="task-group-label">Group: Status</span>
+        </button>
+        <button class="tbar-btn" id="task-sort-btn" onclick="openTaskSort(event)">
+          <i data-lucide="arrow-up-down"></i> <span id="task-sort-label">Sort: Due date</span>
+        </button>
+        <button class="tbar-btn" id="task-cols-btn" onclick="openTaskCols(event)">
+          <i data-lucide="columns-3"></i> Columns
+        </button>
         <div class="task-dens" role="group" aria-label="Row density">
           <button class="task-dens-btn active" data-dens="comfortable" onclick="setTaskDensity('comfortable')">Comfortable</button>
           <button class="task-dens-btn"        data-dens="compact"     onclick="setTaskDensity('compact')">Compact</button>
         </div>
       </div>
+      <div id="task-filter-chips" class="tbar-chips" style="display:none"></div>
+
+      <!-- The three filter selects, unchanged and still read by filterTasks();
+           they moved inside the popover rather than being rebuilt. -->
+      <div id="task-filter-panel" class="tbar-panel">
+        <label class="tbar-field"><span>Status</span>
+          <select id="f-status" class="filter-input" onchange="filterTasks()">
+            <option value="">All Status</option>
+            <option value="todo">To Do</option>
+            <option value="in_progress">In Progress</option>
+            <option value="done">Done</option>
+          </select>
+        </label>
+        <label class="tbar-field"><span>Priority</span>
+          <select id="f-priority" class="filter-input" onchange="filterTasks()">
+            <option value="">All Priority</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </label>
+        <label class="tbar-field"><span>Channel</span>
+          <select id="f-channel" class="filter-input" onchange="filterTasks()">
+            <option value="">All Channels</option>
+          </select>
+        </label>
+        <button class="tbar-clear" onclick="clearTaskFilters()">Clear all</button>
+      </div>
+      <div id="task-cols-panel" class="tbar-panel"></div>
       <div id="bulk-bar" class="bulk-bar">
         <span id="bulk-count">0 selected</span>
         <button class="btn btn-success" style="padding:5px 14px;font-size:12px" onclick="bulkMarkDone()">Mark Done</button>
@@ -1454,19 +1490,19 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
-<script src="/assets/mobile.js?v=112"></script>
-<script src="/assets/columns.js?v=112"></script>
-<script src="/assets/client-folder.js?v=112"></script>
-<script src="/assets/lead-filters.js?v=112"></script>
-<script src="/assets/chat-extras.js?v=112"></script>
-<script src="/assets/home.js?v=112"></script>
-<script src="/assets/huddle.js?v=112"></script>
-<script src="/assets/procurement.js?v=112"></script>
-<script src="/assets/quote.js?v=112"></script>
-<script src="/assets/meetings.js?v=112"></script>
-<script src="/assets/calendar.js?v=112"></script>
-<script src="/assets/availability.js?v=112"></script>
-<script src="/assets/dashboard.js?v=112"></script>
+<script src="/assets/mobile.js?v=113"></script>
+<script src="/assets/columns.js?v=113"></script>
+<script src="/assets/client-folder.js?v=113"></script>
+<script src="/assets/lead-filters.js?v=113"></script>
+<script src="/assets/chat-extras.js?v=113"></script>
+<script src="/assets/home.js?v=113"></script>
+<script src="/assets/huddle.js?v=113"></script>
+<script src="/assets/procurement.js?v=113"></script>
+<script src="/assets/quote.js?v=113"></script>
+<script src="/assets/meetings.js?v=113"></script>
+<script src="/assets/calendar.js?v=113"></script>
+<script src="/assets/availability.js?v=113"></script>
+<script src="/assets/dashboard.js?v=113"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
@@ -1499,6 +1535,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=112"></script>
+<script src="/help-docs.js?v=113"></script>
 </body>
 </html>

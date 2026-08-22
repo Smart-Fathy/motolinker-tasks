@@ -2536,3 +2536,82 @@
   .btn-deny{ background:rgba(239,68,68,.1); color:var(--danger); border:1px solid rgba(239,68,68,.32); }
   .btn-deny:hover{ background:rgba(239,68,68,.18); }
   @media (max-width:640px){ .btn-approve, .btn-deny{ min-height:44px; } }
+
+  /* ── Tasks toolbar ────────────────────────────────────────────────────
+   * Search, then the four things you do to a list: narrow it, group it,
+   * order it, choose what it shows. Button geometry is the design's
+   * toolbarBtn; the gold state is its toolbarBtnActive, and it means
+   * "this control is holding state", not "hovered". */
+  .task-controls{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    padding:12px 20px; border-bottom:1px solid var(--border);
+  }
+  .task-search{
+    display:flex; align-items:center; gap:8px; flex:0 1 260px; min-width:0;
+    background:var(--bg); border:1px solid var(--border); border-radius:9px; padding:0 10px;
+  }
+  .task-search i, .task-search svg{ width:14px; height:14px; color:var(--muted); flex-shrink:0; }
+  .task-search input{
+    flex:1; min-width:0; background:none; border:none; outline:none; color:var(--text);
+    font-family:inherit; font-size:12.5px; padding:8px 0;
+  }
+  .tbar-btn{
+    display:inline-flex; align-items:center; gap:7px; padding:7px 12px; border-radius:9px;
+    font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;
+    background:var(--surface); color:var(--muted); border:1px solid var(--border);
+  }
+  .tbar-btn i, .tbar-btn svg{ width:14px; height:14px; }
+  .tbar-btn:hover{ color:var(--text); border-color:rgba(201,163,94,.35); }
+  .tbar-btn.on{
+    font-weight:700; background:rgba(201,163,94,.12); color:var(--gold);
+    border-color:rgba(201,163,94,.4);
+  }
+  .task-controls .task-dens{ margin-left:auto; }
+
+  .tbar-chips{ display:flex; gap:6px; flex-wrap:wrap; padding:10px 20px 0; }
+
+  .tbar-panel{
+    position:fixed; z-index:10060; display:none;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 8px 32px rgba(0,0,0,.55); padding:10px; min-width:230px; max-height:70vh; overflow-y:auto;
+  }
+  .tbar-panel.open{ display:block; }
+  .tbar-panel-title{
+    font-size:10.5px; font-weight:800; letter-spacing:.7px; text-transform:uppercase;
+    color:var(--muted); padding:2px 4px 8px;
+  }
+  .tbar-field{ display:block; margin-bottom:9px; }
+  .tbar-field span{
+    display:block; font-size:10.5px; font-weight:800; letter-spacing:.6px;
+    text-transform:uppercase; color:var(--muted); margin-bottom:4px;
+  }
+  .tbar-field select{ width:100%; }
+  .tbar-clear{
+    width:100%; margin-top:2px; padding:8px; background:none; border:1px solid var(--border);
+    border-radius:var(--r-sm); color:var(--muted); font-family:inherit; font-size:12px;
+    font-weight:600; cursor:pointer;
+  }
+  .tbar-clear:hover{ color:var(--gold); border-color:rgba(201,163,94,.4); }
+  .tbar-check{ display:flex; align-items:center; gap:9px; padding:6px 4px; font-size:12.5px; cursor:pointer; }
+  .tbar-check input{ flex-shrink:0; }
+  .tbar-check em{ margin-left:auto; font-style:normal; font-size:10.5px; color:var(--muted); }
+  .tbar-check input:disabled ~ span{ color:var(--muted); }
+
+  /* One pill for every grouping. Status used .badge-todo and friends, which
+   * left "High", "Overdue" and a person's name with no rule at all. */
+  .task-group-tag{
+    display:inline-flex; align-items:center; padding:3px 10px; border-radius:var(--r-pill);
+    font-size:11px; font-weight:700; white-space:nowrap;
+    background:color-mix(in srgb, var(--c) 12%, transparent);
+    color:var(--c); border:1px solid color-mix(in srgb, var(--c) 26%, transparent);
+  }
+
+  @media (max-width:640px){
+    .task-controls{ padding:10px 14px; }
+    .task-search{ flex:1 1 100%; }
+    .task-search input{ font-size:16px; }
+    .tbar-btn{ min-height:44px; }
+    .task-controls .task-dens{ margin-left:0; }
+    .tbar-panel{ left:8px !important; right:8px; min-width:0; }
+    .tbar-check{ min-height:44px; }
+  }
