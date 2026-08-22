@@ -2615,3 +2615,115 @@
     .tbar-panel{ left:8px !important; right:8px; min-width:0; }
     .tbar-check{ min-height:44px; }
   }
+
+  /* ── Reports ──────────────────────────────────────────────────────────
+   * Four of these panels used to be Chart.js canvases. They are DOM now
+   * because every one of them is a labelled magnitude — a bar with its
+   * name and number beside it — and that is markup, not a plot. The two
+   * donuts stay circular because a part-of-whole read is what a ring is
+   * for; they are inline SVG so the segment gaps are real.
+   *
+   * On colour: the stage and lead-status palettes here are the brand's
+   * status colours, not a categorical scale — Hot is red and Won is green
+   * because of what they mean. Run through the palette validator they fail
+   * CVD separation (Quoted #5a78c8 vs Inquiry #7c6aff is ΔE 10.3 even for
+   * normal vision), so colour is never the only encoding: every bar and
+   * every legend row carries its label and its number as text, and the
+   * donut arcs are separated by a real gap in the ring rather than relying
+   * on hue change alone. */
+  .range-chips{ display:inline-flex; gap:2px; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:2px; }
+  .range-chip{
+    padding:6px 11px; border:none; background:none; border-radius:7px;
+    font-family:inherit; font-size:12px; font-weight:600; color:var(--muted); cursor:pointer; white-space:nowrap;
+  }
+  .range-chip:hover{ color:var(--text); }
+  .range-chip.active{ background:rgba(201,163,94,.14); color:var(--gold); font-weight:700; }
+
+  .kpi-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
+  .kpi-tile{
+    background:linear-gradient(160deg, color-mix(in srgb, var(--c) 11%, transparent), rgba(20,20,22,0) 62%);
+    border:1px solid var(--border); border-radius:var(--r-lg); padding:14px 15px 13px; min-width:0;
+  }
+  .kpi-label{
+    display:inline-flex; align-items:center; padding:3px 9px; border-radius:var(--r-pill);
+    font-size:10px; font-weight:800; letter-spacing:.6px; text-transform:uppercase;
+    background:color-mix(in srgb, var(--c) 14%, transparent); color:var(--c);
+  }
+  .kpi-value{
+    font-size:24px; font-weight:800; letter-spacing:-.03em; margin:10px 0 0;
+    font-variant-numeric:tabular-nums lining-nums; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .kpi-share{ display:flex; align-items:center; gap:8px; margin-top:9px; }
+  .kpi-track{ flex:1; height:3px; background:rgba(255,255,255,.07); border-radius:var(--r-pill); overflow:hidden; }
+  .kpi-track i{ display:block; height:100%; background:var(--c); border-radius:var(--r-pill); }
+  .kpi-pct{ font-size:10.5px; font-weight:800; color:var(--c); }
+  .kpi-sub{ font-size:11px; color:var(--muted); margin-top:7px; }
+
+  .rep-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px; }
+  .rep-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:16px 16px 14px; min-width:0; }
+  .rep-card-head{ display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; margin-bottom:14px; }
+  .rep-card-head h3{ font-family:'Cormorant Garamond',serif; font-size:19px; font-weight:600; margin:0; letter-spacing:.3px; }
+  .rep-card-head span{ font-size:11.5px; color:var(--muted); }
+  .rep-csv{
+    margin-left:auto; padding:3px 9px; background:none; border:1px solid var(--border);
+    border-radius:var(--r-xs); color:var(--muted); font-family:inherit; font-size:10.5px; font-weight:700; cursor:pointer;
+  }
+  .rep-csv:hover{ color:var(--gold); border-color:rgba(201,163,94,.4); }
+  .rep-empty{ padding:22px; text-align:center; color:var(--muted); font-size:12.5px; }
+
+  /* A row is: dot, name, count, value, then the bar underneath it —
+   * the label reads first, the bar qualifies it. */
+  .rep-row{ display:grid; grid-template-columns:auto 1fr auto auto; align-items:center; gap:8px; margin-bottom:13px; }
+  .rep-row:last-child{ margin-bottom:0; }
+  .rep-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .rep-name{ font-size:12.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .rep-meta{ font-size:11px; color:var(--muted); white-space:nowrap; }
+  .rep-val{ font-size:12.5px; font-weight:800; white-space:nowrap; font-variant-numeric:tabular-nums lining-nums; }
+  .rep-track{ grid-column:1/-1; height:4px; background:rgba(255,255,255,.06); border-radius:var(--r-pill); overflow:hidden; }
+  .rep-track i{ display:block; height:100%; background:var(--gold); border-radius:var(--r-pill); }
+  .rep-row.rank{ grid-template-columns:auto 1fr auto; }
+
+  .rep-months{ display:flex; align-items:flex-end; gap:10px; min-height:150px; }
+  .rep-month{ flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .rep-month-v{ font-size:11px; font-weight:800; color:var(--text); }
+  .rep-month-bar{ width:100%; max-width:44px; height:104px; display:flex; align-items:flex-end; }
+  .rep-month-bar i{ display:block; width:100%; background:var(--gold); border-radius:5px 5px 0 0; }
+  .rep-month-l{ font-size:10.5px; color:var(--muted); }
+
+  .donut-wrap{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  .donut-box{ position:relative; width:140px; height:140px; flex-shrink:0; }
+  .donut{ width:140px; height:140px; display:block; }
+  .donut-seg{ transition:opacity .15s; }
+  .donut-seg:hover{ opacity:.75; }
+  .donut-centre{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; pointer-events:none;
+  }
+  .donut-n{ font-size:22px; font-weight:800; letter-spacing:-.02em; }
+  .donut-cap{ font-size:9.5px; font-weight:800; letter-spacing:.8px; text-transform:uppercase; color:var(--muted); }
+  .donut-legend{ list-style:none; margin:0; padding:0; flex:1; min-width:150px; }
+  .donut-legend li{ display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px; }
+  .donut-legend i{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .donut-legend span{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); }
+  .donut-legend b{ font-weight:800; font-variant-numeric:tabular-nums; }
+  .donut-legend em{ font-style:normal; font-size:11px; color:var(--muted); min-width:32px; text-align:right; }
+
+  @media (max-width:640px){
+    .kpi-row{ grid-template-columns:1fr 1fr; }
+    .rep-grid{ grid-template-columns:1fr; }
+    .range-chips{ width:100%; overflow-x:auto; }
+    .range-chip{ min-height:44px; }
+    .donut-wrap{ justify-content:center; }
+  }
+
+  /* Breakdown row: the bar sits behind the label rather than beside it, so
+   * the table stays a table and still reads as a ranking. The swatch
+   * repeats the row's colour next to its name, because the fill alone is
+   * a status hue and those are too close to identify unaided. */
+  .lr-bar-cell{ position:relative; min-width:110px; padding:2px 0; }
+  .lr-bar-cell i{
+    position:absolute; left:0; top:0; bottom:0; display:block;
+    opacity:.18; border-radius:3px;
+  }
+  .lr-bar-cell span{ position:relative; display:inline-flex; align-items:center; gap:7px; }
+  .lr-bar-cell b{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }

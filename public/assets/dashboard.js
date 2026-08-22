@@ -272,10 +272,40 @@ function renderCharts(s) {
 // ── Reports / Sales Analytics ──────────────────────────────────────────────────
 let _reportData = null;
 function repDateDefaults() {
+  // "All time" means no bounds. Refilling an empty date with the 90-day
+  // default here made that chip a lie: it read All time and queried 90 days.
+  if (_repRange === 'all') return;
   const to = document.getElementById('rep-to'), from = document.getElementById('rep-from');
   if (to && !to.value) to.value = new Date().toISOString().slice(0, 10);
   if (from && !from.value) from.value = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
 }
+// The chips write the same two inputs repQuery() already reads, so the
+// range is one mechanism, not two that can disagree.
+let _repRange = 90;
+function repSetRange(v) {
+  _repRange = v;
+  const to = document.getElementById('rep-to'), from = document.getElementById('rep-from');
+  const today = new Date();
+  if (to) to.value = today.toISOString().slice(0, 10);
+  if (from) {
+    if (v === 'all') from.value = '';
+    else if (v === 'ytd') from.value = new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10);
+    else from.value = new Date(Date.now() - v * 86400000).toISOString().slice(0, 10);
+  }
+  if (v === 'all' && to) to.value = '';
+  paintRepRanges();
+  loadReports();
+}
+function paintRepRanges() {
+  document.querySelectorAll('#rep-ranges .range-chip').forEach(b =>
+    b.classList.toggle('active', String(b.dataset.days) === String(_repRange)));
+  const btn = document.getElementById('rep-custom-btn');
+  if (btn) btn.classList.toggle('on', _repRange === 'custom');
+}
+// Editing a date by hand means the chips no longer describe what is shown.
+function repCustomChanged() { _repRange = 'custom'; paintRepRanges(); loadReports(); }
+function openRepCustom(e) { e.stopPropagation(); tbarPanel(e.currentTarget, 'rep-custom-panel', null); }
+
 function repQuery() {
   const p = new URLSearchParams();
   const f = document.getElementById('rep-from')?.value, t = document.getElementById('rep-to')?.value, s = document.getElementById('rep-source')?.value;
@@ -301,45 +331,149 @@ async function loadReports() {
 }
 function egp(n) { return (Number(n) || 0).toLocaleString() + ' EGP'; }
 function renderReportStats(s) {
-  document.getElementById('reports-stats').innerHTML = `
-    <div class="stat-card total"><div class="stat-label">Open Pipeline</div><div class="stat-value" style="font-size:22px">${egp(s.totalPipeline)}</div><div class="stat-sub">${s.range.from} → ${s.range.to}</div></div>
-    <div class="stat-card in-progress"><div class="stat-label">Weighted Pipeline</div><div class="stat-value" style="font-size:22px">${egp(s.weightedPipeline)}</div><div class="stat-sub">Probability-adjusted</div></div>
-    <div class="stat-card done"><div class="stat-label">Revenue Won</div><div class="stat-value" style="font-size:22px">${egp(s.revenueWon)}</div><div class="stat-sub">${s.wonCount} deal${s.wonCount === 1 ? '' : 's'}</div></div>
-    <div class="stat-card high-pri"><div class="stat-label">Win Rate</div><div class="stat-value">${s.winRate}%</div><div class="stat-sub">Won vs lost</div></div>
-    <div class="stat-card todo"><div class="stat-label">Avg Deal</div><div class="stat-value" style="font-size:22px">${egp(s.avgDeal)}</div><div class="stat-sub">Per won deal</div></div>
-    <div class="stat-card overdue"><div class="stat-label">Quotes Generated</div><div class="stat-value">${s.quotesCount}</div><div class="stat-sub">In range</div></div>`;
+  // Each tile earns its wash from what it measures, and carries a share bar
+  // so the number has a denominator instead of floating alone.
+  // Every stage's value, won and lost included — the same total the funnel
+  // panel below is drawn from, so the two cannot contradict each other.
+  const totalValue = (s.funnel || []).reduce((a, f) => a + (Number(f.value) || 0), 0)
+    || ((Number(s.totalPipeline) || 0) + (Number(s.revenueWon) || 0));
+  const pct = (a, b) => (Number(b) ? Math.round((Number(a) / Number(b)) * 100) : 0);
+  const tiles = [
+    { label: 'Open pipeline',   value: egp(s.totalPipeline),      c: 'var(--gold)',     share: pct(s.totalPipeline, totalValue), sub: 'of all deal value' },
+    { label: 'Weighted pipeline', value: egp(s.weightedPipeline), c: 'var(--st-todo)',  share: pct(s.weightedPipeline, s.totalPipeline), sub: 'of open pipeline · probability-adjusted' },
+    { label: 'Revenue won',     value: egp(s.revenueWon),         c: 'var(--success)',  share: pct(s.revenueWon, totalValue), sub: `${s.wonCount} deal${s.wonCount === 1 ? '' : 's'}` },
+    { label: 'Win rate',        value: s.winRate + '%',           c: 'var(--st-progress)', share: Number(s.winRate) || 0, sub: 'closed deals won' },
+    { label: 'Avg deal',        value: egp(s.avgDeal),            c: 'var(--gold)',     share: null, sub: 'per won deal' },
+    { label: 'Quotes generated', value: String(s.quotesCount),    c: 'var(--stage-inquiry)', share: null, sub: 'in range' },
+  ];
+  document.getElementById('reports-stats').innerHTML = tiles.map(t => `
+    <div class="kpi-tile" style="--c:${t.c}">
+      <span class="kpi-label">${esc(t.label)}</span>
+      <div class="kpi-value num">${esc(t.value)}</div>
+      ${t.share != null ? `<div class="kpi-share">
+        <span class="kpi-track"><i style="width:${Math.max(0, Math.min(100, t.share))}%"></i></span>
+        <span class="kpi-pct num">${t.share}%</span>
+      </div>` : ''}
+      <div class="kpi-sub">${esc(t.sub)}</div>
+    </div>`).join('');
 }
+
+// Origin labels come from the column engine when it is loaded, because that
+// list is user-configurable; AM_ORIGINS is the same set for when Reports is
+// opened without ever visiting Leads.
+function sourceLabel(key) {
+  if (!key) return '—';
+  const col = (typeof leadCol === 'function' ? leadCol('source') : null);
+  const hit = (col && col.options || []).find(o => o.key === key);
+  if (hit) return hit.label || key;
+  const pair = (typeof AM_ORIGINS !== 'undefined' ? AM_ORIGINS : []).find(p => p[0] === key);
+  return pair ? pair[1] : key;
+}
+
+// A donut where colour is the only encoding is unreadable for anyone whose
+// vision separates these brand hues poorly — and the validator says these
+// pairs are close. So every segment is separated by a real gap in the ring,
+// and the legend beside it names each slice in text with its number.
+function donutSvg(rows, centreValue, centreLabel) {
+  const total = rows.reduce((a, r) => a + r.n, 0) || 1;
+  const R = 54, C = 2 * Math.PI * R;
+  const GAP = 3; // px of circumference, so arcs never touch
+  let at = 0;
+  const arcs = rows.map(r => {
+    const len = Math.max(0, (r.n / total) * C - GAP);
+    const seg = `<circle class="donut-seg" r="${R}" cx="70" cy="70" fill="none"
+      stroke="${r.c}" stroke-width="16" stroke-dasharray="${len} ${C - len}"
+      stroke-dashoffset="${-at}" transform="rotate(-90 70 70)"><title>${esc(r.label)}: ${r.n}</title></circle>`;
+    at += (r.n / total) * C;
+    return seg;
+  }).join('');
+  return `<svg viewBox="0 0 140 140" class="donut" role="img" aria-label="${esc(centreLabel)}">
+      <circle r="${R}" cx="70" cy="70" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="16"></circle>
+      ${arcs}
+    </svg>
+    <div class="donut-centre">
+      <span class="donut-n num">${esc(String(centreValue))}</span>
+      <span class="donut-cap">${esc(centreLabel)}</span>
+    </div>`;
+}
+
+function donutLegend(rows) {
+  const total = rows.reduce((a, r) => a + r.n, 0) || 1;
+  return `<ul class="donut-legend">${rows.map(r => `<li>
+    <i style="background:${r.c}"></i><span>${esc(r.label)}</span>
+    <b class="num">${r.n}</b><em class="num">${Math.round((r.n / total) * 100)}%</em>
+  </li>`).join('')}</ul>`;
+}
+
 function renderReportCharts(s) {
-  const gold = '#e6c98a', primary = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#c99a4e';
-  // Funnel (horizontal bar)
-  if (charts.repFunnel) charts.repFunnel.destroy();
-  charts.repFunnel = new Chart(document.getElementById('repFunnel'), {
-    type: 'bar',
-    data: { labels: s.funnel.map(f => f.stage), datasets: [{ label: 'Deals', data: s.funnel.map(f => f.count), backgroundColor: primary, borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } },
-  });
-  // Revenue by month (bar)
-  if (charts.repRevenue) charts.repRevenue.destroy();
-  charts.repRevenue = new Chart(document.getElementById('repRevenue'), {
-    type: 'bar',
-    data: { labels: s.revenueByMonth.map(m => m.month), datasets: [{ label: 'Revenue (EGP)', data: s.revenueByMonth.map(m => m.value), backgroundColor: gold, borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
-  });
-  // Deals by source (doughnut)
-  if (charts.repSource) charts.repSource.destroy();
-  charts.repSource = new Chart(document.getElementById('repSource'), {
-    type: 'doughnut',
-    data: { labels: s.bySource.map(x => x.source), datasets: [{ data: s.bySource.map(x => x.deals), backgroundColor: ['#c99a4e','#f59e0b','#10b981','#3b82f6','#a855f7','#ef4444','#14b8a6','#64748b','#e6c98a'], borderWidth: 0 }] },
-    options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8 } } } },
-  });
-  // Rep leaderboard (horizontal bar, revenue won)
-  if (charts.repRep) charts.repRep.destroy();
-  charts.repRep = new Chart(document.getElementById('repRep'), {
-    type: 'bar',
-    data: { labels: s.byRep.map(x => x.rep), datasets: [{ label: 'Revenue won (EGP)', data: s.byRep.map(x => x.value), backgroundColor: gold, borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } },
-  });
+  const money = n => (Number(n) || 0).toLocaleString();
+  const shortM = n => {
+    const v = Number(n) || 0;
+    if (v >= 1e6) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (v >= 1e3) return Math.round(v / 1e3) + 'K';
+    return String(v);
+  };
+
+  // ── Pipeline funnel: one row per stage, stage-coloured, labelled ──
+  const funnel = s.funnel || [];
+  const fMax = Math.max(...funnel.map(f => Number(f.count) || 0), 1);
+  document.getElementById('rep-funnel').innerHTML = funnel.map(f => {
+    const key = String(f.stage || '').toLowerCase();
+    const c = DEAL_STAGE_HEX[key] || 'var(--muted)';
+    const txt = DEAL_STAGE_TEXT[key] || c;
+    const w = Math.round(((Number(f.count) || 0) / fMax) * 100);
+    return `<div class="rep-row">
+      <span class="rep-dot" style="background:${c}"></span>
+      <span class="rep-name">${esc(DEAL_STAGE_LABELS[key] || f.stage)}</span>
+      <span class="rep-meta num">${f.count} deal${Number(f.count) === 1 ? '' : 's'}</span>
+      <span class="rep-val num" style="color:${txt}">EGP ${shortM(f.value)}</span>
+      <span class="rep-track"><i style="width:${w}%;background:${c}"></i></span>
+    </div>`;
+  }).join('') || '<div class="rep-empty">No deals in range.</div>';
+
+  // ── Revenue by month: vertical bars, value above each ──
+  const months = s.revenueByMonth || [];
+  const mMax = Math.max(...months.map(m => Number(m.value) || 0), 1);
+  document.getElementById('rep-months').innerHTML = months.length
+    ? `<div class="rep-months">${months.map(m => {
+        const h = Math.max(2, Math.round(((Number(m.value) || 0) / mMax) * 100));
+        return `<div class="rep-month" title="${esc(m.month)}: ${money(m.value)} EGP">
+          <span class="rep-month-v num">${shortM(m.value)}</span>
+          <span class="rep-month-bar"><i style="height:${h}%"></i></span>
+          <span class="rep-month-l">${esc(String(m.month).slice(-2))}</span>
+        </div>`;
+      }).join('')}</div>`
+    : '<div class="rep-empty">No revenue in range.</div>';
+
+  // ── Deals by origin: donut + legend, identity carried in text ──
+  const PALETTE = ['var(--gold)', 'var(--st-todo)', 'var(--success)', 'var(--stage-inquiry)',
+                   'var(--warning)', 'var(--danger)', 'var(--stage-quoted)', 'var(--muted)'];
+  const src = (s.bySource || []).map((x, i) => ({
+    label: sourceLabel(x.source),
+    n: Number(x.deals) || 0,
+    c: PALETTE[i % PALETTE.length],
+  })).filter(r => r.n > 0);
+  const srcTotal = src.reduce((a, r) => a + r.n, 0);
+  document.getElementById('rep-origin').innerHTML = src.length
+    ? `<div class="donut-box">${donutSvg(src, srcTotal, 'deals')}</div>${donutLegend(src)}`
+    : '<div class="rep-empty">No deals in range.</div>';
+
+  // ── Revenue by rep ──
+  const reps = (s.byRep || []).filter(r => Number(r.value) > 0);
+  const rMax = Math.max(...reps.map(r => Number(r.value) || 0), 1);
+  document.getElementById('rep-rank').innerHTML = reps.length
+    ? reps.map(r => {
+        const w = Math.round(((Number(r.value) || 0) / rMax) * 100);
+        return `<div class="rep-row rank">
+          <span class="td-av">${esc(tdInitials(r.rep))}</span>
+          <span class="rep-name">${esc(r.rep || '—')}</span>
+          <span class="rep-val num">EGP ${shortM(r.value)}</span>
+          <span class="rep-track"><i style="width:${w}%"></i></span>
+        </div>`;
+      }).join('')
+    : '<div class="rep-empty">Nothing won in range.</div>';
 }
+
 function exportReport(which) {
   const p = repQuery();
   const tok = encodeURIComponent(authToken || '');
@@ -405,11 +539,36 @@ function lrMeasureName(m) { return m === 'count' ? 'Lead count' : m === 'budget_
 function lrRangeLabel(d) { return (d.range && (d.range.from || d.range.to)) ? `${d.range.from || '…'} → ${d.range.to || '…'}` : 'All time'; }
 function lrFmt(d, v) { return d.measure === 'count' ? Number(v).toLocaleString() : egp(v); }
 function renderLeadsReport(d) {
-  document.getElementById('lr-kpis').innerHTML = `
-    <div class="stat-card total"><div class="stat-label">Total Leads</div><div class="stat-value">${d.totals.count.toLocaleString()}</div><div class="stat-sub">${lrRangeLabel(d)}</div></div>
-    <div class="stat-card high-pri"><div class="stat-label">Hot Leads</div><div class="stat-value">${d.hotCount.toLocaleString()}</div><div class="stat-sub">${d.totals.count ? Math.round(d.hotCount / d.totals.count * 100) : 0}% of leads</div></div>
-    <div class="stat-card in-progress"><div class="stat-label">Avg Budget</div><div class="stat-value" style="font-size:20px">${egp(d.totals.avg)}</div><div class="stat-sub">Per lead</div></div>`;
+  const hotPct = d.totals.count ? Math.round(d.hotCount / d.totals.count * 100) : 0;
+  const tiles = [
+    { label: 'Total leads', value: d.totals.count.toLocaleString(), c: 'var(--gold)',    share: null,   sub: lrRangeLabel(d) },
+    { label: 'Hot leads',   value: d.hotCount.toLocaleString(),     c: 'var(--danger)',  share: hotPct, sub: 'ready to buy now' },
+    { label: 'Avg budget',  value: egp(d.totals.avg),               c: 'var(--st-todo)', share: null,   sub: 'per lead' },
+  ];
+  document.getElementById('lr-kpis').innerHTML = tiles.map(t => `
+    <div class="kpi-tile" style="--c:${t.c}">
+      <span class="kpi-label">${esc(t.label)}</span>
+      <div class="kpi-value num">${esc(t.value)}</div>
+      ${t.share != null ? `<div class="kpi-share">
+        <span class="kpi-track"><i style="width:${Math.max(0, Math.min(100, t.share))}%"></i></span>
+        <span class="kpi-pct num">${t.share}%</span>
+      </div>` : ''}
+      <div class="kpi-sub">${esc(t.sub)}</div>
+    </div>`).join('');
   return d.splitBy ? renderLeadsCrossTab(d) : renderLeadsSingle(d);
+}
+
+// When the breakdown is by a dimension the column engine gives colours to,
+// the bar and the donut should use them: a status table where Hot and Cold
+// are the same gold tells you nothing the label had not already said.
+function lrRowColor(groupBy, key, i) {
+  const map = { lead_status: 'lead_status', source: 'source', next_action: 'next_action' };
+  if (map[groupBy] && typeof leadCol === 'function') {
+    const col = leadCol(map[groupBy]);
+    const hit = ((col && col.options) || []).find(o => o.key === key);
+    if (hit && hit.color) return hit.color;
+  }
+  return LR_PALETTE[i % LR_PALETTE.length];
 }
 function renderLeadsSingle(d) {
   const rows = d.rows || [];
@@ -421,26 +580,47 @@ function renderLeadsSingle(d) {
     <table style="width:100%;border-collapse:collapse;font-size:12.5px">
       <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
         <th style="padding:6px 8px">${esc(gl)}</th><th style="padding:6px 8px;text-align:right">Leads</th><th style="padding:6px 8px;text-align:right">${isCount ? '% of total' : 'Budget'}</th></tr></thead>
-      <tbody>${rows.map(r => {
+      <tbody>${rows.map((r, i) => {
         const barPct = Math.round((isCount ? r.count : (Number(r.value) || 0)) / maxV * 100);
         const right = isCount ? (d.totals.count ? Math.round(r.count / d.totals.count * 100) : 0) + '%' : egp(r.value);
+        const rc = lrRowColor(d.groupBy, r.key, i);
         return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
-          <td style="padding:6px 8px"><div style="position:relative;min-width:80px"><div style="position:absolute;inset:0;background:rgba(201,163,94,.16);width:${barPct}%;border-radius:3px"></div><span style="position:relative">${esc(r.label)}</span></div></td>
+          <td style="padding:6px 8px"><div class="lr-bar-cell"><i style="width:${barPct}%;background:${rc}"></i><span><b style="background:${rc}"></b>${esc(r.label)}</span></div></td>
           <td style="padding:6px 8px;text-align:right;font-weight:600">${r.count.toLocaleString()}</td>
           <td style="padding:6px 8px;text-align:right;color:var(--muted)">${right}</td></tr>`;
       }).join('')}</tbody>
     </table>` : '<div style="color:var(--muted);padding:24px;text-align:center">No leads match these filters.</div>';
-  const labels = rows.map(r => r.label);
-  const data = rows.map(r => isCount ? r.count : (Number(r.value) || 0));
+  // A part-of-whole read gets a ring; anything else gets bars. Both carry
+  // their labels as text, because these are status colours and the
+  // palette validator is clear that they are too close to stand alone.
   const doughnut = ['lead_status', 'source', 'been_contacted', 'next_action'].includes(d.groupBy);
-  if (charts.lrChart) charts.lrChart.destroy();
-  charts.lrChart = new Chart(document.getElementById('lrChart'), doughnut ? {
-    type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: LR_PALETTE, borderWidth: 0 }] },
-    options: { responsive: true, maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8 } } } },
-  } : {
-    type: 'bar', data: { labels, datasets: [{ label: isCount ? 'Leads' : 'EGP', data, backgroundColor: '#c99a4e', borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } },
-  });
+  if (charts.lrChart) { charts.lrChart.destroy(); charts.lrChart = null; }
+  const host = document.getElementById('lr-chart-host');
+  const parts = rows.map((r, i) => ({
+    label: r.label, n: isCount ? r.count : (Number(r.value) || 0), c: lrRowColor(d.groupBy, r.key, i),
+  })).filter(x => x.n > 0);
+  if (!parts.length) { host.innerHTML = '<div class="rep-empty">Nothing to chart.</div>'; return; }
+  if (doughnut) {
+    const total = parts.reduce((a, x) => a + x.n, 0);
+    host.className = 'donut-wrap';
+    host.innerHTML = `<div class="donut-box">${donutSvg(parts, isCount ? total : shortEgp(total), isCount ? 'leads' : 'EGP')}</div>${donutLegend(parts)}`;
+  } else {
+    const mx = Math.max(...parts.map(x => x.n), 1);
+    host.className = '';
+    host.innerHTML = parts.map(x => `<div class="rep-row rank">
+      <span class="rep-dot" style="background:${x.c}"></span>
+      <span class="rep-name">${esc(x.label)}</span>
+      <span class="rep-val num">${isCount ? x.n.toLocaleString() : shortEgp(x.n)}</span>
+      <span class="rep-track"><i style="width:${Math.round((x.n / mx) * 100)}%;background:${x.c}"></i></span>
+    </div>`).join('');
+  }
+}
+
+function shortEgp(n) {
+  const v = Number(n) || 0;
+  if (v >= 1e6) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (v >= 1e3) return Math.round(v / 1e3) + 'K';
+  return String(v);
 }
 function renderLeadsCrossTab(d) {
   const rows = d.rows || [], cats = d.splitCats || [];
@@ -460,7 +640,13 @@ function renderLeadsCrossTab(d) {
   // Stacked bar: one bar per primary group, a segment per split category
   const labels = rows.map(r => r.label);
   const datasets = cats.map((c, i) => ({ label: c.label, data: rows.map(r => r.cells[c.key] || 0), backgroundColor: LR_PALETTE[i % LR_PALETTE.length], borderWidth: 0 }));
+  // A cross-tab is a genuine stacked comparison, so it stays a chart. The
+  // canvas is created here because the single-dimension view replaced the
+  // static one with DOM; Chart.js needs a fresh element either way.
   if (charts.lrChart) charts.lrChart.destroy();
+  const host = document.getElementById('lr-chart-host');
+  host.className = '';
+  host.innerHTML = '<div class="chart-wrap"><canvas id="lrChart"></canvas></div>';
   charts.lrChart = new Chart(document.getElementById('lrChart'), {
     type: 'bar', data: { labels, datasets },
     options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',

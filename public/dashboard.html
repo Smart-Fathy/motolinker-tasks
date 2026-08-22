@@ -22,10 +22,10 @@
     if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=113">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=114">
   <!-- Shared with the team portal. Last on purpose: several mobile rules were being
        beaten by later same-specificity rules in the sheet above. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=113">
+  <link rel="stylesheet" href="/assets/mobile.css?v=114">
 </head>
 <body>
 
@@ -836,7 +836,7 @@
           <button class="btn btn-primary" onclick="loadLeadsReport()" style="font-size:12px"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Apply</button>
           <button class="btn btn-outline" onclick="exportLeadsReport()" style="font-size:12px"><i data-lucide="download" style="width:14px;height:14px"></i> CSV</button>
         </div>
-        <div id="lr-kpis" class="stats-grid" style="margin-bottom:18px"></div>
+        <div id="lr-kpis" class="kpi-row" style="margin-bottom:18px"></div>
         <div class="charts-grid" style="grid-template-columns:1fr 1fr">
           <div class="chart-card">
             <div class="card-title" id="lr-table-title">Breakdown</div>
@@ -844,7 +844,7 @@
           </div>
           <div class="chart-card">
             <div class="card-title">Chart</div>
-            <div class="chart-wrap"><canvas id="lrChart"></canvas></div>
+            <div id="lr-chart-host" style="margin-top:12px"></div>
           </div>
         </div>
       </div>
@@ -856,42 +856,61 @@
             <div class="page-title" style="font-size:20px">Sales &amp; Revenue</div>
             <div style="font-size:13px;color:var(--muted);margin-top:4px">Pipeline, win-rate, revenue and conversion — computed live from your deals.</div>
           </div>
-          <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
-            <div><label class="form-label" style="font-size:11px">From</label><input class="form-input rep-ctl" id="rep-from" type="date"></div>
-            <div><label class="form-label" style="font-size:11px">To</label><input class="form-input rep-ctl" id="rep-to" type="date"></div>
-            <div><label class="form-label" style="font-size:11px">Source</label>
-              <select class="form-input rep-ctl" id="rep-source">
-                <option value="">All sources</option>
-                <option value="fb_ad">FB Ad.</option><option value="whatsapp">Whatsapp</option>
-                <option value="messenger">Messenger</option><option value="direct_call">Direct Call</option>
-                <option value="ig_ads">IG ads</option><option value="website">Website</option>
-                <option value="walk_in">Walk-in</option><option value="marketplace">Marketplace</option>
-              </select>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <!-- A date range you have to assemble from two pickers answers
+                 "since when" slowly. These four are the ranges anyone
+                 actually asks for; the pickers stay, folded away, for the
+                 range that is not on the list. -->
+            <div class="range-chips" id="rep-ranges" role="group" aria-label="Date range">
+              <button class="range-chip" data-days="30" onclick="repSetRange(30)">Last 30 days</button>
+              <button class="range-chip active" data-days="90" onclick="repSetRange(90)">Last 90 days</button>
+              <button class="range-chip" data-days="ytd" onclick="repSetRange('ytd')">Year to date</button>
+              <button class="range-chip" data-days="all" onclick="repSetRange('all')">All time</button>
             </div>
-            <button class="btn btn-primary" onclick="loadReports()" style="font-size:12px"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Apply</button>
-            <button class="btn btn-outline" onclick="exportReport('summary')" style="font-size:12px"><i data-lucide="download" style="width:14px;height:14px"></i> CSV</button>
+            <button class="tbar-btn" id="rep-custom-btn" onclick="openRepCustom(event)">
+              <i data-lucide="sliders-horizontal"></i> Custom
+            </button>
+            <button class="tbar-btn" onclick="exportReport('summary')">
+              <i data-lucide="download"></i> Export CSV
+            </button>
           </div>
         </div>
-        <div id="reports-stats" class="stats-grid" style="margin-bottom:22px"></div>
-        <div class="charts-grid">
-          <div class="chart-card">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Conversion funnel</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('pipeline')">CSV</button></div>
-            <div class="chart-wrap"><canvas id="repFunnel"></canvas></div>
-          </div>
-          <div class="chart-card">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Revenue won by month</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('revenue_by_month')">CSV</button></div>
-            <div class="chart-wrap"><canvas id="repRevenue"></canvas></div>
-          </div>
-          <div class="chart-card">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Deals by source</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('by_source')">CSV</button></div>
-            <div class="chart-wrap"><canvas id="repSource"></canvas></div>
-          </div>
-          <div class="chart-card">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="card-title">Rep leaderboard (revenue won)</div><button class="btn btn-outline" style="font-size:11px;padding:3px 9px" onclick="exportReport('by_rep')">CSV</button></div>
-            <div class="chart-wrap"><canvas id="repRep"></canvas></div>
-          </div>
+        <div id="rep-custom-panel" class="tbar-panel">
+          <label class="tbar-field"><span>From</span><input class="form-input" id="rep-from" type="date" onchange="repCustomChanged()"></label>
+          <label class="tbar-field"><span>To</span><input class="form-input" id="rep-to" type="date" onchange="repCustomChanged()"></label>
+          <label class="tbar-field"><span>Source</span>
+            <select class="form-input" id="rep-source" onchange="loadReports()">
+              <option value="">All sources</option>
+              <option value="fb_ad">FB Ad.</option><option value="whatsapp">Whatsapp</option>
+              <option value="messenger">Messenger</option><option value="direct_call">Direct Call</option>
+              <option value="ig_ads">IG ads</option><option value="website">Website</option>
+              <option value="walk_in">Walk-in</option><option value="marketplace">Marketplace</option>
+            </select>
+          </label>
         </div>
-      </div>
+        <div id="reports-stats" class="kpi-row" style="margin-bottom:22px"></div>
+        <div class="rep-grid">
+          <section class="rep-card">
+            <div class="rep-card-head"><h3>Pipeline funnel</h3><span>Deals and value by stage</span>
+              <button class="rep-csv" onclick="exportReport('pipeline')">CSV</button></div>
+            <div id="rep-funnel"></div>
+          </section>
+          <section class="rep-card">
+            <div class="rep-card-head"><h3>Revenue won by month</h3><span>EGP, closed deals only</span>
+              <button class="rep-csv" onclick="exportReport('revenue_by_month')">CSV</button></div>
+            <div id="rep-months"></div>
+          </section>
+          <section class="rep-card">
+            <div class="rep-card-head"><h3>Deals by origin</h3><span>Where the deal came from</span>
+              <button class="rep-csv" onclick="exportReport('by_source')">CSV</button></div>
+            <div id="rep-origin" class="donut-wrap"></div>
+          </section>
+          <section class="rep-card">
+            <div class="rep-card-head"><h3>Revenue won by rep</h3><span>Closed-won value in range</span>
+              <button class="rep-csv" onclick="exportReport('by_rep')">CSV</button></div>
+            <div id="rep-rank"></div>
+          </section>
+        </div>
     </div>
   </div>
 
@@ -1490,19 +1509,19 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
-<script src="/assets/mobile.js?v=113"></script>
-<script src="/assets/columns.js?v=113"></script>
-<script src="/assets/client-folder.js?v=113"></script>
-<script src="/assets/lead-filters.js?v=113"></script>
-<script src="/assets/chat-extras.js?v=113"></script>
-<script src="/assets/home.js?v=113"></script>
-<script src="/assets/huddle.js?v=113"></script>
-<script src="/assets/procurement.js?v=113"></script>
-<script src="/assets/quote.js?v=113"></script>
-<script src="/assets/meetings.js?v=113"></script>
-<script src="/assets/calendar.js?v=113"></script>
-<script src="/assets/availability.js?v=113"></script>
-<script src="/assets/dashboard.js?v=113"></script>
+<script src="/assets/mobile.js?v=114"></script>
+<script src="/assets/columns.js?v=114"></script>
+<script src="/assets/client-folder.js?v=114"></script>
+<script src="/assets/lead-filters.js?v=114"></script>
+<script src="/assets/chat-extras.js?v=114"></script>
+<script src="/assets/home.js?v=114"></script>
+<script src="/assets/huddle.js?v=114"></script>
+<script src="/assets/procurement.js?v=114"></script>
+<script src="/assets/quote.js?v=114"></script>
+<script src="/assets/meetings.js?v=114"></script>
+<script src="/assets/calendar.js?v=114"></script>
+<script src="/assets/availability.js?v=114"></script>
+<script src="/assets/dashboard.js?v=114"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
@@ -1535,6 +1554,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=113"></script>
+<script src="/help-docs.js?v=114"></script>
 </body>
 </html>
