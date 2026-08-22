@@ -4331,7 +4331,11 @@ let adminActiveChatRoom       = null;
 let adminChatMessages         = [];
 let adminChatSse              = null;
 let adminChatPeople           = [];
-let adminChatUnread           = new Set();
+// A count, not a flag. The dot said "something happened here"; the number
+// says how much, which is what decides whether you open it now. Counts are
+// per session, because the stream is the only thing that knows — the same
+// limitation the dot always had, carrying strictly more information.
+let adminChatUnread           = new Map();
 let adminChatReplyingTo       = null;
 let adminChatForwardData      = null;
 let adminChatPushSubscription = null;
@@ -4353,7 +4357,7 @@ function adminOpenChatSse() {
         adminChatAppendMessage(message);
         adminChatScrollBottom();
       } else {
-        adminChatUnread.add(roomId);
+        adminChatUnread.set(roomId, (adminChatUnread.get(roomId) || 0) + 1);
         adminChatMarkUnread(roomId);
         adminChatUpdateNavBadge();
         adminChatPlayNotifSound();
@@ -4451,7 +4455,9 @@ function adminChatRenderRoomList() {
     const name   = room.type === 'group' ? room.name : (other?.member_name || 'Unknown');
     const init   = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
     const prev   = room.lastMessage ? room.lastMessage.body.slice(0,55) : 'No messages yet';
-    const unread = adminChatUnread.has(room.id) ? '<div class="chat-unread-dot"></div>' : '';
+    const n      = adminChatUnread.get(room.id) || 0;
+    const unread = n ? `<div class="chat-unread-n num">${n > 99 ? '99+' : n}</div>` : '';
+    const when   = room.lastMessage ? chatWhen(room.lastMessage.created_at) : '';
     return `<div class="chat-room-item${adminActiveChatRoom === room.id ? ' active' : ''}" onclick="adminChatOpenRoom(${room.id})" data-room="${room.id}">
       <div class="chat-room-avatar-wrap">
         <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${
@@ -4460,8 +4466,11 @@ function adminChatRenderRoomList() {
         ${room.type === 'direct' ? `<div class="presence-dot" id="presence-dot-${room.id}"></div>` : ''}
       </div>
       <div class="chat-room-info">
-        <div class="chat-room-name">${esc(name)}${statusEmojiOnly(other?.member_status_emoji, other?.member_status)}</div>
-        <div class="chat-room-preview">${esc(prev)}</div>
+        <div class="chat-room-top">
+          <span class="chat-room-name">${esc(name)}${statusEmojiOnly(other?.member_status_emoji, other?.member_status)}</span>
+          ${when ? `<span class="chat-room-when num">${esc(when)}</span>` : ''}
+        </div>
+        <div class="chat-room-preview${n ? ' unread' : ''}">${esc(prev)}</div>
       </div>${unread}${chatRoomDotsHtml(room.id)}
     </div>`;
   };
@@ -4474,13 +4483,27 @@ function adminChatRenderRoomList() {
   requestAnimationFrame(() => lucide.createIcons());
 }
 
+// Today shows a clock, this week a weekday, anything older a date — the
+// nearer it is, the more precisely it is worth naming.
+function chatWhen(iso) {
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return '';
+  const now = new Date();
+  const sameDay = t.toDateString() === now.toDateString();
+  if (sameDay) return t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const days = Math.round((now.setHours(0, 0, 0, 0) - new Date(t).setHours(0, 0, 0, 0)) / 86400000);
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return t.toLocaleDateString('en-GB', { weekday: 'short' });
+  return t.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
 async function adminChatOpenRoom(roomId) {
   adminActiveChatRoom = roomId;
   adminChatReplyingTo = null;
   adminChatUnread.delete(roomId);
   adminChatUpdateNavBadge();
   document.querySelectorAll('.chat-room-item').forEach(el => el.classList.toggle('active', parseInt(el.dataset.room) === roomId));
-  document.querySelector(`[data-room="${roomId}"] .chat-unread-dot`)?.remove();
+  document.querySelector(`[data-room="${roomId}"] .chat-unread-n`)?.remove();
 
   const room = adminChatRooms.find(r => r.id === roomId);
   const name = room?.type === 'group' ? room.name : (room?.members || []).find(m => m.member_key !== 'admin')?.member_name || 'Chat';
@@ -4564,7 +4587,7 @@ function adminChatScrollToMsg(msgId) {
   setTimeout(() => { el.style.background = ''; }, 900);
 }
 
-function adminChatMsgHTML(msg) {
+function adminChatMsgHTML(msg, grouped) {
   const mine    = msg.sender_key === 'admin';
   const timeStr = new Date(msg.created_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
   const canDel  = mine && (Date.now() - new Date(msg.created_at).getTime()) < 5 * 60 * 1000;
@@ -4586,9 +4609,9 @@ function adminChatMsgHTML(msg) {
         ? `<div class="chat-voice-msg"><audio controls src="${esc(msg.file_url)}" preload="none"></audio>${msg.voice_duration ? `<span class="chat-voice-dur">${String(Math.floor(msg.voice_duration/60)).padStart(2,'0')}:${String(msg.voice_duration%60).padStart(2,'0')}</span>` : ''}${dlBtn}</div>`
         : `<div class="chat-file-attach"><i data-lucide="paperclip" style="width:13px;height:13px"></i> <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
   ) : '';
-  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}" onclick="adminChatToggleActions(event)">
+  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}${grouped ? ' grouped' : ''}" data-msg-id="${msg.id}" onclick="adminChatToggleActions(event)">
     ${actions}
-    ${!mine ? `<div class="chat-msg-sender">${msg.sender_avatar ? `<img class="chat-msg-avatar" src="${esc(msg.sender_avatar)}" alt="">` : ''}${esc(msg.sender_name)}${statusEmojiOnly(msg.sender_status_emoji, msg.sender_status)}</div>` : ''}
+    ${!mine && !grouped ? `<div class="chat-msg-sender">${msg.sender_avatar ? `<img class="chat-msg-avatar" src="${esc(msg.sender_avatar)}" alt="">` : ''}${esc(msg.sender_name)}${statusEmojiOnly(msg.sender_status_emoji, msg.sender_status)}</div>` : ''}
     ${replyHTML}
     ${msg.body ? `<div class="chat-msg-bubble">${chatLinkify(msg.body)}${msg.edited_at ? '<span class="chat-edited">(edited)</span>' : ''}</div>` : ''}
     ${msg.body ? googleUnfurl(msg.body) + chatPreviewSlot(msg.body) : ''}
@@ -4601,12 +4624,20 @@ function adminChatRenderMessages() {
   const el = document.getElementById('admin-chat-messages');
   if (!el) return;
   let lastDate = '';
-  el.innerHTML = adminChatMessages.map(msg => {
+  el.innerHTML = adminChatMessages.map((msg, i) => {
     const d       = new Date(msg.created_at);
     const dateStr = d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
     let div = '';
     if (dateStr !== lastDate) { lastDate = dateStr; div = `<div class="chat-date-divider">${dateStr}</div>`; }
-    return div + adminChatMsgHTML(msg);
+    // A run of messages from one person is one turn in the conversation, so it
+    // gets one name and one avatar. Five minutes, because a reply an hour later
+    // is a new turn even from the same sender — and a date divider always
+    // starts a fresh run.
+    const prev = adminChatMessages[i - 1];
+    const grouped = !!prev && !div
+      && prev.sender_key === msg.sender_key
+      && (new Date(msg.created_at) - new Date(prev.created_at)) < 5 * 60 * 1000;
+    return div + adminChatMsgHTML(msg, grouped);
   }).join('');
   chatHydratePreviews(el, apiFetch, '/api/dashboard');
 }
@@ -4813,14 +4844,25 @@ function adminChatUpdatePreview(roomId, message) {
 
 function adminChatMarkUnread(roomId) {
   const el = document.querySelector(`[data-room="${roomId}"]`);
-  if (el && !el.querySelector('.chat-unread-dot')) el.insertAdjacentHTML('beforeend', '<div class="chat-unread-dot"></div>');
+  if (!el) { adminChatUpdateNavBadge(); return; }
+  const n = adminChatUnread.get(roomId) || 0;
+  let pill = el.querySelector('.chat-unread-n');
+  if (!n) { if (pill) pill.remove(); adminChatUpdateNavBadge(); return; }
+  if (!pill) {
+    el.insertAdjacentHTML('beforeend', '<div class="chat-unread-n num"></div>');
+    pill = el.querySelector('.chat-unread-n');
+  }
+  pill.textContent = n > 99 ? '99+' : String(n);
+  // The preview brightens with the count: an unread room should read as
+  // unread before the number is looked at.
+  el.querySelector('.chat-room-preview')?.classList.add('unread');
   adminChatUpdateNavBadge();
 }
 
 function adminChatUpdateNavBadge() {
   const el = document.getElementById('chat-nav-badge');
   if (!el) return;
-  const count = adminChatUnread.size;
+  const count = [...adminChatUnread.values()].reduce((a, b) => a + b, 0);
   const label = count > 99 ? '99+' : String(count);
   [el, document.getElementById('chat-fav-badge')].forEach(n => {
     if (!n) return;
@@ -7288,7 +7330,7 @@ const HOMECFG = {
   can: () => true,                       // the admin sees every widget
   // Read-only views of state the page already keeps, so the widgets do not fetch
   // what is sitting in memory a few lines away.
-  unread: () => adminChatUnread.size,
+  unread: () => [...adminChatUnread.values()].reduce((a, b) => a + b, 0),
   notifs: () => notifItems.filter(n => !n.read),
   google: { drive: '/api/drive/files', sheets: '/api/drive/sheets', email: '/api/email/messages' },
   toast: msg => hdToast(msg),

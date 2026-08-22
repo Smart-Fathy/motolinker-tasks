@@ -170,12 +170,14 @@ async function hdIce() {
 // on a friendly network peer-to-peer succeeds so the relay is never exercised.
 // Gathering with iceTransportPolicy:'relay' discards host and reflexive candidates,
 // so any candidate at all means the relay answered, and none means it didn't.
-async function huddleRelayTest() {
-  hdToast('Testing the relay…');
+async function huddleRelayTest(opts) {
+  const quiet = !!(opts && opts.quiet);
+  const say = m => { if (!quiet) hdToast(m); };
+  say('Testing the relay…');
   _hd.ice = null; _hd.iceUntil = 0;          // always ask the server, never a stale cache
   const cfg = await hdIce();
   if (!cfg.hasTurn) {
-    hdToast(`No TURN configured — provider: ${cfg.provider || 'none'}. Huddles will use STUN only.`);
+    say(`No TURN configured — provider: ${cfg.provider || 'none'}. Huddles will use STUN only.`);
     return { ok: false, reason: 'not-configured', provider: cfg.provider || 'none' };
   }
   let pc = null;
@@ -195,13 +197,13 @@ async function huddleRelayTest() {
     await pc.setLocalDescription(await pc.createOffer());
     await done;
     if (protos.size) {
-      hdToast(`Relay OK via ${cfg.provider} — ${[...protos].sort().join(', ')}.`);
+      say(`Relay OK via ${cfg.provider} — ${[...protos].sort().join(', ')}.`);
       return { ok: true, provider: cfg.provider, protocols: [...protos].sort() };
     }
-    hdToast(`No relay reachable. ${cfg.provider} issued credentials but nothing came back — check the key is still active.`);
+    say(`No relay reachable. ${cfg.provider} issued credentials but nothing came back — check the key is still active.`);
     return { ok: false, reason: 'no-candidates', provider: cfg.provider };
   } catch (e) {
-    hdToast('Relay test failed to run: ' + (e && e.message ? e.message : e));
+    say('Relay test failed to run: ' + (e && e.message ? e.message : e));
     return { ok: false, reason: 'error', error: String(e && e.message || e) };
   } finally {
     if (pc) { try { pc.close(); } catch (_) {} }
@@ -1171,15 +1173,70 @@ function chatHeaderActions(room) {
   // Someone already in a call can always hang up, whatever their permissions say —
   // the alternative is a participant trapped in a huddle with no leave button.
   const mayHuddle = !HDCFG.can || HDCFG.can('chat', 'huddle');
+  // The huddle control was two unlabelled icons, so "can I call these people"
+  // was answered by hovering. The audio one carries its name now; video stays
+  // an icon beside it rather than being dropped.
+  // hdRelayCheck(false) is a no-op once the probe has run, so calling it on
+  // every header render costs nothing and means the chip fills itself in the
+  // first time a conversation is opened.
+  if (mayHuddle) setTimeout(() => hdRelayCheck(false), 0);
   return `<div class="chat-head-actions">
+    ${mayHuddle ? hdRelayChipHtml() : ''}
     ${inThis
-      ? `<button class="hd-head-btn live" onclick="huddleLeave()" title="Leave the huddle">${ic('phone-off')}</button>`
+      ? `<button class="hd-head-btn live" onclick="huddleLeave()" title="Leave the huddle">${ic('phone-off')} Leave</button>`
       : !mayHuddle ? ''
-      : `<button class="hd-head-btn" onclick="huddleStart(${room.id},false)" title="Start a huddle">${ic('headphones')}</button>
+      : `<button class="hd-head-btn labelled" onclick="huddleStart(${room.id},false)" title="Start a huddle">${ic('headphones')} Huddle</button>
          <button class="hd-head-btn" onclick="huddleStart(${room.id},true)" title="Start a huddle with video">${ic('video')}</button>`}
     <button class="hd-head-btn" onclick="chatGroupPanel(${room.id})" title="${room.type === 'group' ? 'Group info, members and files' : 'Shared files'}">${ic(room.type === 'group' ? 'users' : 'paperclip')}</button>
   </div>`;
 }
+// ── Relay chip ────────────────────────────────────────────────────────
+// Whether a huddle will actually connect was knowable only by pressing an
+// admin-only icon and reading a toast that vanished in six seconds. It is
+// a property of the room you are looking at, so it belongs in its header.
+//
+// Probed once per session and cached: the probe opens a peer connection and
+// waits up to eight seconds for candidates, which is not something to repeat
+// every time somebody opens a conversation. Clicking re-runs it.
+let _hdRelay = { state: 'unknown', label: 'Relay', detail: '' };
+
+function hdRelayChipHtml() {
+  const s = _hdRelay;
+  return `<button class="hd-relay ${esc(s.state)}" onclick="hdRelayCheck(true)"
+    title="${esc(s.detail || 'Check whether huddles can reach a relay')}">
+    <i data-lucide="signal" style="width:13px;height:13px"></i> <span>${esc(s.label)}</span></button>`;
+}
+
+function hdRelaySet(state, label, detail) {
+  _hdRelay = { state, label, detail };
+  document.querySelectorAll('.hd-relay').forEach(el => {
+    el.className = 'hd-relay ' + state;
+    el.title = detail || '';
+    const t = el.querySelector('span');
+    if (t) t.textContent = label;
+  });
+}
+
+async function hdRelayCheck(force) {
+  if (!force && _hdRelay.state !== 'unknown') return _hdRelay;
+  hdRelaySet('checking', 'Checking…', 'Testing whether a relay is reachable');
+  try {
+    const r = await huddleRelayTest({ quiet: true });
+    if (r && r.ok) {
+      hdRelaySet('ok', 'Relay OK', `Relay reachable via ${r.provider} — ${(r.protocols || []).join(', ')}`);
+    } else if (r && r.reason === 'not-configured') {
+      // Not a failure: calls still work on the same network. Saying "OK" would
+      // be wrong and saying "failed" would be alarming, so it says what it is.
+      hdRelaySet('stun', 'STUN only', `No TURN configured (provider: ${r.provider}). Huddles work on the same network.`);
+    } else {
+      hdRelaySet('down', 'No relay', (r && r.reason) ? String(r.reason) : 'Nothing came back from the relay');
+    }
+  } catch (e) {
+    hdRelaySet('down', 'No relay', String((e && e.message) || e));
+  }
+  return _hdRelay;
+}
+
 function chatHeaderStatus(room) {
   if (!room || room.type !== 'direct') return '';
   const other = (room.members || []).find(m => m.member_key !== hdMe());

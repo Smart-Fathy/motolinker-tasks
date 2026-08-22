@@ -1468,3 +1468,44 @@
     .sup-go{ min-height:44px; }
     .sup-card-acts .stk-edit{ min-height:44px; }
   }
+
+  /* ── Chat: relay chip, labelled huddle, room meta, grouped runs ───────
+   * huddle.js is shared, so the chip and the labelled button need rules in
+   * both stylesheets or one portal renders them bare. */
+  .hd-relay{
+    display:inline-flex; align-items:center; gap:6px; padding:5px 10px;
+    border-radius:var(--r-pill); font-family:inherit; font-size:11.5px; font-weight:700;
+    cursor:pointer; white-space:nowrap; background:rgba(255,255,255,.04);
+    color:var(--muted); border:1px solid var(--border);
+  }
+  .hd-relay i, .hd-relay svg{ width:13px; height:13px; }
+  .hd-relay.checking{ color:var(--muted); opacity:.75; }
+  .hd-relay.ok{ background:rgba(16,185,129,.1); color:var(--success); border-color:rgba(16,185,129,.3); }
+  /* No TURN is not a failure — calls still work on one network — so it reads
+   * as a qualification rather than an alarm. */
+  .hd-relay.stun{ background:rgba(245,158,11,.1); color:var(--warning); border-color:rgba(245,158,11,.3); }
+  .hd-relay.down{ background:rgba(239,68,68,.1); color:var(--danger); border-color:rgba(239,68,68,.3); }
+
+  .hd-head-btn.labelled{ width:auto; padding:0 12px; gap:7px; font-size:12px; font-weight:700; }
+  .hd-head-btn.live{ width:auto; padding:0 12px; gap:7px; font-size:12px; font-weight:700; }
+
+  .chat-room-top{ display:flex; align-items:baseline; gap:8px; min-width:0; }
+  .chat-room-top .chat-room-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-room-when{ font-size:10.5px; color:var(--muted); flex-shrink:0; }
+  .chat-room-preview.unread{ color:var(--text); font-weight:600; }
+  .chat-unread-n{
+    flex-shrink:0; min-width:19px; height:19px; padding:0 6px; border-radius:var(--r-pill);
+    background:var(--primary); color:#0c0c0e; font-size:10.5px; font-weight:800;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  /* A run of messages from one sender is one turn: one name, one avatar, and
+   * the follow-ups tucked under it. */
+  .chat-msg.grouped{ margin-top:2px; }
+  .chat-msg.grouped .chat-msg-time{ opacity:0; transition:opacity .12s; }
+  .chat-msg.grouped:hover .chat-msg-time{ opacity:1; }
+
+  @media (max-width:640px){
+    .hd-relay{ min-height:36px; }
+    .hd-head-btn.labelled, .hd-head-btn.live{ min-height:44px; }
+  }
