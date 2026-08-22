@@ -1,4 +1,4 @@
-const CACHE = 'motolinker-emp-v90';
+const CACHE = 'motolinker-emp-v92';
 // The version rides every asset URL (?v=N). The HTML references assets with the
 // SAME stamp, so a deploy changes the cache key: new HTML can never be paired
 // with the previous bundle out of this cache, which is what used to blank the

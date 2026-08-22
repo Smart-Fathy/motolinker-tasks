@@ -992,6 +992,37 @@
 
   // ── Suppliers (Logistics & Shipping) ────────────────────────────────────────────
   let _suppliersCache = [];
+  // ── Suppliers ─────────────────────────────────────────────────────────
+  // The register was a configurable table, which answers "what fields do we
+  // keep on a supplier" and not "who are we actually buying from". Cards
+  // lead now, carrying the three numbers that make a supplier worth opening
+  // — units in the register, what those units are worth, how much of their
+  // catalogue we hold — and going straight into the tab that answers the
+  // next question. The table stays a click away, because the supplier
+  // columns are user-configurable and losing that would cost a real
+  // capability the design simply was not drawn around.
+  let _supView = 'cards';
+  try { _supView = localStorage.getItem('ml_sup_view') || 'cards'; } catch (_) {}
+  if (!['cards', 'table'].includes(_supView)) _supView = 'cards';
+  function setSupView(v) {
+    _supView = v;
+    try { localStorage.setItem('ml_sup_view', v); } catch (_) {}
+    renderSuppliers();
+  }
+
+  let _supStats = { units: new Map(), value: new Map(), cat: new Map(), totalUnits: 0, totalCat: 0 };
+
+  function supInitials(n) {
+    return String(n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
+  }
+  function supShortEgp(n) {
+    const v = Number(n) || 0;
+    if (v >= 1e9) return (v / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+    if (v >= 1e6) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (v >= 1e3) return Math.round(v / 1e3) + 'K';
+    return v ? String(v) : '—';
+  }
+
   async function loadSuppliers() {
     const body = document.getElementById('suppliers-list');
     if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div> Loading suppliers…</div>';
@@ -1003,21 +1034,108 @@
       return;
     }
     _suppliersCache = Array.isArray(list) ? list : [];
-    const eng = suppliersEngine();
-    await eng.load();
-    const cols = eng.visible();
-    if (!_suppliersCache.length) {
+    await suppliersEngine().load();
+
+    // The two figures the cards need are owned by other sections, and a rep
+    // may hold Suppliers without Inventory. Settled, not awaited-and-thrown:
+    // a 403 on stock should cost the units column, not the page.
+    // fetch() resolves on 403 as happily as on 200, so "did the promise
+    // settle" is not the question — "did the server actually answer with
+    // the data" is. Without this a rep who lacks Inventory saw a confident
+    // "0 units in the register" instead of no figure at all.
+    const ok = url => apiFetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    const [cat, stock] = await Promise.all([
+      ok('/api/dashboard/supplier-vehicles'),
+      ok('/api/dashboard/stock'),
+    ]);
+    const units = new Map(), value = new Map(), catCount = new Map();
+    if (Array.isArray(cat)) {
+      cat.forEach(v => catCount.set(v.supplier_id, (catCount.get(v.supplier_id) || 0) + 1));
+    }
+    if (Array.isArray(stock)) {
+      stock.forEach(m => (Array.isArray(m.units) ? m.units : []).forEach(u => {
+        // Units record their supplier as a name, the catalogue by id, so the
+        // join is by name — the only key the two actually share.
+        const key = String(u.supplier || m.supplier || '').trim().toLowerCase();
+        if (!key) return;
+        units.set(key, (units.get(key) || 0) + 1);
+        value.set(key, (value.get(key) || 0) + (Number(u.price_list) || Number(m.price) || 0));
+      }));
+    }
+    _supStats = {
+      units, value, cat: catCount,
+      totalUnits: [...units.values()].reduce((a, b) => a + b, 0),
+      totalCat: [...catCount.values()].reduce((a, b) => a + b, 0),
+      haveStock: Array.isArray(stock),
+      haveCat: Array.isArray(cat),
+    };
+    renderSuppliers();
+  }
+
+  function supplierCard(x) {
+    const key = String(x.name || '').trim().toLowerCase();
+    const u = _supStats.units.get(key) || 0;
+    const val = _supStats.value.get(key) || 0;
+    const c = _supStats.cat.get(x.id) || 0;
+    const sub = [x.country, x.contact_name || x.contact].filter(Boolean).map(esc).join(' · ');
+    const tab = (k, label, allowed) => allowed
+      ? `<button class="sup-go" onclick="openSupplierDetail(${x.id}, '${k}')">${label}</button>` : '';
+    return `<article class="sup-card">
+      <div class="sup-card-head">
+        <span class="sup-av">${esc(supInitials(x.name))}</span>
+        <div style="min-width:0">
+          <div class="sup-name">${esc(x.name || '—')}</div>
+          ${sub ? `<div class="sup-sub">${sub}</div>` : ''}
+        </div>
+        <div class="sup-card-acts">
+          ${procCan('suppliers', 'edit') ? `<button class="stk-edit btn btn-outline" title="Edit" onclick="openSupplierForm(${x.id})"><i data-lucide="pencil"></i></button>` : ''}
+          ${procCan('suppliers', 'delete') ? `<button class="stk-edit btn btn-outline" title="Delete" onclick="deleteSupplier(${x.id})"><i data-lucide="trash-2"></i></button>` : ''}
+        </div>
+      </div>
+      <div class="sup-stats">
+        <div class="sup-stat"><span>Units</span><b class="num">${_supStats.haveStock ? u : '—'}</b></div>
+        <div class="sup-stat"><span>Value</span><b class="num">${_supStats.haveStock ? (val ? 'EGP ' + supShortEgp(val) : '—') : '—'}</b></div>
+        <div class="sup-stat"><span>Catalogue</span><b class="num">${_supStats.haveCat ? c : '—'}</b></div>
+      </div>
+      <div class="sup-gos">
+        ${tab('vehicles', 'Vehicles', true)}
+        ${tab('docs', 'Documents', procCan('suppliers', 'docs'))}
+        ${tab('purchases', 'Purchases', procCan('suppliers', 'purchases'))}
+      </div>
+    </article>`;
+  }
+
+  function renderSuppliers() {
+    const body = document.getElementById('suppliers-list');
+    if (!body) return;
+    const eng = CE('suppliers');
+    const cols = eng && eng.loaded ? eng.visible() : [];
+    const n = _suppliersCache.length;
+    const head = `
+      <div class="sup-head">
+        <span class="sup-count">${n} supplier${n === 1 ? '' : 's'}${
+          _supStats.haveStock ? ` · ${_supStats.totalUnits} unit${_supStats.totalUnits === 1 ? '' : 's'} in the register` : ''
+        }${_supStats.haveCat ? ` · ${_supStats.totalCat} catalogue vehicle${_supStats.totalCat === 1 ? '' : 's'}` : ''}</span>
+        <div class="sup-views" role="tablist">
+          <button class="task-view-tab${_supView === 'cards' ? ' active' : ''}" onclick="setSupView('cards')"><i data-lucide="layout-grid"></i> Cards</button>
+          <button class="task-view-tab${_supView === 'table' ? ' active' : ''}" onclick="setSupView('table')"><i data-lucide="table"></i> Table</button>
+        </div>
+        ${procColsBtn('suppliers')}
+      </div>`;
+
+    if (!n) {
       // Still offer the field controls — the register's columns are worth setting
-      // up BEFORE the first supplier is added, not after.
-      body.innerHTML = `
-        <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px">${procColsBtn('suppliers')}</div>
-        <div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No suppliers yet.</div>`;
+      // up BEFORE the first supplier is added, not after. They are in `head`,
+      // which is why `head` carries them in every view rather than only in the
+      // table: the cards read those same fields, and so does the form.
+      body.innerHTML = head + `<div class="stk-none">No suppliers yet.</div>`;
       requestAnimationFrame(() => lucide.createIcons());
       return;
     }
-    body.innerHTML = `
-      <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px">${procColsBtn('suppliers')}</div>
-      <div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
+
+    body.innerHTML = head + (_supView === 'cards'
+      ? `<div class="sup-grid">${_suppliersCache.map(supplierCard).join('')}</div>`
+      : `<div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
           ${cols.map(c => procTh('suppliers', c, { style: `padding:8px 10px${c.width ? `;min-width:${c.width}px` : ''}` })).join('')}
           <th style="padding:8px 10px;text-align:right">Actions</th></tr></thead>
@@ -1036,8 +1154,10 @@
               ${procCan('suppliers', 'delete') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteSupplier(${x.id})">Delete</button>` : ''}
             </td>
           </tr>`).join('')}</tbody>
-      </table></div>`;
+      </table></div>`);
+    requestAnimationFrame(() => lucide.createIcons());
   }
+
   // ── Supplier detail: what they offer, their paperwork, and what we actually bought
   // Kept as three tabs because they answer different questions. "Purchases" is
   // derived from stock units and purchase-order lines, never typed in, so it cannot
@@ -1046,9 +1166,9 @@
   let _supDetailId = null;
   let _supData = { vehicles: [], docs: [], purchases: null };
 
-  async function openSupplierDetail(id) {
+  async function openSupplierDetail(id, tab) {
     _supDetailId = id;
-    _supTab = 'vehicles';
+    _supTab = tab || 'vehicles';
     const sup = _suppliersCache.find(v => v.id === id) || {};
     showModal(sup.name || 'Supplier', `
       <div class="sup-tabs">
@@ -1061,7 +1181,7 @@
       </div>
       <div id="sup-pane" style="min-height:220px"><div class="loading"><div class="spinner"></div></div></div>`,
       `<button class="btn btn-outline" onclick="hideModal()">Close</button>`, { wide: true });
-    supTab('vehicles');
+    supTab(_supTab);
   }
 
   async function supTab(which) {
@@ -1547,26 +1667,257 @@
     _stockCache = Array.isArray(list) ? list : [];
     renderStock();
   }
+  // ── Inventory views ──────────────────────────────────────────────────
+  // The register was one shape: a card per model with its units nested
+  // inside. That answers "what models do we list" and makes "where is
+  // chassis …2478" a hunt through eleven cards. All vehicles is the flat
+  // unit table the register actually is; By status groups the same units
+  // by where they are; By model is the original card grid, kept because
+  // it is the right answer to the question it was built for.
+  //
+  // A note on status: the design labels these In stock / In transit /
+  // Reserved / Sold. This system's units carry the procurement lifecycle
+  // instead — Send to supplier, Car in preparation, In logistics, Car
+  // delivered — and those are the real states the business moves a car
+  // through, so the treatment is the design's and the vocabulary is the
+  // system's.
+  let _stockView = 'all';
+  let _stockStatusFilter = '';
+  let _stockGroupSupplier = false;
+  try { _stockView = localStorage.getItem('ml_stock_view') || 'all'; } catch (_) {}
+  if (!['all', 'status', 'model'].includes(_stockView)) _stockView = 'all';
+
+  function setStockView(v) {
+    _stockView = v;
+    try { localStorage.setItem('ml_stock_view', v); } catch (_) {}
+    renderStock();
+  }
+  function stockStatusOpts() {
+    const eng = CE('stock');
+    const col = eng && eng.loaded ? (eng.visible() || []).find(c => c.key === 'status') : null;
+    return (col && col.options) || PO_LINE_STATUSES.map(o => ({ key: o.key, label: o.label, color: o.fg }));
+  }
+  function stockStatusMeta(key) {
+    const hit = stockStatusOpts().find(o => o.key === key);
+    return { label: hit ? hit.label : (key || 'Unassigned'), color: (hit && hit.color) || 'var(--muted)' };
+  }
+  function openStockFilter(e) {
+    e.stopPropagation();
+    window.brandMenu(e.currentTarget, [{ key: '', label: '— All statuses —', selected: !_stockStatusFilter },
+      ...stockStatusOpts().map(o => ({ key: o.key, label: o.label, selected: o.key === _stockStatusFilter }))],
+      key => { _stockStatusFilter = key; renderStock(); });
+  }
+  function toggleStockGroup() { _stockGroupSupplier = !_stockGroupSupplier; renderStock(); }
+  function clearStockStatus() { _stockStatusFilter = ''; renderStock(); }
+
+  // Every unit, with its parent model carried along — the flat register.
+  function stockUnits() {
+    const out = [];
+    _stockCache.forEach(v => (Array.isArray(v.units) ? v.units : []).forEach(u => out.push({ u, v })));
+    return out;
+  }
+
+  // Columns come from the column engine, not from this function. The design
+  // draws Vehicle / VIN / Colour / Status / Price / Supplier, which is what
+  // the default configuration produces — but a site that has added "Plate"
+  // or renamed a column gets its own, here as well as in the model cards.
+  function stockUnitRow({ u, v }) {
+    const eng = CE('stock');
+    const cells = stockUnitCols().map(c => {
+      const k = c.key;
+      if (k === 'status') {
+        const st = stockStatusMeta(u[k]);
+        return `<td data-label="${esc(c.label)}"><span class="stk-pill" style="--c:${st.color}">${esc(st.label)}</span></td>`;
+      }
+      if (k === 'vin') return `<td data-label="${esc(c.label)}" class="stk-vin">${esc(u[k] || '—')}</td>`;
+      if (k === 'colour') return `<td data-label="${esc(c.label)}">${u[k]
+        ? `<span class="stk-col"><i style="background:${stockSwatch(u[k])}"></i>${esc(u[k])}</span>`
+        : '<span class="stk-muted">—</span>'}</td>`;
+      if (c.type === 'select' || c.type === 'radio') {
+        return `<td data-label="${esc(c.label)}">${eng ? eng.badgeHtml(c, u[k]) : esc(u[k] || '—')}</td>`;
+      }
+      if (c.type === 'number') {
+        const n = Number(u[k]) || (k === 'price_list' ? Number(v.price) || 0 : 0);
+        return `<td data-label="${esc(c.label)}" class="stk-price num">${n ? n.toLocaleString() : '—'}</td>`;
+      }
+      if (c.type === 'checkbox') return `<td data-label="${esc(c.label)}" style="text-align:center">${u[k] === true || u[k] === 'true' ? '✓' : '—'}</td>`;
+      return `<td data-label="${esc(c.label)}">${esc(u[k] == null || u[k] === '' ? '—' : String(u[k]))}</td>`;
+    }).join('');
+    return `<tr>
+      <td data-label="Vehicle"><div class="stk-veh">${esc(v.make || '')} ${esc(v.model || '')}</div>
+        ${v.trim ? `<div class="stk-trim">${esc(v.trim)}</div>` : ''}</td>
+      ${cells}
+      <td data-label="Actions">${procCan('stock', 'edit')
+        ? `<button class="btn btn-outline stk-edit" onclick="openStockForm(${v.id})" title="Edit this model"><i data-lucide="pencil"></i></button>` : ''}</td>
+    </tr>`;
+  }
+
+  // A colour name is not a colour. Known names get their paint; anything
+  // else falls back to a neutral chip rather than guessing wrong.
+  function stockSwatch(name) {
+    const n = String(name || '').toLowerCase();
+    if (/black|obsidian|raven|attitude/.test(n)) return '#1c1c1f';
+    if (/white|mineral|carrara|eminent|pearl/.test(n)) return '#f2f0ea';
+    if (/silver|grey|gray/.test(n)) return '#b9b3a4';
+    if (/blue|navarra|denim/.test(n)) return '#5a78c8';
+    if (/red|rosso/.test(n)) return '#ef4444';
+    if (/green/.test(n)) return '#10b981';
+    if (/brown|bronze|beige/.test(n)) return '#c98b5e';
+    return 'rgba(255,255,255,.25)';
+  }
+
+  function stockUnitTable(rows) {
+    if (!rows.length) return '<div class="stk-none">No units match.</div>';
+    const head = `<thead><tr><th>Vehicle</th>${stockUnitCols()
+      .map(c => `<th${c.type === 'number' ? ' style="text-align:right"' : ''}>${esc(c.label)}</th>`).join('')}<th></th></tr></thead>`;
+    // .stock-units is the class the unit table has always carried; the flat
+    // register is the same table, so column tooling keeps finding it.
+    const table = list => `<div class="table-card table-scroll"><table class="table stk-table stock-units">${head}
+      <tbody>${list.map(stockUnitRow).join('')}</tbody></table></div>`;
+    if (!_stockGroupSupplier) return table(rows);
+    const by = new Map();
+    rows.forEach(r => {
+      const k = r.u.supplier || r.v.supplier || 'No supplier';
+      if (!by.has(k)) by.set(k, []);
+      by.get(k).push(r);
+    });
+    return [...by.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([sup, list]) => `
+      <div class="stk-group">
+        <div class="stk-group-head">${esc(sup)}<span class="stk-group-n num">${list.length}</span></div>
+        ${table(list)}
+      </div>`).join('');
+  }
+
   function renderStock() {
     const body = document.getElementById('stock-table-container');
     const sumEl = document.getElementById('stock-summary');
     if (!body) return;
-    const models = new Set(_stockCache.map(v => `${(v.make||'').toLowerCase()}|${(v.model||'').toLowerCase()}`));
-    const totalUnits = _stockCache.reduce((s, v) => s + (Number(v.quantity) || 0), 0);
-    const totalValue = _stockCache.reduce((s, v) => s + (Number(v.price) || 0) * (Number(v.quantity) || 0), 0);
-    if (sumEl) sumEl.innerHTML = `
-      <div class="stat-card total"><div class="stat-label">Listings</div><div class="stat-value">${_stockCache.length.toLocaleString()}</div><div class="stat-sub">${models.size} model(s)</div></div>
-      <div class="stat-card high-pri"><div class="stat-label">Units in stock</div><div class="stat-value">${totalUnits.toLocaleString()}</div><div class="stat-sub">Ready for delivery</div></div>
-      <div class="stat-card in-progress"><div class="stat-label">Stock value</div><div class="stat-value" style="font-size:20px">${egp(totalValue)}</div><div class="stat-sub">Price × quantity</div></div>`;
-    const term = (document.getElementById('stock-search')?.value || '').trim().toLowerCase();
-    const rows = _stockCache.filter(v => !term || `${v.make} ${v.model} ${v.trim}`.toLowerCase().includes(term));
-    if (!rows.length) {
-      body.innerHTML = `<div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">${_stockCache.length ? 'No vehicles match your search.' : 'No vehicles in stock yet.<br>Click “Add vehicle” or “Bulk upload CSV” to get started.'}</div>`;
-      return;
+    const models = new Set(_stockCache.map(v => `${(v.make || '').toLowerCase()}|${(v.model || '').toLowerCase()}`));
+    const all = stockUnits();
+    const totalValue = _stockCache.reduce((s, v) => {
+      const units = Array.isArray(v.units) ? v.units : [];
+      return s + units.reduce((a, u) => a + (Number(u.price_list) || Number(v.price) || 0), 0);
+    }, 0);
+    const legacy = _stockCache.reduce((s, v) => s + ((Array.isArray(v.units) && v.units.length) ? 0 : (parseInt(v.legacy_count, 10) || 0)), 0);
+
+    // Composition: where every tracked car actually is, before a single row.
+    if (sumEl) {
+      const counts = new Map();
+      all.forEach(({ u }) => { const k = u.status || ''; counts.set(k, (counts.get(k) || 0) + 1); });
+      const segs = stockStatusOpts().map(o => ({ label: o.label, n: counts.get(o.key) || 0, c: o.color || 'var(--muted)' }))
+        .concat(counts.get('') ? [{ label: 'Unassigned', n: counts.get(''), c: 'var(--muted)' }] : [])
+        .filter(x => x.n > 0);
+      sumEl.className = '';
+      sumEl.innerHTML = `
+        <div class="mix-band">
+          <div class="mix-total">
+            <span class="stat-value num">${all.length.toLocaleString()}</span>
+            <span class="mix-unit">unit${all.length === 1 ? '' : 's'}</span>
+          </div>
+          <div class="mix-body">
+            ${segs.length ? `<div class="mix-bar">${segs.map(x =>
+              `<span title="${esc(x.label)}: ${x.n}" style="flex:${x.n};background:${x.c}"></span>`).join('')}</div>
+            <div class="mix-legend">${segs.map(x =>
+              `<span class="mix-key"><i style="background:${x.c}"></i>${esc(x.label)}<b class="num">${x.n}</b></span>`).join('')}</div>`
+              : '<div class="stk-none">No units recorded yet.</div>'}
+          </div>
+          <div class="mix-side">
+            <span class="mix-side-v num">${egp(totalValue)}</span>
+            <span class="mix-side-l">${models.size} model${models.size === 1 ? '' : 's'} · register value</span>
+          </div>
+        </div>
+        ${legacy ? `<div class="stk-notice">
+          <i data-lucide="alert-triangle"></i>
+          <span><strong>${legacy} unit${legacy === 1 ? ' is' : 's are'} unmatched.</strong>
+          ${legacy === 1 ? 'It was' : 'They were'} recorded before VIN tracking — add
+          ${legacy === 1 ? 'its VIN' : 'their VINs'} to bring those models back into stock.</span>
+          <button class="btn btn-outline stk-review" onclick="stockReviewLegacy()">Review</button>
+        </div>` : ''}`;
     }
-    body.innerHTML = `<div class="stock-grid">${rows.map(stockCardHtml).join('')}</div>`;
+
+    const term = (document.getElementById('stock-search')?.value || '').trim().toLowerCase();
+    const match = ({ u, v }) => !term
+      || `${v.make} ${v.model} ${v.trim} ${u.vin || ''}`.toLowerCase().includes(term);
+    let rows = all.filter(match);
+    if (_stockStatusFilter) rows = rows.filter(r => r.u.status === _stockStatusFilter);
+
+    const tabs = [['all', 'All vehicles', 'table'], ['status', 'By status', 'layout-grid'], ['model', 'By model', 'car']];
+    const chrome = `
+      <div class="stk-views" role="tablist">
+        ${tabs.map(([k, label, icon]) => `<button class="task-view-tab${_stockView === k ? ' active' : ''}"
+          onclick="setStockView('${k}')"><i data-lucide="${icon}"></i> ${label}</button>`).join('')}
+      </div>
+      ${_stockView === 'model' ? '' : `<div class="stk-controls">
+        <button class="tbar-btn${_stockStatusFilter ? ' on' : ''}" onclick="openStockFilter(event)">
+          <i data-lucide="filter"></i> ${_stockStatusFilter ? esc(stockStatusMeta(_stockStatusFilter).label) : 'Filter'}
+        </button>
+        ${_stockView === 'all' ? `<button class="tbar-btn${_stockGroupSupplier ? ' on' : ''}" onclick="toggleStockGroup()">
+          <i data-lucide="rows-3"></i> Group: ${_stockGroupSupplier ? 'Supplier' : 'None'}
+        </button>` : ''}
+        ${_stockStatusFilter ? `<button class="filter-chip" onclick="clearStockStatus()">
+          ${esc(stockStatusMeta(_stockStatusFilter).label)} <span aria-hidden="true">&times;</span></button>` : ''}
+      </div>`}`;
+
+    let view = '';
+    if (_stockView === 'all') {
+      view = stockUnitTable(rows);
+    } else if (_stockView === 'status') {
+      const opts = stockStatusOpts().concat([{ key: '', label: 'Unassigned', color: 'var(--muted)' }]);
+      const total = rows.length || 1;
+      view = `<div class="lead-board">${opts.map(o => {
+        const list = rows.filter(r => (r.u.status || '') === o.key);
+        if (!list.length && o.key === '') return '';
+        const pct = Math.round((list.length / total) * 100);
+        const val = list.reduce((a, r) => a + (Number(r.u.price_list) || Number(r.v.price) || 0), 0);
+        return `<section class="lb-col" style="--c:${o.color || 'var(--muted)'}">
+          <div class="lb-head">
+            <div class="lb-head-top">
+              <span class="stk-pill" style="--c:${o.color || 'var(--muted)'}">${esc(o.label)}</span>
+              <span class="lb-n num">${list.length}</span>
+            </div>
+            <div><span class="lb-val num">${val ? egp(val) : '—'}</span><span class="lb-share num">${pct}% of units</span></div>
+          </div>
+          <div class="lb-body">${list.map(({ u, v }) => `<article class="lb-card">
+            <div class="lb-name">${esc(v.make || '')} ${esc(v.model || '')}</div>
+            <div class="lb-meta"><i data-lucide="hash"></i><span>${esc(u.vin || 'No VIN')}</span></div>
+            ${u.colour ? `<div class="lb-meta"><i data-lucide="palette"></i><span>${esc(u.colour)}</span></div>` : ''}
+            <div class="lb-budget num">${(Number(u.price_list) || Number(v.price) || 0).toLocaleString()}</div>
+            ${(u.supplier || v.supplier) ? `<div class="lb-foot">${esc(u.supplier || v.supplier)}</div>` : ''}
+          </article>`).join('') || '<div class="stk-none">Nothing here</div>'}</div>
+        </section>`;
+      }).join('')}</div>`;
+    } else {
+      // Match models on their own fields, not through their units: a model
+      // recorded before VIN tracking has no units at all, so deriving the
+      // list from matching units made it vanish the moment you searched —
+      // which is exactly the model the unmatched-units notice sends you to.
+      const keep = new Set(rows.map(r => r.v.id));
+      const cards = _stockCache.filter(v => {
+        if (_stockStatusFilter && !keep.has(v.id)) return false;
+        if (!term) return true;
+        return `${v.make || ''} ${v.model || ''} ${v.trim || ''}`.toLowerCase().includes(term)
+          || keep.has(v.id);
+      });
+      view = cards.length
+        ? `<div class="stock-grid">${cards.map(stockCardHtml).join('')}</div>`
+        : `<div class="stk-none">${_stockCache.length ? 'No vehicles match your search.' : 'No vehicles in stock yet.<br>Click “Add vehicle” or “Bulk upload CSV” to get started.'}</div>`;
+    }
+
+    body.innerHTML = chrome + view;
     requestAnimationFrame(() => lucide.createIcons());
   }
+
+  // "Review" is only useful if it puts the affected models in front of you.
+  function stockReviewLegacy() {
+    _stockView = 'model';
+    _stockStatusFilter = '';
+    const search = document.getElementById('stock-search');
+    if (search) search.value = '';
+    renderStock();
+    const first = document.querySelector('.stk-legacy');
+    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   // One card per car: title, price and the individual cars held against it.
   function stockCardHtml(v) {
     // Individual cars held against this model (VIN, tracking status, supplier…).
@@ -1879,6 +2230,8 @@
   // bundle still reaches for — these were plain globals before the move and stay
   // globals now, so no call site had to change.
   Object.assign(window, {
+    setStockView, openStockFilter, toggleStockGroup, clearStockStatus, stockReviewLegacy,
+    setSupView, renderSuppliers,
     CT_STATUS, PO_LINE_STATUSES, PO_STATUS, cataloguePick,
     closeDocPdf, ctCollect, ctField, ctGet,
     ctPopulateLeadPicker, ctSet, ctxPopulateLeadPicker, deleteContract,

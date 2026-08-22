@@ -290,8 +290,13 @@ const CELL = sel => `(() => {
       JSON.stringify(savedWrites[0] && savedWrites[0].body.custom_fields));
 
     // Suppliers register
+    // Suppliers opens on cards now; the configurable table — which is what
+    // these checks are about — is the "Table" view. The assertions are
+    // unchanged, only the view they run against is selected first.
     await page.evaluate(() => navigate('suppliers'));
     await sleep(600);
+    await page.evaluate(() => setSupView('table'));
+    await sleep(400);
     const sup = await page.evaluate(() => {
       const box = document.getElementById('suppliers-list');
       return { heads: [...box.querySelectorAll('thead th')].map(t => t.textContent.trim()),

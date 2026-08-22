@@ -159,6 +159,12 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       const navShown = !!nav && nav.style.display !== 'none';
       navigate('stock');
       await new Promise(r => setTimeout(r, 550));
+      // Inventory opens on the flat unit register now; the model cards these
+      // checks are about are the "By model" view. Same invariant — the team
+      // portal shows the register the dashboard holds — just the view that
+      // draws it as cards.
+      setStockView('model');
+      await new Promise(r => setTimeout(r, 300));
       const box = document.getElementById('page-stock');
       return { navShown, text: box ? box.textContent.replace(/\s+/g, ' ').trim() : null,
                cards: box ? box.querySelectorAll('.stock-card').length : 0 };
@@ -169,6 +175,7 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
     const search = await page.evaluate(async () => {
       document.getElementById('stock-search').value = 'changan';
       renderStock();
+      await new Promise(r => setTimeout(r, 200));
       return document.querySelectorAll('#page-stock .stock-card').length;
     });
     check('…and can be searched', search === 1, String(search));
@@ -202,6 +209,8 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       await new Promise(r => setTimeout(r, 500));
       const btn = [...document.querySelectorAll('#page-stock button')].find(b => /Add vehicle/.test(b.textContent));
       const shown = !!btn && btn.style.display !== 'none';
+      setStockView('model');
+      await new Promise(r => setTimeout(r, 300));
       const cardText = document.getElementById('page-stock').textContent.replace(/\s+/g, ' ');
       const chips = document.querySelectorAll('#page-stock .color-chip').length;
       await openStockForm(null);

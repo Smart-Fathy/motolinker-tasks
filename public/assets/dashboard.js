@@ -272,10 +272,40 @@ function renderCharts(s) {
 // ── Reports / Sales Analytics ──────────────────────────────────────────────────
 let _reportData = null;
 function repDateDefaults() {
+  // "All time" means no bounds. Refilling an empty date with the 90-day
+  // default here made that chip a lie: it read All time and queried 90 days.
+  if (_repRange === 'all') return;
   const to = document.getElementById('rep-to'), from = document.getElementById('rep-from');
   if (to && !to.value) to.value = new Date().toISOString().slice(0, 10);
   if (from && !from.value) from.value = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
 }
+// The chips write the same two inputs repQuery() already reads, so the
+// range is one mechanism, not two that can disagree.
+let _repRange = 90;
+function repSetRange(v) {
+  _repRange = v;
+  const to = document.getElementById('rep-to'), from = document.getElementById('rep-from');
+  const today = new Date();
+  if (to) to.value = today.toISOString().slice(0, 10);
+  if (from) {
+    if (v === 'all') from.value = '';
+    else if (v === 'ytd') from.value = new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10);
+    else from.value = new Date(Date.now() - v * 86400000).toISOString().slice(0, 10);
+  }
+  if (v === 'all' && to) to.value = '';
+  paintRepRanges();
+  loadReports();
+}
+function paintRepRanges() {
+  document.querySelectorAll('#rep-ranges .range-chip').forEach(b =>
+    b.classList.toggle('active', String(b.dataset.days) === String(_repRange)));
+  const btn = document.getElementById('rep-custom-btn');
+  if (btn) btn.classList.toggle('on', _repRange === 'custom');
+}
+// Editing a date by hand means the chips no longer describe what is shown.
+function repCustomChanged() { _repRange = 'custom'; paintRepRanges(); loadReports(); }
+function openRepCustom(e) { e.stopPropagation(); tbarPanel(e.currentTarget, 'rep-custom-panel', null); }
+
 function repQuery() {
   const p = new URLSearchParams();
   const f = document.getElementById('rep-from')?.value, t = document.getElementById('rep-to')?.value, s = document.getElementById('rep-source')?.value;
@@ -301,45 +331,149 @@ async function loadReports() {
 }
 function egp(n) { return (Number(n) || 0).toLocaleString() + ' EGP'; }
 function renderReportStats(s) {
-  document.getElementById('reports-stats').innerHTML = `
-    <div class="stat-card total"><div class="stat-label">Open Pipeline</div><div class="stat-value" style="font-size:22px">${egp(s.totalPipeline)}</div><div class="stat-sub">${s.range.from} → ${s.range.to}</div></div>
-    <div class="stat-card in-progress"><div class="stat-label">Weighted Pipeline</div><div class="stat-value" style="font-size:22px">${egp(s.weightedPipeline)}</div><div class="stat-sub">Probability-adjusted</div></div>
-    <div class="stat-card done"><div class="stat-label">Revenue Won</div><div class="stat-value" style="font-size:22px">${egp(s.revenueWon)}</div><div class="stat-sub">${s.wonCount} deal${s.wonCount === 1 ? '' : 's'}</div></div>
-    <div class="stat-card high-pri"><div class="stat-label">Win Rate</div><div class="stat-value">${s.winRate}%</div><div class="stat-sub">Won vs lost</div></div>
-    <div class="stat-card todo"><div class="stat-label">Avg Deal</div><div class="stat-value" style="font-size:22px">${egp(s.avgDeal)}</div><div class="stat-sub">Per won deal</div></div>
-    <div class="stat-card overdue"><div class="stat-label">Quotes Generated</div><div class="stat-value">${s.quotesCount}</div><div class="stat-sub">In range</div></div>`;
+  // Each tile earns its wash from what it measures, and carries a share bar
+  // so the number has a denominator instead of floating alone.
+  // Every stage's value, won and lost included — the same total the funnel
+  // panel below is drawn from, so the two cannot contradict each other.
+  const totalValue = (s.funnel || []).reduce((a, f) => a + (Number(f.value) || 0), 0)
+    || ((Number(s.totalPipeline) || 0) + (Number(s.revenueWon) || 0));
+  const pct = (a, b) => (Number(b) ? Math.round((Number(a) / Number(b)) * 100) : 0);
+  const tiles = [
+    { label: 'Open pipeline',   value: egp(s.totalPipeline),      c: 'var(--gold)',     share: pct(s.totalPipeline, totalValue), sub: 'of all deal value' },
+    { label: 'Weighted pipeline', value: egp(s.weightedPipeline), c: 'var(--st-todo)',  share: pct(s.weightedPipeline, s.totalPipeline), sub: 'of open pipeline · probability-adjusted' },
+    { label: 'Revenue won',     value: egp(s.revenueWon),         c: 'var(--success)',  share: pct(s.revenueWon, totalValue), sub: `${s.wonCount} deal${s.wonCount === 1 ? '' : 's'}` },
+    { label: 'Win rate',        value: s.winRate + '%',           c: 'var(--st-progress)', share: Number(s.winRate) || 0, sub: 'closed deals won' },
+    { label: 'Avg deal',        value: egp(s.avgDeal),            c: 'var(--gold)',     share: null, sub: 'per won deal' },
+    { label: 'Quotes generated', value: String(s.quotesCount),    c: 'var(--stage-inquiry)', share: null, sub: 'in range' },
+  ];
+  document.getElementById('reports-stats').innerHTML = tiles.map(t => `
+    <div class="kpi-tile" style="--c:${t.c}">
+      <span class="kpi-label">${esc(t.label)}</span>
+      <div class="kpi-value num">${esc(t.value)}</div>
+      ${t.share != null ? `<div class="kpi-share">
+        <span class="kpi-track"><i style="width:${Math.max(0, Math.min(100, t.share))}%"></i></span>
+        <span class="kpi-pct num">${t.share}%</span>
+      </div>` : ''}
+      <div class="kpi-sub">${esc(t.sub)}</div>
+    </div>`).join('');
 }
+
+// Origin labels come from the column engine when it is loaded, because that
+// list is user-configurable; AM_ORIGINS is the same set for when Reports is
+// opened without ever visiting Leads.
+function sourceLabel(key) {
+  if (!key) return '—';
+  const col = (typeof leadCol === 'function' ? leadCol('source') : null);
+  const hit = (col && col.options || []).find(o => o.key === key);
+  if (hit) return hit.label || key;
+  const pair = (typeof AM_ORIGINS !== 'undefined' ? AM_ORIGINS : []).find(p => p[0] === key);
+  return pair ? pair[1] : key;
+}
+
+// A donut where colour is the only encoding is unreadable for anyone whose
+// vision separates these brand hues poorly — and the validator says these
+// pairs are close. So every segment is separated by a real gap in the ring,
+// and the legend beside it names each slice in text with its number.
+function donutSvg(rows, centreValue, centreLabel) {
+  const total = rows.reduce((a, r) => a + r.n, 0) || 1;
+  const R = 54, C = 2 * Math.PI * R;
+  const GAP = 3; // px of circumference, so arcs never touch
+  let at = 0;
+  const arcs = rows.map(r => {
+    const len = Math.max(0, (r.n / total) * C - GAP);
+    const seg = `<circle class="donut-seg" r="${R}" cx="70" cy="70" fill="none"
+      stroke="${r.c}" stroke-width="16" stroke-dasharray="${len} ${C - len}"
+      stroke-dashoffset="${-at}" transform="rotate(-90 70 70)"><title>${esc(r.label)}: ${r.n}</title></circle>`;
+    at += (r.n / total) * C;
+    return seg;
+  }).join('');
+  return `<svg viewBox="0 0 140 140" class="donut" role="img" aria-label="${esc(centreLabel)}">
+      <circle r="${R}" cx="70" cy="70" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="16"></circle>
+      ${arcs}
+    </svg>
+    <div class="donut-centre">
+      <span class="donut-n num">${esc(String(centreValue))}</span>
+      <span class="donut-cap">${esc(centreLabel)}</span>
+    </div>`;
+}
+
+function donutLegend(rows) {
+  const total = rows.reduce((a, r) => a + r.n, 0) || 1;
+  return `<ul class="donut-legend">${rows.map(r => `<li>
+    <i style="background:${r.c}"></i><span>${esc(r.label)}</span>
+    <b class="num">${r.n}</b><em class="num">${Math.round((r.n / total) * 100)}%</em>
+  </li>`).join('')}</ul>`;
+}
+
 function renderReportCharts(s) {
-  const gold = '#e6c98a', primary = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#c99a4e';
-  // Funnel (horizontal bar)
-  if (charts.repFunnel) charts.repFunnel.destroy();
-  charts.repFunnel = new Chart(document.getElementById('repFunnel'), {
-    type: 'bar',
-    data: { labels: s.funnel.map(f => f.stage), datasets: [{ label: 'Deals', data: s.funnel.map(f => f.count), backgroundColor: primary, borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } },
-  });
-  // Revenue by month (bar)
-  if (charts.repRevenue) charts.repRevenue.destroy();
-  charts.repRevenue = new Chart(document.getElementById('repRevenue'), {
-    type: 'bar',
-    data: { labels: s.revenueByMonth.map(m => m.month), datasets: [{ label: 'Revenue (EGP)', data: s.revenueByMonth.map(m => m.value), backgroundColor: gold, borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
-  });
-  // Deals by source (doughnut)
-  if (charts.repSource) charts.repSource.destroy();
-  charts.repSource = new Chart(document.getElementById('repSource'), {
-    type: 'doughnut',
-    data: { labels: s.bySource.map(x => x.source), datasets: [{ data: s.bySource.map(x => x.deals), backgroundColor: ['#c99a4e','#f59e0b','#10b981','#3b82f6','#a855f7','#ef4444','#14b8a6','#64748b','#e6c98a'], borderWidth: 0 }] },
-    options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8 } } } },
-  });
-  // Rep leaderboard (horizontal bar, revenue won)
-  if (charts.repRep) charts.repRep.destroy();
-  charts.repRep = new Chart(document.getElementById('repRep'), {
-    type: 'bar',
-    data: { labels: s.byRep.map(x => x.rep), datasets: [{ label: 'Revenue won (EGP)', data: s.byRep.map(x => x.value), backgroundColor: gold, borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } },
-  });
+  const money = n => (Number(n) || 0).toLocaleString();
+  const shortM = n => {
+    const v = Number(n) || 0;
+    if (v >= 1e6) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (v >= 1e3) return Math.round(v / 1e3) + 'K';
+    return String(v);
+  };
+
+  // ── Pipeline funnel: one row per stage, stage-coloured, labelled ──
+  const funnel = s.funnel || [];
+  const fMax = Math.max(...funnel.map(f => Number(f.count) || 0), 1);
+  document.getElementById('rep-funnel').innerHTML = funnel.map(f => {
+    const key = String(f.stage || '').toLowerCase();
+    const c = DEAL_STAGE_HEX[key] || 'var(--muted)';
+    const txt = DEAL_STAGE_TEXT[key] || c;
+    const w = Math.round(((Number(f.count) || 0) / fMax) * 100);
+    return `<div class="rep-row">
+      <span class="rep-dot" style="background:${c}"></span>
+      <span class="rep-name">${esc(DEAL_STAGE_LABELS[key] || f.stage)}</span>
+      <span class="rep-meta num">${f.count} deal${Number(f.count) === 1 ? '' : 's'}</span>
+      <span class="rep-val num" style="color:${txt}">EGP ${shortM(f.value)}</span>
+      <span class="rep-track"><i style="width:${w}%;background:${c}"></i></span>
+    </div>`;
+  }).join('') || '<div class="rep-empty">No deals in range.</div>';
+
+  // ── Revenue by month: vertical bars, value above each ──
+  const months = s.revenueByMonth || [];
+  const mMax = Math.max(...months.map(m => Number(m.value) || 0), 1);
+  document.getElementById('rep-months').innerHTML = months.length
+    ? `<div class="rep-months">${months.map(m => {
+        const h = Math.max(2, Math.round(((Number(m.value) || 0) / mMax) * 100));
+        return `<div class="rep-month" title="${esc(m.month)}: ${money(m.value)} EGP">
+          <span class="rep-month-v num">${shortM(m.value)}</span>
+          <span class="rep-month-bar"><i style="height:${h}%"></i></span>
+          <span class="rep-month-l">${esc(String(m.month).slice(-2))}</span>
+        </div>`;
+      }).join('')}</div>`
+    : '<div class="rep-empty">No revenue in range.</div>';
+
+  // ── Deals by origin: donut + legend, identity carried in text ──
+  const PALETTE = ['var(--gold)', 'var(--st-todo)', 'var(--success)', 'var(--stage-inquiry)',
+                   'var(--warning)', 'var(--danger)', 'var(--stage-quoted)', 'var(--muted)'];
+  const src = (s.bySource || []).map((x, i) => ({
+    label: sourceLabel(x.source),
+    n: Number(x.deals) || 0,
+    c: PALETTE[i % PALETTE.length],
+  })).filter(r => r.n > 0);
+  const srcTotal = src.reduce((a, r) => a + r.n, 0);
+  document.getElementById('rep-origin').innerHTML = src.length
+    ? `<div class="donut-box">${donutSvg(src, srcTotal, 'deals')}</div>${donutLegend(src)}`
+    : '<div class="rep-empty">No deals in range.</div>';
+
+  // ── Revenue by rep ──
+  const reps = (s.byRep || []).filter(r => Number(r.value) > 0);
+  const rMax = Math.max(...reps.map(r => Number(r.value) || 0), 1);
+  document.getElementById('rep-rank').innerHTML = reps.length
+    ? reps.map(r => {
+        const w = Math.round(((Number(r.value) || 0) / rMax) * 100);
+        return `<div class="rep-row rank">
+          <span class="td-av">${esc(tdInitials(r.rep))}</span>
+          <span class="rep-name">${esc(r.rep || '—')}</span>
+          <span class="rep-val num">EGP ${shortM(r.value)}</span>
+          <span class="rep-track"><i style="width:${w}%"></i></span>
+        </div>`;
+      }).join('')
+    : '<div class="rep-empty">Nothing won in range.</div>';
 }
+
 function exportReport(which) {
   const p = repQuery();
   const tok = encodeURIComponent(authToken || '');
@@ -405,11 +539,36 @@ function lrMeasureName(m) { return m === 'count' ? 'Lead count' : m === 'budget_
 function lrRangeLabel(d) { return (d.range && (d.range.from || d.range.to)) ? `${d.range.from || '…'} → ${d.range.to || '…'}` : 'All time'; }
 function lrFmt(d, v) { return d.measure === 'count' ? Number(v).toLocaleString() : egp(v); }
 function renderLeadsReport(d) {
-  document.getElementById('lr-kpis').innerHTML = `
-    <div class="stat-card total"><div class="stat-label">Total Leads</div><div class="stat-value">${d.totals.count.toLocaleString()}</div><div class="stat-sub">${lrRangeLabel(d)}</div></div>
-    <div class="stat-card high-pri"><div class="stat-label">Hot Leads</div><div class="stat-value">${d.hotCount.toLocaleString()}</div><div class="stat-sub">${d.totals.count ? Math.round(d.hotCount / d.totals.count * 100) : 0}% of leads</div></div>
-    <div class="stat-card in-progress"><div class="stat-label">Avg Budget</div><div class="stat-value" style="font-size:20px">${egp(d.totals.avg)}</div><div class="stat-sub">Per lead</div></div>`;
+  const hotPct = d.totals.count ? Math.round(d.hotCount / d.totals.count * 100) : 0;
+  const tiles = [
+    { label: 'Total leads', value: d.totals.count.toLocaleString(), c: 'var(--gold)',    share: null,   sub: lrRangeLabel(d) },
+    { label: 'Hot leads',   value: d.hotCount.toLocaleString(),     c: 'var(--danger)',  share: hotPct, sub: 'ready to buy now' },
+    { label: 'Avg budget',  value: egp(d.totals.avg),               c: 'var(--st-todo)', share: null,   sub: 'per lead' },
+  ];
+  document.getElementById('lr-kpis').innerHTML = tiles.map(t => `
+    <div class="kpi-tile" style="--c:${t.c}">
+      <span class="kpi-label">${esc(t.label)}</span>
+      <div class="kpi-value num">${esc(t.value)}</div>
+      ${t.share != null ? `<div class="kpi-share">
+        <span class="kpi-track"><i style="width:${Math.max(0, Math.min(100, t.share))}%"></i></span>
+        <span class="kpi-pct num">${t.share}%</span>
+      </div>` : ''}
+      <div class="kpi-sub">${esc(t.sub)}</div>
+    </div>`).join('');
   return d.splitBy ? renderLeadsCrossTab(d) : renderLeadsSingle(d);
+}
+
+// When the breakdown is by a dimension the column engine gives colours to,
+// the bar and the donut should use them: a status table where Hot and Cold
+// are the same gold tells you nothing the label had not already said.
+function lrRowColor(groupBy, key, i) {
+  const map = { lead_status: 'lead_status', source: 'source', next_action: 'next_action' };
+  if (map[groupBy] && typeof leadCol === 'function') {
+    const col = leadCol(map[groupBy]);
+    const hit = ((col && col.options) || []).find(o => o.key === key);
+    if (hit && hit.color) return hit.color;
+  }
+  return LR_PALETTE[i % LR_PALETTE.length];
 }
 function renderLeadsSingle(d) {
   const rows = d.rows || [];
@@ -421,26 +580,47 @@ function renderLeadsSingle(d) {
     <table style="width:100%;border-collapse:collapse;font-size:12.5px">
       <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
         <th style="padding:6px 8px">${esc(gl)}</th><th style="padding:6px 8px;text-align:right">Leads</th><th style="padding:6px 8px;text-align:right">${isCount ? '% of total' : 'Budget'}</th></tr></thead>
-      <tbody>${rows.map(r => {
+      <tbody>${rows.map((r, i) => {
         const barPct = Math.round((isCount ? r.count : (Number(r.value) || 0)) / maxV * 100);
         const right = isCount ? (d.totals.count ? Math.round(r.count / d.totals.count * 100) : 0) + '%' : egp(r.value);
+        const rc = lrRowColor(d.groupBy, r.key, i);
         return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
-          <td style="padding:6px 8px"><div style="position:relative;min-width:80px"><div style="position:absolute;inset:0;background:rgba(201,163,94,.16);width:${barPct}%;border-radius:3px"></div><span style="position:relative">${esc(r.label)}</span></div></td>
+          <td style="padding:6px 8px"><div class="lr-bar-cell"><i style="width:${barPct}%;background:${rc}"></i><span><b style="background:${rc}"></b>${esc(r.label)}</span></div></td>
           <td style="padding:6px 8px;text-align:right;font-weight:600">${r.count.toLocaleString()}</td>
           <td style="padding:6px 8px;text-align:right;color:var(--muted)">${right}</td></tr>`;
       }).join('')}</tbody>
     </table>` : '<div style="color:var(--muted);padding:24px;text-align:center">No leads match these filters.</div>';
-  const labels = rows.map(r => r.label);
-  const data = rows.map(r => isCount ? r.count : (Number(r.value) || 0));
+  // A part-of-whole read gets a ring; anything else gets bars. Both carry
+  // their labels as text, because these are status colours and the
+  // palette validator is clear that they are too close to stand alone.
   const doughnut = ['lead_status', 'source', 'been_contacted', 'next_action'].includes(d.groupBy);
-  if (charts.lrChart) charts.lrChart.destroy();
-  charts.lrChart = new Chart(document.getElementById('lrChart'), doughnut ? {
-    type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: LR_PALETTE, borderWidth: 0 }] },
-    options: { responsive: true, maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8 } } } },
-  } : {
-    type: 'bar', data: { labels, datasets: [{ label: isCount ? 'Leads' : 'EGP', data, backgroundColor: '#c99a4e', borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } },
-  });
+  if (charts.lrChart) { charts.lrChart.destroy(); charts.lrChart = null; }
+  const host = document.getElementById('lr-chart-host');
+  const parts = rows.map((r, i) => ({
+    label: r.label, n: isCount ? r.count : (Number(r.value) || 0), c: lrRowColor(d.groupBy, r.key, i),
+  })).filter(x => x.n > 0);
+  if (!parts.length) { host.innerHTML = '<div class="rep-empty">Nothing to chart.</div>'; return; }
+  if (doughnut) {
+    const total = parts.reduce((a, x) => a + x.n, 0);
+    host.className = 'donut-wrap';
+    host.innerHTML = `<div class="donut-box">${donutSvg(parts, isCount ? total : shortEgp(total), isCount ? 'leads' : 'EGP')}</div>${donutLegend(parts)}`;
+  } else {
+    const mx = Math.max(...parts.map(x => x.n), 1);
+    host.className = '';
+    host.innerHTML = parts.map(x => `<div class="rep-row rank">
+      <span class="rep-dot" style="background:${x.c}"></span>
+      <span class="rep-name">${esc(x.label)}</span>
+      <span class="rep-val num">${isCount ? x.n.toLocaleString() : shortEgp(x.n)}</span>
+      <span class="rep-track"><i style="width:${Math.round((x.n / mx) * 100)}%;background:${x.c}"></i></span>
+    </div>`).join('');
+  }
+}
+
+function shortEgp(n) {
+  const v = Number(n) || 0;
+  if (v >= 1e6) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (v >= 1e3) return Math.round(v / 1e3) + 'K';
+  return String(v);
 }
 function renderLeadsCrossTab(d) {
   const rows = d.rows || [], cats = d.splitCats || [];
@@ -460,7 +640,13 @@ function renderLeadsCrossTab(d) {
   // Stacked bar: one bar per primary group, a segment per split category
   const labels = rows.map(r => r.label);
   const datasets = cats.map((c, i) => ({ label: c.label, data: rows.map(r => r.cells[c.key] || 0), backgroundColor: LR_PALETTE[i % LR_PALETTE.length], borderWidth: 0 }));
+  // A cross-tab is a genuine stacked comparison, so it stays a chart. The
+  // canvas is created here because the single-dimension view replaced the
+  // static one with DOM; Chart.js needs a fresh element either way.
   if (charts.lrChart) charts.lrChart.destroy();
+  const host = document.getElementById('lr-chart-host');
+  host.className = '';
+  host.innerHTML = '<div class="chart-wrap"><canvas id="lrChart"></canvas></div>';
   charts.lrChart = new Chart(document.getElementById('lrChart'), {
     type: 'bar', data: { labels, datasets },
     options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
@@ -798,6 +984,199 @@ function populateChannelFilter(tasks) {
   });
 }
 
+// ── Tasks toolbar: filter, group, sort, columns ───────────────────────
+// The list had one shape decided for it: grouped by status, ordered by
+// whatever the server returned, showing eleven columns whether or not you
+// wanted them. These four controls hand that back, and each persists.
+const TASK_GROUP_BYS = {
+  status: { label: 'Status', groups: () => TASK_GROUPS.map(g => ({ ...g, match: t => t.status === g.key })) },
+  priority: {
+    label: 'Priority',
+    groups: () => [
+      { key: 'high',   label: 'High',   tone: 'var(--pri-high)' },
+      { key: 'medium', label: 'Medium', tone: 'var(--pri-med)' },
+      { key: 'low',    label: 'Low',    tone: 'var(--pri-low)' },
+    ].map(g => ({ ...g, match: t => t.priority === g.key })),
+  },
+  assignee: {
+    label: 'Assignee',
+    groups: tasks => {
+      const names = new Map();
+      tasks.forEach(t => names.set(taskAssigneeLabel(t), true));
+      return [...names.keys()].sort((a, b) => a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b))
+        .map(n => ({
+          // Slugged: the key ends up inside an inline onclick, and a name
+          // like O'Brien would otherwise close the JS string early.
+          key: 'who-' + n.replace(/[^a-z0-9]+/gi, '-').toLowerCase(),
+          label: n, tone: n === 'Unassigned' ? 'var(--muted)' : 'var(--gold)',
+          match: t => taskAssigneeLabel(t) === n,
+        }));
+    },
+  },
+  due: {
+    label: 'Due date',
+    groups: () => [
+      { key: 'overdue', label: 'Overdue',   tone: 'var(--danger)',  match: t => isOverdue(t.due_date, t.status) },
+      { key: 'today',   label: 'Today',     tone: 'var(--warning)', match: t => t.due_date === TODAY && !isOverdue(t.due_date, t.status) },
+      { key: 'week',    label: 'This week', tone: 'var(--success)', match: t => {
+        if (!t.due_date || t.due_date <= TODAY) return false;
+        return (Date.parse(t.due_date) - Date.parse(TODAY)) <= 7 * 86400000;
+      } },
+      { key: 'later',   label: 'Later',     tone: 'var(--st-todo)', match: t => {
+        if (!t.due_date || t.due_date <= TODAY) return false;
+        return (Date.parse(t.due_date) - Date.parse(TODAY)) > 7 * 86400000;
+      } },
+      { key: 'nodate',  label: 'No date',   tone: 'var(--muted)',   match: t => !t.due_date },
+    ],
+  },
+  none: { label: 'None', groups: () => [] },
+};
+
+const TASK_SORTS = {
+  due:      { label: 'Due date', cmp: (a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999') },
+  // High first: a priority sort that buries High under Low is not a sort
+  // anyone asked for.
+  priority: { label: 'Priority', cmp: (a, b) => (['high', 'medium', 'low'].indexOf(a.priority) + 3) % 3 - (['high', 'medium', 'low'].indexOf(b.priority) + 3) % 3 },
+  created:  { label: 'Newest',   cmp: (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) },
+  title:    { label: 'Title',    cmp: (a, b) => String(a.title || '').localeCompare(String(b.title || '')) },
+};
+
+// Title carries the row's identity and Actions its verbs; hiding either
+// leaves a row you cannot read or cannot act on, so neither is offered.
+const TASK_COLS = [
+  { key: 'id',        label: 'ID' },
+  { key: 'title',     label: 'Title',     locked: true },
+  { key: 'channel',   label: 'Channel' },
+  { key: 'assignee',  label: 'Assignee' },
+  { key: 'due',       label: 'Due Date' },
+  { key: 'priority',  label: 'Priority' },
+  { key: 'status',    label: 'Status' },
+  { key: 'milestone', label: 'Milestone' },
+  { key: 'created',   label: 'Created' },
+  { key: 'completed', label: 'Completed' },
+];
+
+let _taskGroupBy = 'status';
+let _taskSort = 'due';
+let _taskColsHidden = [];
+try {
+  _taskGroupBy = localStorage.getItem('ml_task_group') || 'status';
+  _taskSort = localStorage.getItem('ml_task_sort') || 'due';
+  _taskColsHidden = JSON.parse(localStorage.getItem('ml_task_cols') || '[]');
+} catch (_) {}
+if (!TASK_GROUP_BYS[_taskGroupBy]) _taskGroupBy = 'status';
+if (!TASK_SORTS[_taskSort]) _taskSort = 'due';
+if (!Array.isArray(_taskColsHidden)) _taskColsHidden = [];
+
+function visibleTaskCols() {
+  return TASK_COLS.filter(c => c.locked || !_taskColsHidden.includes(c.key));
+}
+
+// One panel open at a time, dismissed by the next click anywhere else.
+function tbarPanel(anchorEl, panelId, html) {
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  const open = panel.classList.contains('open');
+  document.querySelectorAll('.tbar-panel.open').forEach(p => p.classList.remove('open'));
+  if (open) return;
+  if (html != null) panel.innerHTML = html;
+  const r = anchorEl.getBoundingClientRect();
+  panel.style.top = (r.bottom + 6) + 'px';
+  // Keep it on screen when the button sits near the right edge.
+  panel.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 268)) + 'px';
+  panel.classList.add('open');
+  if (window.lucide) lucide.createIcons();
+  setTimeout(() => document.addEventListener('click', tbarPanelAway, { once: true }), 0);
+}
+function tbarPanelAway(e) {
+  if (e.target.closest && e.target.closest('.tbar-panel')) {
+    document.addEventListener('click', tbarPanelAway, { once: true });
+    return;
+  }
+  document.querySelectorAll('.tbar-panel.open').forEach(p => p.classList.remove('open'));
+}
+
+function openTaskFilter(e) { e.stopPropagation(); tbarPanel(e.currentTarget, 'task-filter-panel', null); }
+
+function openTaskGroup(e) {
+  e.stopPropagation();
+  document.querySelectorAll('.tbar-panel.open').forEach(p => p.classList.remove('open'));
+  window.brandMenu(e.currentTarget, Object.entries(TASK_GROUP_BYS).map(([k, g]) =>
+    ({ key: k, label: g.label, selected: k === _taskGroupBy })), key => {
+    _taskGroupBy = key;
+    try { localStorage.setItem('ml_task_group', key); } catch (_) {}
+    filterTasks();
+  });
+}
+
+function openTaskSort(e) {
+  e.stopPropagation();
+  document.querySelectorAll('.tbar-panel.open').forEach(p => p.classList.remove('open'));
+  window.brandMenu(e.currentTarget, Object.entries(TASK_SORTS).map(([k, v]) =>
+    ({ key: k, label: v.label, selected: k === _taskSort })), key => {
+    _taskSort = key;
+    try { localStorage.setItem('ml_task_sort', key); } catch (_) {}
+    filterTasks();
+  });
+}
+
+function openTaskCols(e) {
+  e.stopPropagation();
+  tbarPanel(e.currentTarget, 'task-cols-panel', `
+    <div class="tbar-panel-title">Columns in Table view</div>
+    ${TASK_COLS.map(c => `<label class="tbar-check">
+      <input type="checkbox" ${c.locked || !_taskColsHidden.includes(c.key) ? 'checked' : ''}
+             ${c.locked ? 'disabled' : ''} onchange="toggleTaskCol('${c.key}', this.checked)">
+      <span>${esc(c.label)}</span>${c.locked ? '<em>always</em>' : ''}
+    </label>`).join('')}`);
+}
+
+function toggleTaskCol(key, on) {
+  _taskColsHidden = on ? _taskColsHidden.filter(k => k !== key) : [...new Set([..._taskColsHidden, key])];
+  try { localStorage.setItem('ml_task_cols', JSON.stringify(_taskColsHidden)); } catch (_) {}
+  filterTasks();
+}
+
+function clearTaskFilters() {
+  ['f-status', 'f-priority', 'f-channel'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const s = document.getElementById('search'); if (s) s.value = '';
+  filterTasks();
+}
+
+function removeTaskFilter(id) {
+  const el = document.getElementById(id); if (el) el.value = '';
+  filterTasks();
+}
+
+// The toolbar has to say what it is doing, or the state it holds is
+// invisible until the list surprises you.
+function paintTaskToolbar() {
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  set('task-group-label', 'Group: ' + TASK_GROUP_BYS[_taskGroupBy].label);
+  set('task-sort-label', 'Sort: ' + TASK_SORTS[_taskSort].label);
+  const on = (id, active) => { const el = document.getElementById(id); if (el) el.classList.toggle('on', active); };
+  on('task-group-btn', _taskGroupBy !== 'status');
+  on('task-sort-btn', _taskSort !== 'due');
+  on('task-cols-btn', _taskColsHidden.length > 0);
+
+  const chips = [];
+  const label = { 'f-status': 'Status', 'f-priority': 'Priority', 'f-channel': 'Channel' };
+  Object.keys(label).forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value) {
+      const text = el.options[el.selectedIndex].text;
+      chips.push(`<button class="filter-chip" onclick="removeTaskFilter('${id}')">
+        ${label[id]}: ${esc(text)} <span aria-hidden="true">&times;</span></button>`);
+    }
+  });
+  on('task-filter-btn', chips.length > 0);
+  set('task-filter-label', chips.length ? `Filter · ${chips.length}` : 'Filter');
+  const box = document.getElementById('task-filter-chips');
+  if (box) { box.style.display = chips.length ? 'flex' : 'none'; box.innerHTML = chips.join(''); }
+}
+
 function filterTasks() {
   const search   = document.getElementById('search').value.toLowerCase();
   const status   = document.getElementById('f-status').value;
@@ -813,42 +1192,149 @@ function filterTasks() {
     return true;
   });
 
+  filtered.sort(TASK_SORTS[_taskSort].cmp);
+  paintTaskToolbar();
   renderTable(filtered);
+}
+
+// ── Tasks: Calendar view ──────────────────────────────────────────────
+// A month of the *filtered* tasks on their due dates. Deliberately not
+// calendar.js: that one fetches its own /calendar payload — meetings and
+// follow-ups included — so it could not honour the search and filters
+// this page has just applied. It reuses calendar.js's grid CSS
+// (.cal-grid / .cal-day / .cal-chip), which is the same shape the design
+// draws, rather than a second grid vocabulary.
+let _taskCalCursor = null; // null = the month containing today
+
+function taskCalMonth() {
+  return _taskCalCursor ? new Date(_taskCalCursor) : new Date();
+}
+
+function taskCalShift(n) {
+  const d = taskCalMonth();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + n);
+  _taskCalCursor = d;
+  filterTasks();
+}
+
+function taskCalToday() { _taskCalCursor = null; filterTasks(); }
+
+function renderTaskCalendar(tasks, container) {
+  const pad = n => String(n).padStart(2, '0');
+  const key = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const cursor = taskCalMonth();
+  const y = cursor.getFullYear(), mo = cursor.getMonth();
+
+  // The design's week runs Mon–Sun; getDay() is Sunday-first, so Sunday
+  // has to wrap to the end rather than start the row.
+  const monFirst = n => (n + 6) % 7;
+  const first = new Date(y, mo, 1);
+  const start = new Date(first);
+  start.setDate(1 - monFirst(first.getDay()));
+  const last = new Date(y, mo + 1, 0);
+  const cells = Math.ceil((monFirst(first.getDay()) + last.getDate()) / 7) * 7;
+
+  const byDay = new Map();
+  tasks.forEach(t => {
+    if (!t.due_date) return;
+    if (!byDay.has(t.due_date)) byDay.set(t.due_date, []);
+    byDay.get(t.due_date).push(t);
+  });
+
+  const undated = tasks.filter(t => !t.due_date).length;
+  const inMonth = tasks.filter(t => t.due_date && t.due_date.startsWith(`${y}-${pad(mo + 1)}`)).length;
+  const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  let grid = '';
+  for (let i = 0; i < cells; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    const k = key(d);
+    const rows = byDay.get(k) || [];
+    const cls = [
+      'cal-day',
+      d.getMonth() !== mo ? 'other' : '',
+      k === TODAY ? 'today' : '',
+    ].filter(Boolean).join(' ');
+    grid += `<div class="${cls}">
+      <span class="cal-daynum num">${d.getDate()}</span>
+      <div class="cal-items">${rows.map(t => {
+        const overdue = isOverdue(t.due_date, t.status);
+        // Status is what the chip is *about*; overdue outranks it, because a
+        // late task is the thing you need to see first.
+        const tone = overdue ? 'var(--danger)'
+          : t.status === 'done' ? 'var(--st-done)'
+          : t.status === 'in_progress' ? 'var(--st-progress)'
+          : 'var(--st-todo)';
+        return `<button class="cal-chip tcal-chip${t.status === 'done' ? ' done' : ''}"
+          style="--c:${tone}" onclick="openTaskDrawer(${t.id})"
+          title="${esc(t.title)}">${esc(t.title)}</button>`;
+      }).join('')}</div>
+    </div>`;
+  }
+
+  container.innerHTML = `
+    <div class="tcal">
+      <div class="tcal-head">
+        <h3 class="tcal-title">${cursor.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</h3>
+        <span class="tcal-sub">Tasks sit on their due date${undated ? ` · ${undated} with no date` : ''}</span>
+        <div class="tcal-nav">
+          <button class="cal-nav cal-arrow" onclick="taskCalShift(-1)" aria-label="Previous month">&lsaquo;</button>
+          <button class="cal-nav" onclick="taskCalToday()">Today</button>
+          <button class="cal-nav cal-arrow" onclick="taskCalShift(1)" aria-label="Next month">&rsaquo;</button>
+        </div>
+      </div>
+      <div class="cal-grid">
+        ${DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')}
+        ${grid}
+      </div>
+      ${inMonth ? '' : '<div class="tcal-empty">No tasks due this month.</div>'}
+    </div>`;
 }
 
 function renderTaskTable(tasks) {
   const container = document.getElementById('table-container');
-  const rows = tasks.map(t => {
+  // Header and body are generated from one list. mobile.js turns a table
+  // into cards by mapping heads[i] onto cell[i], so a column hidden in one
+  // and not the other would relabel every cell after it on a phone.
+  const cols = visibleTaskCols();
+  const cell = (t, key) => {
     const overdue = isOverdue(t.due_date, t.status);
-    const soon    = !overdue && isDueSoon(t.due_date, t.status);
-    const dueCls  = overdue ? 'overdue' : (soon ? 'due-soon' : '');
-    const dueLabel = overdue ? `${t.due_date}` : t.due_date;
-    const createdDate = new Date(t.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-
-    const isDone = t.status === 'done';
-    return `<tr id="row-${t.id}">
-      <td style="width:32px"><input type="checkbox" class="row-cb task-cb" data-id="${t.id}" onchange="onRowCheck()"></td>
-      <td class="task-id">#${t.id}</td>
-      <td>
+    const soon = !overdue && isDueSoon(t.due_date, t.status);
+    const day = d => d ? new Date(d).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+    switch (key) {
+      case 'id': return `<td class="task-id">#${t.id}</td>`;
+      case 'title': return `<td>
         <div class="task-title">${esc(t.title)}${taskClip(t)}</div>
         ${t.description ? `<div class="task-desc" title="${esc(t.description)}">${esc(t.description)}</div>` : ''}
-      </td>
-      <td class="channel-tag">${esc(t.channel_name)}</td>
-      <td class="assignee-id">${resolvedNames(t)}</td>
-      <td class="due-date ${dueCls}">${dueLabel}</td>
-      <td>${priorityBadge(t.priority)}</td>
-      <td>${statusBadge(t.status)}</td>
-      <td>${t.milestone ? `<span class="milestone-tag">${esc(t.milestone)}</span>` : `<span style="color:var(--muted)">—</span>`}</td>
-      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${createdDate}</td>
-      <td style="font-size:12px;white-space:nowrap">${t.completed_at ? `<span style="color:var(--success)">${new Date(t.completed_at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}</span>` : `<span style="color:var(--muted)">—</span>`}</td>
+      </td>`;
+      case 'channel': return `<td class="channel-tag">${esc(t.channel_name)}</td>`;
+      case 'assignee': return `<td class="assignee-id">${resolvedNames(t)}</td>`;
+      case 'due': return `<td class="due-date ${overdue ? 'overdue' : (soon ? 'due-soon' : '')}"
+        title="${esc(t.due_date || '')}">${taskDueLabel(t.due_date, t.status)}</td>`;
+      case 'priority': return `<td>${priorityBadge(t.priority)}</td>`;
+      case 'status': return `<td>${statusBadge(t.status)}</td>`;
+      case 'milestone': return `<td>${t.milestone
+        ? `<span class="milestone-tag">${esc(t.milestone)}</span>`
+        : '<span style="color:var(--muted)">—</span>'}</td>`;
+      case 'created': return `<td style="font-size:12px;color:var(--muted);white-space:nowrap">${day(t.created_at)}</td>`;
+      case 'completed': return `<td style="font-size:12px;white-space:nowrap">${t.completed_at
+        ? `<span style="color:var(--success)">${day(t.completed_at)}</span>`
+        : '<span style="color:var(--muted)">—</span>'}</td>`;
+      default: return '<td></td>';
+    }
+  };
+
+  const rows = tasks.map(t => `<tr id="row-${t.id}">
+      <td style="width:32px"><input type="checkbox" class="row-cb task-cb" data-id="${t.id}" onchange="onRowCheck()"></td>
+      ${cols.map(c => cell(t, c.key)).join('')}
       <td style="white-space:nowrap">
-        ${isDone ? '' : `<button class="btn btn-success" style="padding:4px 10px;font-size:11px" onclick="quickDone(${t.id})">Done</button> `}
+        ${t.status === 'done' ? '' : `<button class="btn btn-success" style="padding:4px 10px;font-size:11px" onclick="quickDone(${t.id})">Done</button> `}
         <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openTaskModal(${t.id})">Edit</button>
         <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="openTaskComments(${t.id})" title="Comments"><i data-lucide="message-square" style="width:13px;height:13px"></i></button>
         <button class="btn btn-danger"  style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteTask(${t.id})">Delete</button>
       </td>
-    </tr>`;
-  }).join('');
+    </tr>`).join('');
 
   container.innerHTML = `
     <div class="table-scroll">
@@ -856,30 +1342,20 @@ function renderTaskTable(tasks) {
         <thead>
           <tr>
             <th style="width:32px"><input type="checkbox" class="row-cb" id="cb-all" onchange="toggleSelectAll(this)"></th>
-            <th>ID</th>
-            <th>Title</th>
-            <th>Channel</th>
-            <th>Assignee</th>
-            <th>Due Date</th>
-            <th>Priority</th>
-            <th>Status</th>
-            <th>Milestone</th>
-            <th>Created</th>
-            <th>Completed</th>
+            ${cols.map(c => `<th>${esc(c.label)}</th>`).join('')}
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
-
 }
 
 // ── Task views ────────────────────────────────────────────────────────────────
 // One set of tasks, three shapes. List groups by status because that is how the
 // work is actually triaged; Board is the same grouping laid sideways; Table is
 // the full record. Density changes real geometry, not just its own highlight.
-const TASK_VIEWS = ['list', 'board', 'table'];
+const TASK_VIEWS = ['list', 'board', 'table', 'calendar'];
 let _taskView = 'list';
 let _taskDensity = 'comfortable';
 const TASK_GROUPS = [
@@ -909,8 +1385,13 @@ function setTaskDensity(d) {
   try { localStorage.setItem('ml_task_density', _taskDensity); } catch (_) {}
   filterTasks();
 }
+// The renderer reads "open unless explicitly false", so the toggle has to
+// use the same rule. Flipping !undefined yielded true — open — which made
+// the first click on any group that was not in the seed map do nothing.
+function taskGroupIsOpen(key) { return _taskGroupOpen[key] !== false; }
+
 function toggleTaskGroup(key) {
-  _taskGroupOpen[key] = !_taskGroupOpen[key];
+  _taskGroupOpen[key] = !taskGroupIsOpen(key);
   try { localStorage.setItem('ml_task_groups', JSON.stringify(_taskGroupOpen)); } catch (_) {}
   filterTasks();
 }
@@ -1116,14 +1597,21 @@ async function tdMarkDone(id) {
 
 function renderTaskList(tasks, container) {
   const total = tasks.length || 1;
-  container.innerHTML = TASK_GROUPS.map(g => {
-    const rows = tasks.filter(t => t.status === g.key);
+  const groups = TASK_GROUP_BYS[_taskGroupBy].groups(tasks);
+  // "None" is a real answer: a flat list, no headers to skim past.
+  if (!groups.length) {
+    container.innerHTML = `<section class="task-group"><div class="task-group-body">${
+      tasks.map(taskRowHtml).join('') || '<div class="task-group-none">Nothing here</div>'}</div></section>`;
+    return;
+  }
+  container.innerHTML = groups.map(g => {
+    const rows = tasks.filter(g.match);
     const pct = Math.round((rows.length / total) * 100);
-    const open = _taskGroupOpen[g.key] !== false;
+    const open = taskGroupIsOpen(g.key);
     return `<section class="task-group" style="--c:${g.tone}">
       <button class="task-group-head" onclick="toggleTaskGroup('${g.key}')" aria-expanded="${open}">
         <i data-lucide="chevron-down" class="task-group-chev${open ? '' : ' shut'}"></i>
-        <span class="badge badge-${g.key}">${g.label}</span>
+        <span class="task-group-tag">${esc(g.label)}</span>
         <span class="task-group-n num">${rows.length}</span>
         <span class="task-group-share"><i style="width:${pct}%"></i></span>
         <span class="task-group-pct num">${pct}%</span>
@@ -1180,6 +1668,7 @@ function renderTable(tasks) {
 
   if (_taskView === 'list') renderTaskList(tasks, container);
   else if (_taskView === 'board') renderTaskBoard(tasks, container);
+  else if (_taskView === 'calendar') renderTaskCalendar(tasks, container);
   else renderTaskTable(tasks);
 
   document.getElementById('table-count').textContent =
@@ -1291,6 +1780,17 @@ function resolvedName(id) {
   }
   return `<span class="assignee-id">${esc(id)}</span>`;
 }
+// Plain text, for grouping and comparison. resolvedNames() is the HTML one.
+function taskAssigneeLabel(t) {
+  const list = Array.isArray(t.assignee_ids) && t.assignee_ids.length
+    ? t.assignee_ids : (t.assignee_id ? [t.assignee_id] : []);
+  const names = [...new Set(list.map(String))].map(id => {
+    const e = (employeesForTasks || []).find(x => String(x.id) === String(id));
+    return e ? e.name : '#' + id;
+  });
+  return names.join(', ') || 'Unassigned';
+}
+
 // Render every assignee of a task (multi-assignee aware)
 function resolvedNames(t) {
   const list = Array.isArray(t.assignee_ids) && t.assignee_ids.length ? t.assignee_ids : (t.assignee_id ? [t.assignee_id] : []);
@@ -3108,6 +3608,32 @@ async function loadRequests() {
   requestAnimationFrame(() => lucide.createIcons());
 }
 
+// Deciding a request was buried in Edit → a status dropdown → Save, which is
+// three steps for the only two answers that matter. The route already
+// notifies the creator and fires request.status_changed, so this is the same
+// PUT the form was making, one click away.
+async function setRequestStatus(id, status) {
+  try {
+    const r = await apiFetch(`/api/dashboard/requests/${id}`, {
+      method: 'PUT', body: JSON.stringify({ status }),
+    });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || 'Update failed');
+    const i = allRequests.findIndex(x => x.id === id);
+    if (i >= 0) allRequests[i] = d;
+    renderRequestsTable();
+    requestAnimationFrame(() => lucide.createIcons());
+    showAdminToast(status === 'approved' ? 'Request approved.' : 'Request denied.');
+  } catch (e) { showAdminToast('Could not update: ' + e.message); }
+}
+const approveRequest = id => setRequestStatus(id, 'approved');
+// Denying is the one that cannot be undone by another click, so it asks.
+function denyRequest(id) {
+  const r = allRequests.find(x => x.id === id);
+  if (!confirm(`Deny "${r ? r.title : '#' + id}"? The person who raised it is notified.`)) return;
+  setRequestStatus(id, 'rejected');
+}
+
 function renderRequestsTable() {
   const c = document.getElementById('requests-table-container');
   if (!allRequests.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon" style="font-size:44px">—</div><div class="empty-title">No requests yet</div></div>'; return; }
@@ -3122,6 +3648,9 @@ function renderRequestsTable() {
       <td style="font-size:12px;color:var(--muted)">${esc(reqAssigneeName(r) || '—')}</td>
       <td style="font-size:12px;color:var(--muted)">${new Date(r.created_at).toLocaleDateString()}</td>
       <td style="white-space:nowrap">
+        ${r.status === 'approved' || r.status === 'rejected' ? '' : `
+          <button class="btn-approve" onclick="approveRequest(${r.id})" title="Approve"><i data-lucide="check"></i> Approve</button>
+          <button class="btn-deny" onclick="denyRequest(${r.id})" title="Deny"><i data-lucide="x"></i> Deny</button>`}
         <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openRequestComments(${r.id})" title="Comments"><i data-lucide="message-square" style="width:13px;height:13px"></i></button>
         <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="editRequest(${r.id})">Edit</button>
         <button class="btn btn-danger"  style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteRequest(${r.id})">Delete</button>
@@ -6194,9 +6723,51 @@ function filterDealsByCustomer(customerId) {
   renderDealsKanban();
 }
 
+// ── Deals: filter ─────────────────────────────────────────────────────
+// The board had exactly one filter, and it was reachable only by arriving
+// from a lead — so "just my deals" meant reading six columns. Owner is the
+// cut worth having; the customer filter that already existed now shows as
+// a removable chip beside it instead of being invisible state.
+let _dealsOwnerFilter = '';
+
+function dealOwners() {
+  return [...new Set(_allDeals.map(d => d.assigned_to).filter(Boolean))].sort();
+}
+
+function openDealFilter(e) {
+  const owners = dealOwners();
+  if (!owners.length) return showAdminToast('No deal owners to filter by yet.');
+  window.brandMenu(e.currentTarget, [
+    { key: '', label: '— All owners —', selected: !_dealsOwnerFilter },
+    ...owners.map(o => ({ key: o, label: o, selected: o === _dealsOwnerFilter })),
+  ], key => { _dealsOwnerFilter = key; renderDealsKanban(); });
+}
+
+function clearDealOwnerFilter() { _dealsOwnerFilter = ''; renderDealsKanban(); }
+function clearDealsCustomerFilter() { _dealsCustomerFilter = null; renderDealsKanban(); }
+
+function renderDealFilterChips() {
+  const box = document.getElementById('deal-filter-chips');
+  if (!box) return;
+  const chips = [];
+  if (_dealsOwnerFilter) {
+    chips.push(`<button class="filter-chip" onclick="clearDealOwnerFilter()">
+      Owner: ${esc(_dealsOwnerFilter)} <span aria-hidden="true">&times;</span></button>`);
+  }
+  if (_dealsCustomerFilter) {
+    const c = _allCustomers.find(x => x.id === _dealsCustomerFilter);
+    chips.push(`<button class="filter-chip" onclick="clearDealsCustomerFilter()">
+      Lead: ${esc(c ? c.name : '#' + _dealsCustomerFilter)} <span aria-hidden="true">&times;</span></button>`);
+  }
+  box.style.display = chips.length ? 'flex' : 'none';
+  box.innerHTML = chips.join('');
+}
+
 function renderDealsKanban() {
   const kanban = document.getElementById('deals-kanban');
-  const deals = _dealsCustomerFilter ? _allDeals.filter(d => d.customer_id === _dealsCustomerFilter) : _allDeals;
+  let deals = _dealsCustomerFilter ? _allDeals.filter(d => d.customer_id === _dealsCustomerFilter) : _allDeals;
+  if (_dealsOwnerFilter) deals = deals.filter(d => d.assigned_to === _dealsOwnerFilter);
+  renderDealFilterChips();
   const total = deals.length || 1;
   kanban.innerHTML = DEAL_STAGES.map(stage => {
     const stagDeals = deals.filter(d => d.stage === stage);
@@ -6220,7 +6791,9 @@ function renderDealsKanban() {
         </div>
         <div style="height:3px;background:rgba(255,255,255,.07);border-radius:99px;margin-top:9px;overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:${c};border-radius:99px"></i></div>
       </div>
-      <div style="padding:0 12px 12px;display:grid;gap:9px">${stagDeals.map(d => dealCard(d)).join('')}</div>
+      <div style="padding:0 12px 12px;display:grid;gap:9px">${stagDeals.map(d => dealCard(d)).join('')}
+        <button class="lb-add" onclick="openDealModal(null, '${stage}')"><i data-lucide="plus"></i> Add</button>
+      </div>
     </div>`;
   }).join('');
   requestAnimationFrame(() => lucide.createIcons());
@@ -6347,13 +6920,14 @@ async function populateDealModalAssignees() {
   } catch (_) {}
 }
 
-function openDealModal(id) {
+// presetStage: the board's per-column Add knows which column it sits in.
+function openDealModal(id, presetStage) {
   const d = id ? _allDeals.find(x => x.id === id) : null;
   document.getElementById('deal-modal-title').textContent = d ? 'Edit Deal' : 'Add Deal';
   document.getElementById('dm-id').value          = d?.id           || '';
   document.getElementById('dm-customer-id').value = d?.customer_id  || '';
   document.getElementById('dm-title').value        = d?.title        || '';
-  document.getElementById('dm-stage').value        = d?.stage        || 'lead';
+  document.getElementById('dm-stage').value        = d?.stage        || presetStage || 'lead';
   document.getElementById('dm-car-model').value    = d?.car_model    || '';
   document.getElementById('dm-budget').value       = d?.budget_egp   || '';
   document.getElementById('dm-inquiry').value      = d?.inquiry_details || '';
