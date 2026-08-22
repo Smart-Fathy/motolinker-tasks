@@ -816,6 +816,101 @@ function filterTasks() {
   renderTable(filtered);
 }
 
+// ── Tasks: Calendar view ──────────────────────────────────────────────
+// A month of the *filtered* tasks on their due dates. Deliberately not
+// calendar.js: that one fetches its own /calendar payload — meetings and
+// follow-ups included — so it could not honour the search and filters
+// this page has just applied. It reuses calendar.js's grid CSS
+// (.cal-grid / .cal-day / .cal-chip), which is the same shape the design
+// draws, rather than a second grid vocabulary.
+let _taskCalCursor = null; // null = the month containing today
+
+function taskCalMonth() {
+  return _taskCalCursor ? new Date(_taskCalCursor) : new Date();
+}
+
+function taskCalShift(n) {
+  const d = taskCalMonth();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + n);
+  _taskCalCursor = d;
+  filterTasks();
+}
+
+function taskCalToday() { _taskCalCursor = null; filterTasks(); }
+
+function renderTaskCalendar(tasks, container) {
+  const pad = n => String(n).padStart(2, '0');
+  const key = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const cursor = taskCalMonth();
+  const y = cursor.getFullYear(), mo = cursor.getMonth();
+
+  // The design's week runs Mon–Sun; getDay() is Sunday-first, so Sunday
+  // has to wrap to the end rather than start the row.
+  const monFirst = n => (n + 6) % 7;
+  const first = new Date(y, mo, 1);
+  const start = new Date(first);
+  start.setDate(1 - monFirst(first.getDay()));
+  const last = new Date(y, mo + 1, 0);
+  const cells = Math.ceil((monFirst(first.getDay()) + last.getDate()) / 7) * 7;
+
+  const byDay = new Map();
+  tasks.forEach(t => {
+    if (!t.due_date) return;
+    if (!byDay.has(t.due_date)) byDay.set(t.due_date, []);
+    byDay.get(t.due_date).push(t);
+  });
+
+  const undated = tasks.filter(t => !t.due_date).length;
+  const inMonth = tasks.filter(t => t.due_date && t.due_date.startsWith(`${y}-${pad(mo + 1)}`)).length;
+  const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  let grid = '';
+  for (let i = 0; i < cells; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    const k = key(d);
+    const rows = byDay.get(k) || [];
+    const cls = [
+      'cal-day',
+      d.getMonth() !== mo ? 'other' : '',
+      k === TODAY ? 'today' : '',
+    ].filter(Boolean).join(' ');
+    grid += `<div class="${cls}">
+      <span class="cal-daynum num">${d.getDate()}</span>
+      <div class="cal-items">${rows.map(t => {
+        const overdue = isOverdue(t.due_date, t.status);
+        // Status is what the chip is *about*; overdue outranks it, because a
+        // late task is the thing you need to see first.
+        const tone = overdue ? 'var(--danger)'
+          : t.status === 'done' ? 'var(--st-done)'
+          : t.status === 'in_progress' ? 'var(--st-progress)'
+          : 'var(--st-todo)';
+        return `<button class="cal-chip tcal-chip${t.status === 'done' ? ' done' : ''}"
+          style="--c:${tone}" onclick="openTaskDrawer(${t.id})"
+          title="${esc(t.title)}">${esc(t.title)}</button>`;
+      }).join('')}</div>
+    </div>`;
+  }
+
+  container.innerHTML = `
+    <div class="tcal">
+      <div class="tcal-head">
+        <h3 class="tcal-title">${cursor.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</h3>
+        <span class="tcal-sub">Tasks sit on their due date${undated ? ` · ${undated} with no date` : ''}</span>
+        <div class="tcal-nav">
+          <button class="cal-nav cal-arrow" onclick="taskCalShift(-1)" aria-label="Previous month">&lsaquo;</button>
+          <button class="cal-nav" onclick="taskCalToday()">Today</button>
+          <button class="cal-nav cal-arrow" onclick="taskCalShift(1)" aria-label="Next month">&rsaquo;</button>
+        </div>
+      </div>
+      <div class="cal-grid">
+        ${DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')}
+        ${grid}
+      </div>
+      ${inMonth ? '' : '<div class="tcal-empty">No tasks due this month.</div>'}
+    </div>`;
+}
+
 function renderTaskTable(tasks) {
   const container = document.getElementById('table-container');
   const rows = tasks.map(t => {
@@ -879,7 +974,7 @@ function renderTaskTable(tasks) {
 // One set of tasks, three shapes. List groups by status because that is how the
 // work is actually triaged; Board is the same grouping laid sideways; Table is
 // the full record. Density changes real geometry, not just its own highlight.
-const TASK_VIEWS = ['list', 'board', 'table'];
+const TASK_VIEWS = ['list', 'board', 'table', 'calendar'];
 let _taskView = 'list';
 let _taskDensity = 'comfortable';
 const TASK_GROUPS = [
@@ -1180,6 +1275,7 @@ function renderTable(tasks) {
 
   if (_taskView === 'list') renderTaskList(tasks, container);
   else if (_taskView === 'board') renderTaskBoard(tasks, container);
+  else if (_taskView === 'calendar') renderTaskCalendar(tasks, container);
   else renderTaskTable(tasks);
 
   document.getElementById('table-count').textContent =
@@ -3108,6 +3204,32 @@ async function loadRequests() {
   requestAnimationFrame(() => lucide.createIcons());
 }
 
+// Deciding a request was buried in Edit → a status dropdown → Save, which is
+// three steps for the only two answers that matter. The route already
+// notifies the creator and fires request.status_changed, so this is the same
+// PUT the form was making, one click away.
+async function setRequestStatus(id, status) {
+  try {
+    const r = await apiFetch(`/api/dashboard/requests/${id}`, {
+      method: 'PUT', body: JSON.stringify({ status }),
+    });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || 'Update failed');
+    const i = allRequests.findIndex(x => x.id === id);
+    if (i >= 0) allRequests[i] = d;
+    renderRequestsTable();
+    requestAnimationFrame(() => lucide.createIcons());
+    showAdminToast(status === 'approved' ? 'Request approved.' : 'Request denied.');
+  } catch (e) { showAdminToast('Could not update: ' + e.message); }
+}
+const approveRequest = id => setRequestStatus(id, 'approved');
+// Denying is the one that cannot be undone by another click, so it asks.
+function denyRequest(id) {
+  const r = allRequests.find(x => x.id === id);
+  if (!confirm(`Deny "${r ? r.title : '#' + id}"? The person who raised it is notified.`)) return;
+  setRequestStatus(id, 'rejected');
+}
+
 function renderRequestsTable() {
   const c = document.getElementById('requests-table-container');
   if (!allRequests.length) { c.innerHTML = '<div class="empty-state"><div class="empty-icon" style="font-size:44px">—</div><div class="empty-title">No requests yet</div></div>'; return; }
@@ -3122,6 +3244,9 @@ function renderRequestsTable() {
       <td style="font-size:12px;color:var(--muted)">${esc(reqAssigneeName(r) || '—')}</td>
       <td style="font-size:12px;color:var(--muted)">${new Date(r.created_at).toLocaleDateString()}</td>
       <td style="white-space:nowrap">
+        ${r.status === 'approved' || r.status === 'rejected' ? '' : `
+          <button class="btn-approve" onclick="approveRequest(${r.id})" title="Approve"><i data-lucide="check"></i> Approve</button>
+          <button class="btn-deny" onclick="denyRequest(${r.id})" title="Deny"><i data-lucide="x"></i> Deny</button>`}
         <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openRequestComments(${r.id})" title="Comments"><i data-lucide="message-square" style="width:13px;height:13px"></i></button>
         <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="editRequest(${r.id})">Edit</button>
         <button class="btn btn-danger"  style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteRequest(${r.id})">Delete</button>
@@ -6194,9 +6319,51 @@ function filterDealsByCustomer(customerId) {
   renderDealsKanban();
 }
 
+// ── Deals: filter ─────────────────────────────────────────────────────
+// The board had exactly one filter, and it was reachable only by arriving
+// from a lead — so "just my deals" meant reading six columns. Owner is the
+// cut worth having; the customer filter that already existed now shows as
+// a removable chip beside it instead of being invisible state.
+let _dealsOwnerFilter = '';
+
+function dealOwners() {
+  return [...new Set(_allDeals.map(d => d.assigned_to).filter(Boolean))].sort();
+}
+
+function openDealFilter(e) {
+  const owners = dealOwners();
+  if (!owners.length) return showAdminToast('No deal owners to filter by yet.');
+  window.brandMenu(e.currentTarget, [
+    { key: '', label: '— All owners —', selected: !_dealsOwnerFilter },
+    ...owners.map(o => ({ key: o, label: o, selected: o === _dealsOwnerFilter })),
+  ], key => { _dealsOwnerFilter = key; renderDealsKanban(); });
+}
+
+function clearDealOwnerFilter() { _dealsOwnerFilter = ''; renderDealsKanban(); }
+function clearDealsCustomerFilter() { _dealsCustomerFilter = null; renderDealsKanban(); }
+
+function renderDealFilterChips() {
+  const box = document.getElementById('deal-filter-chips');
+  if (!box) return;
+  const chips = [];
+  if (_dealsOwnerFilter) {
+    chips.push(`<button class="filter-chip" onclick="clearDealOwnerFilter()">
+      Owner: ${esc(_dealsOwnerFilter)} <span aria-hidden="true">&times;</span></button>`);
+  }
+  if (_dealsCustomerFilter) {
+    const c = _allCustomers.find(x => x.id === _dealsCustomerFilter);
+    chips.push(`<button class="filter-chip" onclick="clearDealsCustomerFilter()">
+      Lead: ${esc(c ? c.name : '#' + _dealsCustomerFilter)} <span aria-hidden="true">&times;</span></button>`);
+  }
+  box.style.display = chips.length ? 'flex' : 'none';
+  box.innerHTML = chips.join('');
+}
+
 function renderDealsKanban() {
   const kanban = document.getElementById('deals-kanban');
-  const deals = _dealsCustomerFilter ? _allDeals.filter(d => d.customer_id === _dealsCustomerFilter) : _allDeals;
+  let deals = _dealsCustomerFilter ? _allDeals.filter(d => d.customer_id === _dealsCustomerFilter) : _allDeals;
+  if (_dealsOwnerFilter) deals = deals.filter(d => d.assigned_to === _dealsOwnerFilter);
+  renderDealFilterChips();
   const total = deals.length || 1;
   kanban.innerHTML = DEAL_STAGES.map(stage => {
     const stagDeals = deals.filter(d => d.stage === stage);
@@ -6220,7 +6387,9 @@ function renderDealsKanban() {
         </div>
         <div style="height:3px;background:rgba(255,255,255,.07);border-radius:99px;margin-top:9px;overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:${c};border-radius:99px"></i></div>
       </div>
-      <div style="padding:0 12px 12px;display:grid;gap:9px">${stagDeals.map(d => dealCard(d)).join('')}</div>
+      <div style="padding:0 12px 12px;display:grid;gap:9px">${stagDeals.map(d => dealCard(d)).join('')}
+        <button class="lb-add" onclick="openDealModal(null, '${stage}')"><i data-lucide="plus"></i> Add</button>
+      </div>
     </div>`;
   }).join('');
   requestAnimationFrame(() => lucide.createIcons());
@@ -6347,13 +6516,14 @@ async function populateDealModalAssignees() {
   } catch (_) {}
 }
 
-function openDealModal(id) {
+// presetStage: the board's per-column Add knows which column it sits in.
+function openDealModal(id, presetStage) {
   const d = id ? _allDeals.find(x => x.id === id) : null;
   document.getElementById('deal-modal-title').textContent = d ? 'Edit Deal' : 'Add Deal';
   document.getElementById('dm-id').value          = d?.id           || '';
   document.getElementById('dm-customer-id').value = d?.customer_id  || '';
   document.getElementById('dm-title').value        = d?.title        || '';
-  document.getElementById('dm-stage').value        = d?.stage        || 'lead';
+  document.getElementById('dm-stage').value        = d?.stage        || presetStage || 'lead';
   document.getElementById('dm-car-model').value    = d?.car_model    || '';
   document.getElementById('dm-budget').value       = d?.budget_egp   || '';
   document.getElementById('dm-inquiry').value      = d?.inquiry_details || '';

@@ -22,10 +22,10 @@
     if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=111">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=112">
   <!-- Shared with the team portal. Last on purpose: several mobile rules were being
        beaten by later same-specificity rules in the sheet above. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=111">
+  <link rel="stylesheet" href="/assets/mobile.css?v=112">
 </head>
 <body>
 
@@ -302,6 +302,7 @@
           <button class="task-view-tab active" data-view="list"  onclick="setTaskView('list')"><i data-lucide="list"></i> List</button>
           <button class="task-view-tab"        data-view="board" onclick="setTaskView('board')"><i data-lucide="kanban-square"></i> Board</button>
           <button class="task-view-tab"        data-view="table" onclick="setTaskView('table')"><i data-lucide="table"></i> Table</button>
+          <button class="task-view-tab"        data-view="calendar" onclick="setTaskView('calendar')"><i data-lucide="calendar"></i> Calendar</button>
         </div>
         <div class="task-dens" role="group" aria-label="Row density">
           <button class="task-dens-btn active" data-dens="comfortable" onclick="setTaskDensity('comfortable')">Comfortable</button>
@@ -593,14 +594,20 @@
           <div class="page-title">Sales Pipeline</div>
           <div style="font-size:13px;color:var(--muted);margin-top:4px">Track your deals through the sales pipeline</div>
         </div>
-        <button class="btn btn-primary" onclick="openDealModal()">
-          <i data-lucide="plus" style="width:15px;height:15px"></i> Add Deal
-        </button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-outline" id="deal-filter-btn" onclick="openDealFilter(event)">
+            <i data-lucide="filter" style="width:14px;height:14px"></i> Filter
+          </button>
+          <button class="btn btn-primary" onclick="openDealModal()">
+            <i data-lucide="plus" style="width:15px;height:15px"></i> Add Deal
+          </button>
+        </div>
       </div>
       <div class="deal-tabs">
-        <button class="deal-tab active" data-tab="pipeline" onclick="dealsTab('pipeline')">Deals</button>
+        <button class="deal-tab active" data-tab="pipeline" onclick="dealsTab('pipeline')">Board</button>
         <button class="deal-tab" data-tab="sales" onclick="dealsTab('sales')">Sales</button>
       </div>
+      <div id="deal-filter-chips" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
       <div id="deals-pane-pipeline">
         <!-- The scroller and the min-width must be different elements: an element cannot
              scroll its own min-width, so having both here pushed the page sideways. -->
@@ -1447,19 +1454,19 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
-<script src="/assets/mobile.js?v=111"></script>
-<script src="/assets/columns.js?v=111"></script>
-<script src="/assets/client-folder.js?v=111"></script>
-<script src="/assets/lead-filters.js?v=111"></script>
-<script src="/assets/chat-extras.js?v=111"></script>
-<script src="/assets/home.js?v=111"></script>
-<script src="/assets/huddle.js?v=111"></script>
-<script src="/assets/procurement.js?v=111"></script>
-<script src="/assets/quote.js?v=111"></script>
-<script src="/assets/meetings.js?v=111"></script>
-<script src="/assets/calendar.js?v=111"></script>
-<script src="/assets/availability.js?v=111"></script>
-<script src="/assets/dashboard.js?v=111"></script>
+<script src="/assets/mobile.js?v=112"></script>
+<script src="/assets/columns.js?v=112"></script>
+<script src="/assets/client-folder.js?v=112"></script>
+<script src="/assets/lead-filters.js?v=112"></script>
+<script src="/assets/chat-extras.js?v=112"></script>
+<script src="/assets/home.js?v=112"></script>
+<script src="/assets/huddle.js?v=112"></script>
+<script src="/assets/procurement.js?v=112"></script>
+<script src="/assets/quote.js?v=112"></script>
+<script src="/assets/meetings.js?v=112"></script>
+<script src="/assets/calendar.js?v=112"></script>
+<script src="/assets/availability.js?v=112"></script>
+<script src="/assets/dashboard.js?v=112"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
@@ -1492,6 +1499,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=111"></script>
+<script src="/help-docs.js?v=112"></script>
 </body>
 </html>

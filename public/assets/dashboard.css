@@ -2476,3 +2476,63 @@
     .fu-call{ min-height:44px; }
     .lb-add{ min-height:44px; }
   }
+
+  /* ── Tasks: Calendar view ─────────────────────────────────────────────
+   * Reuses calendar.js's .cal-grid / .cal-day / .cal-chip so a task looks
+   * the same wherever it is drawn; only the chip tone differs, because
+   * here the subject is task status rather than event type. */
+  .tcal{ padding:16px 20px 20px; }
+  .tcal-head{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+  .tcal-title{
+    font-family:'Cormorant Garamond',serif; font-size:24px; font-weight:600;
+    letter-spacing:.3px; margin:0;
+  }
+  .tcal-sub{ font-size:12.5px; color:var(--muted); }
+  .tcal-nav{ margin-left:auto; display:flex; align-items:center; gap:6px; }
+  .tcal-empty{ padding:22px; text-align:center; color:var(--muted); font-size:13px; }
+
+  /* Tinted from a single custom property so status, done and overdue are
+   * one rule rather than four competing ones. */
+  .cal-chip.tcal-chip{
+    background:color-mix(in srgb, var(--c) 15%, transparent);
+    color:var(--c);
+    border:1px solid color-mix(in srgb, var(--c) 28%, transparent);
+  }
+  .cal-chip.tcal-chip.done{ opacity:.62; text-decoration:none; }
+
+  @media (max-width:640px){
+    .tcal{ padding:12px 14px 16px; }
+    .tcal-nav .cal-nav{ min-height:44px; }
+    /* A seven-column month is unreadable on a phone; the grid scrolls
+     * sideways inside its own container rather than the page doing it. */
+    .tcal .cal-grid{ min-width:640px; }
+    .tcal{ overflow-x:auto; }
+  }
+
+  /* Removable filter chip. The lead filters draw this shape inline in
+   * lead-filters.js; deals use the class so the next one does not have to
+   * copy the inline styles a third time. */
+  .filter-chip{
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:inherit; font-size:12px; padding:4px 10px;
+    border:1px solid var(--hair-gold, var(--border)); border-radius:14px;
+    background:rgba(201,163,94,.08); color:var(--text); cursor:pointer;
+  }
+  .filter-chip:hover{ border-color:var(--primary); color:var(--primary); }
+  .filter-chip span{ color:var(--muted); font-size:14px; line-height:1; }
+  .filter-chip:hover span{ color:var(--primary); }
+  @media (max-width:640px){ .filter-chip{ min-height:36px; } }
+
+  /* Approve / Deny. Sized to sit in a table action cell beside the existing
+   * icon buttons, and tinted from the semantic tokens so they read as a
+   * decision rather than as two more grey buttons. */
+  .btn-approve, .btn-deny{
+    display:inline-flex; align-items:center; gap:5px; padding:4px 10px; margin-right:4px;
+    border-radius:var(--r-sm); font-family:inherit; font-size:11px; font-weight:700; cursor:pointer;
+  }
+  .btn-approve i, .btn-approve svg, .btn-deny i, .btn-deny svg{ width:12px; height:12px; }
+  .btn-approve{ background:rgba(16,185,129,.1); color:var(--success); border:1px solid rgba(16,185,129,.35); }
+  .btn-approve:hover{ background:rgba(16,185,129,.18); }
+  .btn-deny{ background:rgba(239,68,68,.1); color:var(--danger); border:1px solid rgba(239,68,68,.32); }
+  .btn-deny:hover{ background:rgba(239,68,68,.18); }
+  @media (max-width:640px){ .btn-approve, .btn-deny{ min-height:44px; } }
