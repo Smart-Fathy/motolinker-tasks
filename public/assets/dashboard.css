@@ -2783,3 +2783,60 @@
     .stk-notice{ flex-wrap:wrap; }
     .mix-side{ align-items:flex-start; }
   }
+
+  /* ── Suppliers ────────────────────────────────────────────────────────
+   * Rendered by procurement.js into both portals, so these rules live in
+   * both stylesheets. Cards lead; the configurable table is one tab away
+   * rather than deleted, because the supplier columns are user-defined. */
+  .sup-head{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:14px; }
+  .sup-count{ font-size:12.5px; color:var(--muted); }
+  .sup-views{ display:flex; align-items:center; gap:2px; margin-left:auto; }
+
+  .sup-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; align-items:start; }
+  .sup-card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-lg); padding:15px 16px 13px; min-width:0;
+  }
+  .sup-card:hover{ border-color:rgba(201,163,94,.28); }
+  .sup-card-head{ display:flex; align-items:center; gap:11px; margin-bottom:13px; }
+  .sup-av{
+    width:34px; height:34px; border-radius:50%; flex-shrink:0;
+    background:rgba(201,163,94,.14); color:var(--gold);
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:800; letter-spacing:.3px;
+  }
+  .sup-name{ font-size:14px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sup-sub{ font-size:11.5px; color:var(--muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sup-card-acts{ margin-left:auto; display:flex; gap:5px; flex-shrink:0; }
+
+  /* Hairline-gap grid: one rule between cells, and no first/last special case. */
+  .sup-stats{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:1px;
+    background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.07);
+    border-radius:10px; overflow:hidden; margin-bottom:12px;
+  }
+  .sup-stat{ background:var(--surface); padding:9px 10px; min-width:0; }
+  .sup-stat span{
+    display:block; font-size:9.5px; font-weight:800; letter-spacing:.6px;
+    text-transform:uppercase; color:var(--muted); margin-bottom:3px;
+  }
+  .sup-stat b{
+    font-size:14px; font-weight:800; letter-spacing:-.02em;
+    font-variant-numeric:tabular-nums lining-nums;
+    display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+
+  .sup-gos{ display:flex; gap:6px; flex-wrap:wrap; }
+  .sup-go{
+    flex:1; min-width:0; padding:7px 8px; background:none;
+    border:1px solid var(--border); border-radius:var(--r-sm);
+    color:var(--muted); font-family:inherit; font-size:11.5px; font-weight:600; cursor:pointer;
+  }
+  .sup-go:hover{ color:var(--gold); border-color:rgba(201,163,94,.4); background:rgba(201,163,94,.06); }
+
+  @media (max-width:640px){
+    .sup-grid{ grid-template-columns:1fr; }
+    .sup-views{ margin-left:0; }
+    .sup-go{ min-height:44px; }
+    .sup-card-acts .stk-edit{ min-height:44px; }
+  }

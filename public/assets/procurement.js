@@ -992,6 +992,37 @@
 
   // ── Suppliers (Logistics & Shipping) ────────────────────────────────────────────
   let _suppliersCache = [];
+  // ── Suppliers ─────────────────────────────────────────────────────────
+  // The register was a configurable table, which answers "what fields do we
+  // keep on a supplier" and not "who are we actually buying from". Cards
+  // lead now, carrying the three numbers that make a supplier worth opening
+  // — units in the register, what those units are worth, how much of their
+  // catalogue we hold — and going straight into the tab that answers the
+  // next question. The table stays a click away, because the supplier
+  // columns are user-configurable and losing that would cost a real
+  // capability the design simply was not drawn around.
+  let _supView = 'cards';
+  try { _supView = localStorage.getItem('ml_sup_view') || 'cards'; } catch (_) {}
+  if (!['cards', 'table'].includes(_supView)) _supView = 'cards';
+  function setSupView(v) {
+    _supView = v;
+    try { localStorage.setItem('ml_sup_view', v); } catch (_) {}
+    renderSuppliers();
+  }
+
+  let _supStats = { units: new Map(), value: new Map(), cat: new Map(), totalUnits: 0, totalCat: 0 };
+
+  function supInitials(n) {
+    return String(n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
+  }
+  function supShortEgp(n) {
+    const v = Number(n) || 0;
+    if (v >= 1e9) return (v / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+    if (v >= 1e6) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (v >= 1e3) return Math.round(v / 1e3) + 'K';
+    return v ? String(v) : '—';
+  }
+
   async function loadSuppliers() {
     const body = document.getElementById('suppliers-list');
     if (body) body.innerHTML = '<div class="loading"><div class="spinner"></div> Loading suppliers…</div>';
@@ -1003,21 +1034,108 @@
       return;
     }
     _suppliersCache = Array.isArray(list) ? list : [];
-    const eng = suppliersEngine();
-    await eng.load();
-    const cols = eng.visible();
-    if (!_suppliersCache.length) {
+    await suppliersEngine().load();
+
+    // The two figures the cards need are owned by other sections, and a rep
+    // may hold Suppliers without Inventory. Settled, not awaited-and-thrown:
+    // a 403 on stock should cost the units column, not the page.
+    // fetch() resolves on 403 as happily as on 200, so "did the promise
+    // settle" is not the question — "did the server actually answer with
+    // the data" is. Without this a rep who lacks Inventory saw a confident
+    // "0 units in the register" instead of no figure at all.
+    const ok = url => apiFetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    const [cat, stock] = await Promise.all([
+      ok('/api/dashboard/supplier-vehicles'),
+      ok('/api/dashboard/stock'),
+    ]);
+    const units = new Map(), value = new Map(), catCount = new Map();
+    if (Array.isArray(cat)) {
+      cat.forEach(v => catCount.set(v.supplier_id, (catCount.get(v.supplier_id) || 0) + 1));
+    }
+    if (Array.isArray(stock)) {
+      stock.forEach(m => (Array.isArray(m.units) ? m.units : []).forEach(u => {
+        // Units record their supplier as a name, the catalogue by id, so the
+        // join is by name — the only key the two actually share.
+        const key = String(u.supplier || m.supplier || '').trim().toLowerCase();
+        if (!key) return;
+        units.set(key, (units.get(key) || 0) + 1);
+        value.set(key, (value.get(key) || 0) + (Number(u.price_list) || Number(m.price) || 0));
+      }));
+    }
+    _supStats = {
+      units, value, cat: catCount,
+      totalUnits: [...units.values()].reduce((a, b) => a + b, 0),
+      totalCat: [...catCount.values()].reduce((a, b) => a + b, 0),
+      haveStock: Array.isArray(stock),
+      haveCat: Array.isArray(cat),
+    };
+    renderSuppliers();
+  }
+
+  function supplierCard(x) {
+    const key = String(x.name || '').trim().toLowerCase();
+    const u = _supStats.units.get(key) || 0;
+    const val = _supStats.value.get(key) || 0;
+    const c = _supStats.cat.get(x.id) || 0;
+    const sub = [x.country, x.contact_name || x.contact].filter(Boolean).map(esc).join(' · ');
+    const tab = (k, label, allowed) => allowed
+      ? `<button class="sup-go" onclick="openSupplierDetail(${x.id}, '${k}')">${label}</button>` : '';
+    return `<article class="sup-card">
+      <div class="sup-card-head">
+        <span class="sup-av">${esc(supInitials(x.name))}</span>
+        <div style="min-width:0">
+          <div class="sup-name">${esc(x.name || '—')}</div>
+          ${sub ? `<div class="sup-sub">${sub}</div>` : ''}
+        </div>
+        <div class="sup-card-acts">
+          ${procCan('suppliers', 'edit') ? `<button class="stk-edit btn btn-outline" title="Edit" onclick="openSupplierForm(${x.id})"><i data-lucide="pencil"></i></button>` : ''}
+          ${procCan('suppliers', 'delete') ? `<button class="stk-edit btn btn-outline" title="Delete" onclick="deleteSupplier(${x.id})"><i data-lucide="trash-2"></i></button>` : ''}
+        </div>
+      </div>
+      <div class="sup-stats">
+        <div class="sup-stat"><span>Units</span><b class="num">${_supStats.haveStock ? u : '—'}</b></div>
+        <div class="sup-stat"><span>Value</span><b class="num">${_supStats.haveStock ? (val ? 'EGP ' + supShortEgp(val) : '—') : '—'}</b></div>
+        <div class="sup-stat"><span>Catalogue</span><b class="num">${_supStats.haveCat ? c : '—'}</b></div>
+      </div>
+      <div class="sup-gos">
+        ${tab('vehicles', 'Vehicles', true)}
+        ${tab('docs', 'Documents', procCan('suppliers', 'docs'))}
+        ${tab('purchases', 'Purchases', procCan('suppliers', 'purchases'))}
+      </div>
+    </article>`;
+  }
+
+  function renderSuppliers() {
+    const body = document.getElementById('suppliers-list');
+    if (!body) return;
+    const eng = CE('suppliers');
+    const cols = eng && eng.loaded ? eng.visible() : [];
+    const n = _suppliersCache.length;
+    const head = `
+      <div class="sup-head">
+        <span class="sup-count">${n} supplier${n === 1 ? '' : 's'}${
+          _supStats.haveStock ? ` · ${_supStats.totalUnits} unit${_supStats.totalUnits === 1 ? '' : 's'} in the register` : ''
+        }${_supStats.haveCat ? ` · ${_supStats.totalCat} catalogue vehicle${_supStats.totalCat === 1 ? '' : 's'}` : ''}</span>
+        <div class="sup-views" role="tablist">
+          <button class="task-view-tab${_supView === 'cards' ? ' active' : ''}" onclick="setSupView('cards')"><i data-lucide="layout-grid"></i> Cards</button>
+          <button class="task-view-tab${_supView === 'table' ? ' active' : ''}" onclick="setSupView('table')"><i data-lucide="table"></i> Table</button>
+        </div>
+        ${procColsBtn('suppliers')}
+      </div>`;
+
+    if (!n) {
       // Still offer the field controls — the register's columns are worth setting
-      // up BEFORE the first supplier is added, not after.
-      body.innerHTML = `
-        <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px">${procColsBtn('suppliers')}</div>
-        <div style="color:var(--muted);padding:24px;text-align:center;font-size:13px">No suppliers yet.</div>`;
+      // up BEFORE the first supplier is added, not after. They are in `head`,
+      // which is why `head` carries them in every view rather than only in the
+      // table: the cards read those same fields, and so does the form.
+      body.innerHTML = head + `<div class="stk-none">No suppliers yet.</div>`;
       requestAnimationFrame(() => lucide.createIcons());
       return;
     }
-    body.innerHTML = `
-      <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px">${procColsBtn('suppliers')}</div>
-      <div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
+
+    body.innerHTML = head + (_supView === 'cards'
+      ? `<div class="sup-grid">${_suppliersCache.map(supplierCard).join('')}</div>`
+      : `<div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
           ${cols.map(c => procTh('suppliers', c, { style: `padding:8px 10px${c.width ? `;min-width:${c.width}px` : ''}` })).join('')}
           <th style="padding:8px 10px;text-align:right">Actions</th></tr></thead>
@@ -1036,8 +1154,10 @@
               ${procCan('suppliers', 'delete') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteSupplier(${x.id})">Delete</button>` : ''}
             </td>
           </tr>`).join('')}</tbody>
-      </table></div>`;
+      </table></div>`);
+    requestAnimationFrame(() => lucide.createIcons());
   }
+
   // ── Supplier detail: what they offer, their paperwork, and what we actually bought
   // Kept as three tabs because they answer different questions. "Purchases" is
   // derived from stock units and purchase-order lines, never typed in, so it cannot
@@ -1046,9 +1166,9 @@
   let _supDetailId = null;
   let _supData = { vehicles: [], docs: [], purchases: null };
 
-  async function openSupplierDetail(id) {
+  async function openSupplierDetail(id, tab) {
     _supDetailId = id;
-    _supTab = 'vehicles';
+    _supTab = tab || 'vehicles';
     const sup = _suppliersCache.find(v => v.id === id) || {};
     showModal(sup.name || 'Supplier', `
       <div class="sup-tabs">
@@ -1061,7 +1181,7 @@
       </div>
       <div id="sup-pane" style="min-height:220px"><div class="loading"><div class="spinner"></div></div></div>`,
       `<button class="btn btn-outline" onclick="hideModal()">Close</button>`, { wide: true });
-    supTab('vehicles');
+    supTab(_supTab);
   }
 
   async function supTab(which) {
@@ -2111,6 +2231,7 @@
   // globals now, so no call site had to change.
   Object.assign(window, {
     setStockView, openStockFilter, toggleStockGroup, clearStockStatus, stockReviewLegacy,
+    setSupView, renderSuppliers,
     CT_STATUS, PO_LINE_STATUSES, PO_STATUS, cataloguePick,
     closeDocPdf, ctCollect, ctField, ctGet,
     ctPopulateLeadPicker, ctSet, ctxPopulateLeadPicker, deleteContract,
