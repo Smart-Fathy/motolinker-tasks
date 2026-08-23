@@ -1633,3 +1633,75 @@
     .qt-remove{ width:44px; height:44px; }
     .qt-total-value strong{ font-size:22px; }
   }
+
+  /* ── Leads: view tabs, follow-ups, avatars ─────────────────────────────
+   * Emitted by the shared lead-views.js into both portals, so these mirror
+   * the admin sheet. The .mix-* band and .lb-* board already live above. */
+  .lead-views{ display:flex; align-items:center; gap:2px; border-bottom:1px solid var(--border); margin-bottom:14px; }
+
+  .table-card{
+    background:var(--card); border:1px solid var(--border); border-radius:12px;
+  }
+  /* Not on the scrolling one: this rule sits after .table-scroll here, so an
+   * unscoped overflow:hidden would win and the wide table would stop scrolling
+   * sideways — which is exactly what leadstest measures. */
+  .table-card:not(.table-scroll){ overflow:hidden; }
+
+  .td-av{
+    width:22px; height:22px; border-radius:50%; flex-shrink:0;
+    background:rgba(201,163,94,.15); color:var(--primary);
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:9.5px; font-weight:800; letter-spacing:.2px;
+  }
+
+  .lb-add{
+    width:100%; padding:10px; background:none; border:1px dashed rgba(255,255,255,.12);
+    border-radius:var(--r-md); color:var(--muted); font-family:inherit; font-size:12px;
+    font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .lb-add:hover{ color:var(--gold); border-color:rgba(201,163,94,.4); }
+  .lb-add i, .lb-add svg{ width:13px; height:13px; }
+
+  /* Grouped by when, not by who: the only question this view answers is
+   * "what have I missed and what is next". */
+  .fu-group{ margin-bottom:22px; }
+  .fu-group-head{
+    display:flex; align-items:center; gap:8px; margin-bottom:10px;
+    font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase; color:var(--muted);
+  }
+  .fu-group-head i.dot{ width:8px; height:8px; border-radius:50%; background:var(--c); flex-shrink:0; }
+  .fu-group-n{
+    font-size:11px; font-weight:700; color:var(--muted);
+    background:rgba(255,255,255,.06); border-radius:var(--r-pill); padding:1px 7px;
+  }
+  .fu-row{
+    display:flex; align-items:center; gap:12px; padding:12px 14px; margin-bottom:8px;
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md);
+    border-left:3px solid var(--c);
+  }
+  .fu-row:hover{ border-color:rgba(201,163,94,.3); border-left-color:var(--c); }
+  .fu-main{ min-width:0; flex:1; cursor:pointer; }
+  .fu-name{ font-size:13px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fu-sub{ font-size:11.5px; color:var(--muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fu-when{
+    font-size:11px; font-weight:700; padding:3px 9px; border-radius:var(--r-pill); white-space:nowrap;
+    background:color-mix(in srgb, var(--c) 12%, transparent); color:var(--c);
+    border:1px solid color-mix(in srgb, var(--c) 30%, transparent);
+  }
+  .fu-call{
+    display:inline-flex; align-items:center; gap:6px; padding:7px 12px;
+    background:none; border:1px solid rgba(255,255,255,.12); border-radius:var(--r-sm);
+    color:var(--text); font-family:inherit; font-size:12px; font-weight:600;
+    cursor:pointer; text-decoration:none; white-space:nowrap;
+  }
+  .fu-call:hover{ border-color:rgba(201,163,94,.45); color:var(--gold); }
+  .fu-call i, .fu-call svg{ width:13px; height:13px; }
+  .fu-none{ color:var(--muted); font-size:13px; padding:28px; text-align:center; }
+
+  @media (max-width:640px){
+    .lead-board{ grid-template-columns:1fr; }
+    .fu-row{ flex-wrap:wrap; }
+    .fu-main{ flex:1 1 100%; }
+    .fu-call{ min-height:44px; }
+    .lb-add{ min-height:44px; }
+  }
