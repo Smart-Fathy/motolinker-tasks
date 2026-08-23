@@ -93,6 +93,32 @@ for (const portal of ['dashboard', 'employee']) {
     && /hit \|\| new Response\(/.test(workers[portal]));
 }
 
+// ── Page nesting ──────────────────────────────────────────────────────────────
+// Every screen is a sibling `.page` that navigate() shows by adding .active, and
+// it de-activates all the others first. So a `.page` nested inside another page
+// can never be seen: its ancestor is display:none whenever it is active. That is
+// what a single missing </div> in the Reports block did — it swallowed
+// Automations, WhatsApp, Google Chat, MotoChat and Notifications, which rendered
+// as five blank screens with no console error to point at them. Depth is counted
+// from the raw markup because the browser silently repairs the nesting, so the
+// only place the mistake is visible is here.
+for (const portal of ['dashboard', 'employee']) {
+  const html = pages[portal].replace(/<!--[\s\S]*?-->/g, '');
+  const depths = [];
+  let depth = 0;
+  for (const m of html.matchAll(/<div\b[^>]*>|<\/div>/g)) {
+    if (m[0] === '</div>') { depth--; continue; }
+    const id = (m[0].match(/id="(page-[a-z]+)"/) || [])[1];
+    if (id) depths.push([id, depth]);
+    depth++;
+  }
+  const level = depths.length ? depths[0][1] : -1;
+  const nested = depths.filter(([, d]) => d !== level).map(([id, d]) => `${id}@${d}`);
+  check(`${portal} keeps every page a sibling, none nested in another`,
+    depths.length >= 20 && nested.length === 0, nested.join(', ') || `${depths.length} pages at depth ${level}`);
+}
+
+
 // The mobile layer has to load LAST: several of its rules exist only to beat later
 // same-specificity rules in the portal sheets, and it uses no !important to do it.
 for (const portal of ['dashboard', 'employee']) {
