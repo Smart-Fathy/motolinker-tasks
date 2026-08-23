@@ -22,10 +22,10 @@
     if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=118">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=119">
   <!-- Shared with the team portal. Last on purpose: several mobile rules were being
        beaten by later same-specificity rules in the sheet above. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=118">
+  <link rel="stylesheet" href="/assets/mobile.css?v=119">
 </head>
 <body>
 
@@ -476,7 +476,7 @@
   <!-- ── GOOGLE MEET PAGE ────────────────────────────────── -->
   <div id="page-meet" class="page">
     <div class="page-body">
-      <div style="font-size:20px;font-weight:700;margin-bottom:6px">Google Meet</div>
+      <div class="page-title" style="margin-bottom:6px">Google Meet</div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:28px">Start or join a video meeting instantly.</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;max-width:640px">
         <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
@@ -508,17 +508,17 @@
     <div class="page-body" style="max-width:980px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
         <div>
-          <div style="font-size:20px;font-weight:700">Quotation</div>
+          <div class="page-title">Quotation</div>
           <div style="font-size:13px;color:var(--muted);margin-top:4px">Drafted in a sheet, like POs and RFQs — same entry, same preview</div>
         </div>
         <button class="btn btn-primary" data-perm="quotation.draft" onclick="openQuoteForm(null)">
           <i data-lucide="plus" style="width:15px;height:15px"></i> New quotation
         </button>
       </div>
-      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:24px">
-        <button id="qt-tab-draft"    class="tab active" data-perm="quotation.draft"    onclick="switchQtTab('draft')"    style="font-size:13px;padding:8px 18px">Draft</button>
-        <button id="qt-tab-history"  class="tab"        data-perm="quotation.history"  onclick="switchQtTab('history')"  style="font-size:13px;padding:8px 18px">History</button>
-        <button id="qt-tab-settings" class="tab"        data-perm="quotation.settings" onclick="switchQtTab('settings')" style="font-size:13px;padding:8px 18px">Settings</button>
+      <div class="tab-strip">
+        <button id="qt-tab-draft" class="tab active" data-perm="quotation.draft" onclick="switchQtTab('draft')"><i data-lucide="file-pen-line"></i> Draft</button>
+        <button id="qt-tab-history" class="tab" data-perm="quotation.history" onclick="switchQtTab('history')"><i data-lucide="history"></i> History</button>
+        <button id="qt-tab-settings" class="tab" data-perm="quotation.settings" onclick="switchQtTab('settings')"><i data-lucide="settings"></i> Settings</button>
       </div>
       <div id="qt-panel-draft">
         <div class="card" style="text-align:center;padding:44px 24px">
@@ -921,7 +921,7 @@
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
         <div>
           <div class="page-title">Automations</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:4px">When something happens, automatically do something — routing, follow-ups, reminders.</div>
+          <div id="automations-sub" style="font-size:12.5px;color:var(--muted);margin-top:4px">When something happens, automatically do something — routing, follow-ups, reminders.</div>
         </div>
         <button class="btn btn-primary" onclick="openAutomationModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> New Automation</button>
       </div>
@@ -1510,19 +1510,19 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
-<script src="/assets/mobile.js?v=118"></script>
-<script src="/assets/columns.js?v=118"></script>
-<script src="/assets/client-folder.js?v=118"></script>
-<script src="/assets/lead-filters.js?v=118"></script>
-<script src="/assets/chat-extras.js?v=118"></script>
-<script src="/assets/home.js?v=118"></script>
-<script src="/assets/huddle.js?v=118"></script>
-<script src="/assets/procurement.js?v=118"></script>
-<script src="/assets/quote.js?v=118"></script>
-<script src="/assets/meetings.js?v=118"></script>
-<script src="/assets/calendar.js?v=118"></script>
-<script src="/assets/availability.js?v=118"></script>
-<script src="/assets/dashboard.js?v=118"></script>
+<script src="/assets/mobile.js?v=119"></script>
+<script src="/assets/columns.js?v=119"></script>
+<script src="/assets/client-folder.js?v=119"></script>
+<script src="/assets/lead-filters.js?v=119"></script>
+<script src="/assets/chat-extras.js?v=119"></script>
+<script src="/assets/home.js?v=119"></script>
+<script src="/assets/huddle.js?v=119"></script>
+<script src="/assets/procurement.js?v=119"></script>
+<script src="/assets/quote.js?v=119"></script>
+<script src="/assets/meetings.js?v=119"></script>
+<script src="/assets/calendar.js?v=119"></script>
+<script src="/assets/availability.js?v=119"></script>
+<script src="/assets/dashboard.js?v=119"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
@@ -1555,6 +1555,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=118"></script>
+<script src="/help-docs.js?v=119"></script>
 </body>
 </html>

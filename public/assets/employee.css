@@ -1509,3 +1509,11 @@
     .hd-relay{ min-height:36px; }
     .hd-head-btn.labelled, .hd-head-btn.live{ min-height:44px; }
   }
+
+  /* The Quotation tab strip is the same markup in both portals — it was an
+   * anonymous inline style here and nothing at all on the admin side. */
+  .tab-strip{
+    display:flex; gap:2px; margin-bottom:24px;
+    border-bottom:1px solid var(--border); overflow-x:auto;
+  }
+  .tab i, .tab svg{ width:14px; height:14px; flex:none; }

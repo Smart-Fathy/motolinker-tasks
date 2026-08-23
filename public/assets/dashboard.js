@@ -709,6 +709,58 @@ const AM_REQUEST_STATUSES = [['pending','Pending'],['in_review','In Review'],['a
 const AM_PRIORITIES = [['high','High'],['medium','Medium'],['low','Low']];
 const AM_LEAD_STATUSES = [['cold','Cold'],['warm','Warm'],['hot','Hot'],['immediate_delivery','Immediate Delivery'],['not_interested','Not Interested'],['blacklist','Blacklist']];
 function amActionLabel(t){ const f = AM_ACTIONS.find(a => a[0] === t); return f ? f[1] : t; }
+// A rule card has to read as a sentence — when this, if that, then these — so
+// the raw column names the builder shows get a human label here.
+const AM_FIELD_LABELS = {
+  source:'Origin', lead_status:'Status', stage:'Stage', been_contacted:'Contacted',
+  budget_lead:'Budget', budget_egp:'Value', name:'Name', car_in_question:'Car',
+  next_action:'Next action', assigned_to:'Owner', priority:'Priority',
+  status:'Status', title:'Title', category:'Category', email:'Email', phone:'Phone',
+  to:'Status',
+};
+function amFieldLabel(f){ return AM_FIELD_LABELS[f] || String(f == null ? '' : f).replace(/_/g, ' '); }
+function amOpLabel(op){ const f = AM_OPS.find(o => o[0] === op); return f ? f[1] : op; }
+function amNumLabel(v){
+  const n = Number(String(v).replace(/,/g, ''));
+  return Number.isFinite(n) ? n.toLocaleString('en-GB') : String(v);
+}
+function amValueLabel(trigger, field, value){
+  if (value == null || value === '') return '';
+  const opts = amOptionsFor(trigger, field);
+  if (!opts) return amNumLabel(value);
+  const want = amNorm(value);
+  const hit = opts.find(([k]) => amNorm(k) === want);
+  return hit ? hit[1] : String(value);
+}
+function amCondText(trigger, cd){
+  const parts = [amFieldLabel(cd.field), amOpLabel(cd.op)];
+  if (cd.op !== 'is_empty' && cd.op !== 'not_empty') {
+    const v = amValueLabel(trigger, cd.field, cd.value);
+    if (v) parts.push(v);
+  }
+  return parts.join(' ');
+}
+function amWhenText(r){
+  const base = AM_TRIGGER_LABELS[r.trigger_type] || r.trigger_type;
+  const days = r.trigger_config && r.trigger_config.days;
+  return r.trigger_type === 'no_activity_days' && days ? `${base} — ${days} days` : base;
+}
+// en-GB rather than the browser locale, for the same reason the task list uses
+// it: the rest of this page is written in one voice, not the visitor's.
+function amAgo(iso){
+  if (!iso) return 'Never run';
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return 'Never run';
+  const mins = Math.round((Date.now() - at) / 60000);
+  if (mins < 1)  return 'Just now';
+  if (mins < 60) return mins + (mins === 1 ? ' minute ago' : ' minutes ago');
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24)  return hrs + (hrs === 1 ? ' hour ago' : ' hours ago');
+  const days = Math.round(hrs / 24);
+  if (days === 1) return 'Yesterday';
+  if (days < 7)   return days + ' days ago';
+  return new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
 function amEmpOptions(sel){ return '<option value="">— select rep —</option>' + (employeesForTasks || []).map(e => `<option value="${e.id}"${String(sel) === String(e.id) ? ' selected' : ''}>${esc(e.name)}</option>`).join(''); }
 // Enum option sets so the condition VALUE is picked (saving the canonical key) instead of free-typed.
 const AM_DEAL_STAGES  = [['lead','Lead'],['inquiry','Inquiry'],['quoted','Quoted'],['negotiating','Negotiating'],['won','Won'],['lost','Lost']];
@@ -719,11 +771,19 @@ const AM_LEAD_SCOPED_ACTIONS = ['assign_lead','create_followup','set_lead_status
 // Fields the "Edit the lead profile" action can set, with the value control chosen per field.
 const AM_EDIT_FIELDS = [['lead_status','Status'],['source','Origin'],['next_action','Next Action'],['been_contacted','Contacted'],['assigned_to','Owner (rep)'],['car_in_question','Car'],['budget_lead','Budget'],['name','Name'],['phone','Phone'],['notes','Notes']];
 function amNorm(s){ return String(s == null ? '' : s).trim().toLowerCase().replace(/[\s-]+/g, '_'); }
-function amFieldOptions(field){
-  const t = document.getElementById('am-trigger')?.value || '';
+// Split from amFieldOptions so a rule card can label a saved value while the
+// builder's <select> is nowhere on the page.
+function amOptionsFor(t, field){
+  t = t || '';
   if (field === 'lead_status') return AM_LEAD_STATUSES;
   if (field === 'stage') return AM_DEAL_STAGES;
-  if (field === 'to') return t.startsWith('request') ? AM_REQUEST_STATUSES : AM_DEAL_STAGES; // "changed to" target
+  // "changed to" targets whatever the trigger's own entity uses. This offered
+  // deal stages whatever the trigger was, so "Lead status changed → to Hot"
+  // could not be expressed at all: none of Hot/Warm/Cold was on the list.
+  if (field === 'to') return t.startsWith('request') ? AM_REQUEST_STATUSES
+    : t.startsWith('task') ? AM_TASK_STATUSES
+    : t.startsWith('lead') ? AM_LEAD_STATUSES
+    : AM_DEAL_STAGES;
   if (field === 'source') return AM_ORIGINS;
   if (field === 'next_action') return AM_NEXT_ACTIONS;
   if (field === 'been_contacted') return AM_BOOLS;
@@ -731,6 +791,7 @@ function amFieldOptions(field){
   if (field === 'status') return t.startsWith('task') ? AM_TASK_STATUSES : t.startsWith('request') ? AM_REQUEST_STATUSES : null;
   return null; // free-text (budget, name, car_in_question, title, category, email, phone, …)
 }
+function amFieldOptions(field){ return amOptionsFor(document.getElementById('am-trigger')?.value || '', field); }
 // The value control for a condition row: a dropdown for enum fields, free text otherwise,
 // and nothing for is_empty / not_empty.
 function amValueControl(cd, i){
@@ -761,6 +822,12 @@ async function loadAutomations() {
 }
 function renderAutomations(rules) {
   const c = document.getElementById('automations-list');
+  const sub = document.getElementById('automations-sub');
+  if (sub) {
+    sub.textContent = rules.length
+      ? `${rules.filter(r => r.enabled).length} of ${rules.length} rule${rules.length === 1 ? '' : 's'} enabled · trigger, conditions, then actions`
+      : 'When something happens, automatically do something — routing, follow-ups, reminders.';
+  }
   if (!rules.length) {
     c.innerHTML = `<div style="text-align:center;padding:60px 0;color:var(--muted)">
       <div style="margin-bottom:10px;display:flex;justify-content:center"><i data-lucide="zap" style="width:38px;height:38px"></i></div>
@@ -768,18 +835,42 @@ function renderAutomations(rules) {
       <div style="font-size:13px;margin-top:6px">Create one to route leads, schedule follow-ups, or send reminders automatically.</div></div>`;
     return;
   }
-  c.innerHTML = rules.map(r => `
-    <div class="card" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:10px">
-      <input type="checkbox" ${r.enabled ? 'checked' : ''} onchange="toggleAutomation(${r.id}, this.checked)" title="${r.enabled ? 'Enabled' : 'Disabled'}" style="accent-color:var(--gold);flex:none;cursor:pointer">
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:14px">${esc(r.name)}${r.enabled ? '' : ' <span style="font-size:11px;color:var(--muted);font-weight:400">(off)</span>'}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">
-          <span style="color:var(--primary)">${esc(AM_TRIGGER_LABELS[r.trigger_type] || r.trigger_type)}</span>${(r.conditions && r.conditions.length) ? ` · ${r.conditions.length} condition${r.conditions.length > 1 ? 's' : ''}` : ''} · ${(r.actions || []).length} action${(r.actions || []).length === 1 ? '' : 's'}${(r.actions || []).length ? ` (${(r.actions || []).map(a => amActionLabel(a.type)).join(', ')})` : ''}
+  // The old row said "1 condition · 3 actions" — a word count, not a rule. You
+  // had to open the builder to find out what any of them actually does.
+  const step = (cls, label, text) =>
+    `<div class="am-step ${cls}"><span class="am-step-label">${label}</span><span class="am-step-text">${esc(text)}</span></div>`;
+  c.innerHTML = rules.map(r => {
+    const conds = Array.isArray(r.conditions) ? r.conditions : [];
+    const acts  = Array.isArray(r.actions) ? r.actions : [];
+    const cols = [`<div class="am-col">${step('am-when', 'When', amWhenText(r))}</div>`];
+    if (conds.length) cols.push(`<div class="am-col">${conds.map(cd => step('am-if', 'If', amCondText(r.trigger_type, cd))).join('')}</div>`);
+    if (acts.length)  cols.push(`<div class="am-col fan${acts.length > 1 ? ' multi' : ''}">${acts.map(a => step('am-then', 'Then', amActionLabel(a.type))).join('')}</div>`);
+    const summary = [
+      conds.length ? `${conds.length} condition${conds.length > 1 ? 's' : ''}` : '',
+      `${acts.length} action${acts.length === 1 ? '' : 's'}`,
+    ].filter(Boolean).join(' · ');
+    const runs = Number(r.runs_week) || 0;
+    const foot = [amAgo(r.last_run_at), runs ? `${runs} run${runs === 1 ? '' : 's'} this week` : '']
+      .filter(Boolean).join(' · ');
+    return `<div class="am-card${r.enabled ? '' : ' off'}">
+      <div class="am-head">
+        <label class="am-switch" title="${r.enabled ? 'Enabled' : 'Disabled'}">
+          <input type="checkbox" ${r.enabled ? 'checked' : ''} aria-label="Enable ${esc(r.name)}"
+                 onchange="toggleAutomation(${r.id}, this.checked)"><span></span>
+        </label>
+        <div class="am-head-text">
+          <div class="am-name">${esc(r.name)}${r.enabled ? '' : '<span class="am-off-tag">(off)</span>'}</div>
+          <div class="am-sum"><span class="am-trig">${esc(amWhenText(r))}</span><span>${esc(summary)}</span></div>
+        </div>
+        <div class="am-acts">
+          <button class="am-btn" onclick="openAutomationModal(${r.id})">Edit</button>
+          <button class="am-btn danger" onclick="deleteAutomation(${r.id})">Delete</button>
         </div>
       </div>
-      <button class="btn btn-outline" style="font-size:12px;padding:4px 10px" onclick="openAutomationModal(${r.id})">Edit</button>
-      <button class="btn btn-outline" style="font-size:12px;padding:4px 10px;color:var(--danger);border-color:var(--danger)" onclick="deleteAutomation(${r.id})">Delete</button>
-    </div>`).join('');
+      <div class="am-flow">${cols.join('<div class="am-link"></div>')}</div>
+      <div class="am-foot"><span class="am-dot${r.last_run_at ? ' on' : ''}"></span>${esc(foot)}</div>
+    </div>`;
+  }).join('');
 }
 function openAutomationModal(id) {
   const rule = id ? _autoRules.find(r => r.id === id) : null;

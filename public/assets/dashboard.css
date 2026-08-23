@@ -2881,3 +2881,138 @@
     .hd-relay{ min-height:36px; }
     .hd-head-btn.labelled, .hd-head-btn.live{ min-height:44px; }
   }
+
+  /* ── Tabs ──────────────────────────────────────────────────────────────
+   * `.tab` was only ever defined in employee.css, so the admin portal's
+   * Quotation strip rendered as three bare <button>s — white boxes on a black
+   * page. Same control, same vocabulary, now on both sides. */
+  .tab-strip{
+    display:flex; gap:2px; margin-bottom:24px;
+    border-bottom:1px solid var(--hair); overflow-x:auto;
+  }
+  .tab{
+    display:inline-flex; align-items:center; gap:7px; flex:none;
+    padding:10px 14px; margin-bottom:-1px;
+    background:none; border:0; border-bottom:2px solid transparent;
+    font:inherit; font-size:12.5px; font-weight:600; color:var(--muted);
+    white-space:nowrap; cursor:pointer;
+    transition:color .15s ease, border-color .15s ease;
+  }
+  .tab i, .tab svg{ width:14px; height:14px; }
+  .tab:hover{ color:var(--text); }
+  .tab.active{ color:var(--gold); border-bottom-color:var(--gold); font-weight:700; }
+
+  /* ── Automations ───────────────────────────────────────────────────────
+   * A rule is a sentence — when this happens, if that holds, then do these.
+   * The old row said "1 condition · 3 actions", which is a word count, not a
+   * rule: you had to open the builder to find out what it actually does. */
+  .am-card{
+    background:var(--panel); border:1px solid var(--hair-gold);
+    border-radius:13px; padding:14px 16px; margin-bottom:12px;
+  }
+  .am-card.off{ border-color:var(--hair); }
+  .am-head{ display:flex; align-items:flex-start; gap:12px; }
+  .am-head-text{ flex:1; min-width:0; }
+  .am-name{ font-size:13.5px; font-weight:600; color:var(--text); }
+  .am-off-tag{ font-size:11px; font-weight:400; color:var(--muted); margin-left:6px; }
+  .am-sum{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    margin-top:5px; font-size:11px; color:var(--muted);
+  }
+  .am-trig{
+    background:rgba(201,163,94,.12); color:var(--gold);
+    border-radius:6px; padding:2px 8px; font-size:11px; font-weight:700;
+  }
+  .am-acts{ display:flex; gap:7px; flex:none; }
+  .am-btn{
+    background:none; border:1px solid var(--hair); color:var(--text);
+    border-radius:7px; padding:5px 11px; font:inherit; font-size:11.5px;
+    font-weight:600; cursor:pointer; transition:background .15s ease;
+  }
+  .am-btn:hover{ background:rgba(255,255,255,.05); }
+  .am-btn.danger{ color:var(--danger); border-color:rgba(239,68,68,.35); }
+  .am-btn.danger:hover{ background:rgba(239,68,68,.08); }
+
+  /* The switch is a real checkbox underneath — it has to stay reachable by
+   * keyboard and announce its state, which a clickable <span> does not. */
+  .am-switch{ position:relative; display:inline-block; width:34px; height:19px; flex:none; }
+  .am-switch input{
+    position:absolute; inset:0; width:100%; height:100%;
+    margin:0; opacity:0; cursor:pointer; z-index:1;
+  }
+  .am-switch span{
+    position:absolute; inset:0; border-radius:99px;
+    background:rgba(255,255,255,.16); transition:background .15s ease;
+    pointer-events:none;
+  }
+  .am-switch span::after{
+    content:''; position:absolute; top:2.5px; left:2.5px;
+    width:14px; height:14px; border-radius:50%; background:var(--text);
+    transition:transform .15s ease;
+  }
+  .am-switch input:checked + span{ background:var(--gold); }
+  .am-switch input:checked + span::after{ transform:translateX(15px); }
+  .am-switch input:focus-visible + span{ box-shadow:0 0 0 2px rgba(201,163,94,.45); }
+
+  .am-flow{ display:flex; align-items:stretch; gap:0; margin-top:12px; flex-wrap:wrap; }
+  .am-step{
+    border-radius:10px; padding:10px 12px; min-width:132px; max-width:260px;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .am-step-label{
+    font-size:9px; font-weight:800; letter-spacing:.8px; text-transform:uppercase;
+  }
+  .am-step-text{ font-size:12.5px; color:var(--text); line-height:1.35; }
+  .am-when{ background:rgba(201,163,94,.08); border:1px solid rgba(201,163,94,.24); }
+  .am-when  .am-step-label{ color:var(--gold); }
+  .am-if{ background:rgba(159,176,189,.08); border:1px solid rgba(159,176,189,.24); }
+  .am-if    .am-step-label{ color:#9fb0bd; }
+  .am-then{ background:rgba(16,185,129,.08); border:1px solid rgba(16,185,129,.24); }
+  .am-then  .am-step-label{ color:#10b981; }
+
+  /* The connectors: a stub between columns, and a spine that fans out to each
+   * action so several THENs read as one branch rather than a stack. */
+  .am-link{ flex:0 0 14px; align-self:center; height:1px; background:var(--hair-gold); }
+  .am-col{ display:flex; flex-direction:column; gap:8px; min-width:0; }
+  /* The trigger and its conditions are one side of the sentence, so they read as
+   * one block down the row; the actions stay their own size and sit centred
+   * against it, which is where the stub from the conditions lands. */
+  .am-col:not(.fan) > .am-step{ flex:1; }
+  .am-col.fan{ justify-content:center; }
+  /* Only when the branch actually forks: with one action the stub already
+   * meets the box, and a spine there is a line pointing at nothing. */
+  .am-col.fan.multi{ position:relative; }
+  .am-col.fan.multi::before{
+    content:''; position:absolute; left:-14px; top:19px; bottom:19px;
+    width:1px; background:var(--hair-gold);
+  }
+  .am-col.fan.multi .am-then{ position:relative; }
+  .am-col.fan.multi .am-then::before{
+    content:''; position:absolute; left:-15px; top:19px;
+    width:15px; height:1px; background:var(--hair-gold);
+  }
+
+  .am-foot{
+    display:flex; align-items:center; gap:7px;
+    margin-top:11px; font-size:11px; color:var(--muted);
+  }
+  .am-dot{ width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.22); flex:none; }
+  .am-dot.on{ background:#10b981; }
+
+  @media (max-width:760px){
+    /* Stacked, so the connectors would point sideways at nothing. */
+    .am-flow{ flex-direction:column; gap:8px; }
+    .am-step{ max-width:none; }
+    .am-link{ display:none; }
+    .am-col.fan.multi::before, .am-col.fan.multi .am-then::before{ display:none; }
+  }
+  @media (max-width:640px){
+    .am-head{ flex-wrap:wrap; }
+    .am-btn{ min-height:44px; }
+    /* The pill stays 34×19 — the padding around it is what a thumb gets. The
+     * input is sized by `inset` rather than 100%, which resolves against the
+     * content box and would leave the hit area the size of the pill. */
+    .am-switch{ padding:13px 5px; box-sizing:content-box; margin:-13px -5px; }
+    .am-switch input{ width:auto; height:auto; }
+    .am-switch span{ inset:13px 5px; }
+  }

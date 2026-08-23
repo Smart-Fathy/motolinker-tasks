@@ -287,7 +287,36 @@ function scheduleAutomationSweep() {
 receiver.router.get('/api/dashboard/automations', requireAuth, async (_req, res) => {
   const { data, error } = await supabase.from('automation_rules').select('*').order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+  const rules = data || [];
+  // "6 of 7 enabled" says nothing about whether any of them fire. automation_runs
+  // already records every firing, so each rule carries its own last run and its
+  // week's count. One windowed read covers the rules that ran recently; only the
+  // quiet ones need their own lookup, and there are as many of those as there
+  // are rules — a handful. A failure here costs the footnote, never the list.
+  try {
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const { data: recent } = await supabase.from('automation_runs')
+      .select('rule_id, created_at').gte('created_at', weekAgo);
+    const week = new Map();
+    const last = new Map();
+    for (const run of recent || []) {
+      const id = String(run.rule_id);
+      week.set(id, (week.get(id) || 0) + 1);
+      if (!last.has(id) || run.created_at > last.get(id)) last.set(id, run.created_at);
+    }
+    const quiet = rules.filter(r => !last.has(String(r.id)));
+    await Promise.all(quiet.map(async r => {
+      const { data: one } = await supabase.from('automation_runs')
+        .select('created_at').eq('rule_id', r.id)
+        .order('created_at', { ascending: false }).limit(1);
+      if (one && one[0]) last.set(String(r.id), one[0].created_at);
+    }));
+    for (const r of rules) {
+      r.runs_week = week.get(String(r.id)) || 0;
+      r.last_run_at = last.get(String(r.id)) || null;
+    }
+  } catch (_) { /* the rules still list without their run history */ }
+  res.json(rules);
 });
 receiver.router.post('/api/dashboard/automations', requireAuth, express.json(), async (req, res) => {
   const { name, trigger_type, trigger_config, conditions, actions, enabled } = req.body || {};
