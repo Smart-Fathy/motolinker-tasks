@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=95">
+  <link rel="stylesheet" href="/assets/employee.css?v=96">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=95">
+  <link rel="stylesheet" href="/assets/mobile.css?v=96">
 </head>
 <body>
 
@@ -480,9 +480,9 @@
         </div>
       </div>
       <div id="tasks-stats" class="stats-row"></div>
-      <div class="tabs">
-        <div class="tab active" id="tab-current"   onclick="switchTab('current')"><i data-lucide="loader" class="icon-xs"></i> Current Tasks</div>
-        <div class="tab"        id="tab-completed" onclick="switchTab('completed')"><i data-lucide="check-circle-2" class="icon-xs"></i> Completed</div>
+      <div class="tab-strip">
+        <div class="tab active" id="tab-current"   onclick="switchTab('current')"><i data-lucide="loader"></i> Current</div>
+        <div class="tab"        id="tab-completed" onclick="switchTab('completed')"><i data-lucide="check-circle-2"></i> Completed</div>
       </div>
       <div id="tasks-container"><div class="loading"><span class="spinner"></span>Loading…</div></div>
     </div>
@@ -620,9 +620,9 @@
           </div>
           <button class="btn btn-primary" data-perm="deals.create" onclick="openEmpDealModal()"><i data-lucide="plus" style="width:15px;height:15px"></i> Add Deal</button>
         </div>
-        <div class="deal-tabs" style="display:flex;gap:8px;margin-bottom:14px">
-          <button class="deal-tab tab active" data-tab="pipeline" onclick="empDealsTab('pipeline')" style="font-size:13px;padding:8px 18px">Pipeline</button>
-          <button class="deal-tab tab" data-tab="sales" data-perm="deals.sales" onclick="empDealsTab('sales')" style="font-size:13px;padding:8px 18px">Sales</button>
+        <div class="tab-strip">
+          <button class="deal-tab tab active" data-tab="pipeline" onclick="empDealsTab('pipeline')"><i data-lucide="columns-3"></i> Board</button>
+          <button class="deal-tab tab" data-tab="sales" data-perm="deals.sales" onclick="empDealsTab('sales')"><i data-lucide="receipt"></i> Sales</button>
         </div>
         <div id="deals-pane-pipeline">
         <div id="emp-deals-kanban" style="display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:12px;align-items:start;overflow-x:auto">
@@ -1227,12 +1227,12 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=95"></script>
-<script src="/assets/columns.js?v=95"></script>
-<script src="/assets/client-folder.js?v=95"></script>
-<script src="/assets/lead-filters.js?v=95"></script>
-<script src="/assets/chat-extras.js?v=95"></script>
-<script src="/assets/home.js?v=95"></script>
+<script src="/assets/mobile.js?v=96"></script>
+<script src="/assets/columns.js?v=96"></script>
+<script src="/assets/client-folder.js?v=96"></script>
+<script src="/assets/lead-filters.js?v=96"></script>
+<script src="/assets/chat-extras.js?v=96"></script>
+<script src="/assets/home.js?v=96"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1270,13 +1270,13 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=95"></script>
-<script src="/assets/procurement.js?v=95"></script>
-<script src="/assets/quote.js?v=95"></script>
-<script src="/assets/meetings.js?v=95"></script>
-<script src="/assets/calendar.js?v=95"></script>
-<script src="/assets/availability.js?v=95"></script>
-<script src="/assets/employee.js?v=95"></script>
+<script src="/assets/huddle.js?v=96"></script>
+<script src="/assets/procurement.js?v=96"></script>
+<script src="/assets/quote.js?v=96"></script>
+<script src="/assets/meetings.js?v=96"></script>
+<script src="/assets/calendar.js?v=96"></script>
+<script src="/assets/availability.js?v=96"></script>
+<script src="/assets/employee.js?v=96"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1338,6 +1338,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=95"></script>
+<script src="/help-docs.js?v=96"></script>
 </body>
 </html>
