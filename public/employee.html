@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=93">
+  <link rel="stylesheet" href="/assets/employee.css?v=95">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=93">
+  <link rel="stylesheet" href="/assets/mobile.css?v=95">
 </head>
 <body>
 
@@ -472,7 +472,7 @@
     <!-- ── My Tasks Page ── -->
     <div class="page" id="page-tasks">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
-        <div style="font-size:20px;font-weight:700">My Tasks</div>
+        <div class="page-title" style="margin-bottom:0">My Tasks</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <span id="emp-cal-status" style="font-size:12px;color:var(--muted)"></span>
           <button id="emp-cal-btn" class="btn btn-outline btn-sm" style="display:none" onclick="empCalendarToggle()"></button>
@@ -960,7 +960,7 @@
     <!-- ── Google Meet Page ── -->
     <div class="page" id="page-meet">
       <div style="padding:28px">
-        <div style="font-size:20px;font-weight:700;margin-bottom:6px">Google Meet</div>
+        <div class="page-title" style="margin-bottom:6px">Google Meet</div>
         <div style="font-size:13px;color:var(--muted);margin-bottom:28px">Start or join a video meeting instantly.</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;max-width:640px">
           <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
@@ -997,7 +997,7 @@
     <div class="page" id="page-reports">
       <div class="page-body" style="max-width:1000px">
         <div style="margin-bottom:20px">
-          <div style="font-size:20px;font-weight:700">Reports</div>
+          <div class="page-title" style="margin-bottom:0">Reports</div>
           <div style="font-size:13px;color:var(--muted);margin-top:4px">Figures cover only the leads and deals you have access to.</div>
         </div>
 
@@ -1043,32 +1043,25 @@
       <div style="padding:28px;max-width:980px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
           <div>
-            <div class="card-title" style="margin:0">Quotation</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:4px">Drafted in a sheet, like POs and RFQs — same entry, same preview</div>
+            <div class="page-title" style="margin-bottom:0">Quotation</div>
+            <div id="qt-sub" style="font-size:12px;color:var(--muted);margin-top:4px">Drafted in a sheet, like POs and RFQs — same entry, same preview</div>
           </div>
-          <button class="btn btn-primary" data-perm="quotation.draft" onclick="openQuoteForm(null)">
-            <i data-lucide="plus" style="width:15px;height:15px"></i> New quotation
-          </button>
-        </div>
-        <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:24px">
-          <button id="qt-tab-draft"    class="tab active" data-perm="quotation.draft"    onclick="switchQtTab('draft')"    style="font-size:13px;padding:8px 18px">Draft</button>
-          <button id="qt-tab-history"  class="tab"        data-perm="quotation.history"  onclick="switchQtTab('history')"  style="font-size:13px;padding:8px 18px">History</button>
-          <button id="qt-tab-settings" class="tab"        data-perm="quotation.settings" onclick="switchQtTab('settings')" style="font-size:13px;padding:8px 18px">Settings</button>
-        </div>
-        <div id="qt-panel-draft">
-          <div class="card" style="text-align:center;padding:44px 24px">
-            <i data-lucide="file-badge" style="width:36px;height:36px;opacity:.35"></i>
-            <div style="font-weight:600;margin-top:10px">Draft a quotation</div>
-            <div style="font-size:12.5px;color:var(--muted);margin:6px auto 16px;max-width:420px">
-              The sheet opens like a purchase order: header details, priced lines with running totals,
-              logistics, photos — then Generate previews the PDF.
-            </div>
-            <button class="btn btn-primary" data-perm="quotation.draft" onclick="openQuoteForm(null)">
-              <i data-lucide="plus" style="width:15px;height:15px"></i> New quotation
+          <div id="qt-head-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline" id="qt-preview-btn" disabled title="Save the draft first" onclick="qtPreviewLast()">
+              <i data-lucide="file-text" style="width:15px;height:15px"></i> Preview PDF
+            </button>
+            <button class="btn btn-primary" id="qt-generate-btn" data-perm="quotation.draft" onclick="generateQuotation()">
+              <i data-lucide="file-badge" style="width:15px;height:15px"></i> Save &amp; preview
             </button>
           </div>
         </div>
-        <div id="qt-panel-history" style="display:none">
+        <div class="tab-strip">
+          <button id="qt-tab-draft" class="tab active" data-perm="quotation.draft" onclick="switchQtTab('draft')"><i data-lucide="file-pen-line"></i> Draft</button>
+          <button id="qt-tab-history" class="tab" data-perm="quotation.history" onclick="switchQtTab('history')"><i data-lucide="history"></i> History</button>
+          <button id="qt-tab-settings" class="tab" data-perm="quotation.settings" onclick="switchQtTab('settings')"><i data-lucide="settings"></i> Settings</button>
+        </div>
+        <div id="qt-panel-draft"><div class="loading"><div class="spinner"></div> Opening the sheet…</div></div>
+          <div id="qt-panel-history" style="display:none">
           <div class="card" style="padding:0;overflow:hidden">
             <div id="qt-history-body" style="padding:16px 20px"></div>
           </div>
@@ -1234,12 +1227,12 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=93"></script>
-<script src="/assets/columns.js?v=93"></script>
-<script src="/assets/client-folder.js?v=93"></script>
-<script src="/assets/lead-filters.js?v=93"></script>
-<script src="/assets/chat-extras.js?v=93"></script>
-<script src="/assets/home.js?v=93"></script>
+<script src="/assets/mobile.js?v=95"></script>
+<script src="/assets/columns.js?v=95"></script>
+<script src="/assets/client-folder.js?v=95"></script>
+<script src="/assets/lead-filters.js?v=95"></script>
+<script src="/assets/chat-extras.js?v=95"></script>
+<script src="/assets/home.js?v=95"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1277,13 +1270,13 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=93"></script>
-<script src="/assets/procurement.js?v=93"></script>
-<script src="/assets/quote.js?v=93"></script>
-<script src="/assets/meetings.js?v=93"></script>
-<script src="/assets/calendar.js?v=93"></script>
-<script src="/assets/availability.js?v=93"></script>
-<script src="/assets/employee.js?v=93"></script>
+<script src="/assets/huddle.js?v=95"></script>
+<script src="/assets/procurement.js?v=95"></script>
+<script src="/assets/quote.js?v=95"></script>
+<script src="/assets/meetings.js?v=95"></script>
+<script src="/assets/calendar.js?v=95"></script>
+<script src="/assets/availability.js?v=95"></script>
+<script src="/assets/employee.js?v=95"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1345,6 +1338,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=93"></script>
+<script src="/help-docs.js?v=95"></script>
 </body>
 </html>

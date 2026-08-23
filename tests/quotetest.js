@@ -94,10 +94,12 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       await new Promise(r => setTimeout(r, 300));
       const v = id => (document.getElementById(id) || {}).value;
       return {
-        open: getComputedStyle(document.getElementById('modal-overlay')).display !== 'none',
+        // The sheet is the Draft tab now, not a modal over it.
+        open: getComputedStyle(document.getElementById('qt-panel-draft')).display !== 'none'
+              && document.getElementById('qt-tab-draft').classList.contains('active'),
         id: v('qt-id'), name: v('qt-name'), exchange: v('qt-exchange'), template: v('qt-template'),
         rows: document.querySelectorAll('#qt-items .qt-item-row').length,
-        freeCell: document.querySelectorAll('#qt-items .qt-item-row')[1]?.querySelectorAll('input')[3]?.value,
+        freeCell: document.querySelectorAll('#qt-items .qt-item-row')[1]?.querySelector('.qt-egp')?.textContent,
         logi0: v('qt-log-usd-0'),
         total: document.getElementById('qt-grand-total')?.textContent,
       };
@@ -124,7 +126,7 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       const sel = document.querySelector('[data-doc-extras="quote_doc"] [data-cek="cf_bank"]');
       if (sel) sel.value = 'cash';
       return { tag: sel ? sel.tagName : null,
-               fieldsBtn: [...document.querySelectorAll('#modal-body button, .modal button')]
+               fieldsBtn: [...document.querySelectorAll('#qt-panel-draft button')]
                  .some(b => /\+ Field/.test(b.textContent)) };
     });
     // The team fills the fields in; only the admin may change what they are —
