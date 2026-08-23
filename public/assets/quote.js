@@ -35,12 +35,20 @@
   let qtExistingImages = [];  // data-URLs restored from a saved quote
   let qtEditingPk = null;     // DB id being edited in place (null = new)
   let qtPdfBase64 = null;
+  let qtLastId = null;      // the id the last generated PDF belongs to
+  let qtMountSeq = 0;       // only the newest mount may write the sheet
 
   // ── The page: tabs + shells ─────────────────────────────────────────────────
+  const QT_SUB_DEFAULT = 'Drafted in a sheet, like POs and RFQs — same entry, same preview';
+
   function initQuotationPage() {
     const settings = document.getElementById('qt-panel-settings');
     if (settings && !settings.dataset.built) { settings.innerHTML = qtSettingsHtml(); settings.dataset.built = '1'; }
     switchQtTab('draft');
+    // The draft IS the tab now rather than a modal over it, so opening the page
+    // has to put a sheet there. One already mounted is left alone: a half-typed
+    // quotation must survive a trip to Leads and back.
+    if (!document.getElementById('qt-id')) openQuoteForm(null);
   }
   function switchQtTab(tab) {
     ['draft', 'history', 'settings'].forEach(t => {
@@ -49,6 +57,9 @@
       if (b) b.classList.toggle('active', t === tab);
       if (p) p.style.display = t === tab ? '' : 'none';
     });
+    // Save & preview acts on the sheet, so it goes where the sheet goes.
+    const acts = document.getElementById('qt-head-actions');
+    if (acts) acts.style.display = tab === 'draft' ? 'flex' : 'none';
     if (tab === 'history') loadQtHistory();
     if (tab === 'settings') loadQtSettings();
     requestAnimationFrame(() => lucide.createIcons());
@@ -57,10 +68,54 @@
   // ── The sheet ───────────────────────────────────────────────────────────────
   const F = 'style="width:100%"';
   function headField(label, inner) {
-    return `<div><div style="font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">${label}</div>${inner}</div>`;
+    return `<div class="qt-field"><div class="qt-field-label">${label}</div>${inner}</div>`;
+  }
+  // A two-value select reads as a question you have to open. Currency is a
+  // choice between two things you can see at once, so it is drawn as one.
+  function qtSeg(id, opts, cur) {
+    return `<div class="qt-seg" id="${id}-seg">
+      ${opts.map(([v, l]) => `<button type="button" class="qt-seg-btn${v === cur ? ' active' : ''}" data-v="${esc(v)}"
+        onclick="qtSegPick('${esc(id)}','${esc(v)}')">${esc(l)}</button>`).join('')}
+      <input type="hidden" id="${id}" value="${esc(cur)}"></div>`;
+  }
+  function qtSegPick(id, v) {
+    const inp = document.getElementById(id);
+    if (inp) inp.value = v;
+    const seg = document.getElementById(id + '-seg');
+    if (seg) seg.querySelectorAll('.qt-seg-btn').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+  }
+
+  function qtValidDays() {
+    const from = (document.getElementById('qt-date') || {}).value;
+    const to   = (document.getElementById('qt-valid-to') || {}).value;
+    if (!from || !to) return null;
+    const days = Math.round((Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86400000);
+    return Number.isFinite(days) && days >= 0 ? days : null;
+  }
+  // The page subtitle carries the draft's own numbers — it is the one line you
+  // can read without scrolling back up the sheet.
+  function qtUpdateSubtitle(lines, total) {
+    const el = document.getElementById('qt-sub');
+    if (!el) return;
+    if (!lines) { el.textContent = QT_SUB_DEFAULT; return; }
+    const days = qtValidDays();
+    el.textContent = `${lines} priced line${lines === 1 ? '' : 's'} · ${total.toLocaleString()} EGP`
+      + (days == null ? '' : ` · valid ${days} day${days === 1 ? '' : 's'}`);
   }
 
   async function openQuoteForm(saved, opts) {
+    // Two mounts can be in flight at once — navigate('quotation') runs the page
+    // loader, then the lead handoff asks for its own sheet. Both await the doc
+    // engine and the issuer/lead lists, so without this the loader's blank sheet
+    // could land last and wipe the prefilled one.
+    const seq = ++qtMountSeq;
+    const host = document.getElementById('qt-panel-draft');
+    if (!host) return;
+    if (!qCan('quotation', 'draft')) {
+      host.innerHTML = '<div class="qt-card" style="text-align:center;padding:36px;color:var(--muted);font-size:13px">You do not have permission to draft quotations.</div>';
+      return;
+    }
+    switchQtTab('draft');
     await docEngine('quote_doc').load();
     const editing = !!(saved && opts && opts.editing);
     const d = (saved && saved.data) || {};
@@ -68,6 +123,7 @@
     qtImages = [];
     qtExistingImages = Array.isArray(d.imageDataUrls) ? [...d.imageDataUrls] : [];
     qtPdfBase64 = null;
+    qtLastId = null;
 
     const [issuers, leads] = await Promise.all([
       QTCFG.issuers().catch(() => []),
@@ -76,23 +132,26 @@
     const today = new Date();
     const valid = new Date(today); valid.setDate(valid.getDate() + 7);
     const fmt = x => x.toISOString().split('T')[0];
+    if (seq !== qtMountSeq) return;
 
-    PROCFG.modal(editing ? `Edit quotation — ${esc(d.id || saved.quote_id || '')}` : 'New quotation', `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
+    host.innerHTML = `
+      <div class="qt-edit-banner" id="qt-edit-banner" style="display:${editing ? 'flex' : 'none'}">
+        <span>Editing <strong>${esc(d.id || (saved && saved.quote_id) || '')}</strong> — saving replaces it.</span>
+        <button class="btn btn-outline btn-sm" onclick="openQuoteForm(null)">Start a new one</button>
+      </div>
+
+      <div class="qt-fields">
         ${headField('Quote ID', `<div style="display:flex;gap:6px"><input class="form-control" id="qt-id" value="${esc(d.id || '')}" ${F}>
-          <button class="btn btn-outline btn-sm" onclick="refreshQuoteId()" title="Generate a fresh ID">↻</button></div>`)}
-        ${headField('Date', `<input class="form-control" id="qt-date" type="date" value="${esc(d.date || fmt(today))}">`)}
-        ${headField('Valid to', `<input class="form-control" id="qt-valid-to" type="date" value="${esc(d.validTo || fmt(valid))}">`)}
+          <button class="btn btn-outline btn-sm qt-refresh" onclick="refreshQuoteId()" title="Generate a fresh ID"><i data-lucide="refresh-cw"></i></button></div>`)}
+        ${headField('Date', `<input class="form-control" id="qt-date" type="date" value="${esc(d.date || fmt(today))}" onchange="recalcGrandTotal()">`)}
+        ${headField('Valid to', `<input class="form-control" id="qt-valid-to" type="date" value="${esc(d.validTo || fmt(valid))}" onchange="recalcGrandTotal()">`)}
         ${headField('Issuer', `<select class="form-control" id="qt-issuer">
           <option value="">— Select issuer —</option>
           ${issuers.map(n => `<option value="${esc(n)}" ${d.issuer === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}
         </select>`)}
         ${headField('Customer name', `<input class="form-control" id="qt-name" value="${esc(d.name || '')}" placeholder="e.g. Ahmed Kamal">`)}
         ${headField('Vehicle', `<input class="form-control" id="qt-vehicle" value="${esc(d.vehicleModel || '')}" placeholder="e.g. BYD Seal">`)}
-        ${headField('Currency', `<select class="form-control" id="qt-currency">
-          <option value="EGP" ${d.currency === 'EGP' ? 'selected' : ''}>EGP — Egyptian Pound</option>
-          <option value="USD" ${d.currency === 'USD' ? 'selected' : ''}>USD — US Dollar</option>
-        </select>`)}
+        ${headField('Currency', qtSeg('qt-currency', [['EGP', 'EGP'], ['USD', 'USD']], d.currency === 'USD' ? 'USD' : 'EGP'))}
         ${headField('Exchange rate', `<input class="form-control" id="qt-exchange" type="number" min="0" step="0.01" value="${esc(d.exchange || '')}" placeholder="USD → EGP" oninput="qtRecalcAll()">`)}
         ${headField('Design', `<select class="form-control" id="qt-template">
           <option value="classic" ${d.template !== 'brand' ? 'selected' : ''}>Classic — navy &amp; gold</option>
@@ -104,44 +163,48 @@
         </select>`) : '<input type="hidden" id="qt-customer-id" value="">'}
       </div>
 
-      ${docExtrasHtml('quote_doc', d.customFields)}
-      <div style="font-weight:700;font-size:13px;margin:6px 0 8px;margin-top:14px">Pricing</div>
-      <div style="overflow-x:auto"><table id="qt-grid" style="width:100%;min-width:640px;border-collapse:collapse;font-size:12.5px">
-        <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
-          <th style="padding:6px 8px;width:34px">#</th><th style="padding:6px 8px">Item</th>
-          <th style="padding:6px 8px;width:80px">Units</th><th style="padding:6px 8px;width:170px">Price USD</th>
-          <th style="padding:6px 8px;width:130px">Total EGP</th><th style="width:36px"></th>
-        </tr></thead>
-        <tbody id="qt-items"></tbody>
-      </table></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 14px">
+      <div class="qt-extras">${docExtrasHtml('quote_doc', d.customFields)}</div>
+
+      <div class="qt-sec"><h4>Pricing</h4><span id="qt-price-note">Price in USD, converted at the exchange rate above</span></div>
+      <div class="qt-card">
+        <div class="table-scroll"><table class="qt-table" id="qt-grid">
+          <thead><tr>
+            <th style="width:34px">#</th><th>Item</th>
+            <th style="width:88px">Units</th><th style="width:170px">Price USD</th>
+            <th style="width:140px;text-align:right">Total EGP</th><th style="width:44px"></th>
+          </tr></thead>
+          <tbody id="qt-items"></tbody>
+        </table></div>
+      </div>
+      <div class="qt-subtotal">
         <button class="btn btn-outline btn-sm" onclick="addPricingRow()">+ Add line</button>
-        <div style="font-size:13px">Grand total: <strong id="qt-grand-total" style="font-size:15px">0</strong> EGP</div>
+        <span>Vehicle lines <strong id="qt-veh-total">0</strong> EGP</span>
       </div>
 
-      <div style="font-weight:700;font-size:13px;margin:6px 0 8px">Logistics</div>
-      <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:14px">
-        <tbody id="qt-logistics"></tbody>
-      </table>
+      <div class="qt-sec"><h4>Shipping &amp; clearance</h4><span>The five lines every quotation carries</span></div>
+      <div class="qt-card" id="qt-logistics"></div>
 
-      <div style="font-weight:700;font-size:13px;margin:6px 0 8px">Custom lines <span style="color:var(--muted);font-weight:400">(printed under the specs)</span></div>
+      <div class="qt-sec"><h4>Custom lines</h4><span>Printed under the specs</span></div>
       <div id="qt-custom-specs"></div>
-      <button class="btn btn-outline btn-sm" onclick="addCustomSpecRow('qt-custom-specs')" style="margin-bottom:14px">+ Add line</button>
+      <button class="btn btn-outline btn-sm" onclick="addCustomSpecRow('qt-custom-specs')" style="margin-bottom:18px">+ Add line</button>
 
-      <div style="font-weight:700;font-size:13px;margin:6px 0 8px">Vehicle photos <span style="color:var(--muted);font-weight:400">(up to 5, printed on the PDF)</span></div>
+      <div class="qt-sec"><h4>Vehicle photos</h4><span>Up to 5, printed on the PDF</span></div>
       <div id="qt-img-drop" ondrop="event.preventDefault();handleImgDrop(event)" ondragover="event.preventDefault()"
-        onclick="document.getElementById('qt-img-input').click()"
-        style="border:1.5px dashed var(--border);border-radius:10px;padding:18px;text-align:center;color:var(--muted);font-size:12.5px;cursor:pointer;margin-bottom:8px">
+        onclick="document.getElementById('qt-img-input').click()" class="qt-drop">
         Drop images here or click to choose
         <input type="file" id="qt-img-input" accept="image/*" multiple style="display:none" onchange="handleImgSelect(this.files)">
       </div>
       <div id="qt-img-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"></div>
 
-      <div id="qt-error" class="error-msg" style="display:none"></div>`,
-      `<button class="btn btn-outline" onclick="PROCFG.closeModal()">Cancel</button>
-       <button class="btn btn-primary" id="qt-generate-btn" onclick="generateQuotation()">
-         <i data-lucide="file-badge" style="width:15px;height:15px"></i> ${editing ? 'Update & preview PDF' : 'Generate PDF'}</button>`,
-      { wide: true });
+      <div class="qt-total">
+        <div>
+          <div class="qt-total-label">Grand total</div>
+          <div class="qt-total-detail" id="qt-total-detail">0 vehicle · 0 shipping &amp; clearance</div>
+        </div>
+        <div class="qt-total-value"><strong id="qt-grand-total">0</strong> <span>EGP</span></div>
+      </div>
+
+      <div id="qt-error" class="error-msg" style="display:none"></div>`;
 
     // Rows
     const items = (d.items || []);
@@ -152,10 +215,21 @@
     (d.customSpecs || []).forEach(s => { addCustomSpecRow('qt-custom-specs'); const rows = document.querySelectorAll('#qt-custom-specs .qt-custom-spec-row'); const inp = rows[rows.length - 1] && rows[rows.length - 1].querySelector('input'); if (inp) inp.value = s.val || s.key || ''; });
     renderImgPreviews();
     if (!d.id && !document.getElementById('qt-id').value) refreshQuoteId();
+    qtSetPreviewReady(false);
     qtRecalcAll();
     if (opts && opts.lead) qtPrefillFromLead(opts.lead);
     requestAnimationFrame(() => lucide.createIcons());
   }
+
+  // Preview can only show a PDF the server has actually produced, so it stays
+  // disabled — and says why — until a save has been round-tripped.
+  function qtSetPreviewReady(ready) {
+    const btn = document.getElementById('qt-preview-btn');
+    if (!btn) return;
+    btn.disabled = !ready;
+    btn.title = ready ? 'Open the PDF from the last save' : 'Save the draft first';
+  }
+  function qtPreviewLast() { if (qtPdfBase64) qtShowPdf(qtLastId || ''); }
 
   // The lead profile's "Generate quote" button lands here in both portals.
   function qtPrefillFromLead(c) {
@@ -184,32 +258,30 @@
   }
 
   function buildLogisticsRows() {
-    const tbody = document.getElementById('qt-logistics');
-    tbody.innerHTML = LOGISTICS_LABELS.map((label, i) => `
-      <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
-        <td style="padding:6px 8px;font-size:13px">${esc(label)}</td>
-        <td style="padding:6px 8px;width:170px"><input class="form-control" id="qt-log-usd-${i}" type="number" min="0" step="0.01" placeholder="0 USD" oninput="recalcLogistics(${i})" style="text-align:center"></td>
-        <td style="padding:6px 8px;width:130px"><input class="form-control" id="qt-log-egp-${i}" readonly placeholder="EGP" style="background:rgba(255,255,255,.03);text-align:center;font-weight:600"></td>
-      </tr>`).join('');
+    const host = document.getElementById('qt-logistics');
+    host.innerHTML = LOGISTICS_LABELS.map((label, i) => `
+      <div class="qt-log">
+        <div class="qt-log-label">${esc(label)}</div>
+        <input class="form-control qt-log-usd" id="qt-log-usd-${i}" type="number" min="0" step="0.01" placeholder="0 USD" oninput="recalcLogistics(${i})">
+        <div class="qt-log-egp" id="qt-log-egp-${i}">—</div>
+      </div>`).join('');
   }
 
   function addPricingRow(name = '', unit = 1, priceUsd = '', isFree = false) {
     const tbody = document.getElementById('qt-items');
     const tr = document.createElement('tr');
     tr.className = 'qt-item-row';
-    tr.style.cssText = 'border-bottom:1px solid rgba(255,255,255,.04)';
     tr.innerHTML = `
-      <td class="qt-line-no" style="padding:6px 8px;color:var(--muted)"></td>
-      <td style="padding:6px 8px"><input class="form-control" placeholder="Item name…" value="${esc(name)}" oninput="recalcItem(this)"></td>
-      <td style="padding:6px 8px"><input class="form-control" type="number" min="1" step="1" value="${unit}" style="text-align:center" oninput="recalcItem(this)"></td>
-      <td style="padding:6px 8px"><div style="position:relative">
+      <td class="qt-line-no"></td>
+      <td><input class="form-control" placeholder="Item name…" value="${esc(name)}" oninput="recalcItem(this)"></td>
+      <td><input class="form-control" type="number" min="1" step="1" value="${unit}" style="text-align:center" oninput="recalcItem(this)"></td>
+      <td><div style="position:relative">
         <input class="form-control" placeholder="e.g. 22500 or Free" value="${esc(priceUsd)}" ${isFree ? 'readonly' : ''} oninput="recalcItem(this)" style="padding-right:50px">
         <span onclick="toggleFreeItem(this)" title="Mark as Free"
           style="position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;cursor:pointer;padding:2px 6px;border-radius:4px;background:${isFree ? 'var(--primary)' : 'rgba(255,255,255,.08)'};color:${isFree ? '#fff' : 'var(--muted)'}">FREE</span>
       </div></td>
-      <td style="padding:6px 8px"><input class="form-control" readonly placeholder="Auto" style="background:rgba(255,255,255,.03);text-align:center;font-weight:600"></td>
-      <td style="padding:6px 8px"><button class="qt-remove" onclick="this.closest('.qt-item-row').remove();qtRenumber();recalcGrandTotal()"
-        style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:26px;height:26px;display:flex;align-items:center;justify-content:center">✕</button></td>`;
+      <td class="qt-egp">—</td>
+      <td><button class="qt-remove" onclick="this.closest('.qt-item-row').remove();qtRenumber();recalcGrandTotal()" aria-label="Remove line">✕</button></td>`;
     tbody.appendChild(tr);
     qtRenumber();
     recalcGrandTotal();
@@ -236,12 +308,12 @@
     const priceRaw = inputs[2].value.trim();
     const unitVal = parseFloat(inputs[1].value) || 1;
     const isFree = priceRaw.toLowerCase() === 'free' || priceRaw === '';
-    const egpInput = inputs[3];
-    if (isFree) { egpInput.value = priceRaw.toLowerCase() === 'free' ? 'Free' : ''; }
+    const egpCell = row.querySelector('.qt-egp');
+    if (isFree) { egpCell.textContent = priceRaw.toLowerCase() === 'free' ? 'Free' : '—'; }
     else {
       const price = parseFloat(priceRaw);
       const exRate = getExchange();
-      egpInput.value = (isFinite(price) && exRate > 0) ? Math.round(price * unitVal * exRate).toLocaleString() : '';
+      egpCell.textContent = (isFinite(price) && exRate > 0) ? Math.round(price * unitVal * exRate).toLocaleString() : '—';
     }
     recalcGrandTotal();
   }
@@ -252,7 +324,7 @@
     if (!usdEl || !egpEl) return;
     const usd = parseFloat(usdEl.value) || 0;
     const exRate = getExchange();
-    egpEl.value = exRate > 0 ? Math.round(usd * exRate).toLocaleString() : '';
+    egpEl.textContent = exRate > 0 ? Math.round(usd * exRate).toLocaleString() + ' EGP' : '—';
     recalcGrandTotal();
   }
 
@@ -275,17 +347,29 @@
   }
 
   function recalcGrandTotal() {
-    let total = 0;
+    let vehicle = 0, lines = 0;
     document.querySelectorAll('.qt-item-row').forEach(row => {
-      const n = parseFloat(row.querySelectorAll('input')[3].value.replace(/,/g, ''));
-      if (isFinite(n)) total += n;
+      const cell = row.querySelector('.qt-egp');
+      const n = parseFloat(String(cell ? cell.textContent : '').replace(/,/g, ''));
+      if (isFinite(n)) vehicle += n;
+      const named = row.querySelectorAll('input')[0];
+      if (named && named.value.trim()) lines++;
     });
+    let shipping = 0;
     LOGISTICS_LABELS.forEach((_, i) => {
-      const egpEl = document.getElementById(`qt-log-egp-${i}`);
-      if (egpEl) { const n = parseFloat((egpEl.value || '').replace(/,/g, '')); if (isFinite(n)) total += n; }
+      const el = document.getElementById(`qt-log-egp-${i}`);
+      const n = parseFloat(String(el ? el.textContent : '').replace(/,/g, ''));
+      if (isFinite(n)) shipping += n;
     });
-    const el = document.getElementById('qt-grand-total');
-    if (el) el.textContent = total.toLocaleString();
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('qt-veh-total', vehicle.toLocaleString());
+    set('qt-grand-total', (vehicle + shipping).toLocaleString());
+    set('qt-total-detail', `${vehicle.toLocaleString()} vehicle · ${shipping.toLocaleString()} shipping & clearance`);
+    const rate = getExchange();
+    set('qt-price-note', rate > 0
+      ? `Price in USD, converted at ${rate.toLocaleString()} EGP / USD`
+      : 'Price in USD — set an exchange rate to see the EGP column');
+    qtUpdateSubtitle(lines, vehicle + shipping);
   }
 
   // ── Images ──────────────────────────────────────────────────────────────────
@@ -379,7 +463,10 @@
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       qtPdfBase64 = data.pdf;
-      PROCFG.closeModal();
+      qtLastId = id;
+      // Nothing to close — the sheet is the page. It stays as it is so the next
+      // save is an edit of what you just sent, not a retype of it.
+      qtSetPreviewReady(true);
       qtShowPdf(id);
       loadQtHistory();
     } catch (e) {
@@ -387,7 +474,7 @@
       err.style.display = 'block';
     } finally {
       btn.disabled = false;
-      btn.innerHTML = '<i data-lucide="file-badge" style="width:15px;height:15px"></i> Generate PDF';
+      btn.innerHTML = '<i data-lucide="file-badge" style="width:15px;height:15px"></i> Save &amp; preview';
       requestAnimationFrame(() => lucide.createIcons());
     }
   }
@@ -514,6 +601,7 @@
 
   Object.assign(window, {
     initQuotationPage, switchQtTab, openQuoteForm, qtPrefillFromLead, refreshQuoteId,
+    qtSegPick, qtPreviewLast, qtSetPreviewReady, qtUpdateSubtitle,
     addPricingRow, toggleFreeItem, getExchange, recalcItem, recalcLogistics, qtRecalcAll,
     addCustomSpecRow, recalcGrandTotal, handleImgSelect, handleImgDrop, renderImgPreviews,
     removeImg, removeExistingImg, generateQuotation, loadQtHistory, deleteQuotation,

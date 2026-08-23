@@ -6490,8 +6490,9 @@ function ldGenerateQuote() {
   if (!_ldProfile) return;
   const c = _ldProfile.customer;
   closeLeadProfile();
-  // The quotation is a sheet now (same idiom as POs/RFQs) — open it directly
-  // with the lead's name, vehicle, photos and price prefilled.
+  // The sheet lives on the Quotation page now, not in a modal over whatever you
+  // were looking at, so go there first — the team portal always did.
+  navigate('quotation');
   openQuoteForm(null, { lead: c });
 }
 

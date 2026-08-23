@@ -3016,3 +3016,108 @@
     .am-switch input{ width:auto; height:auto; }
     .am-switch span{ inset:13px 5px; }
   }
+
+  /* ── Quotation sheet ───────────────────────────────────────────────────
+   * The draft is the Draft tab, not a modal over it: you can see the tabs, the
+   * running totals and the header's Save & preview at the same time, which is
+   * the whole point of drafting in a sheet. Rendered by quote.js into BOTH
+   * portals, so these rules are duplicated in employee.css by design. */
+  .qt-fields{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+    gap:12px; margin-bottom:18px;
+  }
+  /* A date input carries a UA minimum width that a 1fr track will happily
+   * overflow rather than shrink below, which is how the sheet started
+   * scrolling sideways on a phone. */
+  .qt-field{ min-width:0; }
+  .qt-field .form-control, .qt-field select, .qt-field input{ width:100%; min-width:0; max-width:100%; }
+  .qt-field-label{
+    font-size:10.5px; letter-spacing:.5px; text-transform:uppercase;
+    color:var(--muted); margin-bottom:5px; font-weight:600;
+  }
+  .qt-refresh{ flex:none; padding:0 9px; }
+  .qt-refresh i{ width:14px; height:14px; }
+
+  .qt-seg{ display:flex; gap:4px; }
+  .qt-seg-btn{
+    flex:1; padding:8px 10px; border-radius:8px; cursor:pointer;
+    background:rgba(255,255,255,.04); border:1px solid var(--hair);
+    color:var(--muted); font:inherit; font-size:12.5px; font-weight:600;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .qt-seg-btn.active{
+    background:rgba(201,163,94,.14); border-color:var(--hair-gold); color:var(--gold);
+  }
+
+
+  .qt-extras{ margin-bottom:22px; }
+  .qt-sec{ display:flex; align-items:baseline; gap:10px; margin:0 0 8px; flex-wrap:wrap; }
+  .qt-sec h4{ margin:0; font-size:13px; font-weight:700; color:var(--text); }
+  .qt-sec span{ font-size:11.5px; color:var(--muted); }
+
+  .qt-card{
+    background:var(--panel); border:1px solid var(--hair);
+    border-radius:12px; padding:6px 4px; margin-bottom:10px;
+  }
+  .qt-table{ width:100%; min-width:640px; border-collapse:collapse; font-size:12.5px; }
+  .qt-table th{
+    text-align:left; padding:9px 10px; font-size:10.5px; font-weight:700;
+    letter-spacing:.5px; text-transform:uppercase; color:var(--muted);
+    border-bottom:1px solid var(--hair);
+  }
+  .qt-table td{ padding:8px 10px; vertical-align:middle; }
+  .qt-table tr + tr td{ border-top:1px solid rgba(255,255,255,.04); }
+  .qt-line-no{ color:var(--muted); }
+  .qt-egp{ text-align:right; font-weight:700; font-size:13px; white-space:nowrap; }
+  .qt-remove{
+    background:rgba(239,68,68,.12); border:none; border-radius:6px;
+    color:var(--danger); cursor:pointer; width:26px; height:26px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .qt-subtotal{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px; flex-wrap:wrap; margin:0 0 20px; font-size:12.5px; color:var(--muted);
+  }
+  .qt-subtotal strong{ color:var(--text); font-size:13.5px; }
+
+  /* One shipping line: what it is, what it costs in USD, what that lands at. */
+  .qt-log{ padding:10px 12px; }
+  .qt-log + .qt-log{ border-top:1px solid rgba(255,255,255,.05); }
+  .qt-log-label{ font-size:12.5px; margin-bottom:6px; }
+  .qt-log-usd{ width:100%; text-align:right; }
+  .qt-log-egp{ font-size:13px; font-weight:700; margin-top:6px; color:var(--text); }
+
+  .qt-drop{
+    border:1.5px dashed var(--hair); border-radius:10px; padding:18px;
+    text-align:center; color:var(--muted); font-size:12.5px;
+    cursor:pointer; margin-bottom:8px;
+  }
+  .qt-total{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:16px; flex-wrap:wrap; margin:18px 0 6px; padding:16px 18px;
+    background:rgba(201,163,94,.08); border:1px solid var(--hair-gold);
+    border-radius:12px;
+  }
+  .qt-total-label{
+    font-size:10.5px; letter-spacing:.7px; text-transform:uppercase;
+    font-weight:700; color:var(--gold);
+  }
+  .qt-total-detail{ font-size:11.5px; color:var(--muted); margin-top:3px; }
+  .qt-total-value{ font-size:15px; color:var(--muted); white-space:nowrap; }
+  .qt-total-value strong{
+    font-size:26px; font-weight:700; color:var(--text); letter-spacing:-.4px;
+  }
+
+  .qt-edit-banner{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px; flex-wrap:wrap; margin-bottom:16px; padding:10px 14px;
+    background:rgba(201,163,94,.10); border:1px solid var(--hair-gold);
+    border-radius:10px; font-size:12.5px;
+  }
+
+  @media (max-width:640px){
+    .qt-fields{ grid-template-columns:1fr; }
+    .qt-seg-btn{ min-height:44px; }
+    .qt-remove{ width:44px; height:44px; }
+    .qt-total-value strong{ font-size:22px; }
+  }
