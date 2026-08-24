@@ -12,6 +12,7 @@ const read = p => fs.readFileSync(p, 'utf8');
 const home    = read('public/assets/home.js');
 const huddle  = read('public/assets/huddle.js');
 const filters = read('public/assets/lead-filters.js');
+const lviews  = read('public/assets/lead-views.js');
 const mobile  = read('public/assets/mobile.css');
 const mobjs   = read('public/assets/mobile.js');
 const proc    = read('public/assets/procurement.js');
@@ -29,6 +30,7 @@ const MARKERS = {
   '/assets/home.js':         { src: home,    re: /const HOME_WIDGETS = \{/ },
   '/assets/huddle.js':       { src: huddle,  re: /let _hd = \{ roomId: null/ },
   '/assets/lead-filters.js': { src: filters, re: /function leadFilterMatch\(/ },
+  '/assets/lead-views.js':   { src: lviews,  re: /function renderLeadBoard\(/ },
   '/assets/mobile.js':       { src: mobjs,   re: /function labelTable\(/ },
   '/assets/procurement.js':  { src: proc,    re: /function procPath\(/ },
   '/assets/columns.js':      { src: colsjs,  re: /function ColumnsEngine\(/ },

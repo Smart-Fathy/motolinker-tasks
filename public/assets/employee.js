@@ -1257,6 +1257,7 @@ async function loadEmpLeads() {
     _empLeads = leads;
     _pendingFollowups = {};
     (Array.isArray(followups) ? followups : []).forEach(f => { if (!_pendingFollowups[f.customer_id]) _pendingFollowups[f.customer_id] = f.due_at; });
+    renderFuChip();
     empFilterLeads();
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="20" style="text-align:center;color:var(--danger);padding:24px">${esc(e.message)}</td></tr>`;
@@ -1319,6 +1320,15 @@ function leadSortArrow(key) {
 
 // Filter engine shared with the admin dashboard — public/assets/lead-filters.js.
 // Only the portal-specific bindings live here.
+lvInit({
+  owners: () => _empCoworkers,
+  openFn: 'openLeadProfile',
+  addFn: 'openEmpLeadModal',
+  canAdd: () => empCan('leads', 'create'),
+  render: list => empRenderLeads(list),
+  apply: () => empFilterLeads(),
+});
+
 lfInit({
   storageKey: 'ml_emp_lead_filters',      // separate from the admin's saved filters
   chipsId: 'emp-lead-filter-chips',
@@ -1343,7 +1353,7 @@ function empFilterLeads() {
   if (q) list = list.filter(c => (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.car_in_question||'').toLowerCase().includes(q));
   if (from) list = list.filter(c => c.lead_date && c.lead_date >= from);
   if (to)   list = list.filter(c => c.lead_date && c.lead_date <= to);
-  empRenderLeads(applyLeadSort(lfApply(list)));
+  empRenderLeads(applyLeadSort(fuFilterApply(lfApply(list))));
 }
 
 let _lastRenderedLeads = []; // filtered+sorted list currently on screen (feeds Export)
@@ -1392,8 +1402,9 @@ let _leadsShown = leadsPageSize();
 function leadsShowMore() { _leadsShown += leadsPageSize(); empRenderLeads(_lastRenderedLeads); }
 
 function empRenderLeads(list) {
-  if (typeof mlTopScrollbar === 'function') mlTopScrollbar('leads-scroll');
   _lastRenderedLeads = list;
+  if (lvRoute(list)) return;
+  if (typeof mlTopScrollbar === 'function') mlTopScrollbar('leads-scroll');
   const tbody = document.getElementById('emp-leads-tbody');
   const vis = visibleLeadCols();
   const span = vis.length + 2; // add-column + actions
@@ -1801,7 +1812,7 @@ async function ldScheduleFollowup() {
   if (!r.ok || d.error) return showToast('Error: ' + (d.error || r.status));
   showToast('Follow-up scheduled — a reminder will fire when it\'s due');
   _pendingFollowups[_ldProfile.customer.id] = _pendingFollowups[_ldProfile.customer.id] && new Date(_pendingFollowups[_ldProfile.customer.id]) < new Date(d.due_at) ? _pendingFollowups[_ldProfile.customer.id] : d.due_at;
-  empFilterLeads(); refreshLeadProfile();
+  renderFuChip(); empFilterLeads(); refreshLeadProfile();
 }
 async function ldFollowupStatus(id, status) {
   const r = await ef(`/api/employee/followups/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
@@ -1810,7 +1821,7 @@ async function ldFollowupStatus(id, status) {
   delete _pendingFollowups[d.customer_id];
   const rest = (_ldProfile.followups || []).filter(f => f.status === 'pending' && f.id !== id).sort((a, b) => a.due_at.localeCompare(b.due_at));
   if (rest[0]) _pendingFollowups[d.customer_id] = rest[0].due_at;
-  empFilterLeads(); refreshLeadProfile();
+  renderFuChip(); empFilterLeads(); refreshLeadProfile();
 }
 async function ldLogActivity() {
   const input = document.getElementById('ld-act-body');
@@ -1885,7 +1896,7 @@ function empAttachVehicleSearch(inputId = 'eml-car', priceId = 'eml-car-price', 
   input.addEventListener('focus', () => { if (input.value.trim()) run(); });
   input.addEventListener('blur', () => setTimeout(hide, 200));
 }
-function openEmpLeadModal(id) {
+function openEmpLeadModal(id, presetStatus) {
   const c = id ? _empLeads.find(x => x.id === id) : null;
   document.getElementById('eml-title').textContent = c ? 'Edit Lead' : 'Add Lead';
   document.getElementById('eml-id').value = c?.id || '';
@@ -1893,7 +1904,7 @@ function openEmpLeadModal(id) {
   set('eml-name', c?.name || ''); set('eml-phone', c?.phone || ''); set('eml-date', c?.lead_date || ''); set('eml-time', c?.lead_time || '');
   set('eml-car', c?.car_in_question || '');
   // Built from the column config, not from the markup — see fillLeadSelect.
-  fillLeadSelect('eml-status', 'lead_status', null, c?.lead_status || 'cold');
+  fillLeadSelect('eml-status', 'lead_status', null, c?.lead_status || presetStatus || 'cold');
   fillLeadSelect('eml-source', 'source', '— Unknown —', c?.source);
   set('eml-budget', (c?.budget_max != null && c?.budget_max !== '') ? `${c.budget_lead}-${c.budget_max}` : (c?.budget_lead || ''));
   fillLeadSelect('eml-next-action', 'next_action', '— None —', c?.next_action);

@@ -5768,7 +5768,6 @@ function leadCellHtml(c, col) {
 }
 
 let _pendingFollowups = {}; // customer_id -> earliest pending due_at (ISO)
-let _fuFilterOn = false;
 
 async function loadCustomers() {
   const ps = document.getElementById('leads-pagesize'); if (ps) ps.value = String(leadsPageSize());
@@ -5791,30 +5790,6 @@ async function loadCustomers() {
   } catch (e) {
     document.getElementById('customers-tbody').innerHTML = `<tr><td colspan="20" style="color:var(--danger);text-align:center;padding:24px">${esc(e.message)}</td></tr>`;
   }
-}
-
-function renderFuChip() {
-  const chip = document.getElementById('fu-chip');
-  if (!chip) return;
-  const now = new Date();
-  const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
-  let dueToday = 0, overdue = 0;
-  Object.values(_pendingFollowups).forEach(d => {
-    const t = new Date(d);
-    if (t < now) overdue++;
-    else if (t <= endOfDay) dueToday++;
-  });
-  if (!dueToday && !overdue) { chip.style.display = 'none'; if (_fuFilterOn) { _fuFilterOn = false; } return; }
-  chip.style.display = '';
-  chip.innerHTML = `<i data-lucide="clock" style="width:12px;height:12px"></i> ${overdue ? `<span style="color:var(--danger);font-weight:700">${overdue} overdue</span>` : ''}${overdue && dueToday ? ' · ' : ''}${dueToday ? `${dueToday} due today` : ''}`;
-  chip.style.borderColor = _fuFilterOn ? 'var(--primary)' : '';
-  chip.style.color = _fuFilterOn ? 'var(--primary)' : '';
-}
-
-function toggleFuFilter() {
-  _fuFilterOn = !_fuFilterOn;
-  renderFuChip();
-  filterCustomers();
 }
 
 // Canonicalize a stored value (which may be a key OR human label, any casing) to its key.
@@ -5912,6 +5887,14 @@ function leadSortArrow(key) {
 // ── Lead filters ────────────────────────────────────────────────────────────────
 // The engine lives in public/assets/lead-filters.js, shared with the team portal.
 // Only the portal-specific bindings are here.
+lvInit({
+  owners: () => employeesForTasks,
+  openFn: 'openLeadProfile',
+  addFn: 'openCustomerModal',
+  render: list => renderCustomers(list),
+  apply: () => filterCustomers(),
+});
+
 lfInit({
   storageKey: 'ml_lead_filters',
   chipsId: 'lead-filter-chips',
@@ -5936,12 +5919,7 @@ function filterCustomers() {
   // ISO dates (YYYY-MM-DD) compare correctly as strings; either bound may be left empty
   if (from) list = list.filter(c => c.lead_date && c.lead_date >= from);
   if (to)   list = list.filter(c => c.lead_date && c.lead_date <= to);
-  list = lfApply(list);
-  if (_fuFilterOn) {
-    const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
-    list = list.filter(c => _pendingFollowups[c.id] && new Date(_pendingFollowups[c.id]) <= endOfDay);
-  }
-  renderCustomers(applyLeadSort(list));
+  renderCustomers(applyLeadSort(fuFilterApply(lfApply(list))));
 }
 
 let _lastRenderedLeads = []; // filtered+sorted list currently on screen (feeds Export)
@@ -5991,204 +5969,9 @@ function setLeadsPageSize(v) {
 let _leadsShown = leadsPageSize();
 function leadsShowMore() { _leadsShown += leadsPageSize(); renderCustomers(_lastRenderedLeads); }
 
-// The lead statuses already carry their own colours in columns.js; this shows
-// the shape of the filtered set before any row is read.
-function renderLeadMix(list) {
-  const el = document.getElementById('leads-mix');
-  if (!el) return;
-  const col = (typeof leadCol === 'function' ? leadCol('lead_status') : null)
-    || (_leadCols || []).find(c => c.key === 'lead_status');
-  const opts = (col && col.options) || [];
-  if (!opts.length || !list.length) { el.style.display = 'none'; return; }
-  const counts = new Map();
-  list.forEach(c => {
-    const k = String(c.lead_status || '').trim();
-    if (k) counts.set(k, (counts.get(k) || 0) + 1);
-  });
-  const rows = opts
-    .map(o => ({ label: o.label || o.key, n: counts.get(o.key) || 0, c: o.color || 'var(--muted)' }))
-    .filter(r => r.n > 0);
-  if (!rows.length) { el.style.display = 'none'; return; }
-  const total = rows.reduce((a, r) => a + r.n, 0) || 1;
-  el.style.display = '';
-  el.innerHTML = `
-    <div class="mix-total">
-      <span class="stat-value">${total.toLocaleString()}</span>
-      <span class="mix-unit">lead${total === 1 ? '' : 's'}</span>
-    </div>
-    <div class="mix-body">
-      <div class="mix-bar">${rows.map(r =>
-        `<span title="${esc(r.label)}: ${r.n}" style="flex:${r.n};background:${r.c}"></span>`).join('')}</div>
-      <div class="mix-legend">${rows.map(r =>
-        `<span class="mix-key"><i style="background:${r.c}"></i>${esc(r.label)}<b class="num">${r.n}</b></span>`).join('')}</div>
-    </div>`;
-}
-
-// ── Leads: Table / Board / Follow-ups ─────────────────────────────────
-// The table answers "what do I have". It could not answer "where is the
-// money sitting" or "who am I supposed to ring today" without reading
-// every row, so those are now views of the same filtered list rather
-// than reports somewhere else.
-let _leadView = 'table';
-
-function setLeadView(v) {
-  _leadView = v;
-  document.querySelectorAll('#lead-views .task-view-tab')
-    .forEach(b => b.classList.toggle('active', b.dataset.lview === v));
-  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
-  show('leads-scroll', v === 'table');
-  show('leads-pane-board', v === 'board');
-  show('leads-pane-follow', v === 'follow');
-  // Columns and rows-per-page describe the table specifically; leaving them
-  // over a board would offer settings that change nothing on screen.
-  show('leads-toolbar', v === 'table');
-  if (_lastRenderedLeads) renderCustomers(_lastRenderedLeads);
-}
-
-function leadOwnerName(c) {
-  if (!c.assigned_to) return '';
-  const e = (employeesForTasks || []).find(x => String(x.id) === String(c.assigned_to));
-  return e ? e.name : '#' + c.assigned_to;
-}
-
-function leadInitials(n) {
-  return String(n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
-}
-
-// Money on a board card is a scale read, not an accounting figure: 4.2M
-// beats 4,200,000 when six of them sit side by side in a 250px column.
-function leadShortMoney(n) {
-  const v = Number(n) || 0;
-  if (!v) return '—';
-  if (v >= 1e9) return 'EGP ' + (v / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
-  if (v >= 1e6) return 'EGP ' + (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (v >= 1e3) return 'EGP ' + Math.round(v / 1e3) + 'K';
-  return 'EGP ' + v.toLocaleString();
-}
-
-function renderLeadBoard(list) {
-  const host = document.getElementById('leads-pane-board');
-  if (!host) return;
-  // Columns come from the column engine, not a hardcoded list, so a status
-  // added in Columns appears here without touching this function.
-  const col = (typeof leadCol === 'function' ? leadCol('lead_status') : null)
-    || (_leadCols || []).find(c => c.key === 'lead_status');
-  const opts = (col && col.options) || [];
-  if (!opts.length) { host.innerHTML = '<div class="fu-none">No lead statuses configured.</div>'; return; }
-  const m = colOptMap(col);
-  const total = list.length || 1;
-  const srcMap = {};
-  ((_leadCols || []).find(c => c.key === 'source')?.options || []).forEach(o => { srcMap[o.key] = o.label; });
-
-  host.innerHTML = `<div class="lead-board">${opts.map(o => {
-    const rows = list.filter(c => normKey(c.lead_status || 'cold', m) === o.key);
-    const value = rows.reduce((a, c) => a + (Number(c.budget_lead) || 0), 0);
-    const pct = Math.round((rows.length / total) * 100);
-    const c0 = o.color || 'var(--muted)';
-    return `<section class="lb-col" style="--c:${c0}">
-      <div class="lb-head">
-        <div class="lb-head-top">
-          ${CE('leads').badgeHtml(col, o.key, o.label || o.key)}
-          <span class="lb-n num">${rows.length}</span>
-        </div>
-        <div><span class="lb-val num">${leadShortMoney(value)}</span><span class="lb-share num">${pct}% of leads</span></div>
-      </div>
-      <div class="lb-body">
-        ${rows.map(c => {
-          const owner = leadOwnerName(c);
-          return `<article class="lb-card" onclick="openLeadProfile(${c.id})">
-            <div class="lb-name">${esc(c.name || '—')}</div>
-            ${c.car_in_question ? `<div class="lb-meta"><i data-lucide="car"></i><span>${esc(c.car_in_question)}</span></div>` : ''}
-            ${c.source ? `<div class="lb-meta"><i data-lucide="tag"></i><span>${esc(srcMap[c.source] || c.source)}</span></div>` : ''}
-            <div class="lb-budget num">${leadShortMoney(c.budget_lead)}</div>
-            ${owner ? `<div class="lb-foot"><span class="td-av">${esc(leadInitials(owner))}</span>${esc(owner)}</div>` : ''}
-          </article>`;
-        }).join('')}
-        <button class="lb-add" onclick="openCustomerModal(null, '${esc(o.key)}')">
-          <i data-lucide="plus"></i> Add</button>
-      </div>
-    </section>`;
-  }).join('')}</div>`;
-  requestAnimationFrame(() => lucide.createIcons());
-}
-
-// Buckets are relative to now, so "this week" means the next seven days
-// rather than "before Sunday" — a Friday lead should not fall out of the
-// list because the calendar week happens to end.
-function fuBucket(due) {
-  const t = new Date(due).getTime();
-  if (Number.isNaN(t)) return null;
-  const now = Date.now();
-  const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
-  if (t < now) return 'overdue';
-  if (t <= endOfDay.getTime()) return 'today';
-  if (t <= now + 7 * 86400000) return 'week';
-  return 'later';
-}
-
-function fuWhen(due) {
-  const t = new Date(due).getTime();
-  const now = Date.now();
-  const day = 86400000;
-  const days = Math.round((t - now) / day);
-  if (t < now) {
-    const late = Math.max(1, Math.round((now - t) / day));
-    return late === 1 ? '1 day late' : late + ' days late';
-  }
-  const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
-  if (t <= endOfDay.getTime()) return 'Today';
-  if (days <= 1) return 'Tomorrow';
-  return 'In ' + days + ' days';
-}
-
-function renderLeadFollow(list) {
-  const host = document.getElementById('leads-pane-follow');
-  if (!host) return;
-  const col = (typeof leadCol === 'function' ? leadCol('lead_status') : null)
-    || (_leadCols || []).find(c => c.key === 'lead_status');
-  const m = colOptMap(col);
-  const due = list
-    .map(c => ({ c, at: _pendingFollowups[c.id] }))
-    .filter(x => x.at)
-    .sort((a, b) => String(a.at).localeCompare(String(b.at)));
-
-  const GROUPS = [
-    { key: 'overdue', label: 'Overdue',   c: 'var(--danger)' },
-    { key: 'today',   label: 'Due today', c: 'var(--warning)' },
-    { key: 'week',    label: 'This week', c: 'var(--success)' },
-    { key: 'later',   label: 'Later',     c: 'var(--muted)' },
-  ];
-  const body = GROUPS.map(g => {
-    const rows = due.filter(x => fuBucket(x.at) === g.key);
-    if (!rows.length) return '';
-    return `<section class="fu-group" style="--c:${g.c}">
-      <div class="fu-group-head"><i class="dot"></i>${g.label}<span class="fu-group-n num">${rows.length}</span></div>
-      ${rows.map(({ c, at }) => {
-        const parts = [c.car_in_question, c.phone].filter(Boolean).map(esc).join(' · ');
-        return `<div class="fu-row">
-          <span class="td-av">${esc(leadInitials(c.name))}</span>
-          <div class="fu-main" onclick="openLeadProfile(${c.id})">
-            <div class="fu-name">${esc(c.name || '—')}</div>
-            ${parts ? `<div class="fu-sub">${parts}</div>` : ''}
-          </div>
-          ${col ? CE('leads').badgeHtml(col, normKey(c.lead_status || 'cold', m), m[normKey(c.lead_status || 'cold', m)] || c.lead_status || '—') : ''}
-          <span class="fu-when num" title="${esc(new Date(at).toLocaleString())}">${fuWhen(at)}</span>
-          ${c.phone ? `<a class="fu-call" href="tel:${esc(c.phone)}" onclick="event.stopPropagation()">
-            <i data-lucide="phone"></i> Call</a>` : ''}
-        </div>`;
-      }).join('')}
-    </section>`;
-  }).join('');
-
-  host.innerHTML = body || '<div class="fu-none">Nothing scheduled. Follow-ups you set on a lead show up here.</div>';
-  requestAnimationFrame(() => lucide.createIcons());
-}
-
 function renderCustomers(list) {
-  renderLeadMix(list);
   _lastRenderedLeads = list;
-  if (_leadView === 'board')  { renderLeadBoard(list);  return; }
-  if (_leadView === 'follow') { renderLeadFollow(list); return; }
+  if (lvRoute(list)) return;
   if (typeof mlTopScrollbar === 'function') mlTopScrollbar('leads-scroll');
   const tbody = document.getElementById('customers-tbody');
   const vis = visibleLeadCols();
