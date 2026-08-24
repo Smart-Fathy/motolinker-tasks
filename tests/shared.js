@@ -95,6 +95,25 @@ for (const portal of ['dashboard', 'employee']) {
     && /hit \|\| new Response\(/.test(workers[portal]));
 }
 
+// ── One sidebar vocabulary ────────────────────────────────────────────────────
+// The saved arrangement (quotation_settings.nav_config) is org-wide and BOTH
+// portals apply it, matching groups by key. A section that exists in only one
+// portal can never be arranged or renamed from the other side — which is how
+// the team portal ended up with a section of its own called "Operations" while
+// the admin filed the same pages under Tools and Logistics. Same keys, same
+// order, same names, or the arrangement silently stops covering everything.
+{
+  const sections = html => [...html.matchAll(
+    /<div class="nav-group" data-group="([a-z]+)">[\s\S]*?<span class="nav-group-label">([^<]+)<\/span>/g)]
+    .map(m => `${m[1]}:${m[2].trim()}`);
+  const a = sections(pages.dashboard);
+  const t = sections(pages.employee);
+  check('the admin ships seven sidebar sections', a.length === 7, a.join(' | '));
+  check('the portal ships the same sections, in the same order, with the same names',
+    a.length === t.length && a.every((v, i) => v === t[i]),
+    `admin: ${a.join(' | ')}  ·  team: ${t.join(' | ')}`);
+}
+
 // ── Page nesting ──────────────────────────────────────────────────────────────
 // Every screen is a sibling `.page` that navigate() shows by adding .active, and
 // it de-activates all the others first. So a `.page` nested inside another page

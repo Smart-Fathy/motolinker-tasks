@@ -189,11 +189,14 @@ const ALL_ON = (() => {
       ['suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions']
         .filter(id => { const el = document.getElementById('nav-' + id); return el && getComputedStyle(el).display !== 'none'; }));
     check('an employee with none of them sees none of them', visible.length === 0, visible.join(', '));
-    const head = await page.evaluate(() => {
-      const el = document.getElementById('nav-label-ops');
-      return el ? getComputedStyle(el).display : 'missing';
-    });
-    check('…and the Operations heading goes with them', head === 'none', head);
+    // These five used to share one portal-only "Operations" heading. They sit
+    // where the admin keeps them now — Tools, Logistics & Shipping, CRM — so
+    // every one of those headings has to disappear with them.
+    const heads = await page.evaluate(() =>
+      ['nav-label-tools', 'nav-label-logistics', 'nav-label-crm']
+        .map(id => { const el = document.getElementById(id); return id + '=' + (el ? getComputedStyle(el).display : 'missing'); }));
+    check('…and every heading they sit under goes with them',
+      heads.every(h => h.endsWith('=none')), heads.join(', '));
     await page.close();
   }
 

@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=97">
+  <link rel="stylesheet" href="/assets/employee.css?v=98">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=97">
+  <link rel="stylesheet" href="/assets/mobile.css?v=98">
 </head>
 <body>
 
@@ -246,7 +246,7 @@
     </div>
     <nav class="sidebar-nav">
       <div class="nav-group" data-group="management">
-        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Work</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Management</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
         <div class="nav-group-items">
           <button class="nav-item active" id="nav-home"     onclick="navigate('home')">
             <span class="nav-icon"><i data-lucide="layout-dashboard"></i></span> Home
@@ -262,6 +262,60 @@
           </button>
           <button class="nav-item"        id="nav-requests" onclick="navigate('requests')">
             <span class="nav-icon"><i data-lucide="inbox"></i></span> Requests
+          </button>
+        </div>
+      </div>
+      <div class="nav-group" data-group="crm">
+        <div class="nav-group-head" id="nav-label-crm" onclick="toggleNavGroup(this)" style="display:none"><span class="nav-group-label">CRM</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <button class="nav-item"        id="nav-leads" onclick="navigate('leads')" style="display:none">
+            <span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads
+          </button>
+          <button class="nav-item"        id="nav-deals" onclick="navigate('deals')" style="display:none">
+            <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals
+          </button>
+          <button class="nav-item" id="nav-submissions" onclick="navigate('submissions')" style="display:none">
+            <span class="nav-icon"><i data-lucide="clipboard-check"></i></span> Submissions
+          </button>
+          <button class="nav-item"        id="nav-reports" onclick="navigate('reports')" style="display:none">
+            <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span> Reports
+          </button>
+        </div>
+      </div>
+      <div class="nav-group" data-group="logistics">
+        <div class="nav-group-head" id="nav-label-logistics" onclick="toggleNavGroup(this)" style="display:none"><span class="nav-group-label">Logistics &amp; Shipping</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <button class="nav-item" id="nav-stock" onclick="navigate('stock')" style="display:none">
+            <span class="nav-icon"><i data-lucide="car"></i></span> Inventory
+          </button>
+          <button class="nav-item" id="nav-suppliers" onclick="navigate('suppliers')" style="display:none">
+            <span class="nav-icon"><i data-lucide="factory"></i></span> Suppliers
+          </button>
+        </div>
+      </div>
+      <div class="nav-group" data-group="integrations">
+        <div class="nav-group-head" id="nav-label-tools" onclick="toggleNavGroup(this)" style="display:none"><span class="nav-group-label">Tools</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <button class="nav-item"        id="nav-quotation" onclick="navigate('quotation')" style="display:none">
+            <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation
+          </button>
+          <button class="nav-item" id="nav-contracts" onclick="navigate('contracts')" style="display:none">
+            <span class="nav-icon"><i data-lucide="file-signature"></i></span> Contracts
+          </button>
+          <button class="nav-item" id="nav-rfq" onclick="navigate('rfq')" style="display:none">
+            <span class="nav-icon"><i data-lucide="send"></i></span> RFQ
+          </button>
+          <button class="nav-item" id="nav-purchaseorders" onclick="navigate('purchaseorders')" style="display:none">
+            <span class="nav-icon"><i data-lucide="shopping-cart"></i></span> Purchase Orders
+          </button>
+        </div>
+      </div>
+      <div class="nav-group" data-group="chat">
+        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Chat</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <button class="nav-item" id="nav-chat" onclick="navigate('chat')">
+            <span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat
+            <span class="chat-nav-badge" id="chat-nav-badge" style="display:none">0</span>
           </button>
         </div>
       </div>
@@ -288,60 +342,6 @@
           </button>
         </div>
       </div>
-      <div class="nav-group" data-group="integrations">
-        <div class="nav-group-head" id="nav-label-tools" onclick="toggleNavGroup(this)" style="display:none"><span class="nav-group-label">Tools</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
-        <div class="nav-group-items">
-          <button class="nav-item"        id="nav-quotation" onclick="navigate('quotation')" style="display:none">
-            <span class="nav-icon"><i data-lucide="file-badge"></i></span> Quotation
-          </button>
-        </div>
-      </div>
-      <div class="nav-group" data-group="crm">
-        <div class="nav-group-head" id="nav-label-crm" onclick="toggleNavGroup(this)" style="display:none"><span class="nav-group-label">CRM</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
-        <div class="nav-group-items">
-          <button class="nav-item"        id="nav-leads" onclick="navigate('leads')" style="display:none">
-            <span class="nav-icon"><i data-lucide="contact-2"></i></span> Leads
-          </button>
-          <button class="nav-item"        id="nav-deals" onclick="navigate('deals')" style="display:none">
-            <span class="nav-icon"><i data-lucide="kanban-square"></i></span> Deals
-          </button>
-          <button class="nav-item"        id="nav-reports" onclick="navigate('reports')" style="display:none">
-            <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span> Reports
-          </button>
-        </div>
-      </div>
-      <div class="nav-group" data-group="operations">
-        <div class="nav-group-head" id="nav-label-ops" onclick="toggleNavGroup(this)" style="display:none"><span class="nav-group-label">Operations</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
-        <div class="nav-group-items">
-          <button class="nav-item" id="nav-suppliers" onclick="navigate('suppliers')" style="display:none">
-            <span class="nav-icon"><i data-lucide="factory"></i></span> Suppliers
-          </button>
-          <button class="nav-item" id="nav-rfq" onclick="navigate('rfq')" style="display:none">
-            <span class="nav-icon"><i data-lucide="send"></i></span> RFQ
-          </button>
-          <button class="nav-item" id="nav-purchaseorders" onclick="navigate('purchaseorders')" style="display:none">
-            <span class="nav-icon"><i data-lucide="shopping-cart"></i></span> Purchase Orders
-          </button>
-          <button class="nav-item" id="nav-contracts" onclick="navigate('contracts')" style="display:none">
-            <span class="nav-icon"><i data-lucide="file-signature"></i></span> Contracts
-          </button>
-          <button class="nav-item" id="nav-stock" onclick="navigate('stock')" style="display:none">
-            <span class="nav-icon"><i data-lucide="car"></i></span> Inventory
-          </button>
-          <button class="nav-item" id="nav-submissions" onclick="navigate('submissions')" style="display:none">
-            <span class="nav-icon"><i data-lucide="clipboard-check"></i></span> Submissions
-          </button>
-        </div>
-      </div>
-      <div class="nav-group" data-group="chat">
-        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Chat</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
-        <div class="nav-group-items">
-          <button class="nav-item" id="nav-chat" onclick="navigate('chat')">
-            <span class="nav-icon"><i data-lucide="message-circle"></i></span> Chat
-            <span class="chat-nav-badge" id="chat-nav-badge" style="display:none">0</span>
-          </button>
-        </div>
-      </div>
       <div class="nav-group" data-group="system">
         <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">System</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
         <div class="nav-group-items">
@@ -359,24 +359,9 @@
       </div>
     </nav>
     <div class="sidebar-footer">
-      <div class="user-row">
-        <div class="user-avatar" id="user-avatar" onclick="document.getElementById('avatar-file').click()" title="Change profile picture" style="cursor:pointer;overflow:hidden;position:relative">?</div>
-        <input type="file" id="avatar-file" accept="image/*" style="display:none" onchange="uploadAvatar(this)">
-        <div style="min-width:0;flex:1">
-          <div class="user-name" id="user-name" style="display:flex;align-items:center;gap:6px">—
-            <button onclick="openUsernameModal()" title="Change username" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:1px;display:inline-flex"><i data-lucide="pencil" style="width:11px;height:11px"></i></button>
-          </div>
-          <div class="user-role" id="user-role">Employee</div>
-          <div id="user-status" onclick="openStatusModal()" style="font-size:11px;color:var(--muted);cursor:pointer;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Set a status">＋ Set status</div>
-        </div>
-      </div>
-      <button class="btn btn-outline" style="width:100%;font-size:12px;padding:9px;margin-bottom:6px" onclick="openIssueModal()">
+      <button class="btn btn-outline" style="width:100%;font-size:12px;padding:9px" onclick="openIssueModal()">
         <i data-lucide="bug" style="width:14px;height:14px"></i> Report an Issue
       </button>
-      <button class="btn btn-outline" style="width:100%;font-size:12px;padding:9px;margin-bottom:6px" onclick="document.getElementById('change-pass-modal').style.display='flex';document.getElementById('chpass-current').value='';document.getElementById('chpass-new').value='';document.getElementById('chpass-confirm').value='';document.getElementById('chpass-err').style.display='none';document.getElementById('chpass-ok').style.display='none'">
-        <i data-lucide="key" style="width:14px;height:14px"></i> Change Password
-      </button>
-      <button class="btn btn-outline" style="width:100%;font-size:12px;padding:9px" onclick="logout()"><i data-lucide="log-out" style="width:14px;height:14px"></i> Sign Out</button>
     </div>
   </div>
 
@@ -410,6 +395,36 @@
           </div>
         </div>
         <div class="topbar-hours" id="total-hours-badge" title="Your total logged hours"><i data-lucide="timer" style="width:15px;height:15px"></i> 0.0h logged</div>
+        <!-- Your account lives where every other app keeps it: top right, behind
+             your own face. It used to be pinned to the bottom of the rail, which
+             is the one part of the rail a long nav pushes off screen. -->
+        <div class="profile-wrap">
+          <button class="profile-btn" id="profile-btn" onclick="toggleProfileMenu(event)"
+                  aria-haspopup="true" aria-expanded="false" aria-label="Your account">
+            <span class="user-avatar" id="user-avatar">?</span>
+          </button>
+          <input type="file" id="avatar-file" accept="image/*" style="display:none" onchange="uploadAvatar(this)">
+          <div class="profile-menu" id="profile-menu">
+            <div class="profile-head">
+              <button class="profile-av" onclick="document.getElementById('avatar-file').click()" title="Change profile picture">
+                <span class="user-avatar user-avatar-lg">?</span>
+                <span class="profile-av-edit"><i data-lucide="camera"></i></span>
+              </button>
+              <div style="min-width:0;flex:1">
+                <div class="user-name" id="user-name">—
+                  <button onclick="openUsernameModal()" title="Change username" class="profile-pencil"><i data-lucide="pencil"></i></button>
+                </div>
+                <div class="user-role" id="user-role">Employee</div>
+                <div id="user-status" class="profile-status" onclick="openStatusModal()" title="Set a status">＋ Set status</div>
+              </div>
+            </div>
+            <div class="profile-actions">
+              <button class="profile-item" onclick="openIssueModal()"><i data-lucide="bug"></i> Report an issue</button>
+              <button class="profile-item" onclick="openChangePassword()"><i data-lucide="key"></i> Change password</button>
+              <button class="profile-item danger" onclick="logout()"><i data-lucide="log-out"></i> Sign out</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1251,13 +1266,13 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=97"></script>
-<script src="/assets/columns.js?v=97"></script>
-<script src="/assets/client-folder.js?v=97"></script>
-<script src="/assets/lead-filters.js?v=97"></script>
-<script src="/assets/lead-views.js?v=97"></script>
-<script src="/assets/chat-extras.js?v=97"></script>
-<script src="/assets/home.js?v=97"></script>
+<script src="/assets/mobile.js?v=98"></script>
+<script src="/assets/columns.js?v=98"></script>
+<script src="/assets/client-folder.js?v=98"></script>
+<script src="/assets/lead-filters.js?v=98"></script>
+<script src="/assets/lead-views.js?v=98"></script>
+<script src="/assets/chat-extras.js?v=98"></script>
+<script src="/assets/home.js?v=98"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1295,13 +1310,13 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=97"></script>
-<script src="/assets/procurement.js?v=97"></script>
-<script src="/assets/quote.js?v=97"></script>
-<script src="/assets/meetings.js?v=97"></script>
-<script src="/assets/calendar.js?v=97"></script>
-<script src="/assets/availability.js?v=97"></script>
-<script src="/assets/employee.js?v=97"></script>
+<script src="/assets/huddle.js?v=98"></script>
+<script src="/assets/procurement.js?v=98"></script>
+<script src="/assets/quote.js?v=98"></script>
+<script src="/assets/meetings.js?v=98"></script>
+<script src="/assets/calendar.js?v=98"></script>
+<script src="/assets/availability.js?v=98"></script>
+<script src="/assets/employee.js?v=98"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1363,6 +1378,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=97"></script>
+<script src="/help-docs.js?v=98"></script>
 </body>
 </html>

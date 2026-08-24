@@ -80,7 +80,7 @@
     .sidebar.collapsed .nav-item .nav-icon { font-size:16px; }
     .sidebar.collapsed .nav-item .chat-nav-badge,
     .sidebar.collapsed .nav-item #notif-nav-badge { display:none !important; }
-    .sidebar.collapsed .sidebar-footer .user-row div:not(.user-avatar),
+    /* The footer is one button now — the account moved to the topbar. */
     .sidebar.collapsed .sidebar-footer .btn { display:none; }
   }
   .topbar { height:var(--topbar-h); background:var(--glass); backdrop-filter:blur(16px); border-bottom:1px solid var(--glass-border); display:flex; align-items:center; justify-content:space-between; padding:0 28px; position:sticky; top:0; z-index:50; }
@@ -1704,4 +1704,70 @@
     .fu-main{ flex:1 1 100%; }
     .fu-call{ min-height:44px; }
     .lb-add{ min-height:44px; }
+  }
+
+  /* ── The account menu ──────────────────────────────────────────────────
+   * Top right, behind your own face — the rail's foot is the first thing a
+   * long nav pushes off screen, which is where this used to live. */
+  .profile-wrap{ position:relative; }
+  .profile-btn{
+    display:flex; align-items:center; justify-content:center;
+    width:38px; height:38px; padding:0; border-radius:50%; cursor:pointer;
+    background:none; border:1px solid transparent;
+    transition:border-color .15s ease;
+  }
+  .profile-btn:hover{ border-color:rgba(201,163,94,.45); }
+  .profile-btn[aria-expanded="true"]{ border-color:var(--gold); }
+  .profile-btn .user-avatar{ width:32px; height:32px; font-size:12px; }
+
+  .profile-menu{
+    position:absolute; top:calc(100% + 10px); right:0; width:268px; max-width:92vw;
+    /* Opaque, unlike the notification panel next to it: this one is short and
+     * dense, and 15% of a gold button showing through 12px text is unreadable. */
+    background:var(--card); border:1px solid var(--border); border-radius:12px;
+    box-shadow:var(--shadow-lg); z-index:200; display:none; overflow:hidden;
+  }
+  .profile-menu.open{ display:block; }
+
+  .profile-head{ display:flex; align-items:flex-start; gap:12px; padding:14px; }
+  .profile-av{
+    position:relative; padding:0; background:none; border:0; cursor:pointer;
+    border-radius:50%; flex-shrink:0; line-height:0;
+  }
+  .profile-av .user-avatar-lg{ width:44px; height:44px; font-size:15px; }
+  .profile-av-edit{
+    position:absolute; right:-2px; bottom:-2px; width:18px; height:18px;
+    border-radius:50%; background:var(--card); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center; color:var(--muted);
+  }
+  .profile-av-edit i, .profile-av-edit svg{ width:10px; height:10px; }
+  .profile-av:hover .profile-av-edit{ color:var(--gold); border-color:rgba(201,163,94,.45); }
+
+  .profile-head .user-name{ display:flex; align-items:center; gap:6px; }
+  .profile-pencil{
+    background:none; border:none; color:var(--muted); cursor:pointer;
+    padding:1px; display:inline-flex;
+  }
+  .profile-pencil:hover{ color:var(--gold); }
+  .profile-pencil i, .profile-pencil svg{ width:11px; height:11px; }
+  .profile-status{
+    font-size:11px; color:var(--muted); cursor:pointer; margin-top:3px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  .profile-actions{ border-top:1px solid var(--border); padding:6px; }
+  .profile-item{
+    width:100%; display:flex; align-items:center; gap:10px;
+    padding:9px 10px; border-radius:8px; cursor:pointer;
+    background:none; border:0; color:var(--text);
+    font:inherit; font-size:12.5px; font-weight:600; text-align:left;
+  }
+  .profile-item:hover{ background:rgba(255,255,255,.05); }
+  .profile-item i, .profile-item svg{ width:14px; height:14px; flex-shrink:0; }
+  .profile-item.danger{ color:var(--danger); }
+  .profile-item.danger:hover{ background:rgba(239,68,68,.08); }
+
+  @media (max-width:640px){
+    .profile-btn{ width:44px; height:44px; }
+    .profile-item{ min-height:44px; }
   }

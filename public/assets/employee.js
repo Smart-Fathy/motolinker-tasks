@@ -155,10 +155,14 @@ function applyPermissions(permissions) {
     el.style.display = on ? '' : 'none';
     if (on) el.closest('.nav-group')?.classList.add('open');
   };
-  groupOn('nav-label-tools', empHas('quotation'));
-  groupOn('nav-label-crm', empHas('leads') || empHas('deals') || empHas('reports'));
-  groupOn('nav-label-ops', ['suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions'].some(empHas)
-    || empCan('stock', 'browse'));
+  // The sections are the admin's now — Management / CRM / Logistics & Shipping /
+  // Tools / Chat / Google / System — so each heading follows whatever the admin
+  // files under that key. Tools especially: it used to be gated on quotation
+  // alone, which is why contracts and POs sat in a portal-only "Operations"
+  // group. Widened, they can live where the admin keeps them.
+  groupOn('nav-label-tools', ['quotation', 'contracts', 'rfq', 'purchaseorders'].some(empHas));
+  groupOn('nav-label-crm', ['leads', 'deals', 'reports', 'submissions'].some(empHas));
+  groupOn('nav-label-logistics', empHas('suppliers') || empCan('stock', 'browse'));
   // Google and Chat groups have no id, so they are found by their data-group.
   const anyGoogle = ['drive', 'sheets', 'email', 'calendar', 'meet', 'gchat'].some(empHas);
   const gGoogle = document.querySelector('.nav-group[data-group="google"]');
@@ -240,11 +244,12 @@ function renderProfile() {
   const name = empInfo?.name || empInfo?.username || '?';
   const nameEl = document.getElementById('user-name');
   if (nameEl) nameEl.firstChild.textContent = name + ' ';
-  const av = document.getElementById('user-avatar');
-  if (av) {
-    if (empInfo?.avatar_url) av.innerHTML = `<img src="${esc(empInfo.avatar_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
-    else av.textContent = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  }
+  // Two of them now: the topbar button and the head of the menu it opens.
+  const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  document.querySelectorAll('.user-avatar').forEach(av => {
+    if (empInfo?.avatar_url) av.innerHTML = `<img src="${esc(empInfo.avatar_url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    else av.textContent = initials;
+  });
   const role = document.getElementById('user-role');
   if (role) role.textContent = empInfo?.job_title || 'Employee';
   const st = document.getElementById('user-status');
@@ -253,6 +258,48 @@ function renderProfile() {
     st.textContent = has ? `${empInfo.status_emoji || ''} ${empInfo.status_text || ''}`.trim() : '＋ Set status';
     st.style.color = has ? 'var(--primary)' : 'var(--muted)';
   }
+}
+
+// ── The account menu ──────────────────────────────────────────────────────────
+function toggleProfileMenu(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('profile-menu');
+  const btn  = document.getElementById('profile-btn');
+  if (!menu) return;
+  const open = !menu.classList.contains('open');
+  menu.classList.toggle('open', open);
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) requestAnimationFrame(() => lucide.createIcons());
+}
+function closeProfileMenu() {
+  const menu = document.getElementById('profile-menu');
+  if (!menu || !menu.classList.contains('open')) return;
+  menu.classList.remove('open');
+  document.getElementById('profile-btn')?.setAttribute('aria-expanded', 'false');
+}
+// Clicking anywhere else closes it, and so does Escape — the same contract the
+// notification panel next door already keeps.
+document.addEventListener('click', e => {
+  const wrap = document.querySelector('.profile-wrap');
+  if (!wrap) return;
+  // Outside the menu closes it; so does anything inside it that opens a modal,
+  // which would otherwise leave the menu sitting behind the overlay.
+  if (!wrap.contains(e.target)) return closeProfileMenu();
+  if (e.target.closest('.profile-item, .profile-status, .profile-pencil')) closeProfileMenu();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeProfileMenu(); });
+
+// Was six chained getElementById calls inside an onclick attribute.
+function openChangePassword() {
+  closeProfileMenu();
+  ['chpass-current', 'chpass-new', 'chpass-confirm'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  ['chpass-err', 'chpass-ok'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = 'none';
+  });
+  const m = document.getElementById('change-pass-modal');
+  if (m) m.style.display = 'flex';
 }
 
 async function uploadAvatar(input) {

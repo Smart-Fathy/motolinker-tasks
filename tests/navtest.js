@@ -192,15 +192,36 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
         chatLabel: label('chat'),
         contractsGroup: groupOf('nav-contracts'),
         poGroup: groupOf('nav-purchaseorders'),
+        suppliersGroup: groupOf('nav-suppliers'),
+        submissionsGroup: groupOf('nav-submissions'),
+        rfqGroup: groupOf('nav-rfq'),
+        groups: [...document.querySelectorAll('#sidebar .nav-group')].map(x => x.dataset.group),
         requestsHidden: getComputedStyle(document.getElementById('nav-requests')).display === 'none',
         whatsappExists: !!document.getElementById('nav-whatsapp'),
       };
     });
     check("the admin's marketing rename does not retitle the portal's Chat group",
       nav.chatLabel === 'Chat', String(nav.chatLabel));
-    check('contracts stays in the Operations group, not the quotation-gated Tools',
-      nav.contractsGroup === 'operations', String(nav.contractsGroup));
-    check('purchase orders likewise', nav.poGroup === 'operations', String(nav.poGroup));
+    // The portal used to keep a section of its own, "Operations", because Tools
+    // was gated on quotation alone and contracts would have hidden under a
+    // heading its owner could not see. The gate covers all four now, so the
+    // portal files them where the admin does — and the shared nav-config, which
+    // matches groups BY KEY, finally reaches every section instead of leaving a
+    // portal-only one behind.
+    // Order here is the CONFIG's, not the shipped one — that is the point of the
+    // config. What matters is the set: no section of the portal's own invention
+    // is left behind for the arrangement to miss.
+    check('every section the portal ships is one the admin ships too',
+      [...nav.groups].sort().join(',') === 'chat,crm,google,integrations,logistics,management,system',
+      nav.groups.join(','));
+    check('RFQ still lands in Tools although the config names the admin\'s id',
+      nav.rfqGroup === 'integrations', String(nav.rfqGroup));
+    check('contracts and purchase orders sit under Tools, as they do for the admin',
+      nav.contractsGroup === 'integrations' && nav.poGroup === 'integrations',
+      `${nav.contractsGroup}/${nav.poGroup}`);
+    check('suppliers under Logistics & Shipping, submissions under CRM — likewise',
+      nav.suppliersGroup === 'logistics' && nav.submissionsGroup === 'crm',
+      `${nav.suppliersGroup}/${nav.submissionsGroup}`);
     check('an item the admin hid is hidden here too', nav.requestsHidden === true, String(nav.requestsHidden));
     check('and no WhatsApp item was invented', nav.whatsappExists === false);
 
