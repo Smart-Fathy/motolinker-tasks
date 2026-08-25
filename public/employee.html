@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=100">
+  <link rel="stylesheet" href="/assets/employee.css?v=101">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=100">
+  <link rel="stylesheet" href="/assets/mobile.css?v=101">
 </head>
 <body>
 
@@ -251,9 +251,6 @@
           <button class="nav-item active" id="nav-home"     onclick="navigate('home')">
             <span class="nav-icon"><i data-lucide="layout-dashboard"></i></span> Home
           </button>
-          <button class="nav-item"        id="nav-log"      onclick="navigate('log')">
-            <span class="nav-icon"><i data-lucide="clock"></i></span> Log Hours
-          </button>
           <button class="nav-item"        id="nav-tasks"    onclick="navigate('tasks')">
             <span class="nav-icon"><i data-lucide="clipboard-list"></i></span> My Tasks
           </button>
@@ -442,8 +439,29 @@
     <div class="home-grid" id="home-grid"></div>
   </div>
 
-    <div class="page" id="page-log">
-      <div class="card">
+    <!-- ── My Tasks Page ── -->
+    <div class="page" id="page-tasks">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
+        <div class="page-title" style="margin-bottom:0">My Tasks</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span id="emp-cal-status" style="font-size:12px;color:var(--muted)"></span>
+          <button id="emp-cal-btn" class="btn btn-outline btn-sm" style="display:none" onclick="empCalendarToggle()"></button>
+          <button class="btn btn-primary" data-perm="tasks.create" onclick="openNewTaskModal()">+ New Task</button>
+        </div>
+      </div>
+      <div id="tasks-stats" class="stats-row"></div>
+      <div class="tab-strip">
+        <div class="tab active" id="tab-current"   onclick="switchTab('current')"><i data-lucide="loader"></i> Current</div>
+        <div class="tab"        id="tab-completed" onclick="switchTab('completed')"><i data-lucide="check-circle-2"></i> Completed</div>
+      </div>
+      <div id="tasks-container"><div class="loading"><span class="spinner"></span>Loading…</div></div>
+    </div>
+
+    <!-- ── Hours Log Page ── -->
+    <div class="page" id="page-hours">
+      <!-- Logging and the log itself are one page but two grants: hours.log
+           writes, hours.view reads, and an employee may hold either. -->
+      <div class="card" data-perm="hours.log" style="margin-bottom:18px">
         <div class="card-title">Log Your Hours</div>
         <div class="alert-success" id="log-success"><i data-lucide="check-circle" class="icon-sm" style="flex-shrink:0"></i> Hours logged successfully!</div>
 
@@ -482,34 +500,12 @@
 
         <button class="btn btn-primary" id="log-btn" data-perm="hours.log" onclick="logHours()">Log Hours</button>
       </div>
-    </div>
-
-    <!-- ── My Tasks Page ── -->
-    <div class="page" id="page-tasks">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
-        <div class="page-title" style="margin-bottom:0">My Tasks</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <span id="emp-cal-status" style="font-size:12px;color:var(--muted)"></span>
-          <button id="emp-cal-btn" class="btn btn-outline btn-sm" style="display:none" onclick="empCalendarToggle()"></button>
-          <button class="btn btn-primary" data-perm="tasks.create" onclick="openNewTaskModal()">+ New Task</button>
-        </div>
-      </div>
-      <div id="tasks-stats" class="stats-row"></div>
-      <div class="tab-strip">
-        <div class="tab active" id="tab-current"   onclick="switchTab('current')"><i data-lucide="loader"></i> Current</div>
-        <div class="tab"        id="tab-completed" onclick="switchTab('completed')"><i data-lucide="check-circle-2"></i> Completed</div>
-      </div>
-      <div id="tasks-container"><div class="loading"><span class="spinner"></span>Loading…</div></div>
-    </div>
-
-    <!-- ── Hours Log Page ── -->
-    <div class="page" id="page-hours">
       <div class="card" style="margin-bottom:18px;padding:16px 18px">
         <div style="font-weight:700;font-size:14px;margin-bottom:10px">Team availability</div>
         <div id="availability-board"></div>
       </div>
-      <div id="hours-stats" class="stats-row"></div>
-      <div class="card" style="padding:0;overflow:hidden">
+      <div id="hours-stats" class="stats-row" data-perm="hours.view"></div>
+      <div class="card" data-perm="hours.view" style="padding:0;overflow:hidden">
         <div id="hours-table-container"><div class="loading"><span class="spinner"></span>Loading…</div></div>
       </div>
     </div>
@@ -1172,9 +1168,9 @@
 
   <!-- Mobile Bottom Navigation -->
   <nav class="bottom-nav" id="bottom-nav">
-    <button class="bottom-nav-item active" id="bnav-log" onclick="navigate('log')">
-      <i data-lucide="clock" style="width:20px;height:20px"></i>
-      <span>Log</span>
+    <button class="bottom-nav-item active" id="bnav-home" onclick="navigate('home')">
+      <i data-lucide="layout-dashboard" style="width:20px;height:20px"></i>
+      <span>Home</span>
       <div class="bottom-nav-dot"></div>
     </button>
     <button class="bottom-nav-item" id="bnav-tasks" onclick="navigate('tasks')">
@@ -1266,13 +1262,13 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=100"></script>
-<script src="/assets/columns.js?v=100"></script>
-<script src="/assets/client-folder.js?v=100"></script>
-<script src="/assets/lead-filters.js?v=100"></script>
-<script src="/assets/lead-views.js?v=100"></script>
-<script src="/assets/chat-extras.js?v=100"></script>
-<script src="/assets/home.js?v=100"></script>
+<script src="/assets/mobile.js?v=101"></script>
+<script src="/assets/columns.js?v=101"></script>
+<script src="/assets/client-folder.js?v=101"></script>
+<script src="/assets/lead-filters.js?v=101"></script>
+<script src="/assets/lead-views.js?v=101"></script>
+<script src="/assets/chat-extras.js?v=101"></script>
+<script src="/assets/home.js?v=101"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1310,13 +1306,13 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=100"></script>
-<script src="/assets/procurement.js?v=100"></script>
-<script src="/assets/quote.js?v=100"></script>
-<script src="/assets/meetings.js?v=100"></script>
-<script src="/assets/calendar.js?v=100"></script>
-<script src="/assets/availability.js?v=100"></script>
-<script src="/assets/employee.js?v=100"></script>
+<script src="/assets/huddle.js?v=101"></script>
+<script src="/assets/procurement.js?v=101"></script>
+<script src="/assets/quote.js?v=101"></script>
+<script src="/assets/meetings.js?v=101"></script>
+<script src="/assets/calendar.js?v=101"></script>
+<script src="/assets/availability.js?v=101"></script>
+<script src="/assets/employee.js?v=101"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1378,6 +1374,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=100"></script>
+<script src="/help-docs.js?v=101"></script>
 </body>
 </html>

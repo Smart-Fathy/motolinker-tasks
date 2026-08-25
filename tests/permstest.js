@@ -269,8 +269,23 @@ const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', perm
     ungoverned.length === 0, ungoverned.join(', '));
   c('…except the three nobody should be locked out of',
     ALWAYS.every(id => !gated.has(id)));
-  c('Log Hours and Hours Log are separate actions of one section',
-    /log: \['hours', 'log'\]/.test(PORTAL_JS) && /hours: \['hours', 'view'\]/.test(PORTAL_JS));
+  // The two used to be two pages, so the map gave each its own action. They are
+  // one page now — the form above its own log — and the invariant survives the
+  // merge: writing and reading are still separate grants, the panels are gated
+  // one by one in the markup, and the rail entry follows either.
+  c('logging hours and reading the log are still separate grants',
+    /data-perm="hours\.log"/.test(PORTAL_HTML) && /data-perm="hours\.view"/.test(PORTAL_HTML)
+    && /show\('hours', empCan\('hours', 'log'\) \|\| empCan\('hours', 'view'\)\)/.test(PORTAL_JS)
+    && !/\blog:\s*\['hours'/.test(PORTAL_JS));
+  c('…and there is one destination for them, not two',
+    !/id="nav-log"/.test(PORTAL_HTML) && !/id="page-log"/.test(PORTAL_HTML)
+    // Every entry point resolves the retired key — a saved hash, a saved page,
+    // a favourite, an old notification link — or the visitor lands on Home
+    // wondering where their hours went.
+    && /function empPageKey\(p\) \{ return p === 'log' \? 'hours' : p; \}/.test(PORTAL_JS)
+    && /page = empPageKey\(page\);/.test(PORTAL_JS)
+    && /const hash = empPageKey\(/.test(PORTAL_JS)
+    && /saved = empPageKey\(/.test(PORTAL_JS));
   // Inventory is the same shape: every employee holds the stock section (the
   // vehicle picker needs it), so the PAGE has to be its own action or adding it
   // would have put an Inventory tab in front of the entire team.
