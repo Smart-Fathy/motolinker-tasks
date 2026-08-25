@@ -423,6 +423,10 @@ function ColumnsEngine(entity, cfg) {
       return `<div class="form-group"><label style="display:inline-flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
         <input type="checkbox" data-cek="${esc(col.key)}" ${v === true || v === 'true' || v === 1 || v === '1' ? 'checked' : ''} ${a}> ${esc(col.label)}${req}</label></div>`;
     }
+    if (col.type === 'link') {
+      return `<div class="form-group">${label}<input class="form-control" type="url" inputmode="url"
+        placeholder="https://…" data-cek="${esc(col.key)}" value="${esc(v)}" ${a}></div>`;
+    }
     const type = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text';
     return `<div class="form-group">${label}<input class="form-control" type="${type}" data-cek="${esc(col.key)}" value="${esc(v)}" ${a}></div>`;
   };
@@ -451,13 +455,53 @@ function ColumnsEngine(entity, cfg) {
 }
 
 
+// ── Link columns ──────────────────────────────────────────────────────────────
+// A link column holds a URL somebody pasted, so it is rendered as one — but
+// only when it really is one. Anything else is left as the plain text it is,
+// and a scheme that is not http(s) is never made clickable: a `javascript:`
+// "link" typed into a cell would otherwise be a script every viewer can run.
+function ceLinkUrl(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return '';
+  // No scheme means a bare domain far more often than a relative path, and a
+  // relative one would point at MotoLinker rather than wherever they meant.
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(s) ? s : 'https://' + s;
+  let u;
+  try { u = new URL(withScheme); } catch (_) { return ''; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+  return (!/^[a-z][a-z0-9+.-]*:/i.test(s) && !u.hostname.includes('.')) ? '' : u.href;
+}
+// The last path segment names a Drive file far better than the URL does; fall
+// back to the host when there is no path to read.
+function ceLinkLabel(href) {
+  try {
+    const u = new URL(href);
+    const tail = u.pathname.split('/').filter(Boolean).pop() || '';
+    const name = decodeURIComponent(tail).replace(/[+_]/g, ' ').trim();
+    return name && name.length <= 44 ? name : u.hostname.replace(/^www\./, '');
+  } catch (_) { return href; }
+}
+function ceLinkHtml(raw, opts) {
+  const o = opts || {};
+  const href = ceLinkUrl(raw);
+  if (!href) {
+    const s = String(raw == null ? '' : raw).trim();
+    return s ? esc(s) : (o.empty || '—');
+  }
+  // stopPropagation because these sit inside click-to-edit cells and rows that
+  // open a record: clicking the link should open the link, nothing else.
+  return `<a class="ce-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer"
+    title="${esc(href)}" onclick="event.stopPropagation()"><i data-lucide="external-link"></i>${esc(
+    o.label || ceLinkLabel(href))}</a>`;
+}
+
 // Field types as chips rather than a <select>. A native popup is drawn by the
 // browser, not by us, and inside a stacked modal some browsers paint it BEHIND
 // the dialog — reported from the PO sheet, where choosing a type showed the
 // options underneath the editor. Six options fit on two rows; nothing pops up,
 // so nothing can be layered wrongly. The hidden input keeps `#ce-type` as the
 // one place the modals read the answer from.
-const CE_TYPES = [['text', 'Text'], ['number', 'Number'], ['date', 'Date'],
+const CE_TYPES = [['text', 'Text'], ['number', 'Number'], ['date', 'Date'], ['link', 'Link'],
                   ['select', 'Dropdown'], ['radio', 'Radio'], ['checkbox', 'Checkbox']];
 function ceTypeChips(current, onChange) {
   const cur = CE_TYPES.some(([v]) => v === current) ? current : 'text';

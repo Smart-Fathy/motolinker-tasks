@@ -33,7 +33,7 @@ const ENTITY_COLUMNS = {
   stock:     { kvKey: 'columns_config:stock',     perm: 'stock' },
 };
 
-const COLUMN_TYPES = ['text', 'number', 'date', 'select', 'radio', 'checkbox', 'virtual'];
+const COLUMN_TYPES = ['text', 'number', 'date', 'link', 'select', 'radio', 'checkbox', 'virtual'];
 
 function sanitizeColumns(columns) {
   if (!Array.isArray(columns)) return null;

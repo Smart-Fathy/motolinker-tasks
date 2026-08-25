@@ -25,9 +25,11 @@ const COLS = [
     { key: 'p2', label: 'Normal' },                        // colorless → plain text
   ] },
   { key: 'cf_passport', label: 'Passport no.', type: 'text', builtin: false, visible: true, required: true },
+  { key: 'cf_file', label: 'Vehicle file', type: 'link', builtin: false, visible: true },
 ];
 const LEADS = [
-  { id: 1, name: 'Ahmed', lead_status: 'cold', custom_fields: { cf_priority: 'p1', cf_passport: 'A1' } },
+  { id: 1, name: 'Ahmed', lead_status: 'cold', custom_fields: { cf_priority: 'p1', cf_passport: 'A1',
+    cf_file: 'https://drive.google.com/file/d/abc/Corolla%20invoice.pdf' } },
   { id: 2, name: 'Mona', lead_status: 'hot', custom_fields: { cf_priority: 'p2' } },
 ];
 
@@ -199,6 +201,51 @@ const CELL = sel => `(() => {
     check(`${portal.label}: a CUSTOM select column gets colored badges too`,
       !!badges.critical && /220, 38, 38/.test(badges.critical.color), JSON.stringify(badges.critical));
     check(`${portal.label}: a colorless option stays plain text`, badges.normalPlain === true);
+
+    // A link column: the cell is an anchor, and only when the value really is a
+    // URL. The type exists because a user pasted a Drive link into a TEXT column
+    // for want of anywhere better; what they type is not always a link, and a
+    // `javascript:` one would be a script every viewer of the table can run.
+    const links = await page.evaluate(async body => {
+      const one = raw => {
+        const host = document.createElement('div');
+        host.innerHTML = ceLinkHtml(raw);
+        const a = host.querySelector('a');
+        return a ? { href: a.getAttribute('href'), rel: a.getAttribute('rel'),
+                     target: a.getAttribute('target'), text: a.textContent.trim() }
+                 : { plain: host.textContent.trim() };
+      };
+      const cell = document.querySelector(`${body} a.ce-link`);
+      const host = document.createElement('div');
+      host.innerHTML = CE('leads').inputHtml(CE('leads').col('cf_file'), '');
+      const input = host.querySelector('input');
+      return {
+        inTable: cell ? { href: cell.getAttribute('href'), text: cell.textContent.trim() } : null,
+        drive: one('https://drive.google.com/file/d/abc/Corolla%20invoice.pdf'),
+        bare: one('drive.google.com/x'),
+        script: one('javascript:alert(1)'),
+        prose: one('ask Hesham for the file'),
+        blank: one(''),
+        inputType: input && input.type,
+        typeOffered: [...document.querySelectorAll('.ce-type')].length ? null : 'editor-closed',
+      };
+    }, portal.body);
+    check(`${portal.label}: a link column renders as a link in the table`,
+      !!links.inTable && links.inTable.href.startsWith('https://drive.google.com/'),
+      JSON.stringify(links.inTable));
+    check(`${portal.label}: …labelled by the file rather than the URL`,
+      !!links.inTable && links.inTable.text === 'Corolla invoice.pdf', JSON.stringify(links.inTable));
+    check(`${portal.label}: it opens in a new tab without handing over the opener`,
+      links.drive.target === '_blank' && /noopener/.test(links.drive.rel) && /noreferrer/.test(links.drive.rel),
+      JSON.stringify(links.drive));
+    check(`${portal.label}: a bare domain is given https, not a relative path`,
+      links.bare.href === 'https://drive.google.com/x', JSON.stringify(links.bare));
+    check(`${portal.label}: a javascript: value is never made clickable`,
+      links.script.plain === 'javascript:alert(1)', JSON.stringify(links.script));
+    check(`${portal.label}: text that is not a URL is left as text`,
+      links.prose.plain === 'ask Hesham for the file', JSON.stringify(links.prose));
+    check(`${portal.label}: an empty link column shows a dash`, links.blank.plain === '—', JSON.stringify(links.blank));
+    check(`${portal.label}: the form gives a URL box for it`, links.inputType === 'url', String(links.inputType));
 
     // The editor: open the options modal for the custom column, add an option,
     // save — the PUT must carry it, with colors preserved on the untouched rows.
@@ -410,9 +457,13 @@ const CELL = sel => `(() => {
       CE('po_items')._closeModal();
       return { selects, chips, before, onNow, inside, after, optsHidden, optsBack };
     });
+    const declaredTypes = ((fs.readFileSync('public/assets/columns.js', 'utf8')
+      .match(/const CE_TYPES = \[([\s\S]*?)\];/) || [])[1] || '').match(/\['/g) || [];
     check('the type is chosen from chips, with no popup to be layered wrongly',
-      types.selects === 0 && types.chips.length === 6 && types.inside === true,
-      JSON.stringify({ selects: types.selects, chips: types.chips.length, inside: types.inside }));
+      types.selects === 0 && types.chips.length === declaredTypes.length && types.inside === true,
+      JSON.stringify({ selects: types.selects, chips: types.chips.length, declared: declaredTypes.length, inside: types.inside }));
+    check('…and every declared type is offered, Link included',
+      types.chips.includes('Link'), types.chips.join(', '));
     check('…the field\'s current type is the one lit', types.before === 'select' && types.onNow === 'Dropdown',
       JSON.stringify(types));
     check('…picking one changes the answer and shows or hides the options',
