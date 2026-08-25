@@ -90,7 +90,11 @@ const PERM_SECTIONS = [
 // Nav items whose visibility is an action rather than a whole section.
 // stock is the same story: every employee has the section (the vehicle picker
 // needs it), but the Inventory page is stock.browse.
-const PERM_NAV_ACTIONS = { log: ['hours', 'log'], hours: ['hours', 'view'], stock: ['stock', 'browse'] };
+// Hours is ONE page holding two grants — the form writes (hours.log), the log
+// below it reads (hours.view) — so the rail entry follows either, and the two
+// panels are gated individually by data-perm in the markup. It cannot be an
+// entry in the map below: that maps a nav id to a single action.
+const PERM_NAV_ACTIONS = { stock: ['stock', 'browse'] };
 
 // Normalized permissions of the logged-in employee (rich shape from the server).
 let empPerms = {};
@@ -146,6 +150,7 @@ function applyPermissions(permissions) {
   PERM_SECTIONS.forEach(section => show(section, empHas(section)));
   // Nav items that are an action rather than a section of their own.
   for (const [id, [section, action]] of Object.entries(PERM_NAV_ACTIONS)) show(id, empCan(section, action));
+  show('hours', empCan('hours', 'log') || empCan('hours', 'view'));
   applyActionPerms();
   // Reports is only reachable if at least one individual report is granted
   gchatInitNav();   // Google Chat nav appears only when it's configured server-side
@@ -536,16 +541,16 @@ async function logout() {
 }
 
 /* ── Navigation ── */
-const pageTitles = { home: 'Home', chat: 'Chat', log: 'Log Hours', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', gchat: 'Google Chat', notif: 'Notifications', issues: 'Issues',
+const pageTitles = { home: 'Home', chat: 'Chat', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', gchat: 'Google Chat', notif: 'Notifications', issues: 'Issues',
   suppliers: 'Suppliers', rfq: 'RFQ', purchaseorders: 'Purchase Orders',
   contracts: 'Contracts', submissions: 'Website Submissions', stock: 'Inventory' };
-const pageLoaders = { calendar: () => loadCalendar(), home: loadHome, requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: () => initQuotationPage(), leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, gchat: loadGChat, notif: loadNotifPage, issues: loadIssues,
+const pageLoaders = { calendar: () => loadCalendar(), home: loadHome, hours: loadMyHours, requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: () => initQuotationPage(), leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, gchat: loadGChat, notif: loadNotifPage, issues: loadIssues,
   // Operations: the renderers live in the shared procurement.js, which both
   // portals load, so these are the same functions the dashboard calls.
   suppliers: () => loadSuppliers(), rfq: () => loadRfqs(), purchaseorders: () => loadPurchaseOrders(),
   contracts: () => loadContracts(), submissions: () => loadSubmissions(), meet: () => loadMeetings(),
   stock: () => loadStock() };
-let _currentEmpPage = 'log';
+let _currentEmpPage = 'hours';
 // ── Favourites ────────────────────────────────────────────────────────────────
 // Per employee. Built from whatever they saved, intersected with the
 // destinations actually present in their own rail — which is already filtered
@@ -553,7 +558,7 @@ let _currentEmpPage = 'log';
 // go, and one for a screen they lost access to simply stops rendering.
 let _navFavs = null;
 const NAV_FAV_MAX = 8;
-const NAV_FAV_DEFAULT = ['home', 'log', 'tasks', 'hours', 'requests'];
+const NAV_FAV_DEFAULT = ['home', 'tasks', 'hours', 'requests', 'chat'];
 
 function navFavLabel(el) {
   const c = el.cloneNode(true);
@@ -638,6 +643,7 @@ async function navFavSave() {
 function navigate(page) {
   if (_currentEmpPage === 'chat' && page !== 'chat') closeChatSse();
   if (_currentEmpPage === 'gchat' && page !== 'gchat') gchatStopPoll();
+  page = empPageKey(page);
   _currentEmpPage = page;
   // Block navigation to sections the employee doesn't have permission for.
   // Home, not Log Hours: Log Hours is itself gated now (hours.log), so bouncing
@@ -649,7 +655,7 @@ function navigate(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.bottom-nav-item').forEach(n => n.classList.remove('active'));
-  (pageEl || document.getElementById('page-log')).classList.add('active');
+  (pageEl || document.getElementById('page-hours')).classList.add('active');
   const sideNav = document.getElementById('nav-' + page);
   if (sideNav) sideNav.classList.add('active');
   const favNav = document.getElementById('fav-' + page);
@@ -675,13 +681,17 @@ function rememberPage(page) {
     localStorage.setItem('ml_emp_page', page);
   } catch (_) { /* private mode; the hash alone still works */ }
 }
+// Logging hours and the hours log are one page now. Saved hashes, saved pages,
+// favourites and old notification links still say 'log', so every entry point
+// resolves the old key rather than quietly dropping the visitor on Home.
+function empPageKey(p) { return p === 'log' ? 'hours' : p; }
 function lastPage(fallback) {
-  const hash = (location.hash || '').replace('#', '');
+  const hash = empPageKey((location.hash || '').replace('#', ''));
   const ok = p => p && pageTitles[p] &&
     (document.getElementById('page-' + p) || {}).dataset?.permitted !== '0';
   if (ok(hash)) return hash;
   let saved = null;
-  try { saved = localStorage.getItem('ml_emp_page'); } catch (_) {}
+  try { saved = empPageKey(localStorage.getItem('ml_emp_page')); } catch (_) {}
   return ok(saved) ? saved : fallback;
 }
 
@@ -3197,8 +3207,8 @@ async function markAllNotifsRead() {
 function notifRoute(url, type) {
   const hash = (url || '').split('#')[1];
   if (hash && pageTitles[hash]) { navigate(hash); return; }
-  const map = { hours: 'log', task: 'tasks', reminder: 'tasks', lead: 'quotation', deal: 'deals', request: 'requests', followup: 'leads' };
-  navigate(map[type] || 'log');
+  const map = { hours: 'hours', task: 'tasks', reminder: 'tasks', lead: 'quotation', deal: 'deals', request: 'requests', followup: 'leads' };
+  navigate(map[type] || 'hours');
 }
 // Mark a single notification read (local + server)
 async function notifMarkRead(id) {
@@ -4340,7 +4350,7 @@ const HOMECFG = {
   toast: msg => hdToast(msg),
   sheet: (t, b, f) => hdSheet(t, b, f),
   actions: () => ([
-    { label: 'Log hours', icon: 'clock',          onclick: "navigate('log')" },
+    { label: 'Log hours', icon: 'clock',          onclick: "navigate('hours')" },
     { label: 'My tasks',  icon: 'clipboard-list', onclick: "navigate('tasks')" },
     { label: 'Chat',      icon: 'message-square', onclick: "navigate('chat')" },
   ]),

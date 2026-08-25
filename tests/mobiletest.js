@@ -398,7 +398,7 @@ async function sweep(browser, o) {
     leadsPage: 'leads', leadsBody: '#emp-leads-tbody',
     quotePage: 'quotation', quoteRowSel: '.qt-item-row',
     openModal: { page: 'leads', fn: 'openEmpLeadModal', sel: '#emp-lead-modal' },
-    pages: ['home', 'log', 'tasks', 'hours', 'requests', 'leads', 'deals', 'reports',
+    pages: ['home', 'tasks', 'hours', 'requests', 'leads', 'deals', 'reports',
             'quotation', 'chat', 'notif', 'calendar', 'meet', 'email', 'drive', 'sheets',
             // Operations, shared with the dashboard via procurement.js
             'suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions'],
