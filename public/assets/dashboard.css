@@ -3121,3 +3121,13 @@
     .qt-remove{ width:44px; height:44px; }
     .qt-total-value strong{ font-size:22px; }
   }
+
+  /* A link column's cell — rendered by ceLinkHtml in the shared columns.js, so
+   * it needs a rule on both sides. */
+  .ce-link{
+    display:inline-flex; align-items:center; gap:5px; max-width:100%;
+    color:var(--gold); text-decoration:none; font-size:12px; font-weight:600;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;
+  }
+  .ce-link:hover{ text-decoration:underline; }
+  .ce-link i, .ce-link svg{ width:12px; height:12px; flex-shrink:0; }

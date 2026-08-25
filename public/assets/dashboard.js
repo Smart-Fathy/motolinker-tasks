@@ -5671,7 +5671,7 @@ function leadCellClick(e, id, key) {
   _editingLeadCell = true;
   {
     // Budget accepts a number OR a range → plain text; number/date/time as-is; else text.
-    const t = col.key === 'budget_lead' ? 'text' : col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : key === 'lead_time' ? 'time' : 'text';
+    const t = col.key === 'budget_lead' ? 'text' : col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : col.type === 'link' ? 'url' : key === 'lead_time' ? 'time' : 'text';
     const inputVal = col.key === 'budget_lead'
       ? (c.budget_max != null && c.budget_max !== '' ? `${c.budget_lead}-${c.budget_max}` : (c.budget_lead != null ? String(c.budget_lead) : ''))
       : cur;
@@ -5763,6 +5763,7 @@ function leadCellHtml(c, col) {
     return `<td ${attrs} style="font-size:12px;white-space:nowrap">${esc(m[k] || raw || '—')}</td>`;
   }
   if (col.key === 'notes' || col.key === 'car_in_question' || col.key === 'sales_feedback' || col.key === 'inquiry') return `<td ${attrs} style="font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(raw || '')}">${esc(raw || '—')}</td>`;
+  if (col.type === 'link') return `<td ${attrs} style="font-size:12px;white-space:nowrap">${ceLinkHtml(raw)}</td>`;
   if (col.type === 'number') return `<td ${attrs} style="font-size:12px;white-space:nowrap">${raw != null && raw !== '' ? Number(raw).toLocaleString() : '—'}</td>`;
   return `<td ${attrs} style="font-size:12px;white-space:nowrap">${esc(raw || '—')}</td>`;
 }
@@ -6064,6 +6065,7 @@ function renderLeadDrawer() {
     if (col.key === 'budget_lead') val = fmtBudget(c.budget_lead, c.budget_max);
     else if (col.type === 'select' || col.type === 'radio') { const m = colOptMap(col); val = m[normKey(raw, m)] || raw || '—'; }
     else if (col.type === 'checkbox') val = isChecked(raw) ? '<i data-lucide="check" style="width:12px;height:12px"></i> Yes' : '—';
+    else if (col.type === 'link') val = ceLinkHtml(raw);
     else if (col.type === 'number') val = raw ? Number(raw).toLocaleString() : '—';
     else val = raw || '—';
     return `<div class="ld-info-item"><div class="ld-info-label">${esc(col.label)}</div><div class="ld-info-value" title="${esc(String(raw ?? ''))}">${esc(String(val))}</div></div>`;
@@ -6448,7 +6450,7 @@ function openCustomerModal(id, presetStatus) {
         <input type="hidden" id="cm-cf-${esc(col.key)}-price"><input type="hidden" id="cm-cf-${esc(col.key)}-images">
         <div id="cm-cf-${esc(col.key)}-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.45)"></div></div>`;
     }
-    const t = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text';
+    const t = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : col.type === 'link' ? 'url' : 'text';
     return `<div><label class="form-label">${esc(col.label)}</label>
       <input class="form-input" id="cm-cf-${esc(col.key)}" type="${t}" value="${esc(v ?? '')}"></div>`;
   }).join('');

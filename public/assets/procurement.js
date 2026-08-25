@@ -1548,9 +1548,11 @@
       return `<td class="po-td"><textarea class="form-input ${cls}" data-k="${k}" rows="2"
         style="font-size:11.5px;padding:5px 6px;resize:vertical">${esc(val == null ? '' : String(val))}</textarea></td>`;
     }
-    const type = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text';
+    const type = col.type === 'number' ? 'number' : col.type === 'date' ? 'date'
+      : col.type === 'link' ? 'url' : 'text';
     return `<td class="po-td"><input class="form-input ${cls}" data-k="${k}" type="${type}"
-      ${type === 'number' ? 'min="0"' : ''} value="${esc(val == null ? '' : String(val))}" style="${base}"></td>`;
+      ${type === 'number' ? 'min="0"' : ''} ${type === 'url' ? 'inputmode="url" placeholder="https://…"' : ''}
+      value="${esc(val == null ? '' : String(val))}" style="${base}"></td>`;
   }
   // Line grids collect by class; a checkbox reports .checked, everything else .value.
   function procGridCollect(rowSel, fieldSel) {
@@ -1631,6 +1633,7 @@
     const raw = (rec.custom_fields || {})[col.key];
     if ((col.type === 'select' || col.type === 'radio')) return `<td style="padding:8px 10px">${eng.badgeHtml(col, raw)}</td>`;
     if (col.type === 'checkbox') return `<td style="padding:8px 10px;text-align:center">${raw === true || raw === 'true' ? '✓' : '—'}</td>`;
+    if (col.type === 'link') return `<td style="padding:8px 10px">${ceLinkHtml(raw)}</td>`;
     return `<td style="padding:8px 10px">${esc(raw == null ? '' : String(raw))}</td>`;
   }
 
@@ -1741,6 +1744,7 @@
         return `<td data-label="${esc(c.label)}" class="stk-price num">${n ? n.toLocaleString() : '—'}</td>`;
       }
       if (c.type === 'checkbox') return `<td data-label="${esc(c.label)}" style="text-align:center">${u[k] === true || u[k] === 'true' ? '✓' : '—'}</td>`;
+      if (c.type === 'link') return `<td data-label="${esc(c.label)}">${ceLinkHtml(u[k])}</td>`;
       return `<td data-label="${esc(c.label)}">${esc(u[k] == null || u[k] === '' ? '—' : String(u[k]))}</td>`;
     }).join('');
     return `<tr>
