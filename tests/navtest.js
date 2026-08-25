@@ -176,8 +176,11 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
     // Kept for the portal block below: the whole point of an org-wide
     // arrangement is that both sidebars end up reading the same.
     adminSections = await page.evaluate(() =>
-      [...document.querySelectorAll('#sidebar .nav-group')]
-        .map(g => g.dataset.group + ':' + (g.querySelector('.nav-group-label')?.textContent || '').trim()));
+      [...document.querySelectorAll('#sidebar .nav-group')].map(g => ({
+        key: g.dataset.group,
+        name: (g.querySelector('.nav-group-label')?.textContent || '').trim(),
+        items: [...g.querySelectorAll('.nav-item')].map(i => i.id),
+      })));
 
     check('admin: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
     await page.close();
@@ -244,12 +247,32 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
     // two sidebars, and they must read the same — same sections, same order,
     // same names. Before this, four of seven names were withheld here.
     const teamSections = await page.evaluate(() =>
-      [...document.querySelectorAll('#sidebar .nav-group')]
-        .map(g => g.dataset.group + ':' + (g.querySelector('.nav-group-label')?.textContent || '').trim()));
+      [...document.querySelectorAll('#sidebar .nav-group')].map(g => ({
+        key: g.dataset.group,
+        name: (g.querySelector('.nav-group-label')?.textContent || '').trim(),
+        items: [...g.querySelectorAll('.nav-item')].map(i => i.id),
+      })));
+    const names = list => list.map(g => g.key + ':' + g.name).join(' | ');
     check('both sidebars render the arrangement identically',
       Array.isArray(adminSections) && adminSections.length === 7
-      && adminSections.join(' | ') === teamSections.join(' | '),
-      `admin: ${(adminSections || []).join(' | ')}  ·  team: ${teamSections.join(' | ')}`);
+      && names(adminSections) === names(teamSections),
+      `admin: ${names(adminSections || [])}  ·  team: ${names(teamSections)}`);
+
+    // The two portals spell a few ids differently for the same page. An id the
+    // arrangement names but this portal cannot resolve is never placed, so it
+    // drops to the end of its section and the order quietly diverges — which is
+    // what nav-rfqs / nav-rfq did to Tools. Compare only the pages BOTH portals
+    // have (legitimately portal-only ones are skipped), in order.
+    const ALIAS = { 'nav-customers': 'nav-leads', 'nav-rfqs': 'nav-rfq' };
+    const norm = id => ALIAS[id] || id;
+    const shared = new Set(
+      adminSections.flatMap(g => g.items.map(norm))
+        .filter(id => teamSections.some(g => g.items.map(norm).includes(id))));
+    const seq = list => list.map(g =>
+      g.key + '[' + g.items.map(norm).filter(id => shared.has(id)).join(',') + ']').join(' ');
+    check('…and the pages they share sit in the same section, in the same order',
+      seq(adminSections) === seq(teamSections),
+      `admin: ${seq(adminSections)}\n            team:  ${seq(teamSections)}`);
 
     // The narrowing rule: hidden flags may hide, but an UNhidden config entry
     // must never resurrect a section the employee has no permission for.

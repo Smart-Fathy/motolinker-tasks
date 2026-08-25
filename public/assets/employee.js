@@ -147,12 +147,6 @@ function applyPermissions(permissions) {
   // Nav items that are an action rather than a section of their own.
   for (const [id, [section, action]] of Object.entries(PERM_NAV_ACTIONS)) show(id, empCan(section, action));
   applyActionPerms();
-  // Google and Chat groups have no id, so they are found by their data-group.
-  const anyGoogle = ['drive', 'sheets', 'email', 'calendar', 'meet', 'gchat'].some(empHas);
-  const gGoogle = document.querySelector('.nav-group[data-group="google"]');
-  if (gGoogle) gGoogle.style.display = anyGoogle ? '' : 'none';
-  const gChat = document.querySelector('.nav-group[data-group="chat"]');
-  if (gChat) gChat.style.display = empHas('chat') ? '' : 'none';
   // Reports is only reachable if at least one individual report is granted
   gchatInitNav();   // Google Chat nav appears only when it's configured server-side
   loadNavConfig();  // apply the admin's shared section order + names
@@ -2267,7 +2261,15 @@ async function gchatInitNav() {
 // Read-only here: the admin arranges once and both portals follow. Items the
 // employee has no permission for stay hidden — this runs after applyPermissions.
 // The two portals name the Leads item differently, so alias it.
-const NAV_ID_ALIAS = { 'nav-customers': 'nav-leads', 'nav-leads': 'nav-customers' };
+// The two portals spell a few nav ids differently for the same page. Without
+// this the arrangement silently skips them: the admin saves nav-rfqs, the
+// portal has nav-rfq, so RFQ was never placed and fell to the end of its
+// section — which is why Tools read Quotation, Contracts, Suppliers, PO, RFQ
+// here and …, RFQ, PO in the admin.
+const NAV_ID_ALIAS = {
+  'nav-customers': 'nav-leads', 'nav-leads': 'nav-customers',
+  'nav-rfqs': 'nav-rfq',        'nav-rfq': 'nav-rfqs',
+};
 function navItemEl(id) {
   return document.getElementById(id) || document.getElementById(NAV_ID_ALIAS[id] || '');
 }
@@ -2291,7 +2293,6 @@ function applyNavConfig(cfg) {
     if (!el) return;                       // section this portal doesn't have (e.g. logistics)
     placedGroups.add(g.key);
     const wrap = el.querySelector('.nav-group-items');
-    const portalIds = wrap ? new Set([...wrap.querySelectorAll('.nav-item')].map(i => i.id)) : new Set();
     // The arrangement is org-wide and there is one vocabulary: whatever the
     // admin calls a section, this portal calls it too. It used to adopt a name
     // only when the portal held every item the admin listed under it, which in
@@ -2308,12 +2309,14 @@ function applyNavConfig(cfg) {
     (g.items || []).forEach(it => {
       const iel = navItemEl(it.id);
       if (!iel || !iel.classList.contains('nav-item')) return;
-      // Only reorder within the item's OWN portal group. The admin files
-      // Contracts under Tools, but here Tools is gated on the quotation
-      // permission — moving the item across groups parked it under a heading
-      // its own permission doesn't govern, visible or hidden by someone else's
-      // grant. Ordering is shared; group membership is the portal's.
-      if (!portalIds.has(iel.id)) return;
+      // The arrangement moves pages BETWEEN sections, not just within them: put
+      // MotoChat and the Google pages under Workspace in the admin and that is
+      // where they belong here too. This used to reorder only within an item's
+      // own shipped group, which is why the two sidebars still read differently
+      // once every name matched. It was safe to refuse because a heading was
+      // gated by a hand-written permission list, so an item could land under a
+      // heading its own permission had no say over; headings follow their own
+      // visible items now, so wherever a page goes its heading goes with it.
       // Never override the permission gate — only reorder/rename what's visible.
       if (it.label) navSetItemLabel(iel, it.label);
       // The admin's hidden flag may only NARROW what shows: display is written
@@ -2343,10 +2346,12 @@ function applyNavConfig(cfg) {
 // right after the arrangement has hidden items or moved them about.
 function navHeadingsFollowItems() {
   document.querySelectorAll('#sidebar .nav-group').forEach(g => {
-    const head = g.querySelector('.nav-group-head');
-    if (!head) return;
     const live = [...g.querySelectorAll('.nav-item')].some(i => i.style.display !== 'none');
-    head.style.display = live ? '' : 'none';
+    // The section itself, not just its heading: once the arrangement can move a
+    // page out of a group, a group can end up holding nothing at all.
+    g.style.display = live ? '' : 'none';
+    const head = g.querySelector('.nav-group-head');
+    if (head) head.style.display = live ? '' : 'none';
     if (live) g.classList.add('open');
   });
 }
