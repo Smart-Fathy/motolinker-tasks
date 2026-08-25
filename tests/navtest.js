@@ -22,6 +22,7 @@ const LEADS = Array.from({ length: 60 }, (_, i) => ({
 // The admin's arrangement: chat group renamed to the marketing label and carrying
 // WhatsApp (which the portal doesn't have); contracts filed under the
 // quotation-gated tools group; the requests item hidden by the admin.
+let adminSections = null;   // filled by the admin block, compared in the portal's
 const NAV_CFG = { groups: [
   { key: 'management', label: '', items: [
     { id: 'nav-home' }, { id: 'nav-tasks' }, { id: 'nav-requests', hidden: true }, { id: 'nav-hours' }, { id: 'nav-log' },
@@ -172,6 +173,12 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
     check('…and the success message links the uploaded file',
       /Saved to Drive → MotoLinker \/ Client Files/.test(procSrc) && /meta\.name \|\| 'open the file'/.test(procSrc));
 
+    // Kept for the portal block below: the whole point of an org-wide
+    // arrangement is that both sidebars end up reading the same.
+    adminSections = await page.evaluate(() =>
+      [...document.querySelectorAll('#sidebar .nav-group')]
+        .map(g => g.dataset.group + ':' + (g.querySelector('.nav-group-label')?.textContent || '').trim()));
+
     check('admin: no page errors', !errs.length, errs.slice(0, 2).join(' | '));
     await page.close();
   }
@@ -200,8 +207,16 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
         whatsappExists: !!document.getElementById('nav-whatsapp'),
       };
     });
-    check("the admin's marketing rename does not retitle the portal's Chat group",
-      nav.chatLabel === 'Chat', String(nav.chatLabel));
+    // This used to assert the opposite: a group name was adopted only when the
+    // portal held every item the admin listed under it, so "MRK & REACH" was
+    // withheld here because the admin's chat group also holds WhatsApp. In
+    // practice that withheld almost every name — Management alone lists
+    // Employees and Approvals, which no employee has — and the two sidebars
+    // read differently however the admin arranged them. One arrangement, one
+    // vocabulary: the portal takes the name whatever it holds under it, and a
+    // heading with nothing visible beneath it is hidden rather than renamed.
+    check("the portal takes the admin's name for a section it shares",
+      nav.chatLabel === 'MRK & REACH', String(nav.chatLabel));
     // The portal used to keep a section of its own, "Operations", because Tools
     // was gated on quotation alone and contracts would have hidden under a
     // heading its owner could not see. The gate covers all four now, so the
@@ -224,6 +239,17 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
       `${nav.suppliersGroup}/${nav.submissionsGroup}`);
     check('an item the admin hid is hidden here too', nav.requestsHidden === true, String(nav.requestsHidden));
     check('and no WhatsApp item was invented', nav.whatsappExists === false);
+
+    // The check the user's complaint was really about: one saved arrangement,
+    // two sidebars, and they must read the same — same sections, same order,
+    // same names. Before this, four of seven names were withheld here.
+    const teamSections = await page.evaluate(() =>
+      [...document.querySelectorAll('#sidebar .nav-group')]
+        .map(g => g.dataset.group + ':' + (g.querySelector('.nav-group-label')?.textContent || '').trim()));
+    check('both sidebars render the arrangement identically',
+      Array.isArray(adminSections) && adminSections.length === 7
+      && adminSections.join(' | ') === teamSections.join(' | '),
+      `admin: ${(adminSections || []).join(' | ')}  ·  team: ${teamSections.join(' | ')}`);
 
     // The narrowing rule: hidden flags may hide, but an UNhidden config entry
     // must never resurrect a section the employee has no permission for.

@@ -147,22 +147,6 @@ function applyPermissions(permissions) {
   // Nav items that are an action rather than a section of their own.
   for (const [id, [section, action]] of Object.entries(PERM_NAV_ACTIONS)) show(id, empCan(section, action));
   applyActionPerms();
-  // A group heading with nothing under it is a dead label, so each one follows its
-  // own items rather than being hardcoded on.
-  const groupOn = (sel, on) => {
-    const el = typeof sel === 'string' ? document.getElementById(sel) : sel;
-    if (!el) return;
-    el.style.display = on ? '' : 'none';
-    if (on) el.closest('.nav-group')?.classList.add('open');
-  };
-  // The sections are the admin's now — Management / CRM / Logistics & Shipping /
-  // Tools / Chat / Google / System — so each heading follows whatever the admin
-  // files under that key. Tools especially: it used to be gated on quotation
-  // alone, which is why contracts and POs sat in a portal-only "Operations"
-  // group. Widened, they can live where the admin keeps them.
-  groupOn('nav-label-tools', ['quotation', 'contracts', 'rfq', 'purchaseorders'].some(empHas));
-  groupOn('nav-label-crm', ['leads', 'deals', 'reports', 'submissions'].some(empHas));
-  groupOn('nav-label-logistics', empHas('suppliers') || empCan('stock', 'browse'));
   // Google and Chat groups have no id, so they are found by their data-group.
   const anyGoogle = ['drive', 'sheets', 'email', 'calendar', 'meet', 'gchat'].some(empHas);
   const gGoogle = document.querySelector('.nav-group[data-group="google"]');
@@ -177,6 +161,13 @@ function applyPermissions(permissions) {
   const repPage = document.getElementById('page-reports');
   if (repNav) repNav.style.display = anyReport ? '' : 'none';
   if (repPage) repPage.dataset.permitted = anyReport ? '1' : '0';
+  // Every heading follows its own visible items — see navHeadingsFollowItems.
+  // It runs HERE, after the Reports gate above and after gchatInitNav, because
+  // a list written out by hand drifts from the markup every time a page moves:
+  // Tools was gated on `quotation` alone, so Contracts would have hidden under
+  // a heading its owner could not see, which is why this portal used to keep a
+  // section of its own called "Operations".
+  navHeadingsFollowItems();
   // Last, because favourites are rendered from whatever the rail still holds
   // once every permission gate above has hidden what it needs to.
   loadNavFavs();
@@ -2300,18 +2291,17 @@ function applyNavConfig(cfg) {
     if (!el) return;                       // section this portal doesn't have (e.g. logistics)
     placedGroups.add(g.key);
     const wrap = el.querySelector('.nav-group-items');
-    // Adopt the admin's group NAME only when the two portals agree on what the
-    // group contains. The admin's "chat" group also holds WhatsApp; renaming it
-    // "MRK & REACH" there used to retitle the portal's Chat group for anyone
-    // whose permissions showed it — "some employees see sections others don't",
-    // when the section never existed here at all, only the borrowed heading.
     const portalIds = wrap ? new Set([...wrap.querySelectorAll('.nav-item')].map(i => i.id)) : new Set();
-    const sameShape = (g.items || []).every(it => {
-      const iel = navItemEl(it.id);
-      return iel && portalIds.has(iel.id);
-    });
+    // The arrangement is org-wide and there is one vocabulary: whatever the
+    // admin calls a section, this portal calls it too. It used to adopt a name
+    // only when the portal held every item the admin listed under it, which in
+    // practice meant almost never — the admin's Management alone lists
+    // Employees and Approvals, which no employee has — so the two sidebars read
+    // differently however the admin arranged them. The trade-off is that a
+    // section holding fewer pages here still carries the admin's name; the
+    // heading itself is hidden when nothing under it is visible.
     const lbl = el.querySelector('.nav-group-label');
-    if (g.label && lbl && sameShape) lbl.textContent = g.label;
+    if (g.label && lbl) lbl.textContent = g.label;
     nav.appendChild(el);
     if (!wrap) return;
     const placedItems = new Set();
@@ -2345,6 +2335,20 @@ function applyNavConfig(cfg) {
   });
   // Same for a whole section added since the save.
   allGroups().forEach(g => { if (!placedGroups.has(g.dataset.group)) nav.appendChild(g); });
+  navHeadingsFollowItems();
+}
+
+// A heading with nothing under it is a dead label. This reads what is actually
+// visible in each group rather than a hardcoded permission list, so it stays
+// right after the arrangement has hidden items or moved them about.
+function navHeadingsFollowItems() {
+  document.querySelectorAll('#sidebar .nav-group').forEach(g => {
+    const head = g.querySelector('.nav-group-head');
+    if (!head) return;
+    const live = [...g.querySelectorAll('.nav-item')].some(i => i.style.display !== 'none');
+    head.style.display = live ? '' : 'none';
+    if (live) g.classList.add('open');
+  });
 }
 async function loadNavConfig() {
   try {
