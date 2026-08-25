@@ -2030,8 +2030,11 @@
   }
 
   async function saveStock(id) {
-    const units = procGridCollect('.stk-unit-row', '.stk-u')
-      .filter(u => u.vin || u.consignee || u.colour || u.supplier);
+    // No filtering here: parseStockUnits on the server decides what counts as a
+    // real row, and it counts a configured column. This copy of the rule knew
+    // only four builtins, so a unit whose only content was a column the admin
+    // added never left the browser.
+    const units = procGridCollect('.stk-unit-row', '.stk-u');
     const payload = {
       make: document.getElementById('stk-make').value.trim(),
       model: document.getElementById('stk-model').value.trim(),

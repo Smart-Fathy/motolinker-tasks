@@ -23,11 +23,15 @@ function grab(name) {
   return src.slice(i, k + 1);
 }
 const PO_KEYS = JSON.parse('["send_to_supplier","in_production","in_logistics","in_customs","delivered"]');
-// The module reads shared vocabulary off the context, so give it one
+// The module reads shared vocabulary off the context, so give it one. The grid
+// helpers come from the real ctx rather than a copy: they decide whether a
+// configured column survives a save, which is the thing under test.
+const realCtx = require('../src/ctx');
+const testCtx = { PO_LINE_STATUS_KEYS: PO_KEYS,
+  gridExtras: realCtx.gridExtras, hasGridExtras: realCtx.hasGridExtras };
 const sandbox = new Function('ctx', 'PO_LINE_STATUS_KEYS',
   [grab('parseStockUnits'), grab('stockBuildRow'), grab('stockUnitGaps')].join('\n')
-  + '\nreturn { parseStockUnits, stockBuildRow, stockUnitGaps };')(
-    { PO_LINE_STATUS_KEYS: PO_KEYS }, PO_KEYS);
+  + '\nreturn { parseStockUnits, stockBuildRow, stockUnitGaps };')(testCtx, PO_KEYS);
 const { stockBuildRow, stockUnitGaps } = sandbox;
 
 const results = [];
@@ -83,5 +87,49 @@ c('quantity is gone from the CSV headers',
   c('it snapshots the old count into legacy_count', /legacy_count\s*=\s*GREATEST/.test(m));
   c('and recomputes quantity from units', /quantity = COALESCE\(jsonb_array_length/.test(m));
 }
+// 8. Columns the admin added survive the round trip
+// Reported from production: someone added a "Vehicle file" column, pasted a link
+// into it, saved, reopened the vehicle and found it empty. parseStockUnits
+// rebuilt every unit from eight hardcoded keys, so the value never reached the
+// database — and the row filter tested four of those eight, so a unit whose only
+// content was the new column was dropped whole.
+{
+  const [u] = sandbox.parseStockUnits([{ vin: 'JT123', vehicle_file: 'https://drive.google.com/file/d/abc' }]);
+  c('a configured column survives the save', !!u && u.vehicle_file === 'https://drive.google.com/file/d/abc',
+    JSON.stringify(u));
+  c('…and the builtins still come through', !!u && u.vin === 'JT123' && u.status === 'send_to_supplier');
+
+  const only = sandbox.parseStockUnits([{ vehicle_file: 'https://drive/x' }]);
+  c('a unit whose only content is that column is kept', only.length === 1, JSON.stringify(only));
+
+  const blank = sandbox.parseStockUnits([{ vin: '', colour: '', consignee: '', supplier: '' }]);
+  c('a genuinely empty row is still dropped', blank.length === 0, JSON.stringify(blank));
+
+  // The value is whatever someone typed, so it is sanitised rather than trusted.
+  const [s2] = sandbox.parseStockUnits([{ vin: 'A', nested: { a: 1 }, 'bad key': 'x', big: 'z'.repeat(5000) }]);
+  c('objects and malformed keys are refused', !!s2 && !('nested' in s2) && !('bad key' in s2), JSON.stringify(s2));
+  // Read defensively: on the code this guards, `big` is not there at all, and a
+  // test that throws reports nothing about the assertions after it.
+  c('…and a long value is capped', String(s2 && s2.big || '').length === 2000, s2 && s2.big && s2.big.length);
+
+  // colour/color are one field under two spellings; the alias must not double up.
+  const [s3] = sandbox.parseStockUnits([{ color: 'White' }]);
+  c('the colour alias is consumed, not duplicated', !!s3 && s3.colour === 'White' && !('color' in s3),
+    JSON.stringify(s3));
+
+  // quantity is derived from the units that survive
+  const built = sandbox.stockBuildRow({ make: 'Toyota', model: 'Corolla',
+    units: [{ vehicle_file: 'https://drive/x' }, { vin: 'B' }] });
+  c('both count towards quantity', !!built.row && built.row.quantity === 2, JSON.stringify(built.row && built.row.quantity));
+}
+
+// 9. The client must not re-filter the rows before they are sent
+{
+  const proc = fs.readFileSync('public/assets/procurement.js', 'utf8');
+  c('saveStock sends every unit row and lets the server decide',
+    /const units = procGridCollect\('\.stk-unit-row', '\.stk-u'\);/.test(proc)
+    && !/procGridCollect\('\.stk-unit-row'[\s\S]{0,120}\.filter\(u => u\.vin/.test(proc));
+}
+
 console.log('\n' + results.filter(Boolean).length + '/' + results.length + ' passed');
 process.exit(results.every(Boolean) ? 0 : 1);

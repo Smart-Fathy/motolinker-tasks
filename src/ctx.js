@@ -53,4 +53,42 @@ ctx.writeOptional = async function writeOptional(run, row, optionalKeys) {
   return res;
 };
 
+// ── Configurable columns on a grid row ────────────────────────────────────────
+// Line items and stock units are rebuilt server-side from a fixed key list,
+// which is the right way to keep a shape honest — and it silently discarded
+// every column an admin ADDED through the Columns editor with it. Someone typed
+// a link into a column they had made, saved, reopened the vehicle and found the
+// field empty: the value never left the request.
+//
+// The extras ride alongside the builtins, flat, which is where the client reads
+// them from. Sanitised rather than trusted: primitives only, one key can't be a
+// builtin's, and both the key count and each value are capped so a hand-written
+// POST cannot stuff the row.
+const GRID_EXTRA_MAX_KEYS = 40;
+const GRID_EXTRA_MAX_LEN = 2000;
+ctx.gridExtras = function gridExtras(raw, builtins) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  const own = new Set(Object.keys(builtins || {}));
+  let n = 0;
+  for (const k of Object.keys(raw)) {
+    if (own.has(k) || !/^[A-Za-z0-9_-]{1,60}$/.test(k)) continue;
+    const v = raw[k];
+    if (v == null || typeof v === 'object' || typeof v === 'function') continue;
+    const val = typeof v === 'boolean' ? v : String(v).trim().slice(0, GRID_EXTRA_MAX_LEN);
+    if (val === '' || val === false) continue;
+    out[k] = val;
+    if (++n >= GRID_EXTRA_MAX_KEYS) break;
+  }
+  return out;
+};
+// Each builder drops rows the user left blank, testing the handful of builtins
+// that mean "someone typed here". A row whose only content is a configured
+// column has to count too, or fixing the save above changes nothing.
+ctx.hasGridExtras = function hasGridExtras(row, builtins) {
+  const own = new Set(Object.keys(builtins || {}));
+  return Object.keys(row || {}).some(k => !own.has(k)
+    && row[k] !== '' && row[k] !== false && row[k] != null);
+};
+
 module.exports = ctx;

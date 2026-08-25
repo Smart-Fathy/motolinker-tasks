@@ -31,7 +31,7 @@ function generateRfqNo() {
 function rfqBuildItem(raw) {
   const r = raw || {};
   const money = v => Number(String(v ?? '').replace(/[^\d.]/g, '')) || 0;
-  return {
+  const built = {
     brand:       String(r.brand || '').trim(),
     model:       String(r.model || '').trim(),
     trim:        String(r.trim || '').trim(),
@@ -42,12 +42,17 @@ function rfqBuildItem(raw) {
     fob_price:   money(r.fob_price),
     cif_price:   money(r.cif_price),
   };
+  // Columns the admin added ride alongside — see ctx.gridExtras.
+  return { ...built, ...ctx.gridExtras(r, { ...built, color: 1 }) };
 }
+const RFQ_ITEM_BUILTINS = { brand: 1, model: 1, trim: 1, colour: 1, color: 1, year: 1,
+  accessories: 1, lead_time: 1, fob_price: 1, cif_price: 1 };
 
 function rfqBuildRow(body) {
   const b = body || {};
   const items = (Array.isArray(b.items) ? b.items : []).map(rfqBuildItem)
-    .filter(it => it.brand || it.model || it.trim || it.fob_price || it.cif_price);
+    .filter(it => it.brand || it.model || it.trim || it.fob_price || it.cif_price
+      || ctx.hasGridExtras(it, RFQ_ITEM_BUILTINS));
   return {
     rfq_no:  String(b.rfq_no || '').trim() || generateRfqNo(),
     title:   String(b.title || '').trim(),

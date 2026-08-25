@@ -16,19 +16,27 @@ const STOCK_CSV_HEADERS = ['make', 'model', 'trim', 'price', 'units', 'notes'];
 // Individual physical cars held against a model row. Accepts the UI's array form
 // or a CSV cell like "VIN123:White:in_logistics | VIN124:Black:delivered".
 function parseStockUnits(val) {
-  const one = u => ({
-    consignee:  String(u.consignee  ?? '').trim(),
-    colour:     String(u.colour     ?? u.color ?? '').trim(),
-    vin:        String(u.vin        ?? '').trim().toUpperCase(),
-    status:     ctx.PO_LINE_STATUS_KEYS.includes(u.status) ? u.status : 'send_to_supplier',
-    price_list: Number(String(u.price_list ?? '').replace(/[^\d.]/g, '')) || 0,
-    discounted: Number(String(u.discounted ?? '').replace(/[^\d.]/g, '')) || 0,
-    logistics:  String(u.logistics  ?? '').trim(),
-    supplier:   String(u.supplier   ?? '').trim(),
-  });
-  if (Array.isArray(val)) {
-    return val.map(one).filter(u => u.vin || u.consignee || u.colour || u.supplier);
-  }
+  const one = u => {
+    const built = {
+      consignee:  String(u.consignee  ?? '').trim(),
+      colour:     String(u.colour     ?? u.color ?? '').trim(),
+      vin:        String(u.vin        ?? '').trim().toUpperCase(),
+      status:     ctx.PO_LINE_STATUS_KEYS.includes(u.status) ? u.status : 'send_to_supplier',
+      price_list: Number(String(u.price_list ?? '').replace(/[^\d.]/g, '')) || 0,
+      discounted: Number(String(u.discounted ?? '').replace(/[^\d.]/g, '')) || 0,
+      logistics:  String(u.logistics  ?? '').trim(),
+      supplier:   String(u.supplier   ?? '').trim(),
+    };
+    // Whatever else the admin added as a column rides along — see ctx.gridExtras.
+    // `color` is the same field as `colour` under an older spelling, so it is
+    // consumed above rather than duplicated here.
+    return { ...built, ...ctx.gridExtras(u, { ...built, color: 1 }) };
+  };
+  const UNIT_BUILTINS = { consignee: 1, colour: 1, color: 1, vin: 1, status: 1,
+    price_list: 1, discounted: 1, logistics: 1, supplier: 1 };
+  const real = u => u.vin || u.consignee || u.colour || u.supplier
+    || ctx.hasGridExtras(u, UNIT_BUILTINS);
+  if (Array.isArray(val)) return val.map(one).filter(real);
   const s = String(val || '').trim();
   if (!s) return [];
   return s.split(/\s*\|\s*/).map(part => {

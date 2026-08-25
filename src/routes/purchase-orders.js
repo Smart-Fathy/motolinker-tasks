@@ -37,7 +37,7 @@ function poBuildItem(raw) {
     const n = Number(String(v ?? '').replace(/[^\d.]/g, ''));
     return isFinite(n) && n > 0 ? n : def;
   };
-  return {
+  const built = {
     client:       String(r.client || '').trim(),
     consignee:    String(r.consignee || '').trim(),
     units:        Math.max(1, parseInt(String(r.units ?? '1').replace(/[^\d]/g, ''), 10) || 1),
@@ -53,12 +53,17 @@ function poBuildItem(raw) {
     vin:          String(r.vin || '').trim(),
     file_link:    String(r.file_link || '').trim(),
   };
+  // Columns the admin added ride alongside — see ctx.gridExtras.
+  return { ...built, ...ctx.gridExtras(r, built) };
 }
+const PO_ITEM_BUILTINS = { client: 1, consignee: 1, units: 1, brand: 1, model: 1, trim: 1,
+  color: 1, year: 1, accessories: 1, payment_term: 1, pi_price: 1, status: 1, vin: 1, file_link: 1 };
 
 function poBuildRow(body) {
   const b = body || {};
   const items = (Array.isArray(b.items) ? b.items : []).map(poBuildItem)
-    .filter(it => it.client || it.brand || it.model || it.vin);
+    .filter(it => it.client || it.brand || it.model || it.vin
+      || ctx.hasGridExtras(it, PO_ITEM_BUILTINS));
   return {
     po_number: String(b.po_number || '').trim() || generatePoNumber(),
     title:     String(b.title || '').trim(),
