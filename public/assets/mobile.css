@@ -108,6 +108,7 @@
   input, select, textarea,
   input.form-input, textarea.form-input, select.form-input, select.filter-input,
   .form-control, .form-input, .filter-input, .auth-input, .chat-input,
+  .rq-area, .iss-reply textarea,
   #hb-input, #hb-lang { font-size: 16px; }
 
   /* The help panel builds its own <style> at runtime, which lands after this file and

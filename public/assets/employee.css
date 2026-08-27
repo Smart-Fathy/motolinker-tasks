@@ -1792,3 +1792,169 @@
     color:var(--muted); margin-bottom:5px;
   }
   .empc-desc-body{ font-size:13px; white-space:pre-wrap; word-break:break-word; }
+
+  /* ═══ Requests ══════════════════════════════════════════════════════════
+   * The design asks a question and offers chips, rather than presenting a
+   * form of dropdowns. Category, Send-to and Priority are all one tap now;
+   * the values still land in hidden inputs so the submit path is unchanged. */
+  /* The design centres Requests in an 880px column — a form nobody has to
+   * track a mouse across. Issues is the opposite: it is a queue and a reading
+   * pane, and it takes the screen. */
+  #page-requests.page{ max-width:880px; margin:0 auto; }
+  .rq-head{ position:relative; margin-bottom:18px; }
+  .page-title-serif{
+    font-family:'Cormorant Garamond',serif; font-size:30px; font-weight:500;
+    letter-spacing:.3px; line-height:1.05;
+  }
+  .page-sub{ font-size:12.5px; color:var(--muted); margin-top:5px; }
+  .rq-scope{
+    position:absolute; top:2px; right:0; font-size:11px; font-weight:600;
+    padding:3px 10px; border-radius:20px; background:var(--primary-glow); color:var(--primary);
+  }
+
+  .rq-panel{
+    display:grid; gap:18px; padding:19px 20px; border-radius:13px;
+    background:var(--surface); border:1px solid var(--border);
+  }
+  .rq-ask{
+    width:100%; padding:2px 0 10px; border:none; border-bottom:1px solid rgba(255,255,255,.11);
+    background:none; color:var(--text); outline:none;
+    font-family:'Cormorant Garamond',serif; font-size:24px; font-weight:600; letter-spacing:.2px;
+  }
+  .rq-ask::placeholder{ color:var(--muted); }
+  .rq-ask:focus{ border-bottom-color:rgba(201,163,94,.5); }
+  .rq-label{
+    display:block; font-size:10px; font-weight:800; letter-spacing:.7px;
+    text-transform:uppercase; color:var(--muted); margin-bottom:8px;
+  }
+  .rq-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; }
+  .rq-chips{ display:flex; gap:7px; flex-wrap:wrap; }
+  .rq-chip{
+    display:inline-flex; align-items:center; gap:7px; padding:6px 11px; border-radius:99px;
+    cursor:pointer; font-family:inherit; font-size:11.5px; font-weight:600;
+    border:1px solid rgba(255,255,255,.1); background:var(--bg); color:#b9b3a4;
+  }
+  .rq-chip.sq{ border-radius:8px; padding:7px 12px; font-size:12px; }
+  .rq-chip i, .rq-chip svg{ width:13px; height:13px; flex-shrink:0; color:var(--muted); }
+  .rq-chip:hover{ border-color:rgba(255,255,255,.2); }
+  .rq-chip.on{ border-color:rgba(201,163,94,.5); background:var(--primary-glow); color:#e8cd93; }
+  .rq-chip.on i, .rq-chip.on svg{ color:#e8cd93; }
+  .rq-area{
+    width:100%; padding:11px 13px; border:1px solid var(--border); border-radius:10px;
+    font-size:13px; line-height:1.6; background:var(--bg); color:var(--text);
+    outline:none; font-family:inherit; resize:vertical;
+  }
+  .rq-area:focus{ border-color:rgba(201,163,94,.4); }
+  .rq-submit{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .rq-hint{ flex:1; min-width:140px; font-size:11.5px; color:var(--muted); }
+  .rq-sub-head{
+    font-family:'Cormorant Garamond',serif; font-size:22px; font-weight:600;
+    letter-spacing:.2px; margin:24px 0 12px;
+  }
+
+  /* My requests: cards with a status rail, not table rows. */
+  .rq-list{ display:grid; gap:9px; }
+  .rq-item{
+    display:flex; align-items:center; gap:11px; padding:12px 14px; border-radius:11px;
+    background:var(--surface); border:1px solid var(--glass-border); flex-wrap:wrap;
+    cursor:pointer; text-align:left; width:100%;
+  }
+  .rq-item:hover{ border-color:rgba(201,163,94,.3); }
+  .rq-stripe{ width:3px; align-self:stretch; min-height:34px; border-radius:99px; flex-shrink:0; }
+  .rq-item-main{ flex:1; min-width:150px; }
+  .rq-item-title{ font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rq-item-meta{ font-size:11px; color:var(--muted); margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rq-pill{
+    display:inline-flex; align-items:center; gap:6px; padding:3px 9px; border-radius:99px;
+    font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0;
+    background:color-mix(in srgb, var(--c) 12%, transparent); color:var(--c);
+  }
+  .rq-pill i{ width:7px; height:7px; border-radius:50%; background:var(--c); flex-shrink:0; }
+
+  /* ═══ Issues centre ═════════════════════════════════════════════════════
+   * Was a 760px column with a dropdown filter. It is the CTO's whole screen
+   * now: the queue on the left, the ticket and its conversation on the right. */
+  .iss-head{ margin-bottom:14px; }
+  .iss-chips{ display:flex; gap:7px; flex-wrap:wrap; margin-bottom:14px; }
+  .iss-n{ font-size:11px; font-weight:800; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .rq-chip.on .iss-n{ color:#e8cd93; }
+  .iss-dot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .iss-dot.open{ background:var(--pri-high); }
+  .iss-dot.done{ background:var(--pri-low); }
+
+  .iss-split{ display:grid; grid-template-columns:minmax(280px,380px) 1fr; gap:14px; align-items:start; }
+  .iss-list{ display:grid; gap:8px; }
+  .iss-card{
+    display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+    padding:11px 13px; border-radius:11px; cursor:pointer; font-family:inherit;
+    background:var(--surface); border:1px solid var(--glass-border); color:var(--text);
+  }
+  .iss-card:hover{ border-color:rgba(201,163,94,.3); }
+  .iss-card.sel{ border-color:rgba(201,163,94,.55); background:var(--primary-glow); }
+  .iss-card.done{ opacity:.62; }
+  .iss-stripe{ width:3px; align-self:stretch; min-height:30px; border-radius:99px; flex-shrink:0; }
+  .iss-card-main{ flex:1; min-width:0; display:block; }
+  .iss-card-title{ display:block; font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .iss-card-meta{ display:block; font-size:11px; color:var(--muted); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .iss-detail{
+    padding:18px 20px; border-radius:13px; background:var(--surface);
+    border:1px solid var(--border); min-height:280px;
+  }
+  .iss-empty{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+    min-height:240px; color:var(--muted); font-size:13px;
+  }
+  .iss-empty i, .iss-empty svg{ width:26px; height:26px; opacity:.5; }
+  .iss-d-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .iss-d-title{ font-family:'Cormorant Garamond',serif; font-size:22px; font-weight:600; letter-spacing:.2px; }
+  .iss-d-by{ display:flex; align-items:center; gap:9px; margin-top:12px; font-size:12px; color:var(--muted); }
+  .iss-av{
+    width:26px; height:26px; border-radius:50%; flex-shrink:0; display:flex;
+    align-items:center; justify-content:center; font-size:10px; font-weight:800;
+    background:var(--primary-glow); color:var(--primary);
+  }
+  .iss-d-by strong{ color:var(--text); font-weight:600; display:block; font-size:12.5px; }
+  .iss-d-when{ display:block; font-size:11px; margin-top:1px; }
+  .iss-d-body{ font-size:13px; line-height:1.65; margin-top:12px; white-space:pre-wrap; word-break:break-word; }
+  .iss-d-body.muted{ color:var(--muted); font-style:italic; }
+  .iss-d-solved{
+    display:inline-flex; align-items:center; gap:6px; margin-top:12px; font-size:11.5px;
+    font-weight:600; color:var(--pri-low);
+  }
+  .iss-d-solved i, .iss-d-solved svg{ width:13px; height:13px; }
+  .iss-d-sep{ height:1px; background:var(--border); margin:16px 0 14px; }
+  .iss-d-label{
+    font-size:10px; font-weight:800; letter-spacing:.7px; text-transform:uppercase;
+    color:var(--muted); margin-bottom:10px;
+  }
+  .iss-thread{ display:grid; gap:9px; max-height:340px; overflow-y:auto; }
+  .iss-msg{ background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:10px; padding:9px 12px; }
+  .iss-msg-head{ display:flex; justify-content:space-between; gap:8px; font-size:11px; color:var(--muted); margin-bottom:4px; }
+  .iss-msg-head strong{ color:var(--text); font-weight:600; }
+  .iss-msg-body{ font-size:13px; line-height:1.6; white-space:pre-wrap; word-break:break-word; }
+  .iss-none{ font-size:12px; color:var(--muted); text-align:center; padding:12px; }
+  .iss-reply{ margin-top:12px; }
+  .iss-reply textarea{
+    width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px;
+    background:var(--bg); color:var(--text); font-family:inherit; font-size:13px;
+    line-height:1.6; outline:none; resize:vertical;
+  }
+  .iss-reply textarea:focus{ border-color:rgba(201,163,94,.4); }
+  .iss-reply-row{ display:flex; gap:8px; margin-top:9px; flex-wrap:wrap; }
+
+  @media (min-width:901px){
+    .iss-split{ align-items:stretch; min-height:calc(100vh - var(--topbar-h) - 210px); }
+    .iss-list{ align-content:start; overflow-y:auto; }
+  }
+  @media (max-width:900px){
+    .iss-split{ grid-template-columns:1fr; }
+    .iss-thread{ max-height:none; }
+  }
+  @media (max-width:640px){
+    .page-title-serif{ font-size:26px; }
+    .rq-scope{ position:static; display:inline-block; margin-top:8px; }
+    .rq-chip{ min-height:44px; }
+    .rq-item{ align-items:flex-start; }
+    .iss-card{ min-height:52px; }
+  }
