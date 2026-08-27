@@ -34,6 +34,7 @@ run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js
 run foldertest  node tests/foldertest.js
 run proctest    node tests/proctest.js
+run reported    node tests/reported.js
 run portalgaps  node tests/portalgaps.js
 run bindings    node tests/bindings.js
 run boottest    node tests/boottest.js
