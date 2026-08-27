@@ -400,6 +400,7 @@ async function openEmpTaskComments(id) {
   await loadCoworkers();
   const t = (myTasks || []).find(x => x.id === id);
   document.getElementById('empc-title').textContent = 'Comments — ' + (t ? t.title : '#' + id);
+  empcSetDescription('');   // a task shows its own description on the card
   document.getElementById('empc-list').innerHTML = '<div class="loading"><span class="spinner"></span></div>';
   document.getElementById('empc-input').value = '';
   empcRemoveAttach();
@@ -411,12 +412,28 @@ async function openEmpReqComments(id) {
   await loadCoworkers();
   const r = (_myRequests || []).find(x => x.id === id);
   document.getElementById('empc-title').textContent = 'Comments — ' + (r ? r.title : '#' + id);
+  // The description had nowhere it could be read. The table shows one clipped
+  // 200px line of it and this — the only detail view a request has — showed the
+  // title and jumped straight to the comments, so whoever received a request
+  // never saw what it actually said.
+  empcSetDescription(r && r.description);
   document.getElementById('empc-list').innerHTML = '<div class="loading"><span class="spinner"></span></div>';
   document.getElementById('empc-input').value = '';
   empcRemoveAttach();
   document.getElementById('emp-comments-modal').style.display = 'flex';
   empcLoad();
 }
+// Shown above the comments for a request; hidden for a task, which has its own
+// description on the card.
+function empcSetDescription(text) {
+  const host = document.getElementById('empc-desc');
+  if (!host) return;
+  const body = String(text == null ? '' : text).trim();
+  host.style.display = body ? '' : 'none';
+  host.innerHTML = body ? `<div class="empc-desc-label">Request</div>
+    <div class="empc-desc-body">${esc(body)}</div>` : '';
+}
+
 async function empcLoad() {
   const rows = await ef(`/api/employee/${_empcBase()}/${_empcTaskId}/comments`).then(r => r.json()).catch(() => []);
   const list = document.getElementById('empc-list');
@@ -1116,7 +1133,7 @@ async function loadMyRequests() {
         return `<tr>
         <td style="max-width:220px">
           <div style="font-weight:500;font-size:13px">${esc(r.title)}</div>
-          ${r.description ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${esc(r.description)}</div>` : ''}
+          ${r.description ? `<div title="${esc(r.description)}" style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${esc(r.description)}</div>` : ''}
         </td>
         <td><span style="font-size:12px;color:var(--muted)">${esc(r.category||'—')}</span></td>
         <td><span class="badge ${reqPriorityClass[r.priority]||'badge-medium'}">${r.priority||'medium'}</span></td>
@@ -4231,7 +4248,41 @@ function dismissIOSHint() {
       if (openFor && !menuEl.contains(e.target) && !(openFor.trigger && openFor.trigger.contains(e.target))) closeBrandMenu();
     }, true);
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeBrandMenu(); });
-    window.addEventListener('resize', closeBrandMenu);
+    // A resize used to close the menu, which is right when a WINDOW is resized
+    // and wrong on a phone, where the on-screen keyboard IS a resize: tapping
+    // Owner opened the list, the search box took focus, the keyboard came up,
+    // the resize closed the menu and the keyboard went with it. Only a change of
+    // WIDTH — a rotation or a real resize — closes it now; a change of height
+    // just moves the menu back into what is left of the viewport.
+    let lastW = window.innerWidth;
+    const onViewportChange = () => {
+      if (!openFor) { lastW = window.innerWidth; return; }
+      if (window.innerWidth !== lastW) { lastW = window.innerWidth; return closeBrandMenu(); }
+      placeBrandMenu(openFor.anchor);
+    };
+    window.addEventListener('resize', onViewportChange);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', onViewportChange);
+      window.visualViewport.addEventListener('scroll', onViewportChange);
+    }
+  }
+  // Anchored under the trigger, clamped into the part of the screen you can
+  // actually see — visualViewport, when the browser reports one, is the area
+  // left over above the keyboard.
+  function placeBrandMenu(anchorEl) {
+    if (!menuEl || !anchorEl) return;
+    const vv = window.visualViewport;
+    const vTop = vv ? vv.offsetTop : 0;
+    const vH = vv ? vv.height : window.innerHeight;
+    const vW = vv ? vv.width : window.innerWidth;
+    const r = anchorEl.getBoundingClientRect();
+    menuEl.style.minWidth = Math.max(r.width, 150) + 'px';
+    const mh = Math.min(menuEl.scrollHeight, 280);
+    const below = (vTop + vH) - r.bottom;
+    const above = r.top - vTop;
+    menuEl.style.left = Math.max(8, Math.min(r.left, vW - menuEl.offsetWidth - 8)) + 'px';
+    const top = (below > mh + 12 || below > above) ? r.bottom + 6 : r.top - mh - 6;
+    menuEl.style.top = Math.max(vTop + 8, Math.min(top, vTop + vH - mh - 8)) + 'px';
   }
   function closeBrandMenu() {
     if (menuEl) menuEl.classList.remove('open');
@@ -4273,17 +4324,17 @@ function dismissIOSHint() {
         else if (e.key === 'Escape') { e.preventDefault(); closeBrandMenu(); }
       });
     }
-    const r = anchorEl.getBoundingClientRect();
-    menuEl.style.minWidth = Math.max(r.width, 150) + 'px';
     menuEl.classList.add('open');
-    const mh = Math.min(menuEl.scrollHeight, 280);
-    const spaceBelow = window.innerHeight - r.bottom;
-    menuEl.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menuEl.offsetWidth - 8)) + 'px';
-    menuEl.style.top = (spaceBelow > mh + 12 || spaceBelow > r.top ? r.bottom + 6 : Math.max(8, r.top - mh - 6)) + 'px';
+    placeBrandMenu(anchorEl);
     openFor = { anchor: anchorEl, trigger: trigger || null };
     if (trigger) trigger.classList.add('open');
     menuEl.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
-    if (showSearch) setTimeout(() => menuEl.querySelector('.bselect-search')?.focus(), 20);
+    // Only where there is a pointer. On a touch device, stealing focus raises
+    // the keyboard over the very list the search is meant to narrow — the box is
+    // there to tap when someone wants it.
+    if (showSearch && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      setTimeout(() => menuEl.querySelector('.bselect-search')?.focus(), 20);
+    }
   };
 
   function labelFor(sel) {

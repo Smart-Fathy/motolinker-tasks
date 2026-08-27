@@ -1781,3 +1781,14 @@
   }
   .ce-link:hover{ text-decoration:underline; }
   .ce-link i, .ce-link svg{ width:12px; height:12px; flex-shrink:0; }
+
+  /* The request's own text, above the comments about it. */
+  .empc-desc{
+    background:rgba(255,255,255,.03); border:1px solid var(--border);
+    border-radius:10px; padding:10px 12px; margin-bottom:12px;
+  }
+  .empc-desc-label{
+    font-size:10px; font-weight:800; letter-spacing:.7px; text-transform:uppercase;
+    color:var(--muted); margin-bottom:5px;
+  }
+  .empc-desc-body{ font-size:13px; white-space:pre-wrap; word-break:break-word; }

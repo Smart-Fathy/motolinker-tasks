@@ -743,35 +743,14 @@
     renderPoPdf(rec);
   }
 
+  // The purchase order opens in the SAME viewer as every other document. It used
+  // to reach for a po-modal that only dashboard.html has, so on the team portal
+  // the PDF button threw before it rendered anything:
+  //   TypeError: Cannot read properties of null (reading 'removeAttribute')
+  // Both portals ship #doc-modal, and POST {base}/pdf is mounted for both.
   async function renderPoPdf(payload) {
-    const modal = document.getElementById('po-modal');
-    const frame = document.getElementById('po-preview-frame');
-    frame.removeAttribute('src');
-    modal.style.display = 'flex';
-    try {
-      const r = await apiFetch('/api/dashboard/purchase-orders/pdf', { method: 'POST', body: JSON.stringify(payload) });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Failed to render');
-      const bytes = Uint8Array.from(atob(d.pdf), c => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: 'application/pdf' });
-      if (frame._blobUrl) URL.revokeObjectURL(frame._blobUrl);
-      frame._blobUrl = URL.createObjectURL(blob);
-      frame.src = frame._blobUrl;
-    } catch (e) {
-      alert('Could not render the purchase order: ' + e.message);
-      modal.style.display = 'none';
-    }
-    requestAnimationFrame(() => lucide.createIcons());
-  }
-
-  function downloadPoPdf() {
-    const frame = document.getElementById('po-preview-frame');
-    const url = frame && frame._blobUrl;
-    if (!url) return;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `PurchaseOrder_${(_poEditing && _poEditing.po_number) || 'motolinkers'}.pdf`;
-    a.click();
+    const label = payload && payload.po_number ? `Purchase order ${payload.po_number}` : 'Purchase order';
+    return viewDocPdfPayload('/api/dashboard/purchase-orders/pdf', payload, label);
   }
 
   async function deletePo(id) {
@@ -2243,7 +2222,7 @@
     closeDocPdf, ctCollect, ctField, ctGet,
     ctPopulateLeadPicker, ctSet, ctxPopulateLeadPicker, deleteContract,
     deletePo, deleteRfq, deleteSubmission, deleteSupplier,
-    downloadContractPdf, downloadDocPdf, downloadPoPdf, escJs,
+    downloadContractPdf, downloadDocPdf, escJs,
     ldGenerateContract, ldGeneratePo, ldGenerateRfq, loadContracts,
     loadPurchaseOrders, loadRfqs, loadSubmissions, loadSuppliers,
     openCataloguePicker, openContractForm, openPoForm, openRfqForm,
