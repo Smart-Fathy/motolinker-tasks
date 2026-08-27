@@ -176,42 +176,146 @@ function applyPermissions(permissions) {
 let _issues = [];
 function isCtoUser() { return /chief technical officer/i.test(empInfo?.job_title || ''); }
 
+let _issFilter = '', _issOpenId = null;
+
 async function loadIssues() {
   const list = document.getElementById('issues-list');
+  if (!list) return;
   list.innerHTML = '<div class="loading"><span class="spinner"></span> Loading…</div>';
   try {
     const r = await ef('/api/employee/issues');
     const d = await r.json();
     if (!r.ok) { list.innerHTML = `<div class="empty">${esc(d.error || 'Not permitted')}</div>`; return; }
-    _issues = d;
+    _issues = Array.isArray(d) ? d : [];
     renderIssues();
   } catch (e) { list.innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`; }
+}
+
+function issSetFilter(v) {
+  _issFilter = v || '';
+  document.querySelectorAll('#issues-filter .rq-chip').forEach(b => b.classList.toggle('on', (b.dataset.value || '') === _issFilter));
+  renderIssues();
+}
+
+function issIsOpen(i) { return String(i.status || 'open') !== 'resolved'; }
+
+function issWhen(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function issInitials(name) {
+  return String(name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
 }
 
 function renderIssues() {
   const list = document.getElementById('issues-list');
   if (!list) return;
-  const filter = document.getElementById('issues-filter')?.value || '';
-  const rows = filter ? _issues.filter(i => i.status === filter) : _issues;
-  if (!rows.length) { list.innerHTML = '<div class="empty">No issues here — all clear! 🎉</div>'; return; }
+  const open = _issues.filter(issIsOpen).length;
+  const setN = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n; };
+  setN('iss-n-all', _issues.length);
+  setN('iss-n-open', open);
+  setN('iss-n-resolved', _issues.length - open);
+  const sub = document.getElementById('iss-sub');
+  if (sub) sub.textContent = open ? `${open} still open` : 'Nothing open — all clear';
+
+  const rows = _issFilter ? _issues.filter(i => (issIsOpen(i) ? 'open' : 'resolved') === _issFilter) : _issues;
+  if (!rows.length) {
+    list.innerHTML = '<div class="empty">No issues here — all clear! 🎉</div>';
+    issShowDetail(null);
+    return;
+  }
   list.innerHTML = rows.map(i => {
-    const open = i.status !== 'resolved';
-    return `<div class="card" style="margin-bottom:12px;padding:16px 18px;${open ? '' : 'opacity:.65'}">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
-        <div style="flex:1;min-width:200px">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:14px;font-weight:700">${esc(i.title || 'System issue')}</span>
-            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:${open ? 'rgba(201,125,110,.15)' : 'rgba(138,154,134,.15)'};color:${open ? 'var(--danger)' : 'var(--success)'}">${open ? 'OPEN' : 'RESOLVED'}</span>
-          </div>
-          <div style="font-size:11px;color:var(--muted);margin-top:3px">Reported by <strong>${esc(i.reporter_name || '—')}</strong> · ${new Date(i.created_at).toLocaleString()}</div>
-          ${i.description ? `<div style="font-size:13px;margin-top:8px;white-space:pre-wrap;word-break:break-word">${esc(i.description)}</div>` : ''}
-          ${i.file_url ? `<a href="${esc(i.file_url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--primary);margin-top:8px;text-decoration:none"><i data-lucide="paperclip" style="width:12px;height:12px"></i> View attachment</a>` : ''}
-        </div>
-        <button class="btn btn-sm ${open ? 'btn-primary' : 'btn-outline'}" onclick="toggleIssueStatus(${i.id}, '${open ? 'resolved' : 'open'}')">${open ? 'Mark Resolved' : 'Reopen'}</button>
+    const o = issIsOpen(i);
+    return `<button type="button" class="iss-card${o ? '' : ' done'}${String(i.id) === String(_issOpenId) ? ' sel' : ''}" onclick="issOpen(${i.id})">
+      <span class="iss-stripe" style="background:${o ? 'var(--pri-high)' : 'var(--pri-low)'}"></span>
+      <span class="iss-card-main">
+        <span class="iss-card-title">${esc(i.title || 'System issue')}</span>
+        <span class="iss-card-meta">${esc(i.reporter_name || '—')} · ${esc(issWhen(i.created_at))}</span>
+      </span>
+      <span class="rq-pill" style="--c:${o ? 'var(--pri-high)' : 'var(--pri-low)'}"><i></i>${o ? 'Open' : 'Resolved'}</span>
+    </button>`;
+  }).join('');
+  // Keep the reading pane on a ticket the filter still shows.
+  if (_issOpenId != null && !rows.some(i => String(i.id) === String(_issOpenId))) _issOpenId = null;
+  issShowDetail(_issues.find(i => String(i.id) === String(_issOpenId)) || null);
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
+function issOpen(id) {
+  _issOpenId = id;
+  document.querySelectorAll('#issues-list .iss-card').forEach(c => c.classList.remove('sel'));
+  renderIssues();
+  issLoadComments(id);
+  const pane = document.getElementById('iss-detail');
+  if (pane && window.matchMedia('(max-width:900px)').matches) pane.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function issShowDetail(i) {
+  const pane = document.getElementById('iss-detail');
+  if (!pane) return;
+  if (!i) {
+    pane.innerHTML = '<div class="iss-empty"><i data-lucide="inbox"></i><span>Pick a ticket to read it and reply.</span></div>';
+    requestAnimationFrame(() => lucide.createIcons());
+    return;
+  }
+  const o = issIsOpen(i);
+  pane.innerHTML = `
+    <div class="iss-d-head">
+      <div class="iss-d-title">${esc(i.title || 'System issue')}</div>
+      <span class="rq-pill" style="--c:${o ? 'var(--pri-high)' : 'var(--pri-low)'}"><i></i>${o ? 'Open' : 'Resolved'}</span>
+    </div>
+    <div class="iss-d-by">
+      <span class="iss-av">${esc(issInitials(i.reporter_name))}</span>
+      <span><strong>${esc(i.reporter_name || '—')}</strong><span class="iss-d-when">${esc(issWhen(i.created_at))}</span></span>
+    </div>
+    ${i.description ? `<div class="iss-d-body">${esc(i.description)}</div>` : '<div class="iss-d-body muted">No description was given.</div>'}
+    ${i.file_url ? `<a class="ce-link" href="${esc(i.file_url)}" target="_blank" rel="noopener noreferrer"><i data-lucide="paperclip"></i>View attachment</a>` : ''}
+    ${!o && i.resolved_by ? `<div class="iss-d-solved"><i data-lucide="check-circle"></i>Solved by ${esc(i.resolved_by)}${i.resolved_at ? ` · ${esc(issWhen(i.resolved_at))}` : ''}</div>` : ''}
+    <div class="iss-d-sep"></div>
+    <div class="iss-d-label">Conversation</div>
+    <div id="iss-comments" class="iss-thread"><div class="loading"><span class="spinner"></span></div></div>
+    <div class="iss-reply">
+      <textarea id="iss-reply-input" rows="2" placeholder="Reply to ${esc(i.reporter_name || 'the reporter')}…"></textarea>
+      <div class="iss-reply-row">
+        <button class="btn btn-primary btn-sm" onclick="issPostComment(${i.id})">Send</button>
+        <button class="btn ${o ? 'btn-outline' : 'btn-outline'} btn-sm" data-perm="issues.resolve" onclick="toggleIssueStatus(${i.id}, '${o ? 'resolved' : 'open'}')">${o ? 'Mark solved' : 'Reopen'}</button>
       </div>
     </div>`;
-  }).join('');
+  applyActionPerms?.();
   requestAnimationFrame(() => lucide.createIcons());
+}
+
+async function issLoadComments(id) {
+  const host = document.getElementById('iss-comments');
+  if (!host) return;
+  try {
+    const rows = await ef(`/api/employee/issues/${id}/comments`).then(r => r.json()).catch(() => []);
+    if (String(_issOpenId) !== String(id)) return;   // the reader moved on
+    const list = Array.isArray(rows) ? rows : [];
+    host.innerHTML = list.length ? list.map(c => `
+      <div class="iss-msg">
+        <div class="iss-msg-head"><strong>${esc(c.author_name || '—')}</strong><span>${esc(issWhen(c.created_at))}</span></div>
+        ${c.body ? `<div class="iss-msg-body">${esc(c.body)}</div>` : ''}
+        ${c.file_url ? `<a class="ce-link" href="${esc(c.file_url)}" target="_blank" rel="noopener noreferrer"><i data-lucide="paperclip"></i>${esc(c.file_name || 'attachment')}</a>` : ''}
+      </div>`).join('') : '<div class="iss-none">No replies yet.</div>';
+    requestAnimationFrame(() => lucide.createIcons());
+  } catch (e) { host.innerHTML = `<div class="iss-none">${esc(e.message)}</div>`; }
+}
+
+async function issPostComment(id) {
+  const ta = document.getElementById('iss-reply-input');
+  const body = (ta?.value || '').trim();
+  if (!body) { ta?.focus(); return; }
+  ta.disabled = true;
+  try {
+    const r = await ef(`/api/employee/issues/${id}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
+    const d = await r.json();
+    if (!r.ok || d.error) return showToast(d.error || 'Failed');
+    ta.value = '';
+    issLoadComments(id);
+  } catch (e) { showToast('Error: ' + e.message); }
+  finally { if (ta) { ta.disabled = false; ta.focus(); } }
 }
 
 async function toggleIssueStatus(id, status) {
@@ -222,6 +326,8 @@ async function toggleIssueStatus(id, status) {
     const idx = _issues.findIndex(i => i.id === id);
     if (idx >= 0) _issues[idx] = d;
     renderIssues();
+    if (String(_issOpenId) === String(id)) issLoadComments(id);
+    showToast(status === 'resolved' ? 'Marked solved — the reporter has been told.' : 'Reopened');
   } catch (e) { showToast('Error: ' + e.message); }
 }
 
@@ -1101,6 +1207,45 @@ function reqPartyName(usernameOrNull, assigneeId) {
   return e ? e.name : usernameOrNull;
 }
 
+// The three pickers write to hidden inputs, so submitRequest still reads one
+// value per field the way it always did.
+function reqPickChip(hostId, value, inputId) {
+  const host = document.getElementById(hostId);
+  if (host) host.querySelectorAll('.rq-chip').forEach(b => b.classList.toggle('on', b.dataset.value === value));
+  const inp = document.getElementById(inputId);
+  if (inp) inp.value = value;
+}
+function reqPickCat(v) { reqPickChip('req-cat-chips', v, 'req-category'); }
+function reqPickTo(id, label) {
+  reqPickChip('req-to-chips', String(id ?? ''), 'req-assignee');
+  const hint = document.getElementById('req-hint');
+  if (hint) hint.textContent = id ? `Goes straight to ${label}.` : 'Goes to whoever is on approvals today.';
+}
+function reqPickPri(v) {
+  document.querySelectorAll('.t-seg[data-group="req-priority"]').forEach(b => b.classList.toggle('on', b.dataset.value === v));
+  const inp = document.getElementById('req-priority');
+  if (inp) inp.value = v;
+}
+
+function reqSubtitle(rows) {
+  const open = (rows || []).filter(r => r.status === 'pending' || r.status === 'in_review').length;
+  return open ? `${open} awaiting a decision` : 'Nothing awaiting a decision';
+}
+
+// Requests carries the same count in the rail that the design draws on the nav row.
+function reqNavBadge(rows) {
+  const nav = document.getElementById('nav-requests');
+  if (!nav) return;
+  const n = (rows || []).filter(r => r.status === 'pending' || r.status === 'in_review').length;
+  let b = nav.querySelector('.chat-nav-badge');
+  if (!n) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement('span'); b.className = 'chat-nav-badge'; nav.appendChild(b); }
+  b.textContent = n > 99 ? '99+' : String(n);
+}
+
+const REQ_STATUS_COLOR = { pending: 'var(--pri-med)', in_review: 'var(--info)', approved: 'var(--pri-low)', rejected: 'var(--pri-high)' };
+const REQ_PRI_COLOR    = { high: 'var(--pri-high)', medium: 'var(--pri-med)', low: 'var(--pri-low)' };
+
 async function loadMyRequests() {
   const list = document.getElementById('my-requests-list');
   if (!list) return;
@@ -1109,41 +1254,40 @@ async function loadMyRequests() {
   const badge = document.getElementById('req-scope-badge');
   if (badge) badge.style.display = canViewAll ? '' : 'none';
   await loadCoworkers();
-  // Populate the "Send to" picker (colleagues, excluding self)
-  const pick = document.getElementById('req-assignee');
-  if (pick && pick.options.length <= 1) {
-    pick.innerHTML = '<option value="">— Admin —</option>' +
-      (_coworkers || []).filter(e => String(e.id) !== String(empInfo?.id)).map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
-    if (pick._bTrigger) enhanceBrandSelects?.(); // resync brand dropdown label if present
+  // "Send to" is a row of name chips now, rebuilt whenever the roster loads.
+  const chips = document.getElementById('req-to-chips');
+  if (chips) {
+    const current = document.getElementById('req-assignee')?.value || '';
+    chips.innerHTML = '<button type="button" class="rq-chip sq" data-value="" onclick="reqPickTo(\'\', \'Admin\')">Admin</button>' +
+      (_coworkers || []).filter(e => String(e.id) !== String(empInfo?.id))
+        .map(e => `<button type="button" class="rq-chip sq" data-value="${e.id}" onclick="reqPickTo('${e.id}', ${JSON.stringify(e.name).replace(/"/g, '&quot;')})">${esc(e.name)}</button>`).join('');
+    reqPickChip('req-to-chips', current, 'req-assignee');
   }
   try {
     _myRequests = await ef('/api/employee/requests').then(r => r.json());
+    const sub = document.getElementById('req-sub');
+    if (sub) sub.textContent = reqSubtitle(_myRequests);
+    reqNavBadge(_myRequests);
     if (!_myRequests.length) {
       list.innerHTML = '<div class="empty" style="padding:32px">No requests yet — submit your first one above.</div>';
       return;
     }
-    list.innerHTML = `<table>
-      <thead><tr>
-        <th>Title</th><th>Category</th><th>Priority</th><th>Status</th><th>From → To</th>
-        <th>Submitted</th><th></th>
-      </tr></thead>
-      <tbody>${_myRequests.map(r => {
-        const from = reqPartyName(r.created_by, null);
-        const to = reqPartyName(null, r.assignee_id);
-        return `<tr>
-        <td style="max-width:220px">
-          <div style="font-weight:500;font-size:13px">${esc(r.title)}</div>
-          ${r.description ? `<div title="${esc(r.description)}" style="font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${esc(r.description)}</div>` : ''}
-        </td>
-        <td><span style="font-size:12px;color:var(--muted)">${esc(r.category||'—')}</span></td>
-        <td><span class="badge ${reqPriorityClass[r.priority]||'badge-medium'}">${r.priority||'medium'}</span></td>
-        <td><span class="badge ${reqStatusClass[r.status]||'badge-todo'}">${reqStatusLabel[r.status]||r.status}</span></td>
-        <td style="font-size:12px;color:var(--muted);white-space:nowrap">${esc(from)} <span style="color:var(--primary)">→</span> ${esc(to)}</td>
-        <td style="font-size:12px;color:var(--muted);white-space:nowrap">${new Date(r.created_at).toLocaleDateString()}</td>
-        <td><button class="btn btn-outline btn-sm" onclick="openEmpReqComments(${r.id})" title="Comments"><i data-lucide="message-square" style="width:14px;height:14px"></i></button></td>
-      </tr>`; }).join('')}
-      </tbody>
-    </table>`;
+    list.innerHTML = _myRequests.map(r => {
+      const from = reqPartyName(r.created_by, null);
+      const to   = reqPartyName(null, r.assignee_id);
+      const pri  = r.priority || 'medium';
+      const when = new Date(r.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      const meta = `${r.category || 'Other'} · ${when} · ${canViewAll ? `${from} → ${to}` : `to ${to}`}`;
+      return `<div class="rq-item" onclick="openEmpReqComments(${r.id})" title="Open the conversation">
+        <span class="rq-stripe" style="background:${REQ_STATUS_COLOR[r.status] || 'var(--muted)'}"></span>
+        <div class="rq-item-main">
+          <div class="rq-item-title">${esc(r.title)}</div>
+          <div class="rq-item-meta">${esc(meta)}</div>
+        </div>
+        <span class="rq-pill" style="--c:${REQ_PRI_COLOR[pri] || 'var(--pri-med)'}">${esc(pri.charAt(0).toUpperCase() + pri.slice(1))}</span>
+        <span class="rq-pill" style="--c:${REQ_STATUS_COLOR[r.status] || 'var(--muted)'}"><i></i>${esc(reqStatusLabel[r.status] || r.status)}</span>
+      </div>`;
+    }).join('');
     requestAnimationFrame(() => lucide.createIcons());
   } catch (e) { list.innerHTML = `<div style="padding:20px;color:var(--danger);font-size:13px">${esc(e.message)}</div>`; }
 }
@@ -1163,15 +1307,15 @@ async function submitRequest() {
     if (d.error) { alert('Error: ' + d.error); return; }
     document.getElementById('req-title').value = '';
     document.getElementById('req-description').value = '';
-    document.getElementById('req-category').value = '';
-    document.getElementById('req-priority').value = 'medium';
-    if (document.getElementById('req-assignee')) document.getElementById('req-assignee').value = '';
+    reqPickCat('Equipment');
+    reqPickPri('medium');
+    reqPickTo('', 'Admin');
     const success = document.getElementById('req-success');
-    success.style.display = 'block';
+    success.style.display = 'flex';
     setTimeout(() => success.style.display = 'none', 3000);
     loadMyRequests();
   } catch (e) { alert('Error: ' + e.message); }
-  finally { btn.disabled = false; btn.textContent = 'Submit Request'; }
+  finally { btn.disabled = false; btn.textContent = 'Submit request'; }
 }
 
 /* ── Drive / Sheets ── */

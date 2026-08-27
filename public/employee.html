@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=104">
+  <link rel="stylesheet" href="/assets/employee.css?v=105">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=104">
+  <link rel="stylesheet" href="/assets/mobile.css?v=105">
 </head>
 <body>
 
@@ -513,59 +513,64 @@
 
     <!-- ── Requests Page ── -->
     <div class="page" id="page-requests">
-      <div class="page-title"><i data-lucide="inbox" class="icon-lg"></i> Requests
-        <span id="req-scope-badge" style="display:none;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:rgba(251,191,36,.1);color:#fbbf24;margin-left:8px">All Employees</span>
+      <div class="rq-head">
+        <h2 class="page-title-serif">Requests</h2>
+        <p class="page-sub" id="req-sub">Nothing awaiting a decision</p>
+        <span id="req-scope-badge" class="rq-scope" style="display:none">All Employees</span>
       </div>
 
       <!-- Submit form -->
-      <div class="card">
-        <div class="card-title">Submit a New Request</div>
+      <div class="rq-panel">
         <div id="req-success" class="alert-success"><i data-lucide="check-circle" class="icon-sm" style="flex-shrink:0"></i> Request submitted successfully!</div>
-        <div class="form-group">
-          <label class="form-label">Title *</label>
-          <input class="form-control" id="req-title" placeholder="Brief description of your request…" maxlength="120">
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Category</label>
-            <select class="form-control" id="req-category">
-              <option value="">— Select category —</option>
-              <option value="Equipment">Equipment</option>
-              <option value="IT Support">IT Support</option>
-              <option value="HR">HR</option>
-              <option value="Finance">Finance</option>
-              <option value="Leave">Leave</option>
-              <option value="Training">Training</option>
-              <option value="Other">Other</option>
-            </select>
+        <input class="rq-ask" id="req-title" placeholder="What do you need?" maxlength="120" autocomplete="off">
+
+        <div>
+          <label class="rq-label">Category</label>
+          <div class="rq-chips" id="req-cat-chips">
+            <button type="button" class="rq-chip on" data-value="Equipment" onclick="reqPickCat('Equipment')"><i data-lucide="truck"></i>Equipment</button>
+            <button type="button" class="rq-chip" data-value="IT Support" onclick="reqPickCat('IT Support')"><i data-lucide="monitor"></i>IT Support</button>
+            <button type="button" class="rq-chip" data-value="HR" onclick="reqPickCat('HR')"><i data-lucide="users"></i>HR</button>
+            <button type="button" class="rq-chip" data-value="Finance" onclick="reqPickCat('Finance')"><i data-lucide="dollar-sign"></i>Finance</button>
+            <button type="button" class="rq-chip" data-value="Leave" onclick="reqPickCat('Leave')"><i data-lucide="calendar"></i>Leave</button>
+            <button type="button" class="rq-chip" data-value="Training" onclick="reqPickCat('Training')"><i data-lucide="graduation-cap"></i>Training</button>
+            <button type="button" class="rq-chip" data-value="Other" onclick="reqPickCat('Other')"><i data-lucide="help-circle"></i>Other</button>
           </div>
-          <div class="form-group">
-            <label class="form-label">Priority</label>
-            <select class="form-control" id="req-priority">
-              <option value="low">Low</option>
-              <option value="medium" selected>Medium</option>
-              <option value="high">High</option>
-            </select>
+          <input type="hidden" id="req-category" value="Equipment">
+        </div>
+
+        <div class="rq-row">
+          <div>
+            <label class="rq-label">Priority</label>
+            <div class="t-segs">
+              <button type="button" class="t-seg"    data-group="req-priority" data-value="high"   style="--c:var(--pri-high)" onclick="reqPickPri('high')"><i></i>High</button>
+              <button type="button" class="t-seg on" data-group="req-priority" data-value="medium" style="--c:var(--pri-med)"  onclick="reqPickPri('medium')"><i></i>Medium</button>
+              <button type="button" class="t-seg"    data-group="req-priority" data-value="low"    style="--c:var(--pri-low)"  onclick="reqPickPri('low')"><i></i>Low</button>
+            </div>
+            <input type="hidden" id="req-priority" value="medium">
+          </div>
+          <div>
+            <label class="rq-label">Send to</label>
+            <div class="rq-chips" id="req-to-chips">
+              <button type="button" class="rq-chip sq on" data-value="" onclick="reqPickTo('', 'Admin')">Admin</button>
+            </div>
+            <input type="hidden" id="req-assignee" value="">
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Send to <span style="color:var(--muted);font-weight:400">(optional — a colleague or leave for admin)</span></label>
-          <select class="form-control" id="req-assignee">
-            <option value="">— Admin —</option>
-          </select>
+
+        <div>
+          <label class="rq-label">Details</label>
+          <textarea class="rq-area" id="req-description" rows="3" placeholder="Anything the approver needs to know"></textarea>
         </div>
-        <div class="form-group">
-          <label class="form-label">Details</label>
-          <textarea class="form-control" id="req-description" rows="4" placeholder="Provide any additional details…" style="resize:vertical"></textarea>
+
+        <div class="rq-submit">
+          <button class="btn btn-primary" id="req-submit-btn" data-perm="requests.create" onclick="submitRequest()">Submit request</button>
+          <span class="rq-hint" id="req-hint">Goes to whoever is on approvals today.</span>
         </div>
-        <button class="btn btn-primary" id="req-submit-btn" data-perm="requests.create" onclick="submitRequest()">Submit Request</button>
       </div>
 
       <!-- My requests list -->
-      <div class="card-title" style="margin-top:8px">My Requests</div>
-      <div class="card" style="padding:0;overflow:hidden">
-        <div id="my-requests-list"><div class="loading"><span class="spinner"></span> Loading…</div></div>
-      </div>
+      <h3 class="rq-sub-head">My requests</h3>
+      <div id="my-requests-list" class="rq-list"><div class="loading"><span class="spinner"></span> Loading…</div></div>
     </div>
 
     <!-- ── My Drive Page ── -->
@@ -952,20 +957,21 @@
 
     <!-- ── Issues Page (CTO only) ── -->
     <div class="page" id="page-issues">
-      <div style="max-width:760px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-          <div>
-            <div style="font-size:18px;font-weight:700">Reported Issues</div>
-            <div style="font-size:13px;color:var(--muted);margin-top:3px">Tickets reported by the team from "Report an Issue"</div>
-          </div>
-          <select class="form-input" id="issues-filter" onchange="renderIssues()" style="max-width:150px">
-            <option value="">All</option>
-            <option value="open">Open</option>
-            <option value="resolved">Resolved</option>
-          </select>
-        </div>
-        <div id="issues-list">
+      <div class="iss-head">
+        <h2 class="page-title-serif">Reported issues</h2>
+        <p class="page-sub" id="iss-sub">Tickets the team raised from “Report an issue”</p>
+      </div>
+      <div class="iss-chips" id="issues-filter" data-value="">
+        <button type="button" class="rq-chip sq on" data-value="" onclick="issSetFilter('')">All <span class="iss-n" id="iss-n-all">0</span></button>
+        <button type="button" class="rq-chip sq" data-value="open" onclick="issSetFilter('open')"><span class="iss-dot open"></span>Open <span class="iss-n" id="iss-n-open">0</span></button>
+        <button type="button" class="rq-chip sq" data-value="resolved" onclick="issSetFilter('resolved')"><span class="iss-dot done"></span>Resolved <span class="iss-n" id="iss-n-resolved">0</span></button>
+      </div>
+      <div class="iss-split">
+        <div id="issues-list" class="iss-list">
           <div class="loading"><span class="spinner"></span> Loading…</div>
+        </div>
+        <div id="iss-detail" class="iss-detail">
+          <div class="iss-empty"><i data-lucide="inbox"></i><span>Pick a ticket to read it and reply.</span></div>
         </div>
       </div>
     </div>
@@ -1263,13 +1269,13 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=104"></script>
-<script src="/assets/columns.js?v=104"></script>
-<script src="/assets/client-folder.js?v=104"></script>
-<script src="/assets/lead-filters.js?v=104"></script>
-<script src="/assets/lead-views.js?v=104"></script>
-<script src="/assets/chat-extras.js?v=104"></script>
-<script src="/assets/home.js?v=104"></script>
+<script src="/assets/mobile.js?v=105"></script>
+<script src="/assets/columns.js?v=105"></script>
+<script src="/assets/client-folder.js?v=105"></script>
+<script src="/assets/lead-filters.js?v=105"></script>
+<script src="/assets/lead-views.js?v=105"></script>
+<script src="/assets/chat-extras.js?v=105"></script>
+<script src="/assets/home.js?v=105"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1307,13 +1313,13 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=104"></script>
-<script src="/assets/procurement.js?v=104"></script>
-<script src="/assets/quote.js?v=104"></script>
-<script src="/assets/meetings.js?v=104"></script>
-<script src="/assets/calendar.js?v=104"></script>
-<script src="/assets/availability.js?v=104"></script>
-<script src="/assets/employee.js?v=104"></script>
+<script src="/assets/huddle.js?v=105"></script>
+<script src="/assets/procurement.js?v=105"></script>
+<script src="/assets/quote.js?v=105"></script>
+<script src="/assets/meetings.js?v=105"></script>
+<script src="/assets/calendar.js?v=105"></script>
+<script src="/assets/availability.js?v=105"></script>
+<script src="/assets/employee.js?v=105"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1375,6 +1381,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=104"></script>
+<script src="/help-docs.js?v=105"></script>
 </body>
 </html>

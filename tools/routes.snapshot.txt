@@ -79,6 +79,8 @@ POST /api/employee/requests/:id/comments
 POST /api/employee/report-issue
 GET /api/employee/issues
 PUT /api/employee/issues/:id
+GET /api/employee/issues/:id/comments
+POST /api/employee/issues/:id/comments
 PUT /api/employee/status
 POST /api/employee/avatar
 PUT /api/employee/username

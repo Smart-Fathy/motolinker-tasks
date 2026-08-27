@@ -711,9 +711,85 @@ receiver.router.get('/api/employee/issues', requireEmployeeAuth, requirePerm('is
 
 receiver.router.put('/api/employee/issues/:id', requireEmployeeAuth, requirePerm('issues', 'resolve'), express.json(), async (req, res) => {
   const status = req.body?.status === 'resolved' ? 'resolved' : 'open';
-  const { data, error } = await supabase.from('issues').update({ status }).eq('id', req.params.id).select().single();
+  const closer = req.employee ? req.employee.name : 'Admin';
+  const { data: before } = await supabase.from('issues').select('*').eq('id', req.params.id).single();
+  // resolved_at / resolved_by arrive with migration 017; on a database that has not
+  // taken it yet the write is retried without them so resolving still works.
+  const stamped = status === 'resolved'
+    ? { status, resolved_at: new Date().toISOString(), resolved_by: closer }
+    : { status, resolved_at: null, resolved_by: '' };
+  let { data, error } = await supabase.from('issues').update(stamped).eq('id', req.params.id).select().single();
+  if (error) ({ data, error } = await supabase.from('issues').update({ status }).eq('id', req.params.id).select().single());
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
+  // Tell whoever reported it that it is closed — they never hear back otherwise.
+  try {
+    const wasOpen = String(before?.status || 'open') !== 'resolved';
+    if (status === 'resolved' && wasOpen && before?.reporter_id) {
+      await ctx.createNotification(`employee_${before.reporter_id}`, {
+        type: 'issue',
+        title: `Solved: ${before.title || 'System issue'}`,
+        body: `${closer} marked the issue you reported as solved.`,
+        url: '/employee#issues',
+      }, 'always');
+    }
+  } catch (e) { console.warn('[issues] resolve notify failed:', e.message); }
+});
+
+// ── Issue comments ────────────────────────────────────────────────────────────
+// Readable by anyone who may see the issues centre, and by the person who
+// reported the ticket — otherwise the CTO's reply lands where nobody can read it.
+async function issueForComment(req, res) {
+  const id = parseInt(req.params.id, 10);
+  const { data } = id ? await supabase.from('issues').select('*').eq('id', id).single() : {};
+  if (!data) { res.status(404).json({ error: 'Issue not found' }); return null; }
+  if (!req.employee) return data;                                    // admin session
+  if (ctx.empCan(req.employee, 'issues', 'view')) return data;
+  if (String(data.reporter_id || '') === String(req.employee.id)) return data;
+  res.status(403).json({ error: 'Not permitted' });
+  return null;
+}
+
+receiver.router.get('/api/employee/issues/:id/comments', requireEmployeeAuth, async (req, res) => {
+  const issue = await issueForComment(req, res);
+  if (!issue) return;
+  const { data, error } = await supabase.from('issue_comments')
+    .select('*').eq('issue_id', issue.id).order('created_at', { ascending: true }).limit(200);
+  if (error) return res.json([]);   // table not migrated yet — an empty thread, not a broken page
+  res.json(data || []);
+});
+
+receiver.router.post('/api/employee/issues/:id/comments', requireEmployeeAuth, express.json(), async (req, res) => {
+  const issue = await issueForComment(req, res);
+  if (!issue) return;
+  const p = req.body || {};
+  const text = String(p.body || '').trim().slice(0, 2000);
+  const file_url = String(p.file_url || '');
+  if (!text && !file_url) return res.status(400).json({ error: 'Comment is empty' });
+  const authorKey = req.employee ? `employee_${req.employee.id}` : 'admin';
+  const authorName = req.employee ? req.employee.name : 'Admin';
+  const { data, error } = await supabase.from('issue_comments').insert({
+    issue_id: issue.id, author_key: authorKey, author_name: authorName, body: text,
+    file_url, file_name: String(p.file_name || ''), file_size: p.file_size || null, file_type: String(p.file_type || ''),
+  }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+  // Both ends of the ticket hear about a reply: the reporter, and every CTO.
+  try {
+    const recipients = new Set();
+    if (issue.reporter_id) recipients.add(`employee_${issue.reporter_id}`);
+    const { data: ctos } = await supabase.from('employees').select('id').ilike('job_title', '%chief technical officer%');
+    (ctos || []).forEach(c => recipients.add(`employee_${c.id}`));
+    recipients.delete(authorKey);
+    for (const key of recipients) {
+      await ctx.createNotification(key, {
+        type: 'issue',
+        title: `${authorName} commented on: ${issue.title || 'System issue'}`,
+        body: text || `\u{1F4CE} ${p.file_name || 'attachment'}`,
+        url: '/employee#issues',
+      });
+    }
+  } catch (e) { console.warn('[issues] comment notify failed:', e.message); }
 });
 
 // ── Employee profile: status, avatar, username ────────────────────────────────
