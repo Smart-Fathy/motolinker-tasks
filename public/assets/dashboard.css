@@ -3142,3 +3142,66 @@
     color:var(--muted); margin-bottom:5px;
   }
   .empc-desc-body{ font-size:13px; white-space:pre-wrap; word-break:break-word; }
+
+  /* ── Availability editor ──────────────────────────────────────────────────
+   * The hour is picked in three parts because <input type="time"> follows the
+   * browser's locale and cannot be told to read as 12h. The 24h value the
+   * server stores rides in a hidden input inside .av-t. */
+  .av-row{
+    display:grid; grid-template-columns:64px 108px 1fr 1fr 1.2fr;
+    gap:8px; align-items:center; margin-bottom:8px;
+  }
+  .av-day{ font-size:12.5px; font-weight:600; }
+  .av-t{ display:flex; align-items:center; gap:3px; min-width:0; }
+  .av-t .form-control{ padding-left:6px; padding-right:4px; text-align:center; min-width:0; }
+  .av-t .av-h, .av-t .av-m{ flex:1 1 0; }
+  .av-t .av-ap{ flex:0 0 54px; }
+  .av-colon{ color:var(--muted); font-weight:700; flex:0 0 auto; }
+  @media (max-width:760px){
+    .av-row{ grid-template-columns:1fr 1fr; gap:6px; padding-bottom:10px; margin-bottom:10px;
+             border-bottom:1px solid var(--border); }
+    .av-day{ grid-column:1 / -1; }
+    .av-note{ grid-column:1 / -1; }
+  }
+
+  /* ── Availability, shown where a task is assigned ─────────────────────────
+   * Rendered by avWarnHtml in the shared availability.js, so both portals need
+   * the rule. Plain state when everyone is free; a warning when someone is off. */
+  .t-avail-box{
+    margin-top:9px; padding:9px 11px; border-radius:10px;
+    background:rgba(255,255,255,.03); border:1px solid var(--border);
+    display:flex; flex-direction:column; gap:7px; align-items:flex-start;
+  }
+  .t-avail-box.warn{ border-color:rgba(245,158,11,.4); background:rgba(245,158,11,.07); }
+  .t-av-head{
+    display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700;
+    color:var(--pri-med); line-height:1.35;
+  }
+  .t-av-head i, .t-av-head svg{ width:13px; height:13px; flex-shrink:0; }
+  .t-av-list{ display:flex; flex-wrap:wrap; gap:6px; }
+  .t-av-one{
+    display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:99px;
+    font-size:11px; font-weight:600; background:rgba(16,185,129,.12); color:#6dd8a4; white-space:nowrap;
+  }
+  .t-av-one i{ width:6px; height:6px; border-radius:50%; background:currentColor; flex-shrink:0; }
+  .t-av-one.off{ background:rgba(107,114,128,.18); color:#a5a29a; }
+  .t-av-move{
+    padding:6px 12px; border-radius:8px; cursor:pointer; font-family:inherit;
+    font-size:11.5px; font-weight:700; border:1px solid rgba(201,163,94,.5);
+    background:rgba(201,163,94,.13); color:#e8cd93;
+  }
+  .t-av-move:hover{ background:rgba(201,163,94,.22); }
+  .t-av-note{ font-size:11px; color:var(--muted); }
+  @media (max-width:640px){ .t-av-move{ min-height:44px; } }
+
+  /* The recurring template's "follow the assignees' week" switch. */
+  .rt-avail{
+    display:flex; align-items:flex-start; gap:10px; padding:10px 12px; margin-bottom:14px;
+    border:1px solid var(--border); border-radius:10px; cursor:pointer;
+    background:rgba(255,255,255,.02);
+  }
+  .rt-avail input{ margin-top:2px; accent-color:var(--gold); flex-shrink:0; width:16px; height:16px; }
+  .rt-avail > span{ display:flex; flex-direction:column; gap:3px; }
+  .rt-avail strong{ font-size:12.5px; font-weight:700; }
+  .rt-avail > span > span{ font-size:11.5px; color:var(--muted); line-height:1.5; }
+  @media (max-width:640px){ .rt-avail{ min-height:44px; } }

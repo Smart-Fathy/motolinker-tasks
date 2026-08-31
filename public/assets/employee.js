@@ -1076,6 +1076,31 @@ function empDuePaint() {
     const d = new Date(); d.setDate(d.getDate() + Number(b.dataset.days));
     b.classList.toggle('on', el.value === d.toISOString().slice(0, 10));
   });
+  empTaskAvailPaint();
+}
+
+/* ── Availability at the moment of assigning ──────────────────────────────────
+ * A task you file here lands on you, so the week you set is the one that gets
+ * checked. It warns and offers the move; it never moves the date by itself. */
+function empDueSetTo(dateStr) {
+  const el = document.getElementById('nt-due');
+  if (!el) return;
+  el.value = dateStr;
+  empDuePaint();
+}
+let _empAvailSeq = 0;
+async function empTaskAvailPaint() {
+  const host = document.getElementById('nt-avail');
+  if (!host || typeof avReportFor !== 'function') return;
+  const seq = ++_empAvailSeq;
+  const due = document.getElementById('nt-due')?.value || '';
+  const keys = empInfo?.id ? [`employee_${empInfo.id}`] : [];
+  if (!due || !keys.length) { host.innerHTML = ''; return; }
+  const rows = await avReportFor(keys, due);
+  if (seq !== _empAvailSeq) return;
+  host.innerHTML = await avWarnHtml(rows, keys, due, 'empDueSetTo');
+  if (seq !== _empAvailSeq) return;
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 // Attachments. Same two-step as the comment composer: POST each file, keep the

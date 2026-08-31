@@ -469,11 +469,15 @@ function rtBuildRow(body) {
   }
   const due_offset_days = Math.max(0, parseInt(body.due_offset_days, 10) || 0);
   const start_date = body.start_date && /^\d{4}-\d{2}-\d{2}$/.test(body.start_date) ? body.start_date : null;
+  // Absent means on: a template nobody has thought about should still land on a
+  // day the assignee works.
+  const respect_availability = body.respect_availability !== false;
   return { row: {
     title, description: String(body.description || '').trim(),
     assignee_id: primary, assignee_ids: list,
     priority, milestone: String(body.milestone || '').trim(),
     recurrence_type, interval_days, weekdays, due_offset_days, start_date,
+    respect_availability,
   } };
 }
 
@@ -530,14 +534,35 @@ receiver.router.post('/api/dashboard/recurring-tasks/:id/run-now', requireAuth, 
 async function generateRecurringInstance(rt, runDate, force) {
   if (!force && rt.last_run_date === runDate) return null; // already generated today
   const list = taskAssigneeList(rt);
-  const due_date = rtAddDays(runDate, Math.max(0, rt.due_offset_days || 0));
-  const { data: task, error } = await supabase.from('tasks').insert({
+  const planned = rtAddDays(runDate, Math.max(0, rt.due_offset_days || 0));
+  // The work still gets made on schedule; only the date it is due for moves, and
+  // only when somebody has actually marked that day off. Unknown is never off,
+  // so a team that ignores the board keeps the date the template asked for.
+  let due_date = planned;
+  if (rt.respect_availability !== false && typeof ctx.availabilityNextWorkingDay === 'function') {
+    try {
+      const keys = list.map(id => `employee_${id}`);
+      const moved = await ctx.availabilityNextWorkingDay(keys, planned, 14);
+      if (moved && moved !== planned) due_date = moved;
+    } catch (e) { console.warn('[recurring] availability lookup failed:', e.message); }
+  }
+  const shifted = due_date !== planned;
+  const row = {
     title: rt.title, description: rt.description || '', channel_id: '', channel_name: '',
     assignee_id: rt.assignee_id || (list[0] || null), assignee_ids: list,
     due_date, priority: rt.priority || 'medium', milestone: rt.milestone || '',
     created_by: 'recurring', status: 'todo', recurring_id: rt.id,
-  }).select().single();
+  };
+  if (shifted) row.due_shifted_from = planned;
+  // due_shifted_from arrives with migration 018; retry without it so a database
+  // that has not taken the migration still generates its tasks.
+  let { data: task, error } = await supabase.from('tasks').insert(row).select().single();
+  if (error && shifted) {
+    delete row.due_shifted_from;
+    ({ data: task, error } = await supabase.from('tasks').insert(row).select().single());
+  }
   if (error) { console.warn('[recurring] task insert failed:', error.message); return null; }
+  if (shifted) console.log(`[recurring] due ${planned} -> ${due_date} (assignee off) for template ${rt.id}`);
   notifyEmployeeTaskAssigned(task);
   syncTaskToCalendar(task);   // best-effort Google Calendar event for the assignees
   await supabase.from('recurring_tasks').update({

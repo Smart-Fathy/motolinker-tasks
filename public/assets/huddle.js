@@ -1248,7 +1248,9 @@ function chatHeaderStatus(room) {
     const d = typeof availabilityToday === 'function' ? availabilityToday(other.member_key) : null;
     if (d) {
       const color = d.status === 'available' ? '#22c55e' : d.status === 'partial' ? '#eab308' : '#6b7280';
-      const hours = d.status !== 'off' && d.from && d.to ? ` ${d.from}–${d.to}` : '';
+      // Availability reads as 12h everywhere, including here.
+      const span = typeof avRange12 === 'function' ? avRange12(d.from, d.to) : `${d.from}–${d.to}`;
+      const hours = d.status !== 'off' && span ? ` ${span}` : '';
       avail = ` <span style="font-size:10px;font-weight:600;color:${color}">· ${d.status}${hours}</span>`;
     }
   } catch (_) {}

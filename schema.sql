@@ -689,6 +689,27 @@ CREATE INDEX IF NOT EXISTS idx_recurring_tasks_active_next ON recurring_tasks (a
 -- Link generated task instances back to their template:
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurring_id BIGINT DEFAULT NULL;
 
+-- Weekly availability (migration 011). One row per person per week; member_key
+-- follows the presence convention ('admin' | 'employee_<id>'). days is a 7-slot
+-- array, MONDAY FIRST — the recurring engine counts weekdays Sunday-first, so
+-- every conversion between the two goes through dayIndexOf in
+-- src/routes/availability.js and nowhere else.
+--   [{ "status": "available"|"partial"|"off", "from": "10:00", "to": "18:00", "note": "" }, ...]
+CREATE TABLE IF NOT EXISTS public.availability_weeks (
+  member_key TEXT NOT NULL,
+  week_start DATE NOT NULL,
+  days JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (member_key, week_start)
+);
+ALTER TABLE IF EXISTS public.availability_weeks ENABLE ROW LEVEL SECURITY;
+
+-- A template can respect the assignees' weekly availability: a generated task
+-- whose due date lands on a day someone marked off moves to the next day they
+-- all work. NULL due_shifted_from means it was not moved.
+ALTER TABLE recurring_tasks ADD COLUMN IF NOT EXISTS respect_availability BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_shifted_from DATE;
+
 ALTER TABLE IF EXISTS public.recurring_tasks ENABLE ROW LEVEL SECURITY;
 
 -- ── Car Stock (immediate-delivery inventory) ──────────────────────────────────

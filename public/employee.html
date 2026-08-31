@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=105">
+  <link rel="stylesheet" href="/assets/employee.css?v=106">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=105">
+  <link rel="stylesheet" href="/assets/mobile.css?v=106">
 </head>
 <body>
 
@@ -1227,6 +1227,7 @@
             <button type="button" class="t-due-chip" data-days="7" onclick="empDuePick(7)">Next week</button>
             <input class="form-control t-due-input" id="nt-due" type="date" onchange="empDuePaint()">
           </div>
+          <div id="nt-avail"></div>
         </div>
 
         <div class="form-row">
@@ -1269,13 +1270,13 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=105"></script>
-<script src="/assets/columns.js?v=105"></script>
-<script src="/assets/client-folder.js?v=105"></script>
-<script src="/assets/lead-filters.js?v=105"></script>
-<script src="/assets/lead-views.js?v=105"></script>
-<script src="/assets/chat-extras.js?v=105"></script>
-<script src="/assets/home.js?v=105"></script>
+<script src="/assets/mobile.js?v=106"></script>
+<script src="/assets/columns.js?v=106"></script>
+<script src="/assets/client-folder.js?v=106"></script>
+<script src="/assets/lead-filters.js?v=106"></script>
+<script src="/assets/lead-views.js?v=106"></script>
+<script src="/assets/chat-extras.js?v=106"></script>
+<script src="/assets/home.js?v=106"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1313,13 +1314,13 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=105"></script>
-<script src="/assets/procurement.js?v=105"></script>
-<script src="/assets/quote.js?v=105"></script>
-<script src="/assets/meetings.js?v=105"></script>
-<script src="/assets/calendar.js?v=105"></script>
-<script src="/assets/availability.js?v=105"></script>
-<script src="/assets/employee.js?v=105"></script>
+<script src="/assets/huddle.js?v=106"></script>
+<script src="/assets/procurement.js?v=106"></script>
+<script src="/assets/quote.js?v=106"></script>
+<script src="/assets/meetings.js?v=106"></script>
+<script src="/assets/calendar.js?v=106"></script>
+<script src="/assets/availability.js?v=106"></script>
+<script src="/assets/employee.js?v=106"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1381,6 +1382,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=105"></script>
+<script src="/help-docs.js?v=106"></script>
 </body>
 </html>

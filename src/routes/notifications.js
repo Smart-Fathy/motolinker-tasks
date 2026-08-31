@@ -60,7 +60,10 @@ async function notifyEmployeeTaskAssigned(task) {
     createNotification(key, {
       type: 'task',
       title: 'New task assigned',
-      body: `${task.title} · due ${task.due_date} · ${task.priority} priority`,
+      // When a recurring task's due date moved off a day the assignee marked
+      // off, say so — a date that changed itself is otherwise a mystery.
+      body: `${task.title} · due ${task.due_date}${task.due_shifted_from
+        ? ` (moved from ${task.due_shifted_from} — you were off)` : ''} · ${task.priority} priority`,
       url: '/employee#tasks',
     }, 'always');
   }
