@@ -378,7 +378,10 @@ function homeWidgetBody(id) {
       return list(a.members, m => {
         const d = (m.days || [])[i];
         const st = d ? d.status : null;
-        const hours = d && d.status !== 'off' && d.from && d.to ? ` ${d.from}–${d.to}` : '';
+        // Availability reads as 12h wherever it is shown, this widget included.
+        const span = typeof avRange12 === 'function' ? avRange12(d && d.from, d && d.to)
+          : (d && d.from && d.to ? `${d.from}–${d.to}` : '');
+        const hours = d && d.status !== 'off' && span ? ` ${span}` : '';
         return `<li><span class="home-li-main">${esc(m.name)}</span>
           <span class="home-li-sub" style="color:${META[st] || 'var(--muted)'}">${st ? esc(st + hours) : 'not set'}</span></li>`;
       });

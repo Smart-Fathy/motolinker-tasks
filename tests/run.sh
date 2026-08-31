@@ -36,6 +36,7 @@ run foldertest  node tests/foldertest.js
 run proctest    node tests/proctest.js
 run reported    node tests/reported.js
 run issuereq    node tests/issuereq.js
+run availsched  node tests/availsched.js
 run portalgaps  node tests/portalgaps.js
 run bindings    node tests/bindings.js
 run boottest    node tests/boottest.js

@@ -1961,7 +1961,34 @@ function taskDuePaint() {
     const d = new Date(); d.setDate(d.getDate() + Number(b.dataset.days));
     b.classList.toggle('on', el.value === d.toISOString().slice(0, 10));
   });
+  taskAvailPaint();
 }
+
+/* ── Availability at the moment of assigning ──────────────────────────────────
+ * People set their week; a task landing on a day they marked off helps nobody.
+ * This warns and offers the move — it never changes the date on its own, and a
+ * member who has not set that week never blocks anything. */
+function taskDueSetTo(dateStr) {
+  const el = document.getElementById('t-due');
+  if (!el) return;
+  el.value = dateStr;
+  taskDuePaint();
+}
+let _taskAvailSeq = 0;
+async function taskAvailPaint() {
+  const host = document.getElementById('t-avail');
+  if (!host || typeof avReportFor !== 'function') return;
+  const seq = ++_taskAvailSeq;
+  const due = document.getElementById('t-due')?.value || '';
+  const keys = [...document.querySelectorAll('.t-assignee-cb:checked')].map(cb => `employee_${cb.value}`);
+  if (!due || !keys.length) { host.innerHTML = ''; return; }
+  const rows = await avReportFor(keys, due);
+  if (seq !== _taskAvailSeq) return;             // a newer paint already ran
+  host.innerHTML = await avWarnHtml(rows, keys, due, 'taskDueSetTo');
+  if (seq !== _taskAvailSeq) return;
+  requestAnimationFrame(() => lucide.createIcons());
+}
+
 // The footer says who this is about to land on, so the consequence of the
 // choice is visible at the moment of making it.
 function taskAssigneePaint() {
@@ -1977,6 +2004,7 @@ function taskAssigneePaint() {
     : names.length === 2 ? `${names[0]} and ${names[1]} get a notification straight away.`
     : `${names.length} people get a notification straight away.`;
   line.classList.toggle('warn', names.length === 0);
+  taskAvailPaint();
 }
 
 async function openTaskModal(id) {
@@ -2023,6 +2051,7 @@ async function openTaskModal(id) {
           <button type="button" class="t-due-chip" data-days="7" onclick="taskDuePick(7)">Next week</button>
           <input class="form-control t-due-input" id="t-due" type="date" value="${t?.due_date || ''}" onchange="taskDuePaint()">
         </div>
+        <div id="t-avail"></div>
       </div>
 
       <div class="form-row">
@@ -2121,6 +2150,7 @@ function rtCardHtml(rt) {
         <span><i data-lucide="user" style="width:11px;height:11px;vertical-align:-1px"></i> ${esc(rtAssigneeNames(rt))}</span>
         <span><i data-lucide="flag" style="width:11px;height:11px;vertical-align:-1px"></i> ${esc(rt.priority)}</span>
         ${rt.active && rt.next_run_date ? `<span><i data-lucide="calendar" style="width:11px;height:11px;vertical-align:-1px"></i> Next: ${esc(rt.next_run_date)}</span>` : ''}
+        ${rt.respect_availability === false ? '' : '<span><i data-lucide="calendar-check" style="width:11px;height:11px;vertical-align:-1px"></i> follows the week</span>'}
       </div>
     </div>
     <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap">
@@ -2173,14 +2203,57 @@ function openRecurringForm(id) {
       <div class="form-group"><label class="form-label">Due after (days)</label><input class="form-control" id="rt-due-offset" type="number" min="0" value="${rt?.due_offset_days || 0}" title="Each generated task is due this many days after it's created (0 = same day)"></div>
       <div class="form-group"><label class="form-label">Milestone</label><input class="form-control" id="rt-milestone" value="${esc(rt?.milestone || '')}" placeholder="optional"></div>
     </div>
+    <label class="rt-avail">
+      <input type="checkbox" id="rt-respect-avail" ${rt?.respect_availability === false ? '' : 'checked'}>
+      <span>
+        <strong>Follow the assignees' week</strong>
+        <span>If the task would fall due on a day someone marked off, it moves to the next day they all work. Anyone who has not set that week is never treated as off.</span>
+      </span>
+    </label>
+    <div id="rt-avail-hint"></div>
   `, `<button class="btn btn-outline" onclick="openRecurringTasksModal()">← Back</button>
       <button class="btn btn-primary" onclick="saveRecurring(${id || 'null'})">Save</button>`);
+  rtAvailHint();
+  document.getElementById('rt-respect-avail')?.addEventListener('change', rtAvailHint);
+  document.querySelectorAll('.rt-assignee-cb, .rt-weekday-cb').forEach(cb => cb.addEventListener('change', rtAvailHint));
+}
+
+// What the template would actually do this coming week, given the weeks people
+// have set. Weekday numbering: the picker is 0=Sunday like JS getUTCDay, while
+// availability days[] is 0=Monday — avDayIndex is the only place they meet.
+let _rtHintSeq = 0;
+async function rtAvailHint() {
+  const host = document.getElementById('rt-avail-hint');
+  if (!host || typeof avReportFor !== 'function') return;
+  const seq = ++_rtHintSeq;
+  const on = !!document.getElementById('rt-respect-avail')?.checked;
+  const keys = [...document.querySelectorAll('.rt-assignee-cb:checked')].map(cb => `employee_${cb.value}`);
+  const wd = [...document.querySelectorAll('.rt-weekday-cb:checked')].map(cb => Number(cb.value));
+  const weekly = document.getElementById('rt-type')?.value === 'weekly';
+  if (!on || !keys.length || !weekly || !wd.length) { host.innerHTML = ''; return; }
+  const week = avWeekOf(avTodayStr());
+  const dates = wd.map(d => avAddDays(week, (d + 6) % 7)).filter(Boolean).sort();
+  const out = [];
+  for (const date of dates) {
+    const rows = await avReportFor(keys, date);
+    const off = rows.filter(r => r.known && r.off);
+    if (!off.length) continue;
+    const moved = await avNextWorkingDay(keys, date, 14);
+    out.push(`${avDayLabel(date)} → ${moved && moved !== date ? avDayLabel(moved) : 'no free day found'} (${off.map(r => r.name).join(', ')} off)`);
+  }
+  if (seq !== _rtHintSeq) return;
+  host.innerHTML = out.length
+    ? `<div class="t-avail-box warn"><div class="t-av-head"><i data-lucide="alert-triangle"></i>This week it would move:</div>
+       <div class="t-av-list">${out.map(t => `<span class="t-av-one off"><i></i>${esc(t)}</span>`).join('')}</div></div>`
+    : '';
+  requestAnimationFrame(() => lucide.createIcons());
 }
 
 function rtToggleTypeFields() {
   const t = document.getElementById('rt-type').value;
   document.getElementById('rt-interval-wrap').style.display = t === 'interval' ? 'block' : 'none';
   document.getElementById('rt-weekly-wrap').style.display = t === 'weekly' ? 'block' : 'none';
+  rtAvailHint();
 }
 
 async function saveRecurring(id) {
@@ -2197,6 +2270,7 @@ async function saveRecurring(id) {
     start_date: document.getElementById('rt-start').value || null,
     due_offset_days: parseInt(document.getElementById('rt-due-offset').value, 10) || 0,
     milestone: document.getElementById('rt-milestone').value.trim(),
+    respect_availability: !!document.getElementById('rt-respect-avail')?.checked,
   };
   if (!body.title || !assignee_ids.length) { alert('Title and at least one assignee are required'); return; }
   if (type === 'interval' && (!body.interval_days || body.interval_days < 1)) { alert('Enter a valid number of days (1 or more)'); return; }

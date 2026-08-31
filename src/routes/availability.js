@@ -37,6 +37,64 @@ function sanitizeDays(days) {
   return out;
 }
 
+// ── Reading someone else's week, for the schedulers ──────────────────────────
+// days[] is indexed 0 = Monday (weekStartOf normalises to Monday), while the
+// recurring engine speaks JS weekdays where 0 = Sunday. Every conversion in the
+// app goes through dayIndexOf so the two numbering schemes meet in one place.
+function dayIndexOf(dateStr) {
+  const d = new Date(String(dateStr) + 'T00:00:00Z');
+  return isNaN(d.getTime()) ? null : (d.getUTCDay() + 6) % 7;   // 0 = Monday
+}
+function addDaysUTC(dateStr, n) {
+  const d = new Date(String(dateStr) + 'T00:00:00Z');
+  if (isNaN(d.getTime())) return null;
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// Every member's entry for the given dates, as Map<'key|date', dayObject>.
+// A member who never set that week simply has no entry — unknown, not off.
+async function availabilityDays(memberKeys, dateStrs) {
+  const out = new Map();
+  const keys = [...new Set((memberKeys || []).filter(Boolean).map(String))];
+  const dates = [...new Set((dateStrs || []).filter(Boolean))];
+  if (!keys.length || !dates.length) return out;
+  const weeks = [...new Set(dates.map(d => weekStartOf(d)).filter(Boolean))];
+  const { data, error } = await supabase.from('availability_weeks')
+    .select('member_key,week_start,days').in('member_key', keys).in('week_start', weeks);
+  if (error) return out;                       // unreadable == unknown, never a block
+  const byKeyWeek = new Map((data || []).map(r => [`${r.member_key}|${r.week_start}`, r.days]));
+  for (const key of keys) {
+    for (const date of dates) {
+      const days = byKeyWeek.get(`${key}|${weekStartOf(date)}`);
+      const i = dayIndexOf(date);
+      const day = Array.isArray(days) && i != null ? days[i] : null;
+      if (day) out.set(`${key}|${date}`, day);
+    }
+  }
+  return out;
+}
+
+// The soonest date on/after `fromDate`, within `span` days, that nobody has
+// marked off. Returns fromDate unchanged when nothing is known — availability
+// informs the schedule, it never withholds the work.
+async function nextWorkingDay(memberKeys, fromDate, span) {
+  const days = Math.max(1, span || 14);
+  const dates = [];
+  for (let i = 0; i < days; i++) { const d = addDaysUTC(fromDate, i); if (d) dates.push(d); }
+  if (!dates.length) return fromDate;
+  const map = await availabilityDays(memberKeys, dates);
+  if (!map.size) return fromDate;
+  for (const date of dates) {
+    const off = (memberKeys || []).some(k => (map.get(`${k}|${date}`) || {}).status === 'off');
+    if (!off) return date;
+  }
+  return fromDate;                             // everyone is off all fortnight
+}
+
+ctx.availabilityDays = availabilityDays;
+ctx.availabilityNextWorkingDay = nextWorkingDay;
+
 function mountAvailabilityRoutes(base, guard) {
   // The whole team's week, joined with names so the board renders in one call.
   receiver.router.get(base, guard, requirePerm('availability', 'view'), async (req, res) => {
@@ -71,4 +129,4 @@ function mountAvailabilityRoutes(base, guard) {
 mountAvailabilityRoutes('/api/dashboard/availability', requireAuth);
 mountAvailabilityRoutes('/api/employee/availability', requireEmployeeAuth);
 
-module.exports = { weekStartOf, sanitizeDays };
+module.exports = { weekStartOf, sanitizeDays, dayIndexOf, addDaysUTC, availabilityDays, nextWorkingDay };
