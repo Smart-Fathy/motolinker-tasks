@@ -1021,3 +1021,19 @@ CREATE TABLE IF NOT EXISTS public.container_units (
 );
 CREATE INDEX IF NOT EXISTS container_units_unit_idx ON public.container_units (unit_id);
 ALTER TABLE IF EXISTS public.container_units ENABLE ROW LEVEL SECURITY;
+
+-- ═══ From migrations/020_vessel_position.sql ════════════════════════════════
+-- Where the ship actually is. AIS is a separate feed from container tracking —
+-- a different vendor and a different key — so the columns are separate and
+-- carry their own timestamp: a satellite fix mid-ocean is commonly hours old,
+-- and a dot without its age on it claims a precision nobody is paying for.
+ALTER TABLE public.shipment_containers
+  ADD COLUMN IF NOT EXISTS vessel_lat         NUMERIC(9,6),
+  ADD COLUMN IF NOT EXISTS vessel_lon         NUMERIC(9,6),
+  ADD COLUMN IF NOT EXISTS vessel_position_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS vessel_course      NUMERIC(5,1),
+  ADD COLUMN IF NOT EXISTS vessel_speed       NUMERIC(5,1),
+  ADD COLUMN IF NOT EXISTS position_source    TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS vessel_mmsi        TEXT DEFAULT '';
+CREATE INDEX IF NOT EXISTS shipment_containers_position_at_idx
+  ON public.shipment_containers (vessel_position_at DESC NULLS LAST);

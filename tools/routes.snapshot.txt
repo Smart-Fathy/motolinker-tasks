@@ -411,11 +411,13 @@ GET /api/employee/containers/:id
 POST /api/dashboard/containers
 PUT /api/dashboard/containers/:id
 POST /api/dashboard/containers/:id/refresh
+POST /api/dashboard/containers/register
 POST /api/dashboard/containers/:id/units
 DELETE /api/dashboard/containers/:id/units/:unitId
 POST /api/employee/containers
 PUT /api/employee/containers/:id
 POST /api/employee/containers/:id/refresh
+POST /api/employee/containers/register
 POST /api/employee/containers/:id/units
 DELETE /api/employee/containers/:id/units/:unitId
 DELETE /api/dashboard/containers/:id
