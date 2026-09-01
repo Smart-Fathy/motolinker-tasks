@@ -19,6 +19,31 @@ const ctx = require('../ctx');
 
 const TIMEOUT_MS = 12000;
 
+// Always trimmed. A key pasted into a hosting provider's variable field can pick
+// up a leading or trailing space, and the vendor's answer to that is a 401 —
+// which sends somebody hunting for a wrong key rather than a stray character.
+const trackingKey = () => String(process.env.CONTAINER_TRACKING_KEY || '').trim();
+
+// How a key is presented. Vendors disagree — API_KEY, x-api-key, apikey,
+// Authorization: Bearer — and their docs are the only place the answer lives.
+// Since that answer can be discovered with one request each, the candidates are
+// listed here and the connection check tries them; the winner is then pinned in
+// CONTAINER_TRACKING_HEADER so normal requests only ever send one.
+const AUTH_SHAPES = [
+  { header: 'API_KEY', prefix: '' },
+  { header: 'x-api-key', prefix: '' },
+  { header: 'apikey', prefix: '' },
+  { header: 'Authorization', prefix: 'Bearer ' },
+  { header: 'Authorization', prefix: '' },
+];
+function authHeader(defaultHeader, shape) {
+  const key = trackingKey();
+  if (!key) return {};
+  const h = shape ? shape.header : (process.env.CONTAINER_TRACKING_HEADER || defaultHeader);
+  const prefix = shape ? shape.prefix : (process.env.CONTAINER_TRACKING_AUTH_PREFIX || '');
+  return { [h]: prefix + key };
+}
+
 // What went wrong, in a word the UI can act on.
 //
 // The distinction that matters here is between "your key is wrong" and "your key
@@ -170,7 +195,8 @@ async function genericLookup(containerNo) {
 const T49_BASE = 'https://api.terminal49.com/v2';
 
 function t49Headers() {
-  return { Authorization: `Token ${process.env.CONTAINER_TRACKING_KEY}`,
+  return { ...authHeader('Authorization', { header: process.env.CONTAINER_TRACKING_HEADER || 'Authorization',
+                                            prefix: process.env.CONTAINER_TRACKING_AUTH_PREFIX || 'Token ' }),
            'Content-Type': 'application/json' };
 }
 
@@ -254,7 +280,7 @@ function t49Map(container, shipment) {
 }
 
 async function t49Lookup(containerNo) {
-  if (!process.env.CONTAINER_TRACKING_KEY) return { ok: false, code: 'not-configured', reason: 'not-configured' };
+  if (!trackingKey()) return { ok: false, code: 'not-configured', reason: 'not-configured' };
 
   // JSON:API filtering. Overridable because the exact parameter is the one part
   // of this that is worth being able to correct without a deploy.
@@ -279,7 +305,7 @@ async function t49Lookup(containerNo) {
 // registered, so the first lookup of a new container registers it and the data
 // arrives on a later refresh rather than immediately.
 async function t49Register(number, scac, requestType) {
-  if (!process.env.CONTAINER_TRACKING_KEY) return { ok: false, code: 'not-configured', reason: 'not-configured' };
+  if (!trackingKey()) return { ok: false, code: 'not-configured', reason: 'not-configured' };
   const body = {
     data: {
       type: 'tracking_request',
@@ -310,8 +336,8 @@ async function t49Register(number, scac, requestType) {
 // tracking, POST /shipments/search reads back.
 const SAFECUBE_BASE = 'https://api.sinay.ai/safecube/api/v1/public';
 
-function safecubeHeaders() {
-  return { API_KEY: process.env.CONTAINER_TRACKING_KEY || '', 'Content-Type': 'application/json' };
+function safecubeHeaders(shape) {
+  return { ...authHeader('API_KEY', shape), 'Content-Type': 'application/json' };
 }
 
 // Every object in a payload, depth-first. Vendors wrap their lists differently
@@ -415,7 +441,7 @@ function safecubeSearchBody(containerNo) {
 }
 
 async function safecubeLookup(containerNo) {
-  if (!process.env.CONTAINER_TRACKING_KEY) return { ok: false, code: 'not-configured', reason: 'not-configured' };
+  if (!trackingKey()) return { ok: false, code: 'not-configured', reason: 'not-configured' };
   const r = await getJson(`${SAFECUBE_BASE}/shipments/search`, safecubeHeaders(),
     { method: 'POST', body: safecubeSearchBody(containerNo) });
   if (!r.ok) return r;
@@ -431,7 +457,7 @@ async function safecubeLookup(containerNo) {
 }
 
 async function safecubeRegister(containerNo) {
-  if (!process.env.CONTAINER_TRACKING_KEY) return { ok: false, code: 'not-configured', reason: 'not-configured' };
+  if (!trackingKey()) return { ok: false, code: 'not-configured', reason: 'not-configured' };
   const r = await getJson(`${SAFECUBE_BASE}/shipments`, safecubeHeaders(),
     { method: 'POST', body: { containerNumber: containerNo } });
   if (!r.ok) return r;
@@ -451,7 +477,7 @@ function containerProviderName() {
   // ambiguous now that two providers take one, so it keeps the documented
   // default it has always had rather than guessing at the newer vendor.
   if (process.env.CONTAINER_TRACKING_URL) return 'generic';
-  if (process.env.CONTAINER_TRACKING_KEY) return 'terminal49';
+  if (trackingKey()) return 'terminal49';
   return 'none';
 }
 
@@ -461,7 +487,8 @@ function providerStatus() {
   return {
     provider: name,
     configured: name !== 'none' && name !== 'unknown'
-      && !!(process.env.CONTAINER_TRACKING_KEY || process.env.CONTAINER_TRACKING_URL),
+      && !!(trackingKey() || process.env.CONTAINER_TRACKING_URL),
+    auth_header: process.env.CONTAINER_TRACKING_HEADER || (name === 'terminal49' ? 'Authorization' : 'API_KEY'),
     carrier_has_position: carrierHasPosition(),
     ais: aisConfigured() ? (process.env.AIS_TRACKING_NAME || 'configured') : 'not-configured',
     webhook_ready: !!(process.env.TERMINAL49_WEBHOOK_SECRET || process.env.TRACKING_WEBHOOK_SECRET),
@@ -491,6 +518,45 @@ async function registerContainer(containerNo, scac) {
 // Does the carrier feed also carry the ship's position? Safecube does, which is
 // why it needs no second vendor; the others do not.
 const carrierHasPosition = () => containerProviderName() === 'safecube';
+
+// Try each auth shape once and report which one the vendor accepts.
+//
+// This exists because the vendor's docs are the only place the answer lives and
+// they are not always reachable — but the answer is discoverable with one
+// request per shape, using the key the user already has. Diagnosis only: normal
+// requests send exactly one header, the pinned one.
+async function diagnoseAuth() {
+  const name = containerProviderName();
+  if (name !== 'safecube' && name !== 'terminal49') {
+    return { ok: false, reason: 'auth discovery only applies to the keyed providers' };
+  }
+  if (!trackingKey()) return { ok: false, reason: 'no key set' };
+
+  const attempts = [];
+  for (const shape of AUTH_SHAPES) {
+    const headers = name === 'safecube'
+      ? { ...authHeader('API_KEY', shape), 'Content-Type': 'application/json' }
+      : { ...authHeader('Authorization', shape), 'Content-Type': 'application/json' };
+    // Terminal49's own prefix is "Token ", which is not in the generic list.
+    const r = name === 'safecube'
+      ? await getJson(`${SAFECUBE_BASE}/shipments/search`, headers,
+          { method: 'POST', body: safecubeSearchBody('CSQU3054383'), timeout: 8000 })
+      : await getJson(`${T49_BASE}/containers?page[size]=1`, headers, { timeout: 8000 });
+
+    const label = shape.prefix ? `${shape.header}: ${shape.prefix.trim()} <key>` : `${shape.header}: <key>`;
+    // Anything that is not an auth refusal means the key was ACCEPTED — a 404 or
+    // a 422 is the endpoint talking to us, which is what we are testing for.
+    const accepted = r.ok || (r.code && r.code !== 'unauthorized' && r.code !== 'plan-required');
+    attempts.push({ shape: label, status: r.status || null, accepted, code: r.ok ? 'ok' : r.code });
+    if (accepted) {
+      return { ok: true, header: shape.header, prefix: shape.prefix, shape: label, attempts,
+        env: shape.prefix
+          ? `CONTAINER_TRACKING_HEADER=${shape.header} and CONTAINER_TRACKING_AUTH_PREFIX=${JSON.stringify(shape.prefix)}`
+          : `CONTAINER_TRACKING_HEADER=${shape.header}` };
+    }
+  }
+  return { ok: false, reason: 'every auth shape was refused — the key itself looks wrong or not yet active', attempts };
+}
 
 // ── AIS: where the ship is ───────────────────────────────────────────────────
 // A different vendor and a different key from container tracking, because they
@@ -576,6 +642,7 @@ const aisConfigured = () => !!process.env.AIS_TRACKING_URL;
 
 module.exports = {
   lookupContainer, registerContainer, containerProviderName, carrierHasPosition, providerStatus,
+  diagnoseAuth, trackingKey, AUTH_SHAPES,
   CONTAINER_PROVIDERS,
   lookupPosition, aisConfigured,
   safecubeMap, safecubePosition, safecubeSearchBody, everyObject,

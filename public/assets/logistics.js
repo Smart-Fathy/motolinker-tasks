@@ -546,7 +546,8 @@
       : `Provider: ${d.provider}`;
     const parts = [name];
     if (d.provider !== 'none' && d.provider !== 'unknown') {
-      parts.push(d.reachable ? 'key accepted' : `key rejected (${d.probe})`);
+      parts.push(d.reachable ? 'key accepted'
+        : `key rejected (${d.probe}${d.http ? ' ' + d.http : ''})`);
       // Safecube carries the position on the same shipment, so it needs no
       // second vendor — worth saying, because otherwise somebody goes shopping
       // for an AIS subscription they do not need.
@@ -554,6 +555,32 @@
       parts.push(d.webhook_ready ? 'webhook secret set' : 'no webhook secret');
     }
     toast(parts.join(' · '));
+
+    // A refused key: say which header shape the vendor DOES accept, and the
+    // exact variable to set. This is the answer that was otherwise only in docs
+    // we could not reach.
+    if (d.auth) {
+      const box = document.getElementById('logi-ct-result');
+      if (!box) return;
+      box.innerHTML = d.auth.ok
+        ? `<div class="logi-empty" style="text-align:left">
+             <div style="font-weight:700;color:var(--success,#8a9a86);margin-bottom:8px">
+               ${ic('check', 14)} The key works — it just needs a different header</div>
+             <div style="margin-bottom:10px">${esc(d.provider)} accepted <code>${esc(d.auth.shape)}</code>.</div>
+             <div>Set this and redeploy:</div>
+             <pre style="margin:8px 0 0;padding:10px 12px;background:rgba(255,255,255,.05);border-radius:8px;overflow-x:auto;font-size:12px">${esc(d.auth.env)}</pre>
+           </div>`
+        : `<div class="logi-empty" style="text-align:left">
+             <div style="font-weight:700;color:var(--danger,#c97d6e);margin-bottom:8px">
+               ${ic('alert-triangle', 14)} Every header shape was refused</div>
+             <div style="margin-bottom:10px">${esc(d.auth.reason || 'The key itself looks wrong, or is not active yet.')}</div>
+             <div style="font-size:11.5px;color:var(--muted,#8d897f)">Tried:</div>
+             <ul style="margin:6px 0 0 18px;font-size:11.5px;color:var(--muted,#8d897f)">
+               ${(d.auth.attempts || []).map(a => `<li><code>${esc(a.shape)}</code> → ${esc(a.code)}${a.status ? ' (' + a.status + ')' : ''}</li>`).join('')}
+             </ul>
+           </div>`;
+      requestAnimationFrame(() => lucide.createIcons());
+    }
   }
 
   // Register a box with the carrier platform, then create our row for it so the
