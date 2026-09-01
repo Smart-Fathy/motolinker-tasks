@@ -227,6 +227,26 @@ function mountContainerReads(base, guard) {
     });
   });
 
+  // What the tracking settings currently amount to, and — with ?probe=1 — a real
+  // call to prove it. Two rounds of "I added the key, is it working?" is what
+  // this exists to end: the answer is a button rather than another deploy.
+  receiver.router.get(`${base}/containers/provider-status`, guard, requirePerm('stock', 'tracking'), async (req, res) => {
+    const status = providers.providerStatus();
+    if (String(req.query.probe || '') !== '1') return res.json(status);
+    // A container that cannot exist, so the probe never registers anything and
+    // never touches a real shipment — the point is the vendor's REPLY, not the
+    // data. A well-formed number keeps it past our own validation.
+    const probe = await providers.lookupContainer('CSQU3054383');
+    res.json({
+      ...status,
+      probe: probe.ok ? 'ok' : (probe.code || 'error'),
+      // not-tracked-yet means the vendor answered us properly and simply does
+      // not watch that box — which is exactly what a working key looks like.
+      reachable: probe.ok || probe.code === 'not-tracked-yet' || probe.code === 'not-found',
+      detail: probe.ok ? null : (probe.detail || probe.reason || null),
+    });
+  });
+
   receiver.router.get(`${base}/containers/:id`, guard, requirePerm('stock', 'tracking'), async (req, res) => {
     const { data, error } = await supabase.from('shipment_containers').select('*').eq('id', req.params.id).single();
     if (error) return dbFail(res, error, 'Container tracking');
@@ -304,13 +324,19 @@ function mountContainerWrites(base, guard, who) {
       out.carrier = { ok: false, code: prov.code || 'error', reason: prov.reason, detail: prov.detail || null };
     }
 
-    // 2. The AIS feed. A position is a fresh observation every time, so it is
-    //    NOT put through mergeSynced — there is no hand-edited ETA to protect,
-    //    and refusing to move the dot because someone renamed the vessel would
-    //    be the wrong kind of careful. An older fix than the one already stored
-    //    is still discarded, because vendors do re-serve stale positions.
-    if (providers.aisConfigured()) {
-      const pos = await providers.lookupPosition({ imo: cur.data.vessel_imo, mmsi: cur.data.vessel_mmsi });
+    // 2. The position. A fresh observation every time, so it is NOT put through
+    //    mergeSynced — there is no hand-edited ETA to protect, and refusing to
+    //    move the dot because someone renamed the vessel would be the wrong kind
+    //    of careful. An older fix than the one already stored is still
+    //    discarded, because vendors do re-serve stale positions.
+    //
+    //    Safecube returns the position on the same shipment as the milestones,
+    //    so when the carrier already answered there is nothing to buy and
+    //    nothing to call: prefer what it gave us over a second round trip.
+    const carrierPos = prov.ok && prov.position ? { ok: true, fields: prov.position } : null;
+    if (carrierPos || providers.aisConfigured()) {
+      const pos = carrierPos
+        || await providers.lookupPosition({ imo: cur.data.vessel_imo, mmsi: cur.data.vessel_mmsi });
       if (pos.ok) {
         const had = Date.parse(cur.data.vessel_position_at || '');
         const got = Date.parse(pos.fields.vessel_position_at || '') || Date.now();
@@ -368,9 +394,12 @@ function mountContainerWrites(base, guard, who) {
 mountContainerWrites('/api/dashboard', requireAuth, () => 'dashboard');
 mountContainerWrites('/api/employee', requireEmployeeAuth, req => `employee_${req.employee.id}`);
 
-// ── Terminal49 webhooks ──────────────────────────────────────────────────────
-// The push half of the integration, and the one Terminal49 recommends: rather
-// than polling every box, their platform posts here when a milestone lands.
+// ── Tracking webhooks ────────────────────────────────────────────────────────
+// The push half of the integration, and the one both platforms recommend:
+// rather than polling every box, the vendor posts here when a milestone lands.
+// Terminal49 and Safecube both send one, and the route serves either — the
+// payload is read by SHAPE rather than by a per-vendor path, so a second vendor
+// needed a mapper, not a second endpoint.
 //
 // PUBLIC by necessity — Terminal49 has no session with us — so it is guarded by
 // a secret in the path that we generate and paste into their dashboard. Compared
@@ -386,7 +415,10 @@ mountContainerWrites('/api/employee', requireEmployeeAuth, req => `employee_${re
 const crypto = require('crypto');
 
 function webhookSecretOk(given) {
-  const want = process.env.TERMINAL49_WEBHOOK_SECRET || '';
+  // TRACKING_WEBHOOK_SECRET is the name to use now that more than one vendor
+  // posts here; the Terminal49-specific one keeps working so an already-
+  // registered webhook does not break on this deploy.
+  const want = process.env.TRACKING_WEBHOOK_SECRET || process.env.TERMINAL49_WEBHOOK_SECRET || '';
   if (!want) return false;
   const a = Buffer.from(String(given || ''));
   const b = Buffer.from(want);
@@ -404,9 +436,13 @@ function webhookContainers(payload) {
   const walk = (node, depth) => {
     if (!node || typeof node !== 'object' || depth > 6) return;
     if (Array.isArray(node)) { node.forEach(x => walk(x, depth + 1)); return; }
-    const a = node.attributes;
-    const num = a && (a.number || a.container_number);
-    if (node.type === 'container' && num && !seen.has(node.id || num)) {
+    // Terminal49 wraps in JSON:API (type + attributes); Safecube posts the
+    // shipment object itself. Either counts as a record if it names a container,
+    // and the caller reads the number from whichever place it sits in.
+    const a = node.attributes || {};
+    const num = (node.type === 'container' && (a.number || a.container_number))
+      || node.containerNumber || node.container_number || node.containerNo;
+    if (num && !seen.has(node.id || num)) {
       seen.add(node.id || num);
       out.push(node);
     }
@@ -416,7 +452,7 @@ function webhookContainers(payload) {
   return out;
 }
 
-receiver.router.post('/api/webhooks/terminal49/:secret', express.json({ limit: '256kb' }), async (req, res) => {
+async function handleTrackingWebhook(vendor, req, res) {
   if (!webhookSecretOk(req.params.secret)) return res.sendStatus(404);
 
   const payload = req.body || {};
@@ -426,23 +462,35 @@ receiver.router.post('/api/webhooks/terminal49/:secret', express.json({ limit: '
 
   let matched = 0;
   for (const rec of found) {
-    const no = normContainerNo(rec.attributes.number || rec.attributes.container_number);
+    const a = rec.attributes || {};
+    const no = normContainerNo(a.number || a.container_number
+      || rec.containerNumber || rec.container_number || rec.containerNo);
     if (!no) continue;
     const cur = await supabase.from('shipment_containers').select('*').eq('container_no', no).maybeSingle();
     // Not ours: acknowledge so it is not retried forever, and change nothing.
     if (cur.error || !cur.data) continue;
 
-    const shipment = providers.t49Related(rec, all, 'shipment')
-      || all.find(x => x && x.type === 'shipment') || null;
-    const built = containerBuildRow({ ...cur.data, ...providers.t49Map(rec, shipment) });
+    let mapped, position = null;
+    if (vendor === 'safecube') {
+      mapped = providers.safecubeMap(rec);
+      position = providers.safecubePosition(rec);
+    } else {
+      const shipment = providers.t49Related(rec, all, 'shipment')
+        || all.find(x => x && x.type === 'shipment') || null;
+      mapped = providers.t49Map(rec, shipment);
+    }
+    const built = containerBuildRow({ ...cur.data, ...mapped });
     if (built.error) continue;
 
     // Same hand-edit guard as a pull: a milestone arriving by push must not
     // overwrite an ETA somebody corrected off a phone call either.
     const patch = mergeSynced(cur.data, built.row);
+    // A pushed position is a fresh observation, same as a pulled one, so it goes
+    // on outside the hand-edit guard.
+    if (position) Object.assign(patch, position);
     if (!Object.keys(patch).length) { matched++; continue; }
     const now = new Date().toISOString();
-    patch.source = process.env.CONTAINER_TRACKING_NAME || 'terminal49';
+    patch.source = process.env.CONTAINER_TRACKING_NAME || vendor;
     patch.last_synced_at = now;
     patch.updated_at = now;
     patch.raw = payload;
@@ -452,7 +500,12 @@ receiver.router.post('/api/webhooks/terminal49/:secret', express.json({ limit: '
     matched++;
   }
   res.json({ ok: true, matched });
-});
+}
+
+receiver.router.post('/api/webhooks/terminal49/:secret', express.json({ limit: '256kb' }),
+  (req, res) => handleTrackingWebhook('terminal49', req, res));
+receiver.router.post('/api/webhooks/safecube/:secret', express.json({ limit: '256kb' }),
+  (req, res) => handleTrackingWebhook('safecube', req, res));
 
 receiver.router.delete('/api/dashboard/containers/:id', requireAuth, async (req, res) => {
   const { error } = await supabase.from('shipment_containers').delete().eq('id', req.params.id);

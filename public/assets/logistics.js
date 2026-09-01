@@ -498,10 +498,12 @@
     // A vendor's error is a JSON blob and must never be shouted at somebody
     // trying to find a container. The server classifies it; this turns the class
     // into one sentence that says what to do next. The blob stays as a tooltip.
-    const label = esc(d.provider_name === 'terminal49' ? 'Terminal49' : (d.provider_name || 'The carrier platform'));
+    const NAMES = { terminal49: 'Terminal49', safecube: 'Safecube', generic: 'The carrier feed' };
+    const label = esc(NAMES[d.provider_name] || 'The carrier platform');
     const WHY = {
       'not-configured': 'Automatic lookup is not set up, so enter what the carrier shows.',
       'not-tracked-yet': `${label} is not watching this container yet. Register it and the milestones arrive on the next refresh.`,
+      unknown: 'CONTAINER_TRACKING_PROVIDER is not a name I recognise — check the spelling.',
       // The one that matters here: the key is fine, the plan is the limit.
       'plan-required': `${label} accepted the key, but reading containers back needs a paid plan — the free key may only register them. Register it below and follow it in ${label}, or enter the details by hand.`,
       unauthorized: `${label} rejected the key. Check CONTAINER_TRACKING_KEY.`,
@@ -524,6 +526,34 @@
       ${seen.checkOk ? '' : `<div class="logi-warn" style="justify-content:center">Check digit should be ${seen.expected} — worth confirming against the B/L.</div>`}
     </div>`;
     requestAnimationFrame(() => lucide.createIcons());
+  }
+
+  // "I added the key — is it working?" as one button rather than another deploy.
+  // Probes with a container number that exists in the ISO standard's own example
+  // and nowhere in anyone's fleet, so nothing is registered and no real shipment
+  // is touched: what is being tested is the vendor's REPLY.
+  async function ctProviderCheck() {
+    toast('Testing the carrier connection…');
+    let d;
+    try {
+      const r = await api('/api/dashboard/containers/provider-status?probe=1');
+      d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'check failed');
+    } catch (e) { toast('Could not run the check.'); return; }
+
+    const name = d.provider === 'none' ? 'No carrier feed is configured'
+      : d.provider === 'unknown' ? 'CONTAINER_TRACKING_PROVIDER is not a name I recognise'
+      : `Provider: ${d.provider}`;
+    const parts = [name];
+    if (d.provider !== 'none' && d.provider !== 'unknown') {
+      parts.push(d.reachable ? 'key accepted' : `key rejected (${d.probe})`);
+      // Safecube carries the position on the same shipment, so it needs no
+      // second vendor — worth saying, because otherwise somebody goes shopping
+      // for an AIS subscription they do not need.
+      parts.push(d.carrier_has_position ? 'positions included' : `AIS: ${d.ais}`);
+      parts.push(d.webhook_ready ? 'webhook secret set' : 'no webhook secret');
+    }
+    toast(parts.join(' · '));
   }
 
   // Register a box with the carrier platform, then create our row for it so the
@@ -959,7 +989,7 @@
     inventoryTab, injectLogiStyles: injectStyles,
     loadUnits, loadUnitList, openUnitForm, saveUnit,
     loadContainers, ctLookup, openContainerForm, saveContainer, deleteContainer,
-    ctRefresh, ctRegister, ctLinkUnit, ctLinkUnitSave, ctUnlinkUnit,
+    ctRefresh, ctRegister, ctProviderCheck, ctLinkUnit, ctLinkUnitSave, ctUnlinkUnit,
     logiMountMaps: mountMaps, logiPositionAge: positionAge, logiDegrees: dm,
     openPaymentsPanel, openPaymentForm, savePayment, pmCcyChanged,
     logiInspectContainerNo: inspectContainerNo, logiVoyageProgress: voyageProgress,
