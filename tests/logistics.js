@@ -217,6 +217,132 @@ const atBothBases = (method, tail, perm) => {
   c('the log is capped', sanitizeMoves(Array.from({ length: 200 }, (_, i) => ({ event: 'e' + i }))).length <= 60);
 }
 
+// ── Terminal49: unwrapping JSON:API ─────────────────────────────────────────
+// The one that would silently return nothing: JSON:API puts records in a `data`
+// ARRAY with related records in `included`, and the generic flatten deliberately
+// does not descend into arrays. So Terminal49 needs its own unwrap, and the
+// facts are split — the container knows its equipment, the shipment knows the
+// vessel, the ports and the ETA.
+{
+  const P = require('../src/routes/tracking-providers');
+
+  const payload = {
+    data: [{
+      id: 'c1', type: 'container',
+      attributes: { number: 'MSDU7337230', equipment_length: 40, equipment_height: 'high_cube',
+                    equipment_type: 'dry', pod_arrived_at: null, pod_discharged_at: null },
+      relationships: { shipment: { data: { id: 's1', type: 'shipment' } } },
+    }],
+    included: [{
+      id: 's1', type: 'shipment',
+      attributes: { pod_eta_at: '2026-09-20T00:00:00Z', pod_vessel_name: 'MSC ELISABETTA',
+                    pod_vessel_imo: '9954747', shipping_line_scac: 'MSCU',
+                    port_of_lading_locode: 'SGSIN', port_of_lading_name: 'Singapore',
+                    port_of_discharge_locode: 'ITGIT', port_of_discharge_name: 'Gioia Tauro',
+                    pol_atd_at: '2026-08-14T23:17:00Z', bill_of_lading_number: 'MEDUXY123456' },
+    }],
+  };
+
+  const { list, included } = P.t49Records(payload);
+  eq('the container comes out of the data array', list.length, 1);
+  const shipment = P.t49Related(list[0], included, 'shipment');
+  c('its shipment is resolved out of `included`', !!shipment && shipment.id === 's1');
+
+  const f = P.t49Map(list[0], shipment);
+  eq('the vessel comes from the shipment', f.vessel_name, 'MSC ELISABETTA');
+  eq('so does the IMO', f.vessel_imo, '9954747');
+  eq('and both port codes', [f.pol_code, f.pod_code], ['SGSIN', 'ITGIT']);
+  eq('and the actual departure', f.atd, '2026-08-14T23:17:00Z');
+  eq('and the ETA', f.pod_eta, '2026-09-20T00:00:00Z');
+  // Terminal49 splits the size across three fields; the card shows one string,
+  // and it should read the way the carrier's own screen does.
+  eq('equipment is composed into the label the card shows', f.container_type, "40' HIGH CUBE");
+  eq('a plain 20ft box reads as DRY',
+    P.t49EquipmentLabel({ equipment_length: 20, equipment_height: 'standard', equipment_type: 'dry' }), "20' DRY");
+  eq('a reefer says so',
+    P.t49EquipmentLabel({ equipment_length: 40, equipment_height: 'standard', equipment_type: 'reefer' }), "40' REEFER");
+
+  // The latest move is the FURTHEST milestone reached, not the first field with
+  // a date on it — otherwise a box sitting on the quay still reads "Departed".
+  eq('with only a departure, that is the latest move', f.latest_move, 'Departed — Singapore');
+  const arrived = P.t49Map(
+    { attributes: { ...payload.data[0].attributes, pod_arrived_at: '2026-09-19T06:00:00Z' } }, shipment);
+  eq('once it arrives, arrival outranks departure', arrived.latest_move, 'Arrived — Gioia Tauro');
+  const out = P.t49Map(
+    { attributes: { ...payload.data[0].attributes, pod_arrived_at: '2026-09-19T06:00:00Z',
+                    pod_discharged_at: '2026-09-20T08:00:00Z', pod_full_out_at: '2026-09-22T11:00:00Z' } }, shipment);
+  eq('and pick-up outranks both', out.latest_move, 'Picked up — Gioia Tauro');
+
+  // A shipment that never resolved must not throw — a container can exist
+  // before its shipment record does.
+  const orphan = P.t49Map(list[0], null);
+  c('a container with no shipment still maps what it knows',
+    orphan.container_type === "40' HIGH CUBE" && orphan.vessel_name === undefined);
+
+  // And the generic adapter must still refuse to descend into arrays, which is
+  // exactly why Terminal49 needed its own path.
+  const generic = P.mapProviderPayload(payload);
+  c('the generic adapter finds nothing in a JSON:API envelope', generic.vessel_name === undefined);
+}
+
+// ── AIS: mapping a position ─────────────────────────────────────────────────
+{
+  const P = require('../src/routes/tracking-providers');
+
+  const pos = P.mapAisPayload({ lat: -33.918, lon: 18.423, speed: 14.2, course: 118, timestamp: '2026-09-01T06:00:00Z', mmsi: 636092123 });
+  eq('a flat position maps', [pos.vessel_lat, pos.vessel_lon], [-33.918, 18.423]);
+  eq('speed and course come across', [pos.vessel_speed, pos.vessel_course], [14.2, 118]);
+  eq('the MMSI is kept as a string', pos.vessel_mmsi, '636092123');
+
+  // Vendors report time three different ways, and getting seconds vs
+  // milliseconds wrong dates a fix to 1970 or to the year 57000.
+  eq('unix seconds are read as seconds', P.aisTime(1788249600), new Date(1788249600000).toISOString());
+  eq('unix milliseconds are read as milliseconds', P.aisTime(1788249600000), new Date(1788249600000).toISOString());
+  eq('an ISO string passes through', P.aisTime('2026-09-01T06:00:00Z'), '2026-09-01T06:00:00.000Z');
+  eq('nonsense is null', P.aisTime('not a time'), null);
+
+  // The three ways a feed says "no fix", each of which would otherwise plot a
+  // ship somewhere it has never been.
+  c('a missing position is null', P.mapAisPayload({ speed: 12 }) === null);
+  c('an out-of-range latitude is refused', P.mapAisPayload({ lat: 200, lon: 18 }) === null);
+  c('Null Island is refused', P.mapAisPayload({ lat: 0, lon: 0 }) === null);
+
+  // Several vendors answer with a list of positions; the newest is first.
+  const arr = P.mapAisPayload({ data: [{ latitude: 12.5, longitude: -40.1, sog: 18 }] });
+  eq('a list-shaped answer maps its first entry', [arr.vessel_lat, arr.vessel_lon, arr.vessel_speed], [12.5, -40.1, 18]);
+  const alt = P.mapAisPayload({ AIS: { LAT: 5.5, LON: -3.2, SPEED: 9 } });
+  eq('a nested, upper-cased vendor maps too', [alt.vessel_lat, alt.vessel_lon], [5.5, -3.2]);
+}
+
+// ── Which provider is in play ───────────────────────────────────────────────
+{
+  const P = require('../src/routes/tracking-providers');
+  const saved = { u: process.env.CONTAINER_TRACKING_URL, k: process.env.CONTAINER_TRACKING_KEY,
+                  p: process.env.CONTAINER_TRACKING_PROVIDER, a: process.env.AIS_TRACKING_URL };
+  const set = v => {
+    for (const k of ['CONTAINER_TRACKING_URL', 'CONTAINER_TRACKING_KEY', 'CONTAINER_TRACKING_PROVIDER', 'AIS_TRACKING_URL']) delete process.env[k];
+    Object.assign(process.env, v);
+  };
+  set({});
+  eq('nothing configured means no provider', P.containerProviderName(), 'none');
+  c('…and no AIS', P.aisConfigured() === false);
+  set({ CONTAINER_TRACKING_KEY: 'k' });
+  eq('a bare key means Terminal49, the documented default', P.containerProviderName(), 'terminal49');
+  set({ CONTAINER_TRACKING_URL: 'https://x/{container}' });
+  eq('a URL template means the generic adapter', P.containerProviderName(), 'generic');
+  set({ CONTAINER_TRACKING_URL: 'https://x/{container}', CONTAINER_TRACKING_PROVIDER: 'terminal49' });
+  eq('an explicit choice wins over both', P.containerProviderName(), 'terminal49');
+  set({ AIS_TRACKING_URL: 'https://ais/{imo}' });
+  c('AIS is configured independently of the carrier feed', P.aisConfigured() === true);
+  // The two feeds are separate products; neither may imply the other.
+  eq('…and does not turn on a carrier provider', P.containerProviderName(), 'none');
+  set({});
+  Object.assign(process.env, saved.u ? { CONTAINER_TRACKING_URL: saved.u } : {},
+    saved.k ? { CONTAINER_TRACKING_KEY: saved.k } : {},
+    saved.p ? { CONTAINER_TRACKING_PROVIDER: saved.p } : {},
+    saved.a ? { AIS_TRACKING_URL: saved.a } : {});
+}
+
 // ── Validation ──────────────────────────────────────────────────────────────
 {
   const { unitBuildRow } = UNITS;
@@ -255,6 +381,18 @@ const atBothBases = (method, tail, perm) => {
   // check digit is reported and never enforced.
   const odd = containerBuildRow({ container_no: 'MSDU7337231' });
   c('a bad check digit is reported, not refused', !odd.error && odd.check.checkOk === false && odd.check.expected === 0);
+
+  // A position typed in by hand goes through the same guard as one from a feed.
+  const pos = containerBuildRow({ container_no: 'MSDU7337230', vessel_lat: '-33.918', vessel_lon: '18.423',
+    vessel_course: '118', vessel_speed: '14.2', vessel_mmsi: 'MMSI 636092123' });
+  eq('a hand-typed position is kept', [pos.row.vessel_lat, pos.row.vessel_lon], [-33.918, 18.423]);
+  eq('an MMSI keeps only its nine digits', pos.row.vessel_mmsi, '636092123');
+  const bad = containerBuildRow({ container_no: 'MSDU7337230', vessel_lat: '200', vessel_lon: '18' });
+  eq('an impossible latitude is dropped, not stored', bad.row.vessel_lat, null);
+  const spun = containerBuildRow({ container_no: 'MSDU7337230', vessel_course: '900' });
+  eq('a course outside 0-360 is dropped', spun.row.vessel_course, null);
+  const none = containerBuildRow({ container_no: 'MSDU7337230' });
+  eq('no position means null, not zero', [none.row.vessel_lat, none.row.vessel_lon], [null, null]);
 }
 
 // ── Routes and permissions ──────────────────────────────────────────────────
@@ -278,6 +416,17 @@ const atBothBases = (method, tail, perm) => {
     atBothBases('POST', '/containers', 'stock.tracking')
     && atBothBases('PUT', '/containers/:id', 'stock.tracking')
     && atBothBases('POST', '/containers/:id/refresh', 'stock.tracking'));
+  // Migrations are applied by hand here, so a deploy can land before the SQL.
+  // Without the writeOptional retry, the position columns in every write would
+  // take container tracking down until somebody ran the migration.
+  {
+    const CT_SRC = fs.readFileSync('src/routes/containers.js', 'utf8');
+    c('container writes survive migration 020 not being applied yet',
+      /POSITION_COLUMNS/.test(CT_SRC)
+      && (CT_SRC.match(/ctx\.writeOptional\(/g) || []).length >= 3);
+  }
+  c('registering a box with the carrier works from both portals',
+    atBothBases('POST', '/containers/register', 'stock.tracking'));
   c('the container-to-vehicle link works from both portals',
     atBothBases('POST', '/containers/:id/units', 'stock.tracking')
     && atBothBases('DELETE', '/containers/:id/units/:unitId', 'stock.tracking'));
@@ -344,6 +493,34 @@ const atBothBases = (method, tail, perm) => {
     /container_id[\s\S]*?REFERENCES public\.shipment_containers\(id\) ON DELETE CASCADE/.test(SQL)
     && /unit_id[\s\S]*?REFERENCES public\.vehicle_units\(id\) ON DELETE CASCADE/.test(SQL));
   c('a payment stores the rate it was booked at', /amount_base\s+NUMERIC/.test(SQL) && /fx_rate\s+NUMERIC/.test(SQL));
+
+  // 020: the vessel position columns, in the migration and in the bootstrap.
+  {
+    const POS = fs.readFileSync('migrations/020_vessel_position.sql', 'utf8');
+    const BOOT2 = fs.readFileSync('schema.sql', 'utf8');
+    for (const col of ['vessel_lat', 'vessel_lon', 'vessel_position_at', 'vessel_course', 'vessel_speed', 'vessel_mmsi', 'position_source']) {
+      c(`020 adds ${col}`, new RegExp(`ADD COLUMN IF NOT EXISTS ${col}\\b`).test(POS));
+      c(`…and schema.sql has it too`, new RegExp(`ADD COLUMN IF NOT EXISTS ${col}\\b`).test(BOOT2));
+    }
+    c('020 can be applied twice', !/ADD COLUMN (?!IF NOT EXISTS)/.test(POS));
+    // The fix carries its own time, separate from the row's updated_at, because
+    // the age of a position is what says how much to trust it.
+    c('the position has a timestamp of its own', /vessel_position_at\s+TIMESTAMPTZ/.test(POS));
+  }
+  // schema.sql is the cumulative bootstrap a fresh install pastes (README step
+  // 1). A table that lives only in the migration means a new deployment gets
+  // 018 and the code has nowhere to write.
+  {
+    const BOOT = fs.readFileSync('schema.sql', 'utf8');
+    for (const t of ['vehicle_units', 'payments', 'shipment_containers', 'container_units']) {
+      c(`schema.sql also creates ${t}`, new RegExp(`CREATE TABLE IF NOT EXISTS public\\.${t}`).test(BOOT));
+      c(`…with RLS on, like every other table here`,
+        new RegExp(`ALTER TABLE IF EXISTS public\\.${t} ENABLE ROW LEVEL SECURITY`).test(BOOT));
+    }
+    c('the migration enables RLS too, so an existing database matches',
+      ['vehicle_units', 'payments', 'shipment_containers', 'container_units']
+        .every(t => new RegExp(`ALTER TABLE public\\.${t}\\s+ENABLE ROW LEVEL SECURITY`).test(SQL)));
+  }
 }
 
 // ── Both portals reach it ───────────────────────────────────────────────────

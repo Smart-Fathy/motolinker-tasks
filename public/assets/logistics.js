@@ -134,6 +134,30 @@
     .logi-voy-times b{display:block;font-size:12.5px;font-weight:700;margin-top:2px}
     .logi-voy-none{font-size:12px;color:var(--muted,#8d897f);padding:4px 0}
 
+    /* Live position. The map is only mounted for a container that has a fix, so
+       a box still sitting at the load port costs nothing. */
+    .logi-pos{border-top:1px solid var(--border,rgba(255,255,255,.09))}
+    .logi-pos-head{display:flex;align-items:center;gap:8px;padding:12px 20px 8px;font-size:11.5px}
+    .logi-pos-co{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+                 color:var(--text,#f3efe7);white-space:nowrap}
+    .logi-pos-head{flex-wrap:wrap}
+    .logi-pos-age{margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-weight:700;
+                  padding:2px 8px;border-radius:20px;white-space:nowrap}
+    /* A fix has an age and the age decides how much to trust it: minutes is a
+       coastal report, hours is a satellite pass, a day is not a position. */
+    .logi-pos-age.fresh{background:rgba(16,185,129,.12);color:var(--success,#8a9a86)}
+    .logi-pos-age.aging{background:rgba(245,158,11,.12);color:var(--warning,#c9a35e)}
+    .logi-pos-age.stale{background:rgba(239,68,68,.12);color:var(--danger,#c97d6e)}
+    .logi-map{height:190px;width:100%;background:rgba(255,255,255,.03)}
+    .logi-map-fallback{padding:14px 20px;font-size:12px;color:var(--muted,#8d897f)}
+    /* Leaflet paints its own light chrome; tone it into the dark card. */
+    .logi-map .leaflet-tile{filter:brightness(.72) saturate(.75) contrast(1.05)}
+    .logi-map .leaflet-container{background:#0d1b2a}
+    .logi-map .leaflet-control-attribution{background:rgba(0,0,0,.55);color:#9aa;font-size:9px}
+    .logi-map .leaflet-control-attribution a{color:#bcd}
+    .logi-ship-marker{display:flex;align-items:center;justify-content:center;color:var(--primary,#c9a35e);
+                      filter:drop-shadow(0 0 3px rgba(0,0,0,.8))}
+
     .logi-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:20px;
                font-size:10.5px;font-weight:800;letter-spacing:.02em;white-space:nowrap}
     .logi-warn{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--warning,#c9a35e);
@@ -227,6 +251,110 @@
     return { no, valid: true, checkOk: d === Number(no[10]), expected: d };
   }
 
+  // ── Live vessel position ──────────────────────────────────────────────────
+  // Leaflet is loaded from a CDN the first time a card with a fix is drawn, and
+  // never otherwise. If it does not arrive — blocked CDN, offline PWA — the card
+  // falls back to the coordinates and a link out, which is the information the
+  // map was there to convey anyway.
+  const LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+  const LEAFLET_JS  = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+  let _leafletPromise = null;
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve(window.L);
+    if (_leafletPromise) return _leafletPromise;
+    _leafletPromise = new Promise((resolve, reject) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = LEAFLET_CSS;
+      document.head.appendChild(css);
+      const js = document.createElement('script');
+      js.src = LEAFLET_JS;
+      js.onload = () => resolve(window.L);
+      js.onerror = () => reject(new Error('Leaflet did not load'));
+      document.head.appendChild(js);
+    });
+    return _leafletPromise;
+  }
+
+  // Degrees to the notation a chart uses. 31.2°N reads as a position; -31.2
+  // reads as a number and gets mistaken for a longitude.
+  function dm(v, axis) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '—';
+    const hemi = axis === 'lat' ? (n >= 0 ? 'N' : 'S') : (n >= 0 ? 'E' : 'W');
+    return `${Math.abs(n).toFixed(3)}° ${hemi}`;
+  }
+
+  // How old the fix is, and how much to trust it. Satellite AIS mid-ocean is
+  // routinely an hour or more behind, so "live" is a claim worth qualifying on
+  // the card rather than in a footnote nobody reads.
+  function positionAge(at) {
+    const t = Date.parse(at || '');
+    if (!Number.isFinite(t)) return { label: 'age unknown', cls: 'stale', mins: null };
+    const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+    const cls = mins <= 90 ? 'fresh' : mins <= 12 * 60 ? 'aging' : 'stale';
+    if (mins < 60) return { label: `${mins} min ago`, cls, mins };
+    if (mins < 48 * 60) return { label: `${Math.round(mins / 60)} h ago`, cls, mins };
+    return { label: `${Math.round(mins / 1440)} d ago`, cls, mins };
+  }
+
+  function positionHtml(c) {
+    if (c.vessel_lat == null || c.vessel_lon == null) return '';
+    const age = positionAge(c.vessel_position_at);
+    const speed = c.vessel_speed != null && c.vessel_speed !== '' ? `${Number(c.vessel_speed).toFixed(1)} kn` : '';
+    return `<div class="logi-pos">
+      <div class="logi-pos-head">
+        <span style="color:var(--primary,#c9a35e);display:flex">${ic('radio', 14)}</span>
+        <span class="logi-pos-co">${esc(dm(c.vessel_lat, 'lat'))}, ${esc(dm(c.vessel_lon, 'lon'))}</span>
+        ${speed ? `<span style="color:var(--muted,#8d897f)">· ${esc(speed)}</span>` : ''}
+        <span class="logi-pos-age ${age.cls}" title="AIS reports are delayed, especially by satellite mid-ocean">${esc(age.label)}</span>
+      </div>
+      <div class="logi-map" id="logi-map-${c.id}"
+           data-lat="${esc(c.vessel_lat)}" data-lon="${esc(c.vessel_lon)}"
+           data-course="${esc(c.vessel_course == null ? '' : c.vessel_course)}"
+           data-name="${esc(c.vessel_name || 'Vessel')}"></div>
+    </div>`;
+  }
+
+  // Mount every map on the page that has not been mounted yet.
+  function mountMaps() {
+    const boxes = [...document.querySelectorAll('.logi-map')].filter(el => !el.dataset.mounted);
+    if (!boxes.length) return;
+    loadLeaflet().then(L => {
+      boxes.forEach(el => {
+        if (el.dataset.mounted) return;
+        el.dataset.mounted = '1';
+        const lat = Number(el.dataset.lat), lon = Number(el.dataset.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        // Zoom 4 shows the sea area around the ship. Street-level tiles are
+        // useless in the middle of an ocean, which is where these boxes are.
+        const map = L.map(el, { attributionControl: true, zoomControl: true, scrollWheelZoom: false })
+          .setView([lat, lon], 4);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 12, attribution: '© OpenStreetMap',
+        }).addTo(map);
+        const course = Number(el.dataset.course);
+        const rot = Number.isFinite(course) ? course : 0;
+        const icon = L.divIcon({
+          className: '',
+          iconSize: [22, 22], iconAnchor: [11, 11],
+          html: `<div class="logi-ship-marker" style="transform:rotate(${rot}deg)">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2l7 19-7-4-7 4 7-19Z"/></svg></div>`,
+        });
+        L.marker([lat, lon], { icon }).addTo(map).bindPopup(el.dataset.name || 'Vessel');
+        // The card is laid out after this runs, so Leaflet's first size read can
+        // be of a zero-height box; one invalidate once painted fixes it.
+        setTimeout(() => map.invalidateSize(), 60);
+      });
+    }).catch(() => {
+      boxes.forEach(el => {
+        el.outerHTML = `<div class="logi-map-fallback">Map unavailable offline —
+          position ${esc(dm(el.dataset.lat, 'lat'))}, ${esc(dm(el.dataset.lon, 'lon'))}
+          (<a href="https://www.openstreetmap.org/?mlat=${encodeURIComponent(el.dataset.lat)}&mlon=${encodeURIComponent(el.dataset.lon)}#map=5/${encodeURIComponent(el.dataset.lat)}/${encodeURIComponent(el.dataset.lon)}"
+              target="_blank" rel="noopener" style="color:var(--primary,#c9a35e)">open a map</a>)</div>`;
+      });
+    });
+  }
+
   // ═══ Container tracking ═══════════════════════════════════════════════════
   let _containers = [];
 
@@ -298,6 +426,7 @@
           : ''}
       </div>
       ${voyageHtml(c)}
+      ${positionHtml(c)}
       <div class="logi-ct-foot">
         ${ctRow('timer', 'POD ETA', fmtDate(c.pod_eta))}
         <div class="logi-ct-actions">
@@ -333,7 +462,7 @@
     box.innerHTML = list.length
       ? `<div class="logi-ct-grid">${list.map(containerCardHtml).join('')}</div>`
       : `<div class="logi-empty">Nothing is being tracked yet. Enter a container number above to start.</div>`;
-    requestAnimationFrame(() => lucide.createIcons());
+    requestAnimationFrame(() => { lucide.createIcons(); mountMaps(); });
   }
 
   // The entry point the team asked for: type the container in, see the card.
@@ -360,24 +489,45 @@
     }
     if (d.found) {
       out.innerHTML = `<div class="logi-ct-grid">${containerCardHtml(d.container)}</div>`;
-      requestAnimationFrame(() => lucide.createIcons());
+      requestAnimationFrame(() => { lucide.createIcons(); mountMaps(); });
       return;
     }
     // Not tracked. Say what the provider had to say about it — "not-configured"
     // is a normal state here, not a failure, because typing the card in by hand
     // is a supported way to work.
+    // Three different situations, and conflating them is what makes a tracking
+    // page feel broken: nobody has configured a vendor; the vendor answered but
+    // has never been asked to watch this box; the vendor is unreachable.
     const why = d.provider === 'not-configured'
       ? 'Automatic lookup is not set up, so enter what the carrier shows.'
-      : d.provider === 'ok' ? 'Prefilled from the carrier.' : `Carrier lookup unavailable (${esc(d.provider || 'unknown')}) — enter it by hand.`;
+      : d.provider === 'ok' ? 'Prefilled from the carrier.'
+      : d.can_register ? `${esc(d.provider_name || 'The carrier platform')} is not watching this container yet. Register it and the milestones arrive on the next refresh.`
+      : `Carrier lookup unavailable (${esc(d.provider || 'unknown')}) — enter it by hand.`;
+    const prefill = JSON.stringify({ container_no: seen.no, ...(d.prefill || {}) }).replace(/'/g, '&#39;');
     out.innerHTML = `<div class="logi-empty">
       <div style="font-weight:700;color:var(--text,#f3efe7);margin-bottom:6px">${esc(seen.no)} is not tracked yet</div>
       <div style="margin-bottom:12px">${why}</div>
-      ${can('stock', 'tracking')
-        ? `<button class="btn btn-primary btn-sm" onclick='openContainerForm(null, ${JSON.stringify({ container_no: seen.no, ...(d.prefill || {}) }).replace(/'/g, "&#39;")})'>Start tracking it</button>`
-        : ''}
+      ${can('stock', 'tracking') ? `<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        ${d.can_register ? `<button class="btn btn-outline btn-sm" onclick="ctRegister('${esc(seen.no)}')">Ask ${esc(d.provider_name)} to track it</button>` : ''}
+        <button class="btn btn-primary btn-sm" onclick='openContainerForm(null, ${prefill})'>Start tracking it</button>
+      </div>` : ''}
       ${seen.checkOk ? '' : `<div class="logi-warn" style="justify-content:center">Check digit should be ${seen.expected} — worth confirming against the B/L.</div>`}
     </div>`;
     requestAnimationFrame(() => lucide.createIcons());
+  }
+
+  // Register a box with the carrier platform, then create our row for it so the
+  // team has somewhere to look while the milestones catch up.
+  async function ctRegister(no) {
+    toast('Registering with the carrier…');
+    const r = await api('/api/dashboard/containers/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ container_no: no }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { toast(d.error || 'Could not register that container.'); return; }
+    if (!d.ok) { toast(`Carrier would not take it: ${d.reason}`); return; }
+    toast(`Registered — status ${d.status}. Milestones arrive on the next refresh.`);
+    openContainerForm(null, { container_no: no });
   }
 
   function openContainerForm(id, prefill) {
@@ -414,6 +564,16 @@
         ${f('Discharge port', 'ct-pod-name', c.pod_name, 'text', 'Gioia Tauro')}
         ${f('Reported arrival', 'ct-eta', dtLocal(c.eta), 'datetime-local')}
       </div>
+      <div style="font-size:12px;font-weight:700;margin:14px 0 6px">Vessel position</div>
+      <div class="logi-hint" style="margin-bottom:10px">Filled by the AIS feed when one is configured. Type it in if the agent sends a position — decimal degrees, south and west negative.</div>
+      <div class="qt-grid-3">
+        ${f('Latitude', 'ct-lat', c.vessel_lat, 'number', '-33.918')}
+        ${f('Longitude', 'ct-lon', c.vessel_lon, 'number', '18.423')}
+        ${f('Reported at', 'ct-pos-at', dtLocal(c.vessel_position_at), 'datetime-local')}
+        ${f('Course °', 'ct-course', c.vessel_course, 'number')}
+        ${f('Speed kn', 'ct-speed', c.vessel_speed, 'number')}
+        ${f('MMSI', 'ct-mmsi', c.vessel_mmsi, 'text', '636092xxx')}
+      </div>
       <div class="form-group"><label class="form-label">Notes</label>
         <textarea class="form-control" id="ct-notes" rows="2">${esc(c.notes || '')}</textarea></div>
       <div id="ct-err" class="error-msg" style="display:none"></div>`,
@@ -440,6 +600,9 @@
       vessel_name: val('ct-vessel'), vessel_imo: val('ct-imo'),
       pol_code: val('ct-pol-code'), pol_name: val('ct-pol-name'), atd: val('ct-atd'),
       pod_code: val('ct-pod-code'), pod_name: val('ct-pod-name'), eta: val('ct-eta'),
+      vessel_lat: val('ct-lat'), vessel_lon: val('ct-lon'),
+      vessel_position_at: val('ct-pos-at'), vessel_course: val('ct-course'),
+      vessel_speed: val('ct-speed'), vessel_mmsi: val('ct-mmsi'),
       notes: val('ct-notes'),
     };
     const r = await api(id ? `/api/dashboard/containers/${id}` : '/api/dashboard/containers',
@@ -466,13 +629,22 @@
     const r = await api(`/api/dashboard/containers/${id}/refresh`, { method: 'POST' });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { toast(d.error || 'Refresh failed.'); return; }
-    if (!d.ok) {
-      toast(d.reason === 'not-configured'
-        ? 'Automatic tracking is not set up — set CONTAINER_TRACKING_URL to enable it.'
-        : `Carrier lookup failed: ${d.reason}`);
+
+    // Two feeds, reported separately — "the ETA is stale but the dot moved" is a
+    // real and common outcome, and one summary line would hide it.
+    const say = [];
+    if (d.carrier && d.carrier.ok) say.push('carrier updated');
+    else if (d.carrier && d.carrier.reason === 'not-configured') say.push('no carrier feed set up');
+    else if (d.carrier && d.carrier.reason === 'not-tracked-yet') say.push('carrier is not watching this box yet');
+    else if (d.carrier) say.push(`carrier: ${d.carrier.reason}`);
+    if (d.position && d.position.ok) say.push('position updated');
+    else if (d.position) say.push(`position: ${d.position.reason}`);
+
+    if (!d.ok && !d.changed) {
+      toast(say.length ? say.join(' · ') : 'Nothing to update.');
       return;
     }
-    toast(d.changed ? `Updated ${d.changed} field${d.changed === 1 ? '' : 's'}.` : 'Already up to date.');
+    toast(d.changed ? `${say.join(' · ')} (${d.changed} field${d.changed === 1 ? '' : 's'})` : 'Already up to date.');
     loadContainers();
   }
 
@@ -769,7 +941,8 @@
     inventoryTab, injectLogiStyles: injectStyles,
     loadUnits, loadUnitList, openUnitForm, saveUnit,
     loadContainers, ctLookup, openContainerForm, saveContainer, deleteContainer,
-    ctRefresh, ctLinkUnit, ctLinkUnitSave, ctUnlinkUnit,
+    ctRefresh, ctRegister, ctLinkUnit, ctLinkUnitSave, ctUnlinkUnit,
+    logiMountMaps: mountMaps, logiPositionAge: positionAge, logiDegrees: dm,
     openPaymentsPanel, openPaymentForm, savePayment, pmCcyChanged,
     logiInspectContainerNo: inspectContainerNo, logiVoyageProgress: voyageProgress,
     LOGI_UNIT_STATUSES: UNIT_STATUSES, LOGI_CONTAINER_STATUSES: CONTAINER_STATUSES,

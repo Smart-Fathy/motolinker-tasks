@@ -28,7 +28,29 @@ const { CONTAINER_STATUS_KEYS, CONTAINER_TYPES, inspectContainerNo, normContaine
 const { dbFail } = require('./vehicle-units');
 
 const str = (v, max) => String(v ?? '').trim().slice(0, max || 200);
+
+// The columns migrations/020 adds. Migrations here are applied by hand, so a
+// deploy can land ahead of the SQL — and a write that fails wholesale because of
+// one absent optional column would break the tracking that already works. This
+// is the ctx.writeOptional contract: try with them, retry once without.
+const POSITION_COLUMNS = ['vessel_lat', 'vessel_lon', 'vessel_position_at',
+  'vessel_course', 'vessel_speed', 'vessel_mmsi', 'position_source'];
 const dateOrNull = v => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim()) ? String(v).trim() : null);
+// A coordinate, or null. Out of range is not a coordinate, and 0,0 — Null
+// Island, in the Gulf of Guinea — is what a broken feed reports rather than
+// where a container ship is.
+function coord(v, limit) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < -limit || n > limit) return null;
+  return n;
+}
+function numOrNull(v, min, max) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < min || n > max) return null;
+  return n;
+}
 function tsOrNull(v) {
   const s = String(v || '').trim();
   if (!s) return null;
@@ -82,6 +104,15 @@ function containerBuildRow(body) {
       atd: tsOrNull(b.atd),
       eta: tsOrNull(b.eta),
       moves: sanitizeMoves(b.moves),
+      // Where the ship is. Written by the AIS sync, and by hand when somebody has
+      // a position from the agent — hence the same validation either way.
+      vessel_lat: coord(b.vessel_lat, 90),
+      vessel_lon: coord(b.vessel_lon, 180),
+      vessel_position_at: tsOrNull(b.vessel_position_at),
+      vessel_course: numOrNull(b.vessel_course, 0, 360),
+      vessel_speed: numOrNull(b.vessel_speed, 0, 60),
+      vessel_mmsi: String(b.vessel_mmsi || '').replace(/\D/g, '').slice(0, 9),
+      position_source: str(b.position_source, 40),
       po_id: b.po_id == null || b.po_id === '' ? null : (Number(b.po_id) || null),
       supplier: str(b.supplier, 120),
       notes: str(b.notes, 2000),
@@ -90,94 +121,12 @@ function containerBuildRow(body) {
   };
 }
 
-// ── Provider adapter ─────────────────────────────────────────────────────────
-// Deliberately vendor-neutral. CONTAINER_TRACKING_URL is a template holding
-// {container}; the key rides in whichever header CONTAINER_TRACKING_HEADER
-// names (default Authorization). Whatever JSON comes back is flattened and read
-// through the alias table below, so a new provider is a config change rather
-// than a code change — and when nothing is configured this reports that plainly
-// instead of failing, because manual entry is a supported way to work, not a
-// fallback.
-const FIELD_ALIASES = {
-  container_type: ['container_type', 'containerType', 'type', 'equipment_type', 'size_type'],
-  carrier: ['carrier', 'scac', 'shipping_line', 'line'],
-  bl_number: ['bl_number', 'bill_of_lading', 'bol', 'blNumber'],
-  latest_move: ['latest_move', 'last_event', 'lastLocation', 'current_location', 'location'],
-  latest_move_at: ['latest_move_at', 'last_event_at', 'updated_at', 'last_seen'],
-  pod_eta: ['pod_eta', 'podEta', 'eta_pod', 'destination_eta'],
-  vessel_name: ['vessel_name', 'vessel', 'vesselName', 'ship_name'],
-  vessel_imo: ['vessel_imo', 'imo', 'imo_number', 'vesselImo'],
-  pol_code: ['pol_code', 'pol', 'origin_code', 'port_of_loading_code'],
-  pol_name: ['pol_name', 'origin', 'port_of_loading'],
-  pod_code: ['pod_code', 'pod', 'destination_code', 'port_of_discharge_code'],
-  pod_name: ['pod_name', 'destination', 'port_of_discharge'],
-  atd: ['atd', 'actual_departure', 'departure_at', 'actualDeparture'],
-  eta: ['eta', 'arrival_eta', 'reported_eta', 'estimated_arrival'],
-};
-
-// Providers nest their answer differently ({data:{…}}, {container:{…}}, a bare
-// object). One shallow flatten means the alias table does not have to know.
-function flatten(obj, depth, out) {
-  const acc = out || {};
-  if (!obj || typeof obj !== 'object' || (depth || 0) > 3) return acc;
-  for (const [k, v] of Object.entries(obj)) {
-    if (v && typeof v === 'object' && !Array.isArray(v)) flatten(v, (depth || 0) + 1, acc);
-    else if (!(k in acc)) acc[k] = v;
-  }
-  return acc;
-}
-
-function mapProviderPayload(payload) {
-  const flat = flatten(payload, 0, {});
-  const out = {};
-  for (const [field, names] of Object.entries(FIELD_ALIASES)) {
-    for (const n of names) {
-      if (flat[n] != null && flat[n] !== '') { out[field] = flat[n]; break; }
-    }
-  }
-  const events = (payload && (payload.events || payload.moves || payload.port_calls))
-    || (payload && payload.data && (payload.data.events || payload.data.moves));
-  if (Array.isArray(events)) {
-    out.moves = events.map(e => ({
-      at: e.at || e.date || e.timestamp || e.event_time || '',
-      event: e.event || e.description || e.status || e.activity || '',
-      place: e.place || e.location || e.port || e.facility || '',
-      vessel: e.vessel || e.vessel_name || '',
-    }));
-  }
-  return out;
-}
-ctx.mapContainerPayload = mapProviderPayload;
-
-const PROVIDER_TIMEOUT_MS = 12000;
-async function providerLookup(containerNo) {
-  const tpl = process.env.CONTAINER_TRACKING_URL;
-  const key = process.env.CONTAINER_TRACKING_KEY;
-  if (!tpl) return { ok: false, reason: 'not-configured' };
-  const url = tpl.includes('{container}')
-    ? tpl.replace('{container}', encodeURIComponent(containerNo))
-    : tpl + encodeURIComponent(containerNo);
-  const headers = { Accept: 'application/json' };
-  if (key) headers[process.env.CONTAINER_TRACKING_HEADER || 'Authorization'] = key;
-
-  // A tracking site that hangs must not hang the request that asked for it —
-  // the person is looking at a spinner in a modal.
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), PROVIDER_TIMEOUT_MS);
-  try {
-    const r = await fetch(url, { headers, signal: ac.signal });
-    const text = await r.text();
-    let json = null;
-    try { json = JSON.parse(text); } catch (_) { /* not JSON */ }
-    if (!r.ok) return { ok: false, reason: `provider returned ${r.status}` };
-    if (!json) return { ok: false, reason: 'provider did not return JSON' };
-    return { ok: true, fields: mapProviderPayload(json), raw: json };
-  } catch (e) {
-    return { ok: false, reason: e.name === 'AbortError' ? 'provider timed out' : String(e.message || e) };
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// ── Providers ────────────────────────────────────────────────────────────────
+// Both feeds live in src/routes/tracking-providers.js: the carrier one that
+// answers "where is my box" (Terminal49 by default) and the AIS one that answers
+// "where is the ship". They are separate vendors and separate keys, so they are
+// separate adapters, and either can be absent without affecting the other.
+const providers = require('./tracking-providers');
 
 // Which of the synced fields may land on the stored row.
 //
@@ -256,7 +205,7 @@ function mountContainerReads(base, guard) {
       return res.json({ found: true, check: seen, container: withUnits(data, links, units) });
     }
 
-    const prov = await providerLookup(seen.no);
+    const prov = await providers.lookupContainer(seen.no);
     res.json({
       found: false,
       check: seen,
@@ -264,6 +213,11 @@ function mountContainerReads(base, guard) {
       // a lookup is a read, and the person decides whether to start tracking it.
       prefill: prov.ok ? prov.fields : null,
       provider: prov.ok ? 'ok' : prov.reason,
+      provider_name: providers.containerProviderName(),
+      // Terminal49 only answers for boxes it has been asked to track, so a first
+      // lookup legitimately comes back empty. That is an offer to register it,
+      // not a failure, and the UI needs to tell those two apart.
+      can_register: prov.reason === 'not-tracked-yet' && providers.containerProviderName() === 'terminal49',
     });
   });
 
@@ -291,7 +245,8 @@ function mountContainerWrites(base, guard, who) {
     const { row, error: verr, check } = containerBuildRow(req.body);
     if (verr) return res.status(400).json({ error: verr });
     row.created_by = who(req);
-    const { data, error } = await supabase.from('shipment_containers').insert(row).select().single();
+    const { data, error } = await ctx.writeOptional(
+      r => supabase.from('shipment_containers').insert(r).select().single(), row, POSITION_COLUMNS);
     if (error) {
       if (/duplicate key/i.test(String(error.message || ''))) {
         return res.status(409).json({ error: `${row.container_no} is already being tracked.` });
@@ -308,33 +263,83 @@ function mountContainerWrites(base, guard, who) {
     const { row, error: verr, check } = containerBuildRow(req.body);
     if (verr) return res.status(400).json({ error: verr });
     row.updated_at = new Date().toISOString();
-    const { data, error } = await supabase.from('shipment_containers').update(row).eq('id', req.params.id).select().single();
+    const { data, error } = await ctx.writeOptional(
+      r => supabase.from('shipment_containers').update(r).eq('id', req.params.id).select().single(), row, POSITION_COLUMNS);
     if (error) return dbFail(res, error, 'Container tracking');
     res.json({ ...data, check });
   });
 
-  // Pull the latest from the provider onto an existing box.
+  // Pull the latest onto an existing box: the carrier's milestones and the
+  // ship's position. They are separate vendors, so each is attempted and
+  // reported on its own — having only one of the two configured is a normal
+  // setup, and one being down must not hide the other's answer.
   receiver.router.post(`${base}/containers/:id/refresh`, guard, requirePerm('stock', 'tracking'), async (req, res) => {
     const cur = await supabase.from('shipment_containers').select('*').eq('id', req.params.id).single();
     if (cur.error) return dbFail(res, cur.error, 'Container tracking');
 
-    const prov = await providerLookup(cur.data.container_no);
-    if (!prov.ok) return res.status(200).json({ ok: false, reason: prov.reason, container: cur.data });
-
-    const built = containerBuildRow({ ...cur.data, ...prov.fields });
-    if (built.error) return res.status(200).json({ ok: false, reason: built.error, container: cur.data });
-    const patch = mergeSynced(cur.data, built.row);
-    if (!Object.keys(patch).length) {
-      return res.json({ ok: true, changed: 0, container: cur.data });
-    }
     const now = new Date().toISOString();
-    patch.source = process.env.CONTAINER_TRACKING_NAME || 'provider';
-    patch.last_synced_at = now;
+    const patch = {};
+    const out = { ok: false, carrier: null, position: null };
+
+    // 1. The carrier feed, through the hand-edit guard.
+    const prov = await providers.lookupContainer(cur.data.container_no);
+    if (prov.ok) {
+      const built = containerBuildRow({ ...cur.data, ...prov.fields });
+      if (built.error) out.carrier = { ok: false, reason: built.error };
+      else {
+        Object.assign(patch, mergeSynced(cur.data, built.row));
+        patch.source = process.env.CONTAINER_TRACKING_NAME || providers.containerProviderName();
+        patch.last_synced_at = now;
+        patch.raw = prov.raw && typeof prov.raw === 'object' ? prov.raw : {};
+        out.carrier = { ok: true };
+        out.ok = true;
+      }
+    } else {
+      out.carrier = { ok: false, reason: prov.reason };
+    }
+
+    // 2. The AIS feed. A position is a fresh observation every time, so it is
+    //    NOT put through mergeSynced — there is no hand-edited ETA to protect,
+    //    and refusing to move the dot because someone renamed the vessel would
+    //    be the wrong kind of careful. An older fix than the one already stored
+    //    is still discarded, because vendors do re-serve stale positions.
+    if (providers.aisConfigured()) {
+      const pos = await providers.lookupPosition({ imo: cur.data.vessel_imo, mmsi: cur.data.vessel_mmsi });
+      if (pos.ok) {
+        const had = Date.parse(cur.data.vessel_position_at || '');
+        const got = Date.parse(pos.fields.vessel_position_at || '') || Date.now();
+        if (!Number.isFinite(had) || got >= had) {
+          Object.assign(patch, pos.fields);
+          if (!patch.vessel_position_at) patch.vessel_position_at = now;
+          out.position = { ok: true, at: patch.vessel_position_at };
+          out.ok = true;
+        } else {
+          out.position = { ok: false, reason: 'the feed returned an older fix than the one already stored' };
+        }
+      } else {
+        out.position = { ok: false, reason: pos.reason };
+      }
+    }
+
+    if (!Object.keys(patch).length) {
+      return res.json({ ...out, changed: 0, container: cur.data });
+    }
     patch.updated_at = now;
-    patch.raw = prov.raw && typeof prov.raw === 'object' ? prov.raw : {};
-    const { data, error } = await supabase.from('shipment_containers').update(patch).eq('id', cur.data.id).select().single();
+    const { data, error } = await ctx.writeOptional(
+      r => supabase.from('shipment_containers').update(r).eq('id', cur.data.id).select().single(), patch, POSITION_COLUMNS);
     if (error) return dbFail(res, error, 'Container tracking');
-    res.json({ ok: true, changed: Object.keys(patch).length, container: data });
+    res.json({ ...out, changed: Object.keys(patch).length, container: data });
+  });
+
+  // Ask the carrier's platform to start tracking a box it does not know yet.
+  // Terminal49 tracks what you have registered, so this is the step between
+  // "never heard of it" and data arriving on a later refresh.
+  receiver.router.post(`${base}/containers/register`, guard, requirePerm('stock', 'tracking'), express.json(), async (req, res) => {
+    const seen = inspectContainerNo(req.body && req.body.container_no);
+    if (!seen.valid) return res.status(400).json({ error: 'A container number is four letters then seven digits, like MSDU7337230.' });
+    const r = await providers.registerContainer(seen.no, str((req.body || {}).scac, 8).toUpperCase());
+    if (!r.ok) return res.status(200).json({ ok: false, reason: r.reason });
+    res.json({ ok: true, status: r.status, provider: providers.containerProviderName() });
   });
 
   // Which vehicles are in the box.
@@ -363,4 +368,7 @@ receiver.router.delete('/api/dashboard/containers/:id', requireAuth, async (req,
   res.json({ ok: true });
 });
 
-module.exports = { containerBuildRow, mapProviderPayload, mergeSynced, sanitizeMoves };
+// mapProviderPayload moved to tracking-providers.js with the rest of the vendor
+// plumbing; re-exported so callers and tests have one place to reach it from.
+module.exports = { containerBuildRow, mergeSynced, sanitizeMoves,
+  mapProviderPayload: providers.mapProviderPayload, providers };
