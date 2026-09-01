@@ -344,6 +344,20 @@ const atBothBases = (method, tail, perm) => {
     /container_id[\s\S]*?REFERENCES public\.shipment_containers\(id\) ON DELETE CASCADE/.test(SQL)
     && /unit_id[\s\S]*?REFERENCES public\.vehicle_units\(id\) ON DELETE CASCADE/.test(SQL));
   c('a payment stores the rate it was booked at', /amount_base\s+NUMERIC/.test(SQL) && /fx_rate\s+NUMERIC/.test(SQL));
+  // schema.sql is the cumulative bootstrap a fresh install pastes (README step
+  // 1). A table that lives only in the migration means a new deployment gets
+  // 018 and the code has nowhere to write.
+  {
+    const BOOT = fs.readFileSync('schema.sql', 'utf8');
+    for (const t of ['vehicle_units', 'payments', 'shipment_containers', 'container_units']) {
+      c(`schema.sql also creates ${t}`, new RegExp(`CREATE TABLE IF NOT EXISTS public\\.${t}`).test(BOOT));
+      c(`…with RLS on, like every other table here`,
+        new RegExp(`ALTER TABLE IF EXISTS public\\.${t} ENABLE ROW LEVEL SECURITY`).test(BOOT));
+    }
+    c('the migration enables RLS too, so an existing database matches',
+      ['vehicle_units', 'payments', 'shipment_containers', 'container_units']
+        .every(t => new RegExp(`ALTER TABLE public\\.${t}\\s+ENABLE ROW LEVEL SECURITY`).test(SQL)));
+  }
 }
 
 // ── Both portals reach it ───────────────────────────────────────────────────

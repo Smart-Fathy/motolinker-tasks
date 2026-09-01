@@ -895,3 +895,129 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS calendar_event_id TEXT DEFAULT NULL;
 -- Sidebar layout (order + custom labels) lives in quotation_settings under 'nav_config'.
 -- Per-target calendar event ids: { "<employeeId>": eventId, "company": eventId }.
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS calendar_events JSONB DEFAULT '{}'::jsonb;
+
+-- ═══ From migrations/019_units_payments_tracking.sql ════════════════════════
+-- The physical vehicle as a row of its own, the money that moves against it,
+-- and the container it ships in. migrations/019 carries the reasoning; this is
+-- here so a fresh install (README step 1) creates them too.
+
+-- One row per physical vehicle. Linked back to the stock row, PO and sale it
+-- came from, so it coexists with the older shapes rather than replacing them.
+CREATE TABLE IF NOT EXISTS public.vehicle_units (
+  id             BIGSERIAL PRIMARY KEY,
+  vin            TEXT,
+  make           TEXT NOT NULL DEFAULT '',
+  model          TEXT NOT NULL DEFAULT '',
+  trim           TEXT DEFAULT '',
+  model_year     INT,
+  colour         TEXT DEFAULT '',
+  colour_int     TEXT DEFAULT '',
+  engine_no      TEXT DEFAULT '',
+  status         TEXT NOT NULL DEFAULT 'ordered',
+  supplier_id    BIGINT,
+  supplier       TEXT DEFAULT '',
+  po_id          BIGINT,
+  stock_id       BIGINT,
+  customer_id    BIGINT,
+  deal_id        BIGINT,
+  sale_id        BIGINT,
+  purchase_ccy   TEXT NOT NULL DEFAULT 'USD',
+  purchase_cost  NUMERIC(14,2) NOT NULL DEFAULT 0,
+  fx_rate        NUMERIC(14,6) NOT NULL DEFAULT 0,
+  freight_cost   NUMERIC(14,2) NOT NULL DEFAULT 0,
+  customs_cost   NUMERIC(14,2) NOT NULL DEFAULT 0,
+  clearing_cost  NUMERIC(14,2) NOT NULL DEFAULT 0,
+  other_cost     NUMERIC(14,2) NOT NULL DEFAULT 0,
+  ordered_on     DATE,
+  shipped_on     DATE,
+  arrived_on     DATE,
+  delivered_on   DATE,
+  location       TEXT DEFAULT '',
+  notes          TEXT DEFAULT '',
+  custom_fields  JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_by     TEXT DEFAULT 'dashboard',
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- Partial, not a UNIQUE constraint: many units have no VIN yet, and a plain
+-- UNIQUE would refuse the second one.
+CREATE UNIQUE INDEX IF NOT EXISTS vehicle_units_vin_uq
+  ON public.vehicle_units (vin) WHERE vin IS NOT NULL AND vin <> '';
+CREATE INDEX IF NOT EXISTS vehicle_units_status_idx   ON public.vehicle_units (status);
+CREATE INDEX IF NOT EXISTS vehicle_units_customer_idx ON public.vehicle_units (customer_id);
+CREATE INDEX IF NOT EXISTS vehicle_units_sale_idx     ON public.vehicle_units (sale_id);
+CREATE INDEX IF NOT EXISTS vehicle_units_po_idx       ON public.vehicle_units (po_id);
+ALTER TABLE IF EXISTS public.vehicle_units ENABLE ROW LEVEL SECURITY;
+
+-- One row per movement of money. amount_base is stored with the rate it was
+-- booked at, never recomputed — the rate on the day is a fact.
+CREATE TABLE IF NOT EXISTS public.payments (
+  id           BIGSERIAL PRIMARY KEY,
+  sale_id      BIGINT,
+  unit_id      BIGINT,
+  customer_id  BIGINT,
+  direction    TEXT NOT NULL DEFAULT 'in',
+  kind         TEXT NOT NULL DEFAULT 'instalment',
+  method       TEXT DEFAULT '',
+  amount       NUMERIC(14,2) NOT NULL DEFAULT 0,
+  currency     TEXT NOT NULL DEFAULT 'EGP',
+  fx_rate      NUMERIC(14,6) NOT NULL DEFAULT 1,
+  amount_base  NUMERIC(14,2) NOT NULL DEFAULT 0,
+  paid_on      DATE NOT NULL DEFAULT CURRENT_DATE,
+  reference    TEXT DEFAULT '',
+  receipt      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  notes        TEXT DEFAULT '',
+  recorded_by  TEXT DEFAULT '',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS payments_sale_idx     ON public.payments (sale_id);
+CREATE INDEX IF NOT EXISTS payments_unit_idx     ON public.payments (unit_id);
+CREATE INDEX IF NOT EXISTS payments_customer_idx ON public.payments (customer_id);
+CREATE INDEX IF NOT EXISTS payments_paid_on_idx  ON public.payments (paid_on DESC);
+ALTER TABLE IF EXISTS public.payments ENABLE ROW LEVEL SECURITY;
+
+-- What the carrier's container and voyage cards show, plus a port call log.
+CREATE TABLE IF NOT EXISTS public.shipment_containers (
+  id             BIGSERIAL PRIMARY KEY,
+  container_no   TEXT NOT NULL UNIQUE,
+  container_type TEXT DEFAULT '',
+  bl_number      TEXT DEFAULT '',
+  carrier        TEXT DEFAULT '',
+  status         TEXT NOT NULL DEFAULT 'in_transit',
+  latest_move    TEXT DEFAULT '',
+  latest_move_at TIMESTAMPTZ,
+  pod_eta        DATE,
+  vessel_name    TEXT DEFAULT '',
+  vessel_imo     TEXT DEFAULT '',
+  pol_code       TEXT DEFAULT '',
+  pol_name       TEXT DEFAULT '',
+  pod_code       TEXT DEFAULT '',
+  pod_name       TEXT DEFAULT '',
+  atd            TIMESTAMPTZ,
+  eta            TIMESTAMPTZ,
+  moves          JSONB NOT NULL DEFAULT '[]'::jsonb,
+  po_id          BIGINT,
+  supplier       TEXT DEFAULT '',
+  notes          TEXT DEFAULT '',
+  source         TEXT NOT NULL DEFAULT 'manual',
+  last_synced_at TIMESTAMPTZ,
+  raw            JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_by     TEXT DEFAULT 'dashboard',
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS shipment_containers_status_idx ON public.shipment_containers (status);
+CREATE INDEX IF NOT EXISTS shipment_containers_eta_idx    ON public.shipment_containers (pod_eta);
+ALTER TABLE IF EXISTS public.shipment_containers ENABLE ROW LEVEL SECURITY;
+
+-- Which vehicles are in which box. Deleting a container drops the links and
+-- leaves the vehicles alone.
+CREATE TABLE IF NOT EXISTS public.container_units (
+  container_id BIGINT NOT NULL REFERENCES public.shipment_containers(id) ON DELETE CASCADE,
+  unit_id      BIGINT NOT NULL REFERENCES public.vehicle_units(id) ON DELETE CASCADE,
+  added_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (container_id, unit_id)
+);
+CREATE INDEX IF NOT EXISTS container_units_unit_idx ON public.container_units (unit_id);
+ALTER TABLE IF EXISTS public.container_units ENABLE ROW LEVEL SECURITY;

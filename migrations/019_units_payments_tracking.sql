@@ -188,3 +188,15 @@ CREATE TABLE IF NOT EXISTS public.container_units (
   PRIMARY KEY (container_id, unit_id)
 );
 CREATE INDEX IF NOT EXISTS container_units_unit_idx ON public.container_units (unit_id);
+
+-- ── Row level security ───────────────────────────────────────────────────────
+-- Every other table in this database has RLS enabled and NO policies. That is
+-- not an oversight: nothing reaches Postgres except this server, which holds the
+-- service_role key and bypasses RLS, so "on with no policy" means the anon key
+-- can read nothing through PostgREST. These four carry landed cost, what each
+-- customer has paid, and the supplier route — so they follow the same posture
+-- rather than becoming the only publicly readable tables in the project.
+ALTER TABLE public.vehicle_units        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payments             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shipment_containers  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.container_units      ENABLE ROW LEVEL SECURITY;
