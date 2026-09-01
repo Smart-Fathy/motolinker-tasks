@@ -420,4 +420,5 @@ POST /api/employee/containers/:id/refresh
 POST /api/employee/containers/register
 POST /api/employee/containers/:id/units
 DELETE /api/employee/containers/:id/units/:unitId
+POST /api/webhooks/terminal49/:secret
 DELETE /api/dashboard/containers/:id

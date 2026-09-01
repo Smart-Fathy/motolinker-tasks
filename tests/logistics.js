@@ -285,6 +285,33 @@ const atBothBases = (method, tail, perm) => {
   c('the generic adapter finds nothing in a JSON:API envelope', generic.vessel_name === undefined);
 }
 
+// ── Classifying a vendor's refusal ──────────────────────────────────────────
+// The distinction the UI depends on: a key that is WRONG versus a key that is
+// RIGHT but on a plan that does not include the call. Terminal49 reports the
+// second as a 401 with a billing message, so reading the status alone would send
+// somebody hunting for a key that is fine.
+{
+  const P = require('../src/routes/tracking-providers');
+  // The exact body Terminal49 returned on the free Developer Key.
+  const freeKey = '[{"detail":"You do not have permissions for using the API, except for creating tracking requests. All other permissions require a paid plan. See https://app.terminal49.com/settings/billing"}]';
+  eq('a plan limit is not reported as a bad key', P.classify(401, freeKey), 'plan-required');
+  eq('a genuinely bad key is', P.classify(401, '{"detail":"Invalid API token"}'), 'unauthorized');
+  eq('a 403 with no billing wording is still an auth problem', P.classify(403, 'forbidden'), 'unauthorized');
+  eq('rate limiting is its own answer', P.classify(429, ''), 'rate-limited');
+  eq('a vendor outage is its own answer', P.classify(503, ''), 'provider-down');
+  eq('anything else is generic', P.classify(422, 'bad scac'), 'error');
+  // Every code the server can emit must have a sentence in the client, or the
+  // UI falls back to something vague at exactly the moment it needs to be clear.
+  const CLIENT_SRC = fs.readFileSync('public/assets/logistics.js', 'utf8');
+  const codes = ['not-configured', 'not-tracked-yet', 'plan-required', 'unauthorized',
+    'rate-limited', 'provider-down', 'timeout', 'unreachable', 'not-found'];
+  const missing = codes.filter(k => !new RegExp(`['"]?${k}['"]?\\s*:`).test(CLIENT_SRC));
+  eq('the client has a sentence for every code the server emits', missing, []);
+  // And it must not render the vendor's raw JSON as body text.
+  c('the vendor blob is a tooltip, not the message',
+    /title="\$\{esc\(d\.detail\)\}"/.test(CLIENT_SRC));
+}
+
 // ── AIS: mapping a position ─────────────────────────────────────────────────
 {
   const P = require('../src/routes/tracking-providers');
@@ -312,6 +339,24 @@ const atBothBases = (method, tail, perm) => {
   eq('a list-shaped answer maps its first entry', [arr.vessel_lat, arr.vessel_lon, arr.vessel_speed], [12.5, -40.1, 18]);
   const alt = P.mapAisPayload({ AIS: { LAT: 5.5, LON: -3.2, SPEED: 9 } });
   eq('a nested, upper-cased vendor maps too', [alt.vessel_lat, alt.vessel_lon], [5.5, -3.2]);
+}
+
+// ── The webhook ─────────────────────────────────────────────────────────────
+{
+  const CT_SRC = fs.readFileSync('src/routes/containers.js', 'utf8');
+  // A plain === on a secret leaks its prefix to anyone willing to time replies.
+  c('the webhook secret is compared in constant time', /timingSafeEqual/.test(CT_SRC));
+  // An endpoint that answers "wrong secret" has confirmed it is worth attacking.
+  c('an unconfigured or wrong secret is a 404, not a 403',
+    /webhookSecretOk\(req\.params\.secret\)\) return res\.sendStatus\(404\)/.test(CT_SRC));
+  // A webhook that could INSERT would let anyone who learns the URL fill the
+  // table; it may only update boxes the team already tracks.
+  c('the webhook only updates boxes we already track',
+    /if \(cur\.error \|\| !cur\.data\) continue;/.test(CT_SRC)
+    && !/webhooks[\s\S]{0,3000}\.insert\(/.test(CT_SRC));
+  c('a pushed milestone respects a hand-edited field too',
+    /Same hand-edit guard as a pull[\s\S]{0,200}mergeSynced\(cur\.data, built\.row\)/.test(CT_SRC));
+  c('the body is size-capped', /express\.json\(\{ limit: '256kb' \}\)/.test(CT_SRC));
 }
 
 // ── Which provider is in play ───────────────────────────────────────────────
@@ -435,8 +480,14 @@ const atBothBases = (method, tail, perm) => {
   // everybody, so a route that forgot its permission would hand the whole team
   // the company's landed costs.
   const ungated = ROUTES.filter(r => !r.perm
-    && !/^\/api\/dashboard\/(units|payments|containers)\/:id$/.test(r.path));
+    && !/^\/api\/dashboard\/(units|payments|containers)\/:id$/.test(r.path)
+    // The webhook is public by necessity — Terminal49 has no session with us —
+    // and is guarded by a secret in its path instead. Listed explicitly so a
+    // second ungated route can never appear by accident.
+    && r.path !== '/api/webhooks/terminal49/:secret');
   eq('no route is left without a permission', ungated.map(r => r.method + ' ' + r.path), []);
+  c('the webhook is the only public route, and it takes a secret',
+    !!route('POST', '/api/webhooks/terminal49/:secret'));
 
   // Deleting money, or a costed vehicle, stays the admin's alone.
   c('deleting a payment is admin-only',

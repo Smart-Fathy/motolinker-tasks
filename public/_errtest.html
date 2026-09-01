@@ -1,0 +1,32 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="/assets/employee.css"><link rel="stylesheet" href="/assets/mobile.css">
+<style>body{padding:24px}</style></head><body>
+<div style="font-weight:800;font-size:20px;margin-bottom:6px">Inventory &amp; Logistics</div>
+<div class="logi-bar" style="margin-top:14px">
+  <input id="logi-ct-search" class="form-control" value="MSDU7337230" style="max-width:260px;text-transform:uppercase">
+  <button class="btn btn-primary" onclick="ctLookup()">Track</button>
+  <button class="btn btn-outline">Add manually</button>
+</div>
+<div id="logi-ct-result"></div>
+<div id="logi-containers"></div>
+<script>
+window.esc = s => { const d=document.createElement('div'); d.textContent=String(s??''); return d.innerHTML; };
+window.lucide = { createIcons(){ document.querySelectorAll('[data-lucide]').forEach(el=>{
+  const s=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  s.setAttribute('viewBox','0 0 24 24');s.setAttribute('fill','none');s.setAttribute('stroke','currentColor');
+  s.setAttribute('stroke-width','2');s.setAttribute('width',el.style.width||'14');s.setAttribute('height',el.style.height||'14');
+  const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+  p.setAttribute('d','M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z');
+  s.appendChild(p); el.replaceWith(s); }); } };
+// Exactly what the server now returns for the free Developer Key.
+window.PROCFG = { base:'/api/dashboard',
+  fetch: async () => ({ ok:true, json: async () => ({
+    found: false, check: { no:'MSDU7337230', valid:true, checkOk:true, expected:0 },
+    prefill: null, provider: 'provider returned 401', code: 'plan-required',
+    detail: '[{"detail":"You do not have permissions for using the API, except for creating tracking requests. All other permissions require a paid plan. See https://app.terminal49.com/settings/billing"}]',
+    provider_name: 'terminal49', can_register: true }) }),
+  modal:()=>{}, closeModal:()=>{}, toast:()=>{}, can:()=>true };
+</script>
+<script src="/assets/logistics.js"></script>
+<script>injectLogiStyles(); ctLookup();</script>
+</body></html>

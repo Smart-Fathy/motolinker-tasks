@@ -19,6 +19,23 @@ const ctx = require('../ctx');
 
 const TIMEOUT_MS = 12000;
 
+// What went wrong, in a word the UI can act on.
+//
+// The distinction that matters here is between "your key is wrong" and "your key
+// is right but your PLAN does not include this". Terminal49's free Developer Key
+// authenticates fine and may create tracking requests; reading a container back
+// needs a paid plan, and it says so in a 401 rather than a 402. Reporting that as
+// an auth failure would send somebody hunting for a key that is not broken.
+function classify(status, text) {
+  const t = String(text || '').toLowerCase();
+  if (/paid plan|billing|upgrade|subscription|not included in your plan/.test(t)) return 'plan-required';
+  if (status === 401 || status === 403) return 'unauthorized';
+  if (status === 404) return 'not-found';
+  if (status === 429) return 'rate-limited';
+  if (status >= 500) return 'provider-down';
+  return 'error';
+}
+
 // One fetch with a deadline. A tracking site that hangs must not hang the person
 // watching a spinner in a modal.
 async function getJson(url, headers, opts) {
@@ -35,16 +52,20 @@ async function getJson(url, headers, opts) {
     let json = null;
     try { json = JSON.parse(text); } catch (_) { /* not JSON */ }
     if (!r.ok) {
-      // A vendor's own error message is far more useful than the status alone —
-      // "SCAC not recognised" beats "422".
+      // A vendor's own message is the useful part, but it is a JSON blob and the
+      // UI must never shout one at a salesperson. So it is CLASSIFIED here into
+      // a code the client turns into a sentence, and the raw text rides along as
+      // `detail` for a tooltip and the logs.
       const detail = json && (json.errors || json.error || json.message);
-      return { ok: false, status: r.status,
-        reason: `provider returned ${r.status}${detail ? ': ' + String(JSON.stringify(detail)).slice(0, 200) : ''}` };
+      const text = String(JSON.stringify(detail) || '').slice(0, 400);
+      return { ok: false, status: r.status, code: classify(r.status, text), detail: text,
+        reason: `provider returned ${r.status}` };
     }
     if (!json) return { ok: false, reason: 'provider did not return JSON' };
     return { ok: true, json };
   } catch (e) {
-    return { ok: false, reason: e.name === 'AbortError' ? 'provider timed out' : String((e && e.message) || e) };
+    return { ok: false, code: e.name === 'AbortError' ? 'timeout' : 'unreachable',
+      reason: e.name === 'AbortError' ? 'provider timed out' : String((e && e.message) || e) };
   } finally {
     clearTimeout(timer);
   }
@@ -117,7 +138,7 @@ function mapProviderPayload(payload) {
 async function genericLookup(containerNo) {
   const tpl = process.env.CONTAINER_TRACKING_URL;
   const key = process.env.CONTAINER_TRACKING_KEY;
-  if (!tpl) return { ok: false, reason: 'not-configured' };
+  if (!tpl) return { ok: false, code: 'not-configured', reason: 'not-configured' };
   const url = tpl.includes('{container}')
     ? tpl.replace('{container}', encodeURIComponent(containerNo))
     : tpl + encodeURIComponent(containerNo);
@@ -233,7 +254,7 @@ function t49Map(container, shipment) {
 }
 
 async function t49Lookup(containerNo) {
-  if (!process.env.CONTAINER_TRACKING_KEY) return { ok: false, reason: 'not-configured' };
+  if (!process.env.CONTAINER_TRACKING_KEY) return { ok: false, code: 'not-configured', reason: 'not-configured' };
 
   // JSON:API filtering. Overridable because the exact parameter is the one part
   // of this that is worth being able to correct without a deploy.
@@ -248,7 +269,7 @@ async function t49Lookup(containerNo) {
     return String(n || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === containerNo;
   }) || list[0];
 
-  if (!container) return { ok: false, reason: 'not-tracked-yet', raw: r.json };
+  if (!container) return { ok: false, code: 'not-tracked-yet', reason: 'not-tracked-yet', raw: r.json };
   const shipment = t49Related(container, included, 'shipment');
   return { ok: true, fields: t49Map(container, shipment), raw: r.json };
 }
@@ -258,7 +279,7 @@ async function t49Lookup(containerNo) {
 // registered, so the first lookup of a new container registers it and the data
 // arrives on a later refresh rather than immediately.
 async function t49Register(number, scac, requestType) {
-  if (!process.env.CONTAINER_TRACKING_KEY) return { ok: false, reason: 'not-configured' };
+  if (!process.env.CONTAINER_TRACKING_KEY) return { ok: false, code: 'not-configured', reason: 'not-configured' };
   const body = {
     data: {
       type: 'tracking_request',
@@ -290,13 +311,13 @@ async function lookupContainer(containerNo) {
   switch (containerProviderName()) {
     case 'terminal49': return t49Lookup(containerNo);
     case 'generic':    return genericLookup(containerNo);
-    default:           return { ok: false, reason: 'not-configured' };
+    default:           return { ok: false, code: 'not-configured', reason: 'not-configured' };
   }
 }
 
 async function registerContainer(containerNo, scac) {
   if (containerProviderName() !== 'terminal49') {
-    return { ok: false, reason: 'registration is a Terminal49 step; this provider tracks on lookup' };
+    return { ok: false, code: 'not-supported', reason: 'registration is a Terminal49 step; this provider tracks on lookup' };
   }
   return t49Register(containerNo, scac, 'container');
 }
@@ -365,8 +386,8 @@ function mapAisPayload(payload) {
 
 async function lookupPosition({ imo, mmsi }) {
   const tpl = process.env.AIS_TRACKING_URL;
-  if (!tpl) return { ok: false, reason: 'not-configured' };
-  if (!imo && !mmsi) return { ok: false, reason: 'no IMO or MMSI on this container' };
+  if (!tpl) return { ok: false, code: 'not-configured', reason: 'not-configured' };
+  if (!imo && !mmsi) return { ok: false, code: 'no-vessel-id', reason: 'no IMO or MMSI on this container' };
   const url = tpl
     .replace('{imo}', encodeURIComponent(imo || ''))
     .replace('{mmsi}', encodeURIComponent(mmsi || ''));
@@ -376,7 +397,7 @@ async function lookupPosition({ imo, mmsi }) {
   const r = await getJson(url, headers);
   if (!r.ok) return r;
   const fields = mapAisPayload(r.json);
-  if (!fields) return { ok: false, reason: 'no position in the response', raw: r.json };
+  if (!fields) return { ok: false, code: 'no-fix', reason: 'no position in the response', raw: r.json };
   fields.position_source = process.env.AIS_TRACKING_NAME || 'ais';
   return { ok: true, fields, raw: r.json };
 }
@@ -387,6 +408,6 @@ module.exports = {
   lookupContainer, registerContainer, containerProviderName,
   lookupPosition, aisConfigured,
   // Exported for the tests, which exercise the mapping rather than the network.
-  mapProviderPayload, mapAisPayload, aisTime, t49Map, t49Records, t49Related, t49EquipmentLabel,
+  mapProviderPayload, mapAisPayload, aisTime, t49Map, t49Records, t49Related, t49EquipmentLabel, classify,
 };
 ctx.trackingProviders = module.exports;
