@@ -242,6 +242,25 @@
   .lead-drawer-actions > :nth-child(1), .lead-drawer-actions > :nth-child(2) { grid-column: span 2; }
   .lead-drawer-actions .btn { width: 100%; }
 
+  /* ── Chat: conversation header ───────────────────────────────────────────
+   * A 390px row was being asked to hold a back button, a 32px avatar, a name,
+   * a last-seen line, the relay chip, "Huddle", a video button and an info
+   * button — all of it nowrap. The name wrapped to three lines, the chip came
+   * down on top of the last-seen line and the info button fell off the right
+   * edge. Nothing here removes a control: the row is tightened, the identity
+   * ellipsises into whatever is left, and the two widest labels come off at the
+   * small-phone breakpoint below. */
+  .chat-header { padding: 9px 10px; gap: 7px; }
+  .chat-header-name { font-size: 13.5px; }
+  .chat-head-actions { gap: 3px; }
+  /* Back sits against the avatar and reads as one gesture, so it does not need
+     the full 44px slab the generic touch-target rule hands every button. */
+  .chat-back-btn { min-width: 38px; }
+  .chat-header-avatar { width: 30px; height: 30px; }
+  /* The chip reports state, it is not a primary action — 36px is the size the
+     portal sheets already give it at this width. */
+  .hd-relay { min-width: 36px; min-height: 36px; padding: 0 9px; }
+
   /* ── Chat composer ───────────────────────────────────────────────────────
    * Five controls plus padding took 186px of a 390px row, leaving the input too
    * narrow to show its own placeholder. */
@@ -283,6 +302,14 @@
   /* Last to go: the dot, and the team portal's hours pill. */
   .refresh-indicator { display: none; }
   .topbar-hours { display: none; }
+
+  /* Chat header: on a small phone the four call controls only fit as icons, so
+     "Relay OK" and "Huddle" come off the buttons. Both keep their title and
+     aria-label, so the name is still there for a long press and for a screen
+     reader — and the relay chip still carries its state in its colour. */
+  .hd-relay-lbl, .hd-head-lbl { display: none; }
+  .hd-relay { padding: 0; width: 36px; justify-content: center; }
+  .hd-head-btn.labelled, .hd-head-btn.live { width: 44px; padding: 0; gap: 0; }
 }
 
 /* ── Top scrollbar proxy (mounted by mlTopScrollbar in mobile.js) ─────────────

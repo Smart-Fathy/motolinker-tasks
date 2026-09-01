@@ -29,6 +29,22 @@
       overscroll-behavior: none;
     }
 
+    /* Two whole-app defaults, both of which were being patched one selector at a
+       time until now.
+
+       A <button> does not inherit colour: without a colour of its own it draws in
+       the UA's black, which on this background means an invisible icon. Every
+       icon-only control that never named a colour — the emoji and voice buttons
+       in the composer among them — was black on near-black. Element specificity,
+       so any class that does name a colour still wins.
+
+       color-scheme tells the browser the native widgets are dark, which is what
+       turns the date and time pickers' indicator glyph from black to light. It
+       was already being set on .form-input, .t-due-input and select individually;
+       at the root it covers the fields those rules missed, scrollbars included. */
+    :root { color-scheme: dark; }
+    button { color: inherit; }
+
     /* ── PWA standalone safe-area ── */
     body.standalone .sidebar { padding-top: env(safe-area-inset-top); }
     body.standalone .header  { padding-top: env(safe-area-inset-top); height: calc(64px + env(safe-area-inset-top)); }
@@ -711,8 +727,14 @@
   .chat-unread-dot { width:8px; height:8px; border-radius:50%; background:var(--primary); flex-shrink:0; }
   .chat-main { display:flex; flex-direction:column; overflow:hidden; }
   .chat-header { padding:12px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-shrink:0; background:var(--surface); }
-  .chat-header-name { font-size:14px; font-weight:700; }
-  .chat-header-meta { font-size:11px; color:var(--muted); }
+  .chat-header-avatar { width:32px; height:32px; font-size:12px; }
+  /* One row, and the call controls at the end of it are the fixed part: the name
+     takes what is left and ellipsises, rather than wrapping to three lines and
+     pushing the buttons off the edge. min-width:0 is what lets a flex child
+     shrink below its own text. */
+  .chat-header-id { flex:1 1 auto; min-width:0; }
+  .chat-header-name { font-size:14px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chat-header-meta { font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .chat-messages { flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:3px; }
   .chat-msg { display:flex; flex-direction:column; max-width:70%; }
   .chat-msg.mine { align-self:flex-end; align-items:flex-end; }
@@ -777,8 +799,8 @@
   .gcard-thumb { width:100%; max-height:150px; object-fit:cover; border-radius:8px; margin-top:2px; display:block; border:1px solid var(--border); }
   .chat-attach-btn { width:30px; height:30px; border-radius:50%; background:none; border:1px solid var(--border); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:16px; flex-shrink:0; transition:color .15s,border-color .15s; }
   .chat-attach-btn:hover { color:var(--primary); border-color:var(--primary); }
-  .chat-emoji-btn { width:30px; height:30px; border-radius:50%; background:none; border:1px solid var(--border); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; transition:border-color .15s; }
-  .chat-emoji-btn:hover { border-color:var(--primary); }
+  .chat-emoji-btn { width:30px; height:30px; border-radius:50%; background:none; border:1px solid var(--border); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:16px; flex-shrink:0; transition:color .15s,border-color .15s; }
+  .chat-emoji-btn:hover { color:var(--primary); border-color:var(--primary); }
   .chat-emoji-wrap { position:absolute; bottom:58px; right:14px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:8px; z-index:50; width:280px; box-shadow:0 4px 24px rgba(0,0,0,.3); display:none; }
   .chat-emoji-wrap.open { display:block; }
   .chat-emoji-grid { display:flex; flex-wrap:wrap; gap:2px; }
@@ -790,7 +812,7 @@
   .chat-reply-quote-body { color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .chat-reply-bar { display:none; align-items:center; gap:8px; padding:6px 14px; background:rgba(90,103,216,.12); border-top:1px solid rgba(90,103,216,.3); font-size:12px; flex-shrink:0; }
   .chat-reply-bar.visible { display:flex; }
-  .chat-download-btn { background:none; border:none; cursor:pointer; font-size:14px; padding:2px 4px; opacity:.7; }
+  .chat-download-btn { background:none; border:none; cursor:pointer; color:var(--muted); font-size:14px; padding:2px 4px; opacity:.7; }
   .chat-download-btn:hover { opacity:1; }
   .chat-nav-badge { margin-left:auto; background:var(--danger); color:#fff; font-size:10px; font-weight:700; min-width:18px; height:18px; border-radius:9px; padding:0 5px; display:flex; align-items:center; justify-content:center; line-height:1; }
   /* Presence */
@@ -800,8 +822,8 @@
   /* Typing indicator */
   .chat-typing-bar { min-height:18px; padding:2px 16px 4px; font-size:11px; color:var(--muted); font-style:italic; flex-shrink:0; }
   /* Voice recorder */
-  .chat-voice-btn { background:none; border:none; cursor:pointer; font-size:18px; padding:6px; opacity:.7; }
-  .chat-voice-btn:hover { opacity:1; }
+  .chat-voice-btn { background:none; border:none; cursor:pointer; color:var(--muted); font-size:18px; padding:6px; opacity:.7; transition:color .15s,opacity .15s; }
+  .chat-voice-btn:hover { color:var(--primary); opacity:1; }
   .chat-voice-btn.recording { color:var(--danger); animation:pulse-rec .8s ease-in-out infinite; }
   @keyframes pulse-rec { 0%,100%{opacity:1} 50%{opacity:.4} }
   .chat-recording-bar { display:none; align-items:center; gap:8px; padding:6px 14px; background:rgba(248,113,113,.1); border-top:1px solid rgba(248,113,113,.25); font-size:12px; flex-shrink:0; }
@@ -1253,7 +1275,7 @@
                 background:var(--bg); border-radius:6px; }
   .hd-file-name { font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .hd-file-sub { font-size:10px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .chat-head-actions { margin-left:auto; display:flex; gap:6px; }
+  .chat-head-actions { margin-left:auto; display:flex; align-items:center; gap:6px; flex:0 0 auto; }
   .hd-head-btn { background:none; border:1px solid var(--border); color:var(--muted); border-radius:8px;
                  width:31px; height:31px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
   .hd-head-btn:hover { color:var(--text); border-color:var(--primary); }
@@ -3153,15 +3175,29 @@
   }
   .av-day{ font-size:12.5px; font-weight:600; }
   .av-t{ display:flex; align-items:center; gap:3px; min-width:0; }
-  .av-t .form-control{ padding-left:6px; padding-right:4px; text-align:center; min-width:0; }
+  /* The brand select rule sets padding-right:34px !important for its chevron,
+     which beat the compact padding here and left a 54px AM/PM box with about
+     twelve pixels of room for its text — "AM" was rendering as "A". These three
+     pickers are the narrowest selects in the app, so they pull the chevron in
+     and match it with an important of their own. */
+  .av-t .form-control{ padding-left:4px; padding-right:19px !important; text-align:center; min-width:0;
+                       background-position:right 5px center; }
   .av-t .av-h, .av-t .av-m{ flex:1 1 0; }
-  .av-t .av-ap{ flex:0 0 54px; }
+  .av-t .av-ap{ flex:0 0 62px; }
   .av-colon{ color:var(--muted); font-weight:700; flex:0 0 auto; }
   @media (max-width:760px){
     .av-row{ grid-template-columns:1fr 1fr; gap:6px; padding-bottom:10px; margin-bottom:10px;
              border-bottom:1px solid var(--border); }
     .av-day{ grid-column:1 / -1; }
     .av-note{ grid-column:1 / -1; }
+  }
+  /* On a small phone the hour and minute boxes are narrower still, and there the
+     chevron costs more room than it explains — "00" was clipping to "0". The
+     AM/PM box beside them keeps its own, so the group still reads as a set of
+     dropdowns. This lives here rather than in the shared mobile layer because it
+     has to outrank an !important, which that layer is kept free of. */
+  @media (max-width:400px){
+    .av-t .av-h, .av-t .av-m{ padding-right:4px !important; background-image:none; }
   }
 
   /* ── Availability, shown where a task is assigned ─────────────────────────
