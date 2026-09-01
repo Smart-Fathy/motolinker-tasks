@@ -2104,6 +2104,10 @@
               return `<td style="padding:8px 10px">${esc(x[k] || '')}</td>`;
             }).join('')}
             <td style="padding:8px 10px;text-align:right;white-space:nowrap">
+              ${/* The ledger behind the three money columns on this row. Its own
+                    grant, because what a customer has actually paid and when is a
+                    narrower question than whether the sale exists. */
+                procCan('deals', 'payments') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openPaymentsPanel(${x.id})" title="Payments and what is still outstanding">Payments</button>` : ''}
               ${procCan('deals', 'salesEdit') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openSaleForm(${x.id})">Edit</button>
               <button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteSale(${x.id})">Delete</button>` : ''}
             </td>

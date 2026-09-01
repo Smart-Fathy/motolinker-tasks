@@ -1948,6 +1948,13 @@ Object.assign(ctx, require('./src/routes/client-folder'));
 // The calendar feed  → src/routes/calendar-feed.js
 // Reads tasks, meetings and follow-ups; every one of those modules is loaded.
 Object.assign(ctx, require('./src/routes/calendar-feed'));
+
+// Vehicle units, the payments ledger and container tracking → src/routes/
+// The three are one story — the unit is what money and shipping both hang off —
+// so they mount together, after everything they reference (sales, POs, stock).
+Object.assign(ctx, require('./src/routes/vehicle-units'));
+Object.assign(ctx, require('./src/routes/payments'));
+Object.assign(ctx, require('./src/routes/containers'));
 // ─── Lead follow-up reminders ─────────────────────────────────────────────────
 // Fires within ~5 minutes of a follow-up's due time: notifies the assigned
 // employee (or admin when unassigned) once per follow-up.

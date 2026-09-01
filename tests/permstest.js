@@ -291,12 +291,17 @@ const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', perm
   // would have put an Inventory tab in front of the entire team.
   c('the Inventory page is an action, not the stock master switch',
     /stock: \['stock', 'browse'\]/.test(PORTAL_JS)
-    && /stock: \['view', 'browse', 'create', 'edit'\]/.test(EMP)
+    && M.PERM_ACTIONS.stock.includes('browse')
     && M.normEmpPerms({}).stockActions.browse === false
     && M.normEmpPerms({}).stockActions.view === true
     // Same for writing: the register is the company's, not everyone's to edit.
     && M.normEmpPerms({}).stockActions.create === false
-    && M.normEmpPerms({}).stockActions.edit === false,
+    && M.normEmpPerms({}).stockActions.edit === false
+    // And the same for the two that came with the vehicle register: they carry
+    // landed cost and the supplier route, so `stock: true` must not hand them
+    // to the whole team the day they ship.
+    && M.normEmpPerms({}).stockActions.units === false
+    && M.normEmpPerms({}).stockActions.tracking === false,
     JSON.stringify(M.normEmpPerms({}).stockActions));
   c('every section the portal gates is one the server models',
     [...gated].every(k => M.PERM_ACTIONS[k]), [...gated].filter(k => !M.PERM_ACTIONS[k]).join(','));

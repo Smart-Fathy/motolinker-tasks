@@ -77,6 +77,8 @@ const CASES = [
   ['hours',          'POST', '/api/employee/hours',                  'log'],
   ['chat',           'GET',  '/api/employee/chat/rooms',             'view'],
   ['issues',         'GET',  '/api/employee/issues',                 'view'],
+  ['deals',          'GET',  '/api/employee/payments',               'payments'],
+  ['deals',          'POST', '/api/employee/payments',               'paymentsEdit'],
 ];
 
 setTimeout(async () => {
@@ -103,6 +105,31 @@ setTimeout(async () => {
   c('every granted action reaches its handler', refusedWith.length === 0, refusedWith.join(' | '));
   c('every withheld section is refused with 403 Not permitted',
     reachedWithout.length === 0, reachedWithout.join(' | '));
+
+  // ── The Inventory actions that are never inherited ──────────────────────────
+  // stock.units and stock.tracking cannot ride the section master: Inventory is
+  // on for every employee (the vehicle picker needs it), and these two carry
+  // what each vehicle cost and which supplier shipped it. So the blanket "grant
+  // everything" session above does NOT have them, and they are checked here with
+  // a grant of their own — which is also the proof that they are not inherited.
+  {
+    const withInv = mint('perm-live-inv', {
+      stock: true,
+      stockActions: { view: true, browse: true, create: false, edit: false, units: true, tracking: true },
+    });
+    const u = await hit('GET', '/api/employee/units', withInv);
+    const t = await hit('GET', '/api/employee/containers', withInv);
+    c('a granted vehicle register reaches its handler', !refused(u), String(u.status));
+    c('granted container tracking reaches its handler', !refused(t), String(t.status));
+    // The default employee holds `stock` and must still be refused both.
+    const nu = await hit('GET', '/api/employee/units', no);
+    const nt = await hit('GET', '/api/employee/containers', no);
+    c('the register is refused without its own grant', refused(nu), String(nu.status));
+    c('tracking is refused without its own grant', refused(nt), String(nt.status));
+    // Writing a unit is a separate grant again, so read does not imply write.
+    const w = await hit('POST', '/api/employee/units', withInv);
+    c('reading the register does not carry the right to add to it', refused(w), String(w.status));
+  }
 
   // ── One action at a time ────────────────────────────────────────────────────
   // The master switch being on must not carry the whole section. This is the shape
@@ -237,6 +264,7 @@ setTimeout(async () => {
       'contracts.edit': 1, 'contracts.export': 1,
       'stock.view': 1,                    // the picker and the Home widgets
       'stock.browse': 1, 'stock.create': 1, 'stock.edit': 1,   // checked live above
+      'stock.units': 1, 'stock.tracking': 1,  // their own block above — never inherited
       'leads.clientFolder': 1,            // foldertest drives it end to end
     };
     const gaps = [];

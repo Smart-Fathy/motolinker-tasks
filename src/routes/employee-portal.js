@@ -137,7 +137,10 @@ const PERM_ACTIONS = {
   // is the Inventory PAGE, which is a different question: the whole register,
   // every model, every price. It is granted, never inherited, so adding the page
   // did not hand it to the entire team on one deploy.
-  stock: ['view', 'browse', 'create', 'edit'],
+  // `units` is the VIN register and `tracking` the container board — both are
+  // the whole logistics picture including landed cost, so they are granted the
+  // same way `browse` is rather than riding in on the section master.
+  stock: ['view', 'browse', 'create', 'edit', 'units', 'tracking'],
   // Operations and procurement. The handlers are the dashboard's own, mounted a
   // second time under /api/employee — so these actions are the only difference
   // between what an employee may do here and what the admin may.
@@ -154,7 +157,10 @@ const PERM_ACTIONS = {
   leads: ['view', 'create', 'edit', 'delete', 'import', 'export', 'clientFolder'],
   // The Deals page's Sales tab is its own grant: `sales` opens the tab,
   // `salesEdit` writes to it. The Pipeline tab is simply deals.view.
-  deals: ['view', 'create', 'edit', 'delete', 'move', 'sales', 'salesEdit'],
+  // `payments` reads the ledger behind a sale, `paymentsEdit` records one. They
+  // follow the Sales tab's own two grants: whoever could already see what a
+  // customer owes can see how they paid it.
+  deals: ['view', 'create', 'edit', 'delete', 'move', 'sales', 'salesEdit', 'payments', 'paymentsEdit'],
   quotation: ['draft', 'history', 'settings', 'delete', 'attachLead'],
   // Each report is granted individually, so an employee can be given the leads
   // report without the revenue figures (or vice-versa). Reports always obey the
@@ -190,6 +196,8 @@ const PERM_ACTION_FALLBACK = {
   'deals.sales': acts => acts.view === true,
   'deals.salesEdit': acts => acts.edit === true,
   'suppliers.purchases': acts => acts.view === true,
+  'deals.payments': acts => acts.sales === true,
+  'deals.paymentsEdit': acts => acts.salesEdit === true,
 };
 
 // Actions that must never be inherited — not from a section master, not from a
@@ -197,7 +205,12 @@ const PERM_ACTION_FALLBACK = {
 // record that predates the action gets it OFF and an admin turns it on
 // deliberately. Everything else inherits, because a section granted before an
 // action existed did mean "all of it".
-const PERM_ACTION_NEVER_INHERIT = new Set(['leads.clientFolder', 'stock.browse', 'stock.create', 'stock.edit']);
+const PERM_ACTION_NEVER_INHERIT = new Set(['leads.clientFolder', 'stock.browse', 'stock.create', 'stock.edit',
+  // The register carries purchase cost, freight and customs — what each
+  // vehicle actually cost the company — and tracking exposes the supplier
+  // route. Neither should arrive on the day of a deploy for everyone who
+  // happens to have Inventory switched on.
+  'stock.units', 'stock.tracking']);
 
 function normEmpPerms(raw) {
   const p = { ...DEFAULT_PERMISSIONS, ...(raw || {}) };
@@ -284,9 +297,11 @@ const PERM_ACTION_LABELS = {
   'stock.view': 'Look vehicles up (picker and Home)',
   'stock.browse': 'Open the Inventory page',
   'stock.create': 'Add a vehicle', 'stock.edit': 'Edit a vehicle',
+  'stock.units': 'Vehicle register (VIN, cost)', 'stock.tracking': 'Container tracking',
   'suppliers.catalogue': 'Manage the vehicle catalogue',
   'suppliers.purchases': 'Purchases tab',
   'deals.sales': 'Sales tab', 'deals.salesEdit': 'Edit sales records',
+  'deals.payments': 'See payments', 'deals.paymentsEdit': 'Record payments',
   'suppliers.docs': 'Supplier documents',
   'rfq.export': 'Generate the PDF',
   'purchaseorders.export': 'Generate the PDF',
