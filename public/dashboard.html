@@ -22,10 +22,10 @@
     if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=127">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=128">
   <!-- Shared with the team portal. Last on purpose: several mobile rules were being
        beaten by later same-specificity rules in the sheet above. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=127">
+  <link rel="stylesheet" href="/assets/mobile.css?v=128">
 </head>
 <body>
 
@@ -689,10 +689,52 @@
       </div>
     </div>
     <div style="padding:0 28px 28px">
-      <div id="stock-summary" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:18px"></div>
-      <input id="stock-search" class="form-input" type="text" placeholder="Search make, model or trim…" oninput="renderStock()" style="max-width:360px;margin-top:16px">
-      <div id="stock-table-container" style="margin-top:14px">
-        <div class="loading"><div class="spinner"></div> Loading stock…</div>
+      <!-- Inventory is three views of one register now: the models, the physical
+           vehicles behind them, and the containers they arrive in. -->
+      <div class="deal-tabs" style="margin-top:18px">
+        <button class="deal-tab logi-tab active" data-tab="models"   onclick="inventoryTab('models')">Models</button>
+        <button class="deal-tab logi-tab"        data-tab="units"    onclick="inventoryTab('units')">Vehicle register</button>
+        <button class="deal-tab logi-tab"        data-tab="tracking" onclick="inventoryTab('tracking')">Tracking</button>
+      </div>
+
+      <div id="inv-pane-models">
+        <div id="stock-summary" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:18px"></div>
+        <input id="stock-search" class="form-input" type="text" placeholder="Search make, model or trim…" oninput="renderStock()" style="max-width:360px;margin-top:16px">
+        <div id="stock-table-container" style="margin-top:14px">
+          <div class="loading"><div class="spinner"></div> Loading stock…</div>
+        </div>
+      </div>
+
+      <div id="inv-pane-units" style="display:none;margin-top:18px">
+        <div class="logi-bar">
+          <input id="logi-unit-search" class="form-input" type="text" placeholder="Search VIN, make, model or supplier…" oninput="loadUnits()" style="max-width:320px">
+          <select id="logi-unit-status" class="form-input" onchange="loadUnits()" style="max-width:190px">
+            <option value="">Every status</option>
+            <option value="ordered">Ordered</option>
+            <option value="produced">In production</option>
+            <option value="shipped">Shipped</option>
+            <option value="landed">Landed</option>
+            <option value="cleared">Customs cleared</option>
+            <option value="in_stock">In stock</option>
+            <option value="allocated">Allocated</option>
+            <option value="delivered">Delivered</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <button class="btn btn-primary" onclick="openUnitForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add vehicle</button>
+        </div>
+        <div class="logi-hint" style="margin-bottom:12px">One row per physical vehicle. Landed cost is the purchase price at the rate it was booked, plus freight, customs and clearing.</div>
+        <div id="logi-units-table"></div>
+      </div>
+
+      <div id="inv-pane-tracking" style="display:none;margin-top:18px">
+        <div class="logi-bar">
+          <input id="logi-ct-search" class="form-input" type="text" placeholder="Container number, e.g. MSDU7337230"
+                 style="max-width:300px;text-transform:uppercase" onkeydown="if(event.key==='Enter')ctLookup()">
+          <button class="btn btn-primary" onclick="ctLookup()"><i data-lucide="search" style="width:15px;height:15px"></i> Track</button>
+          <button class="btn btn-outline" onclick="openContainerForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add manually</button>
+        </div>
+        <div id="logi-ct-result" style="margin-bottom:18px"></div>
+        <div id="logi-containers"></div>
       </div>
     </div>
   </div>
@@ -1486,20 +1528,21 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
-<script src="/assets/mobile.js?v=127"></script>
-<script src="/assets/columns.js?v=127"></script>
-<script src="/assets/client-folder.js?v=127"></script>
-<script src="/assets/lead-filters.js?v=127"></script>
-<script src="/assets/lead-views.js?v=127"></script>
-<script src="/assets/chat-extras.js?v=127"></script>
-<script src="/assets/home.js?v=127"></script>
-<script src="/assets/huddle.js?v=127"></script>
-<script src="/assets/procurement.js?v=127"></script>
-<script src="/assets/quote.js?v=127"></script>
-<script src="/assets/meetings.js?v=127"></script>
-<script src="/assets/calendar.js?v=127"></script>
-<script src="/assets/availability.js?v=127"></script>
-<script src="/assets/dashboard.js?v=127"></script>
+<script src="/assets/mobile.js?v=128"></script>
+<script src="/assets/columns.js?v=128"></script>
+<script src="/assets/client-folder.js?v=128"></script>
+<script src="/assets/lead-filters.js?v=128"></script>
+<script src="/assets/lead-views.js?v=128"></script>
+<script src="/assets/chat-extras.js?v=128"></script>
+<script src="/assets/home.js?v=128"></script>
+<script src="/assets/huddle.js?v=128"></script>
+<script src="/assets/procurement.js?v=128"></script>
+<script src="/assets/quote.js?v=128"></script>
+<script src="/assets/meetings.js?v=128"></script>
+<script src="/assets/calendar.js?v=128"></script>
+<script src="/assets/availability.js?v=128"></script>
+<script src="/assets/logistics.js?v=128"></script>
+<script src="/assets/dashboard.js?v=128"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
@@ -1532,6 +1575,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=127"></script>
+<script src="/help-docs.js?v=128"></script>
 </body>
 </html>

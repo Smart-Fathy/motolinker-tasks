@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=107">
+  <link rel="stylesheet" href="/assets/employee.css?v=108">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=107">
+  <link rel="stylesheet" href="/assets/mobile.css?v=108">
 </head>
 <body>
 
@@ -860,8 +860,48 @@
             <button class="btn btn-primary" data-perm="stock.create" onclick="openStockForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add vehicle</button>
           </div>
         </div>
-        <div id="stock-summary" class="stats-grid" style="margin-bottom:16px"></div>
-        <div id="stock-table-container"><div class="loading"><span class="spinner"></span> Loading inventory…</div></div>
+        <div class="tab-strip">
+          <div class="tab active logi-tab" data-tab="models"   onclick="inventoryTab('models')"><i data-lucide="car-front"></i> Models</div>
+          <div class="tab logi-tab"        data-tab="units"    onclick="inventoryTab('units')" data-perm="stock.units"><i data-lucide="list"></i> Vehicle register</div>
+          <div class="tab logi-tab"        data-tab="tracking" onclick="inventoryTab('tracking')" data-perm="stock.tracking"><i data-lucide="ship"></i> Tracking</div>
+        </div>
+
+        <div id="inv-pane-models">
+          <div id="stock-summary" class="stats-grid" style="margin-bottom:16px"></div>
+          <div id="stock-table-container"><div class="loading"><span class="spinner"></span> Loading inventory…</div></div>
+        </div>
+
+        <div id="inv-pane-units" style="display:none">
+          <div class="logi-bar">
+            <input id="logi-unit-search" class="form-control" placeholder="Search VIN, make, model or supplier…" oninput="loadUnits()" style="max-width:280px">
+            <select id="logi-unit-status" class="form-control" onchange="loadUnits()" style="max-width:180px">
+              <option value="">Every status</option>
+              <option value="ordered">Ordered</option>
+              <option value="produced">In production</option>
+              <option value="shipped">Shipped</option>
+              <option value="landed">Landed</option>
+              <option value="cleared">Customs cleared</option>
+              <option value="in_stock">In stock</option>
+              <option value="allocated">Allocated</option>
+              <option value="delivered">Delivered</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <button class="btn btn-primary" data-perm="stock.create" onclick="openUnitForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add vehicle</button>
+          </div>
+          <div class="logi-hint" style="margin-bottom:12px">One row per physical vehicle. Landed cost is the purchase price at the rate it was booked, plus freight, customs and clearing.</div>
+          <div id="logi-units-table"></div>
+        </div>
+
+        <div id="inv-pane-tracking" style="display:none">
+          <div class="logi-bar">
+            <input id="logi-ct-search" class="form-control" placeholder="Container number, e.g. MSDU7337230"
+                   style="max-width:270px;text-transform:uppercase" onkeydown="if(event.key==='Enter')ctLookup()">
+            <button class="btn btn-primary" onclick="ctLookup()"><i data-lucide="search" style="width:15px;height:15px"></i> Track</button>
+            <button class="btn btn-outline" onclick="openContainerForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add manually</button>
+          </div>
+          <div id="logi-ct-result" style="margin-bottom:18px"></div>
+          <div id="logi-containers"></div>
+        </div>
       </div>
     </div>
 
@@ -1270,13 +1310,13 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=107"></script>
-<script src="/assets/columns.js?v=107"></script>
-<script src="/assets/client-folder.js?v=107"></script>
-<script src="/assets/lead-filters.js?v=107"></script>
-<script src="/assets/lead-views.js?v=107"></script>
-<script src="/assets/chat-extras.js?v=107"></script>
-<script src="/assets/home.js?v=107"></script>
+<script src="/assets/mobile.js?v=108"></script>
+<script src="/assets/columns.js?v=108"></script>
+<script src="/assets/client-folder.js?v=108"></script>
+<script src="/assets/lead-filters.js?v=108"></script>
+<script src="/assets/lead-views.js?v=108"></script>
+<script src="/assets/chat-extras.js?v=108"></script>
+<script src="/assets/home.js?v=108"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1314,13 +1354,14 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=107"></script>
-<script src="/assets/procurement.js?v=107"></script>
-<script src="/assets/quote.js?v=107"></script>
-<script src="/assets/meetings.js?v=107"></script>
-<script src="/assets/calendar.js?v=107"></script>
-<script src="/assets/availability.js?v=107"></script>
-<script src="/assets/employee.js?v=107"></script>
+<script src="/assets/huddle.js?v=108"></script>
+<script src="/assets/procurement.js?v=108"></script>
+<script src="/assets/quote.js?v=108"></script>
+<script src="/assets/meetings.js?v=108"></script>
+<script src="/assets/calendar.js?v=108"></script>
+<script src="/assets/availability.js?v=108"></script>
+<script src="/assets/logistics.js?v=108"></script>
+<script src="/assets/employee.js?v=108"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1382,6 +1423,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=107"></script>
+<script src="/help-docs.js?v=108"></script>
 </body>
 </html>
