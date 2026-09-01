@@ -409,8 +409,12 @@ const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', perm
   c('…the dashboard answers yes unconditionally', /can: \(\) => true,/.test(DASH_JS));
   c('…and the portal defers to empCan',
     /can: \(section, action\) => empCan\(section, action\)/.test(PORTAL_JS));
+  // The window past huddleLeave() is generous because the button carries a title,
+  // an aria-label and a span-wrapped label; what is being asserted is the order —
+  // the leave branch is reached before the !mayHuddle guard, so a participant is
+  // never stranded in a huddle they lack the permission to start.
   c('someone already in a call can always leave it',
-    /inThis[\s\S]{0,200}huddleLeave\(\)[\s\S]{0,120}!mayHuddle \? ''/.test(HD));
+    /inThis[\s\S]{0,200}huddleLeave\(\)[\s\S]{0,240}!mayHuddle \? ''/.test(HD));
 }
 
 console.log('\n' + results.filter(Boolean).length + '/' + results.length + ' passed');

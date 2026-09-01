@@ -1180,14 +1180,17 @@ function chatHeaderActions(room) {
   // every header render costs nothing and means the chip fills itself in the
   // first time a conversation is opened.
   if (mayHuddle) setTimeout(() => hdRelayCheck(false), 0);
+  // The words ride in their own span so a phone header, which has no room for
+  // them, can drop the label without losing the button. aria-label carries the
+  // name once the text is gone.
   return `<div class="chat-head-actions">
     ${mayHuddle ? hdRelayChipHtml() : ''}
     ${inThis
-      ? `<button class="hd-head-btn live" onclick="huddleLeave()" title="Leave the huddle">${ic('phone-off')} Leave</button>`
+      ? `<button class="hd-head-btn live" onclick="huddleLeave()" title="Leave the huddle" aria-label="Leave the huddle">${ic('phone-off')}<span class="hd-head-lbl">Leave</span></button>`
       : !mayHuddle ? ''
-      : `<button class="hd-head-btn labelled" onclick="huddleStart(${room.id},false)" title="Start a huddle">${ic('headphones')} Huddle</button>
-         <button class="hd-head-btn" onclick="huddleStart(${room.id},true)" title="Start a huddle with video">${ic('video')}</button>`}
-    <button class="hd-head-btn" onclick="chatGroupPanel(${room.id})" title="${room.type === 'group' ? 'Group info, members and files' : 'Shared files'}">${ic(room.type === 'group' ? 'users' : 'paperclip')}</button>
+      : `<button class="hd-head-btn labelled" onclick="huddleStart(${room.id},false)" title="Start a huddle" aria-label="Start a huddle">${ic('headphones')}<span class="hd-head-lbl">Huddle</span></button>
+         <button class="hd-head-btn" onclick="huddleStart(${room.id},true)" title="Start a huddle with video" aria-label="Start a huddle with video">${ic('video')}</button>`}
+    <button class="hd-head-btn" onclick="chatGroupPanel(${room.id})" title="${room.type === 'group' ? 'Group info, members and files' : 'Shared files'}" aria-label="${room.type === 'group' ? 'Group info, members and files' : 'Shared files'}">${ic(room.type === 'group' ? 'users' : 'paperclip')}</button>
   </div>`;
 }
 // ── Relay chip ────────────────────────────────────────────────────────
@@ -1203,8 +1206,8 @@ let _hdRelay = { state: 'unknown', label: 'Relay', detail: '' };
 function hdRelayChipHtml() {
   const s = _hdRelay;
   return `<button class="hd-relay ${esc(s.state)}" onclick="hdRelayCheck(true)"
-    title="${esc(s.detail || 'Check whether huddles can reach a relay')}">
-    <i data-lucide="signal" style="width:13px;height:13px"></i> <span>${esc(s.label)}</span></button>`;
+    title="${esc(s.detail || 'Check whether huddles can reach a relay')}" aria-label="${esc(s.label)}">
+    <i data-lucide="signal" style="width:13px;height:13px"></i> <span class="hd-relay-lbl">${esc(s.label)}</span></button>`;
 }
 
 function hdRelaySet(state, label, detail) {
@@ -1212,7 +1215,8 @@ function hdRelaySet(state, label, detail) {
   document.querySelectorAll('.hd-relay').forEach(el => {
     el.className = 'hd-relay ' + state;
     el.title = detail || '';
-    const t = el.querySelector('span');
+    el.setAttribute('aria-label', label);   // the label is hidden on a phone
+    const t = el.querySelector('.hd-relay-lbl');
     if (t) t.textContent = label;
   });
 }

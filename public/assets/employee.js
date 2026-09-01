@@ -3541,8 +3541,8 @@ async function chatOpenRoom(roomId) {
   main.innerHTML = `
     <div class="chat-header">
       <button class="chat-back-btn" onclick="chatBackToRooms()" title="Back"><i data-lucide="arrow-left" style="width:18px;height:18px"></i></button>
-      <div class="chat-room-avatar${room?.type === 'group' ? ' grp' : ''}" style="width:32px;height:32px;font-size:12px">${esc(name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}</div>
-      <div style="min-width:0">
+      <div class="chat-room-avatar chat-header-avatar${room?.type === 'group' ? ' grp' : ''}">${esc(name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}</div>
+      <div class="chat-header-id">
         <div class="chat-header-name">${esc(name)} ${chatHeaderStatus(room)}</div>
         <div class="chat-header-meta" id="chat-header-meta">${room?.type === 'group' ? `${(room.members||[]).length} members` : 'Direct message'}</div>
       </div>
