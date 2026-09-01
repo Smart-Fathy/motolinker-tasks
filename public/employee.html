@@ -19,9 +19,9 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=109">
+  <link rel="stylesheet" href="/assets/employee.css?v=111">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=109">
+  <link rel="stylesheet" href="/assets/mobile.css?v=111">
 </head>
 <body>
 
@@ -898,6 +898,7 @@
                    style="max-width:270px;text-transform:uppercase" onkeydown="if(event.key==='Enter')ctLookup()">
             <button class="btn btn-primary" onclick="ctLookup()"><i data-lucide="search" style="width:15px;height:15px"></i> Track</button>
             <button class="btn btn-outline" onclick="openContainerForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add manually</button>
+          <button class="btn btn-outline" onclick="ctProviderCheck()" title="Check the carrier key and what it covers"><i data-lucide="plug" style="width:15px;height:15px"></i> Test connection</button>
           </div>
           <div id="logi-ct-result" style="margin-bottom:18px"></div>
           <div id="logi-containers"></div>
@@ -1310,13 +1311,13 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=109"></script>
-<script src="/assets/columns.js?v=109"></script>
-<script src="/assets/client-folder.js?v=109"></script>
-<script src="/assets/lead-filters.js?v=109"></script>
-<script src="/assets/lead-views.js?v=109"></script>
-<script src="/assets/chat-extras.js?v=109"></script>
-<script src="/assets/home.js?v=109"></script>
+<script src="/assets/mobile.js?v=111"></script>
+<script src="/assets/columns.js?v=111"></script>
+<script src="/assets/client-folder.js?v=111"></script>
+<script src="/assets/lead-filters.js?v=111"></script>
+<script src="/assets/lead-views.js?v=111"></script>
+<script src="/assets/chat-extras.js?v=111"></script>
+<script src="/assets/home.js?v=111"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1354,14 +1355,14 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=109"></script>
-<script src="/assets/procurement.js?v=109"></script>
-<script src="/assets/quote.js?v=109"></script>
-<script src="/assets/meetings.js?v=109"></script>
-<script src="/assets/calendar.js?v=109"></script>
-<script src="/assets/availability.js?v=109"></script>
-<script src="/assets/logistics.js?v=109"></script>
-<script src="/assets/employee.js?v=109"></script>
+<script src="/assets/huddle.js?v=111"></script>
+<script src="/assets/procurement.js?v=111"></script>
+<script src="/assets/quote.js?v=111"></script>
+<script src="/assets/meetings.js?v=111"></script>
+<script src="/assets/calendar.js?v=111"></script>
+<script src="/assets/availability.js?v=111"></script>
+<script src="/assets/logistics.js?v=111"></script>
+<script src="/assets/employee.js?v=111"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1423,6 +1424,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=109"></script>
+<script src="/help-docs.js?v=111"></script>
 </body>
 </html>

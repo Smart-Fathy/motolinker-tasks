@@ -495,25 +495,65 @@
     // Not tracked. Say what the provider had to say about it — "not-configured"
     // is a normal state here, not a failure, because typing the card in by hand
     // is a supported way to work.
-    // Three different situations, and conflating them is what makes a tracking
-    // page feel broken: nobody has configured a vendor; the vendor answered but
-    // has never been asked to watch this box; the vendor is unreachable.
-    const why = d.provider === 'not-configured'
-      ? 'Automatic lookup is not set up, so enter what the carrier shows.'
-      : d.provider === 'ok' ? 'Prefilled from the carrier.'
-      : d.can_register ? `${esc(d.provider_name || 'The carrier platform')} is not watching this container yet. Register it and the milestones arrive on the next refresh.`
-      : `Carrier lookup unavailable (${esc(d.provider || 'unknown')}) — enter it by hand.`;
+    // A vendor's error is a JSON blob and must never be shouted at somebody
+    // trying to find a container. The server classifies it; this turns the class
+    // into one sentence that says what to do next. The blob stays as a tooltip.
+    const NAMES = { terminal49: 'Terminal49', safecube: 'Safecube', generic: 'The carrier feed' };
+    const label = esc(NAMES[d.provider_name] || 'The carrier platform');
+    const WHY = {
+      'not-configured': 'Automatic lookup is not set up, so enter what the carrier shows.',
+      'not-tracked-yet': `${label} is not watching this container yet. Register it and the milestones arrive on the next refresh.`,
+      unknown: 'CONTAINER_TRACKING_PROVIDER is not a name I recognise — check the spelling.',
+      // The one that matters here: the key is fine, the plan is the limit.
+      'plan-required': `${label} accepted the key, but reading containers back needs a paid plan — the free key may only register them. Register it below and follow it in ${label}, or enter the details by hand.`,
+      unauthorized: `${label} rejected the key. Check CONTAINER_TRACKING_KEY.`,
+      'rate-limited': `${label} is rate-limiting us — try again shortly.`,
+      'provider-down': `${label} is not responding right now.`,
+      timeout: `${label} did not answer in time.`,
+      unreachable: `Could not reach ${label}.`,
+      'not-found': `${label} has no record of this container.`,
+    };
+    const why = d.code === 'ok' ? 'Prefilled from the carrier.'
+      : (WHY[d.code] || `Carrier lookup unavailable — enter it by hand.`);
     const prefill = JSON.stringify({ container_no: seen.no, ...(d.prefill || {}) }).replace(/'/g, '&#39;');
     out.innerHTML = `<div class="logi-empty">
       <div style="font-weight:700;color:var(--text,#f3efe7);margin-bottom:6px">${esc(seen.no)} is not tracked yet</div>
-      <div style="margin-bottom:12px">${why}</div>
+      <div style="margin-bottom:12px;max-width:620px;margin-left:auto;margin-right:auto"${d.detail ? ` title="${esc(d.detail)}"` : ''}>${why}</div>
       ${can('stock', 'tracking') ? `<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-        ${d.can_register ? `<button class="btn btn-outline btn-sm" onclick="ctRegister('${esc(seen.no)}')">Ask ${esc(d.provider_name)} to track it</button>` : ''}
+        ${d.can_register ? `<button class="btn btn-outline btn-sm" onclick="ctRegister('${esc(seen.no)}')">Ask ${label} to track it</button>` : ''}
         <button class="btn btn-primary btn-sm" onclick='openContainerForm(null, ${prefill})'>Start tracking it</button>
       </div>` : ''}
       ${seen.checkOk ? '' : `<div class="logi-warn" style="justify-content:center">Check digit should be ${seen.expected} — worth confirming against the B/L.</div>`}
     </div>`;
     requestAnimationFrame(() => lucide.createIcons());
+  }
+
+  // "I added the key — is it working?" as one button rather than another deploy.
+  // Probes with a container number that exists in the ISO standard's own example
+  // and nowhere in anyone's fleet, so nothing is registered and no real shipment
+  // is touched: what is being tested is the vendor's REPLY.
+  async function ctProviderCheck() {
+    toast('Testing the carrier connection…');
+    let d;
+    try {
+      const r = await api('/api/dashboard/containers/provider-status?probe=1');
+      d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'check failed');
+    } catch (e) { toast('Could not run the check.'); return; }
+
+    const name = d.provider === 'none' ? 'No carrier feed is configured'
+      : d.provider === 'unknown' ? 'CONTAINER_TRACKING_PROVIDER is not a name I recognise'
+      : `Provider: ${d.provider}`;
+    const parts = [name];
+    if (d.provider !== 'none' && d.provider !== 'unknown') {
+      parts.push(d.reachable ? 'key accepted' : `key rejected (${d.probe})`);
+      // Safecube carries the position on the same shipment, so it needs no
+      // second vendor — worth saying, because otherwise somebody goes shopping
+      // for an AIS subscription they do not need.
+      parts.push(d.carrier_has_position ? 'positions included' : `AIS: ${d.ais}`);
+      parts.push(d.webhook_ready ? 'webhook secret set' : 'no webhook secret');
+    }
+    toast(parts.join(' · '));
   }
 
   // Register a box with the carrier platform, then create our row for it so the
@@ -525,7 +565,13 @@
       body: JSON.stringify({ container_no: no }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { toast(d.error || 'Could not register that container.'); return; }
-    if (!d.ok) { toast(`Carrier would not take it: ${d.reason}`); return; }
+    if (!d.ok) {
+      toast(d.code === 'plan-required'
+        ? 'That needs a paid plan on the carrier platform.'
+        : d.code === 'unauthorized' ? 'The carrier rejected the key.'
+        : `Carrier would not take it: ${d.reason}`);
+      return;
+    }
     toast(`Registered — status ${d.status}. Milestones arrive on the next refresh.`);
     openContainerForm(null, { container_no: no });
   }
@@ -633,12 +679,14 @@
     // Two feeds, reported separately — "the ETA is stale but the dot moved" is a
     // real and common outcome, and one summary line would hide it.
     const say = [];
+    const SHORT = { 'not-configured': 'no carrier feed set up', 'not-tracked-yet': 'carrier is not watching this box yet',
+      'plan-required': 'carrier reads need a paid plan', unauthorized: 'carrier rejected the key',
+      'rate-limited': 'carrier is rate-limiting us', 'provider-down': 'carrier is down',
+      timeout: 'carrier timed out', 'no-vessel-id': 'no IMO on this container yet' };
     if (d.carrier && d.carrier.ok) say.push('carrier updated');
-    else if (d.carrier && d.carrier.reason === 'not-configured') say.push('no carrier feed set up');
-    else if (d.carrier && d.carrier.reason === 'not-tracked-yet') say.push('carrier is not watching this box yet');
-    else if (d.carrier) say.push(`carrier: ${d.carrier.reason}`);
+    else if (d.carrier) say.push(SHORT[d.carrier.code] || `carrier: ${d.carrier.reason}`);
     if (d.position && d.position.ok) say.push('position updated');
-    else if (d.position) say.push(`position: ${d.position.reason}`);
+    else if (d.position) say.push(SHORT[d.position.code] || `position: ${d.position.reason}`);
 
     if (!d.ok && !d.changed) {
       toast(say.length ? say.join(' · ') : 'Nothing to update.');
@@ -941,7 +989,7 @@
     inventoryTab, injectLogiStyles: injectStyles,
     loadUnits, loadUnitList, openUnitForm, saveUnit,
     loadContainers, ctLookup, openContainerForm, saveContainer, deleteContainer,
-    ctRefresh, ctRegister, ctLinkUnit, ctLinkUnitSave, ctUnlinkUnit,
+    ctRefresh, ctRegister, ctProviderCheck, ctLinkUnit, ctLinkUnitSave, ctUnlinkUnit,
     logiMountMaps: mountMaps, logiPositionAge: positionAge, logiDegrees: dm,
     openPaymentsPanel, openPaymentForm, savePayment, pmCcyChanged,
     logiInspectContainerNo: inspectContainerNo, logiVoyageProgress: voyageProgress,

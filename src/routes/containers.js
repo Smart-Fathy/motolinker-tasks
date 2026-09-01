@@ -213,11 +213,37 @@ function mountContainerReads(base, guard) {
       // a lookup is a read, and the person decides whether to start tracking it.
       prefill: prov.ok ? prov.fields : null,
       provider: prov.ok ? 'ok' : prov.reason,
+      // A code the client turns into a sentence, so a vendor's JSON error is
+      // never rendered at somebody trying to find a container.
+      code: prov.ok ? 'ok' : (prov.code || 'error'),
+      detail: prov.ok ? null : (prov.detail || null),
       provider_name: providers.containerProviderName(),
-      // Terminal49 only answers for boxes it has been asked to track, so a first
-      // lookup legitimately comes back empty. That is an offer to register it,
-      // not a failure, and the UI needs to tell those two apart.
-      can_register: prov.reason === 'not-tracked-yet' && providers.containerProviderName() === 'terminal49',
+      // Registering is a SEPARATE permission from reading — on Terminal49's free
+      // key it is the only one that works. So the offer stands whenever the box
+      // was not found and the provider supports registration, rather than only
+      // when the read succeeded enough to say "not tracked yet". Conditioning it
+      // on the read is what hid the one button that would have worked.
+      can_register: !prov.ok && providers.containerProviderName() === 'terminal49',
+    });
+  });
+
+  // What the tracking settings currently amount to, and — with ?probe=1 — a real
+  // call to prove it. Two rounds of "I added the key, is it working?" is what
+  // this exists to end: the answer is a button rather than another deploy.
+  receiver.router.get(`${base}/containers/provider-status`, guard, requirePerm('stock', 'tracking'), async (req, res) => {
+    const status = providers.providerStatus();
+    if (String(req.query.probe || '') !== '1') return res.json(status);
+    // A container that cannot exist, so the probe never registers anything and
+    // never touches a real shipment — the point is the vendor's REPLY, not the
+    // data. A well-formed number keeps it past our own validation.
+    const probe = await providers.lookupContainer('CSQU3054383');
+    res.json({
+      ...status,
+      probe: probe.ok ? 'ok' : (probe.code || 'error'),
+      // not-tracked-yet means the vendor answered us properly and simply does
+      // not watch that box — which is exactly what a working key looks like.
+      reachable: probe.ok || probe.code === 'not-tracked-yet' || probe.code === 'not-found',
+      detail: probe.ok ? null : (probe.detail || probe.reason || null),
     });
   });
 
@@ -295,16 +321,22 @@ function mountContainerWrites(base, guard, who) {
         out.ok = true;
       }
     } else {
-      out.carrier = { ok: false, reason: prov.reason };
+      out.carrier = { ok: false, code: prov.code || 'error', reason: prov.reason, detail: prov.detail || null };
     }
 
-    // 2. The AIS feed. A position is a fresh observation every time, so it is
-    //    NOT put through mergeSynced — there is no hand-edited ETA to protect,
-    //    and refusing to move the dot because someone renamed the vessel would
-    //    be the wrong kind of careful. An older fix than the one already stored
-    //    is still discarded, because vendors do re-serve stale positions.
-    if (providers.aisConfigured()) {
-      const pos = await providers.lookupPosition({ imo: cur.data.vessel_imo, mmsi: cur.data.vessel_mmsi });
+    // 2. The position. A fresh observation every time, so it is NOT put through
+    //    mergeSynced — there is no hand-edited ETA to protect, and refusing to
+    //    move the dot because someone renamed the vessel would be the wrong kind
+    //    of careful. An older fix than the one already stored is still
+    //    discarded, because vendors do re-serve stale positions.
+    //
+    //    Safecube returns the position on the same shipment as the milestones,
+    //    so when the carrier already answered there is nothing to buy and
+    //    nothing to call: prefer what it gave us over a second round trip.
+    const carrierPos = prov.ok && prov.position ? { ok: true, fields: prov.position } : null;
+    if (carrierPos || providers.aisConfigured()) {
+      const pos = carrierPos
+        || await providers.lookupPosition({ imo: cur.data.vessel_imo, mmsi: cur.data.vessel_mmsi });
       if (pos.ok) {
         const had = Date.parse(cur.data.vessel_position_at || '');
         const got = Date.parse(pos.fields.vessel_position_at || '') || Date.now();
@@ -317,7 +349,7 @@ function mountContainerWrites(base, guard, who) {
           out.position = { ok: false, reason: 'the feed returned an older fix than the one already stored' };
         }
       } else {
-        out.position = { ok: false, reason: pos.reason };
+        out.position = { ok: false, code: pos.code || 'error', reason: pos.reason };
       }
     }
 
@@ -338,7 +370,7 @@ function mountContainerWrites(base, guard, who) {
     const seen = inspectContainerNo(req.body && req.body.container_no);
     if (!seen.valid) return res.status(400).json({ error: 'A container number is four letters then seven digits, like MSDU7337230.' });
     const r = await providers.registerContainer(seen.no, str((req.body || {}).scac, 8).toUpperCase());
-    if (!r.ok) return res.status(200).json({ ok: false, reason: r.reason });
+    if (!r.ok) return res.status(200).json({ ok: false, code: r.code || 'error', reason: r.reason, detail: r.detail || null });
     res.json({ ok: true, status: r.status, provider: providers.containerProviderName() });
   });
 
@@ -361,6 +393,119 @@ function mountContainerWrites(base, guard, who) {
 }
 mountContainerWrites('/api/dashboard', requireAuth, () => 'dashboard');
 mountContainerWrites('/api/employee', requireEmployeeAuth, req => `employee_${req.employee.id}`);
+
+// ── Tracking webhooks ────────────────────────────────────────────────────────
+// The push half of the integration, and the one both platforms recommend:
+// rather than polling every box, the vendor posts here when a milestone lands.
+// Terminal49 and Safecube both send one, and the route serves either — the
+// payload is read by SHAPE rather than by a per-vendor path, so a second vendor
+// needed a mapper, not a second endpoint.
+//
+// PUBLIC by necessity — Terminal49 has no session with us — so it is guarded by
+// a secret in the path that we generate and paste into their dashboard. Compared
+// in constant time, because a plain === on a secret leaks its prefix to anyone
+// willing to time the responses. When no secret is configured the route answers
+// 404 rather than 403: an endpoint that says "wrong secret" has confirmed it is
+// worth attacking.
+//
+// It only ever UPDATES containers we already track. A webhook may not create
+// rows — otherwise anyone who learns the URL can fill the table — and an event
+// for a box we do not know is acknowledged and dropped, because returning an
+// error would make Terminal49 retry something we will never want.
+const crypto = require('crypto');
+
+function webhookSecretOk(given) {
+  // TRACKING_WEBHOOK_SECRET is the name to use now that more than one vendor
+  // posts here; the Terminal49-specific one keeps working so an already-
+  // registered webhook does not break on this deploy.
+  const want = process.env.TRACKING_WEBHOOK_SECRET || process.env.TERMINAL49_WEBHOOK_SECRET || '';
+  if (!want) return false;
+  const a = Buffer.from(String(given || ''));
+  const b = Buffer.from(want);
+  // timingSafeEqual throws on a length mismatch, which would itself be a timing
+  // signal, so the lengths are compared first and the result is folded in.
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Pull every container-shaped record out of a payload, wherever it sits. The
+// event envelope differs by event type, so this looks for the shape rather than
+// a fixed path.
+function webhookContainers(payload) {
+  const out = [];
+  const seen = new Set();
+  const walk = (node, depth) => {
+    if (!node || typeof node !== 'object' || depth > 6) return;
+    if (Array.isArray(node)) { node.forEach(x => walk(x, depth + 1)); return; }
+    // Terminal49 wraps in JSON:API (type + attributes); Safecube posts the
+    // shipment object itself. Either counts as a record if it names a container,
+    // and the caller reads the number from whichever place it sits in.
+    const a = node.attributes || {};
+    const num = (node.type === 'container' && (a.number || a.container_number))
+      || node.containerNumber || node.container_number || node.containerNo;
+    if (num && !seen.has(node.id || num)) {
+      seen.add(node.id || num);
+      out.push(node);
+    }
+    Object.values(node).forEach(v => walk(v, depth + 1));
+  };
+  walk(payload, 0);
+  return out;
+}
+
+async function handleTrackingWebhook(vendor, req, res) {
+  if (!webhookSecretOk(req.params.secret)) return res.sendStatus(404);
+
+  const payload = req.body || {};
+  const all = (payload.included || []).concat(payload.data ? [].concat(payload.data) : []);
+  const found = webhookContainers(payload);
+  if (!found.length) return res.json({ ok: true, matched: 0, note: 'no container in this event' });
+
+  let matched = 0;
+  for (const rec of found) {
+    const a = rec.attributes || {};
+    const no = normContainerNo(a.number || a.container_number
+      || rec.containerNumber || rec.container_number || rec.containerNo);
+    if (!no) continue;
+    const cur = await supabase.from('shipment_containers').select('*').eq('container_no', no).maybeSingle();
+    // Not ours: acknowledge so it is not retried forever, and change nothing.
+    if (cur.error || !cur.data) continue;
+
+    let mapped, position = null;
+    if (vendor === 'safecube') {
+      mapped = providers.safecubeMap(rec);
+      position = providers.safecubePosition(rec);
+    } else {
+      const shipment = providers.t49Related(rec, all, 'shipment')
+        || all.find(x => x && x.type === 'shipment') || null;
+      mapped = providers.t49Map(rec, shipment);
+    }
+    const built = containerBuildRow({ ...cur.data, ...mapped });
+    if (built.error) continue;
+
+    // Same hand-edit guard as a pull: a milestone arriving by push must not
+    // overwrite an ETA somebody corrected off a phone call either.
+    const patch = mergeSynced(cur.data, built.row);
+    // A pushed position is a fresh observation, same as a pulled one, so it goes
+    // on outside the hand-edit guard.
+    if (position) Object.assign(patch, position);
+    if (!Object.keys(patch).length) { matched++; continue; }
+    const now = new Date().toISOString();
+    patch.source = process.env.CONTAINER_TRACKING_NAME || vendor;
+    patch.last_synced_at = now;
+    patch.updated_at = now;
+    patch.raw = payload;
+    await ctx.writeOptional(
+      r => supabase.from('shipment_containers').update(r).eq('id', cur.data.id).select().single(),
+      patch, POSITION_COLUMNS);
+    matched++;
+  }
+  res.json({ ok: true, matched });
+}
+
+receiver.router.post('/api/webhooks/terminal49/:secret', express.json({ limit: '256kb' }),
+  (req, res) => handleTrackingWebhook('terminal49', req, res));
+receiver.router.post('/api/webhooks/safecube/:secret', express.json({ limit: '256kb' }),
+  (req, res) => handleTrackingWebhook('safecube', req, res));
 
 receiver.router.delete('/api/dashboard/containers/:id', requireAuth, async (req, res) => {
   const { error } = await supabase.from('shipment_containers').delete().eq('id', req.params.id);

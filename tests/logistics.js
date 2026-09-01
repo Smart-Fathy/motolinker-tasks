@@ -285,6 +285,116 @@ const atBothBases = (method, tail, perm) => {
   c('the generic adapter finds nothing in a JSON:API envelope', generic.vessel_name === undefined);
 }
 
+// ── Safecube: one response, both feeds ──────────────────────────────────────
+// The reason it earns its own adapter rather than an alias entry: the shipment
+// carries the milestones AND the vessel AND a lat/lng, so a Safecube setup needs
+// no second AIS vendor. The two halves are mapped separately because refresh
+// treats them differently — milestones through the hand-edit guard, a position
+// as a fresh observation.
+{
+  const P = require('../src/routes/tracking-providers');
+  const sh = {
+    containerNumber: 'MSDU7337230', status: 'In transit', containerType: "40' HIGH CUBE",
+    carrier: 'MSC', eta: '2026-09-20T00:00:00Z', lastUpdate: '2026-09-01T06:00:00Z',
+    vessel: { name: 'MSC ELISABETTA', imo: '9954747', mmsi: '636092123' },
+    location: { lat: -22.94, lng: 4.31, name: 'At sea', timestamp: '2026-09-01T05:12:00Z', speed: 16.4, course: 318 },
+    pol: { locode: 'SGSIN', name: 'Singapore' },
+    pod: { locode: 'ITGIT', name: 'Gioia Tauro' },
+    routeData: [{ lat: 1.26, lng: 103.8 }, { lat: -22.94, lng: 4.31 }],
+  };
+
+  const f = P.safecubeMap(sh);
+  eq('the vessel and its IMO map', [f.vessel_name, f.vessel_imo], ['MSC ELISABETTA', '9954747']);
+  eq('both ports map', [f.pol_code, f.pol_name, f.pod_code, f.pod_name],
+    ['SGSIN', 'Singapore', 'ITGIT', 'Gioia Tauro']);
+  eq('the ETA maps', f.pod_eta, '2026-09-20T00:00:00Z');
+  eq('the location name becomes the latest move', f.latest_move, 'At sea');
+
+  const pos = P.safecubePosition(sh);
+  // lng, not lon — getting that wrong yields a ship in the wrong ocean.
+  eq('lat and lng are read into lat/lon', [pos.vessel_lat, pos.vessel_lon], [-22.94, 4.31]);
+  eq('the fix carries the vendor and its own time',
+    [pos.position_source, pos.vessel_position_at], ['safecube', '2026-09-01T05:12:00.000Z']);
+  eq('MMSI comes across as a string', pos.vessel_mmsi, '636092123');
+
+  // routeData's last point is the most recent fix when `location` is absent.
+  const viaRoute = P.safecubePosition({ routeData: sh.routeData, vessel: sh.vessel });
+  eq('the route track is the fallback position', [viaRoute.vessel_lat, viaRoute.vessel_lon], [-22.94, 4.31]);
+  c('no location and no route means no position', P.safecubePosition({ vessel: sh.vessel }) === null);
+  c('Null Island is refused here too', P.safecubePosition({ location: { lat: 0, lng: 0 } }) === null);
+  c('an out-of-range fix is refused', P.safecubePosition({ location: { lat: 91, lng: 4 } }) === null);
+
+  // The search body is the one guess a wrong answer breaks completely, so it is
+  // overridable without a deploy.
+  eq('the default search body names the container',
+    P.safecubeSearchBody('MSDU7337230'), { containerNumbers: ['MSDU7337230'] });
+  process.env.SAFECUBE_SEARCH_BODY = '{"q":"{container}"}';
+  eq('and an override is honoured', P.safecubeSearchBody('MSDU7337230'), { q: 'MSDU7337230' });
+  process.env.SAFECUBE_SEARCH_BODY = 'not json';
+  eq('a broken override falls back rather than throwing',
+    P.safecubeSearchBody('MSDU7337230'), { containerNumbers: ['MSDU7337230'] });
+  delete process.env.SAFECUBE_SEARCH_BODY;
+
+  // Vendors wrap lists differently; the finder looks for shape, not a path.
+  const wrapped = P.everyObject({ content: { items: [{ containerNumber: 'X' }] } }, 0, []);
+  c('a record is found however it is wrapped', wrapped.some(o => o.containerNumber === 'X'));
+}
+
+// ── Picking a provider, now that two of them take a bare key ────────────────
+{
+  const P = require('../src/routes/tracking-providers');
+  const set = v => {
+    for (const k of ['CONTAINER_TRACKING_URL', 'CONTAINER_TRACKING_KEY', 'CONTAINER_TRACKING_PROVIDER',
+      'AIS_TRACKING_URL', 'TRACKING_WEBHOOK_SECRET', 'TERMINAL49_WEBHOOK_SECRET']) delete process.env[k];
+    Object.assign(process.env, v);
+  };
+  set({ CONTAINER_TRACKING_PROVIDER: 'safecube', CONTAINER_TRACKING_KEY: 'k' });
+  eq('safecube is selectable', P.containerProviderName(), 'safecube');
+  c('…and it supplies positions itself', P.carrierHasPosition() === true);
+  eq('…so the status says no AIS vendor is needed',
+    P.providerStatus().carrier_has_position, true);
+  // A typo must not quietly send a Safecube key to Terminal49's endpoint.
+  set({ CONTAINER_TRACKING_PROVIDER: 'safcube', CONTAINER_TRACKING_KEY: 'k' });
+  eq('a misspelled provider is "unknown", not a silent fallback', P.containerProviderName(), 'unknown');
+  c('…and reports itself unconfigured', P.providerStatus().configured === false);
+  set({ CONTAINER_TRACKING_KEY: 'k' });
+  eq('a bare key keeps the documented default', P.containerProviderName(), 'terminal49');
+  c('…which does not supply positions', P.carrierHasPosition() === false);
+  set({ CONTAINER_TRACKING_PROVIDER: 'safecube', CONTAINER_TRACKING_KEY: 'k', TRACKING_WEBHOOK_SECRET: 's' });
+  c('the status reports a webhook secret once one is set', P.providerStatus().webhook_ready === true);
+  set({});
+}
+
+// ── Classifying a vendor's refusal ──────────────────────────────────────────
+// The distinction the UI depends on: a key that is WRONG versus a key that is
+// RIGHT but on a plan that does not include the call. Terminal49 reports the
+// second as a 401 with a billing message, so reading the status alone would send
+// somebody hunting for a key that is fine.
+{
+  const P = require('../src/routes/tracking-providers');
+  // The exact body Terminal49 returned on the free Developer Key.
+  const freeKey = '[{"detail":"You do not have permissions for using the API, except for creating tracking requests. All other permissions require a paid plan. See https://app.terminal49.com/settings/billing"}]';
+  eq('a plan limit is not reported as a bad key', P.classify(401, freeKey), 'plan-required');
+  eq('a genuinely bad key is', P.classify(401, '{"detail":"Invalid API token"}'), 'unauthorized');
+  eq('a 403 with no billing wording is still an auth problem', P.classify(403, 'forbidden'), 'unauthorized');
+  eq('rate limiting is its own answer', P.classify(429, ''), 'rate-limited');
+  eq('a vendor outage is its own answer', P.classify(503, ''), 'provider-down');
+  eq('anything else is generic', P.classify(422, 'bad scac'), 'error');
+  // Every code the server can emit must have a sentence in the client, or the
+  // UI falls back to something vague at exactly the moment it needs to be clear.
+  const CLIENT_SRC = fs.readFileSync('public/assets/logistics.js', 'utf8');
+  const codes = ['not-configured', 'not-tracked-yet', 'plan-required', 'unauthorized',
+    'rate-limited', 'provider-down', 'timeout', 'unreachable', 'not-found'];
+  const missing = codes.filter(k => !new RegExp(`['"]?${k}['"]?\\s*:`).test(CLIENT_SRC));
+  c('the client names Safecube rather than calling it "the carrier platform"',
+    /safecube: 'Safecube'/.test(CLIENT_SRC));
+  c('and offers a one-click connection check', /function ctProviderCheck\(/.test(CLIENT_SRC));
+  eq('the client has a sentence for every code the server emits', missing, []);
+  // And it must not render the vendor's raw JSON as body text.
+  c('the vendor blob is a tooltip, not the message',
+    /title="\$\{esc\(d\.detail\)\}"/.test(CLIENT_SRC));
+}
+
 // ── AIS: mapping a position ─────────────────────────────────────────────────
 {
   const P = require('../src/routes/tracking-providers');
@@ -312,6 +422,24 @@ const atBothBases = (method, tail, perm) => {
   eq('a list-shaped answer maps its first entry', [arr.vessel_lat, arr.vessel_lon, arr.vessel_speed], [12.5, -40.1, 18]);
   const alt = P.mapAisPayload({ AIS: { LAT: 5.5, LON: -3.2, SPEED: 9 } });
   eq('a nested, upper-cased vendor maps too', [alt.vessel_lat, alt.vessel_lon], [5.5, -3.2]);
+}
+
+// ── The webhook ─────────────────────────────────────────────────────────────
+{
+  const CT_SRC = fs.readFileSync('src/routes/containers.js', 'utf8');
+  // A plain === on a secret leaks its prefix to anyone willing to time replies.
+  c('the webhook secret is compared in constant time', /timingSafeEqual/.test(CT_SRC));
+  // An endpoint that answers "wrong secret" has confirmed it is worth attacking.
+  c('an unconfigured or wrong secret is a 404, not a 403',
+    /webhookSecretOk\(req\.params\.secret\)\) return res\.sendStatus\(404\)/.test(CT_SRC));
+  // A webhook that could INSERT would let anyone who learns the URL fill the
+  // table; it may only update boxes the team already tracks.
+  c('the webhook only updates boxes we already track',
+    /if \(cur\.error \|\| !cur\.data\) continue;/.test(CT_SRC)
+    && !/webhooks[\s\S]{0,3000}\.insert\(/.test(CT_SRC));
+  c('a pushed milestone respects a hand-edited field too',
+    /Same hand-edit guard as a pull[\s\S]{0,200}mergeSynced\(cur\.data, built\.row\)/.test(CT_SRC));
+  c('the body is size-capped', /express\.json\(\{ limit: '256kb' \}\)/.test(CT_SRC));
 }
 
 // ── Which provider is in play ───────────────────────────────────────────────
@@ -435,8 +563,38 @@ const atBothBases = (method, tail, perm) => {
   // everybody, so a route that forgot its permission would hand the whole team
   // the company's landed costs.
   const ungated = ROUTES.filter(r => !r.perm
-    && !/^\/api\/dashboard\/(units|payments|containers)\/:id$/.test(r.path));
+    && !/^\/api\/dashboard\/(units|payments|containers)\/:id$/.test(r.path)
+    // The webhook is public by necessity — Terminal49 has no session with us —
+    // and is guarded by a secret in its path instead. Listed explicitly so a
+    // second ungated route can never appear by accident.
+    && !/^\/api\/webhooks\/(terminal49|safecube)\/:secret$/.test(r.path));
   eq('no route is left without a permission', ungated.map(r => r.method + ' ' + r.path), []);
+  c('both vendors post to a secret-guarded webhook, and nothing else is public',
+    !!route('POST', '/api/webhooks/terminal49/:secret')
+    && !!route('POST', '/api/webhooks/safecube/:secret'));
+  c('the connection probe is behind the tracking grant at both bases',
+    atBothBases('GET', '/containers/provider-status', 'stock.tracking'));
+
+  // Registration ORDER is load-bearing and a route table alone will not show it:
+  // Express matches in order, so a literal path registered after /containers/:id
+  // is dead — :id captures it and hands "provider-status" to a BIGSERIAL lookup.
+  // Same for /containers/lookup/:no.
+  {
+    const at = path => ROUTES.findIndex(r => r.method === 'GET' && r.path === path);
+    for (const base of ['/api/dashboard', '/api/employee']) {
+      const wildcard = at(`${base}/containers/:id`);
+      for (const literal of ['/containers/lookup/:no', '/containers/provider-status']) {
+        const i = at(base + literal);
+        c(`${base}${literal} is registered before /containers/:id can swallow it`,
+          i >= 0 && wildcard >= 0 && i < wildcard, `literal@${i} wildcard@${wildcard}`);
+      }
+    }
+    // The same trap on the POST side: /containers/register must beat any
+    // POST /containers/:id... pattern that might be added later.
+    const reg = ROUTES.findIndex(r => r.method === 'POST' && r.path === '/api/dashboard/containers/register');
+    const postId = ROUTES.findIndex(r => r.method === 'POST' && /^\/api\/dashboard\/containers\/:id$/.test(r.path));
+    c('POST /containers/register is not shadowed', reg >= 0 && (postId < 0 || reg < postId));
+  }
 
   // Deleting money, or a costed vehicle, stays the admin's alone.
   c('deleting a payment is admin-only',

@@ -404,9 +404,11 @@ POST /api/employee/payments
 PUT /api/employee/payments/:id
 GET /api/dashboard/containers
 GET /api/dashboard/containers/lookup/:no
+GET /api/dashboard/containers/provider-status
 GET /api/dashboard/containers/:id
 GET /api/employee/containers
 GET /api/employee/containers/lookup/:no
+GET /api/employee/containers/provider-status
 GET /api/employee/containers/:id
 POST /api/dashboard/containers
 PUT /api/dashboard/containers/:id
@@ -420,4 +422,6 @@ POST /api/employee/containers/:id/refresh
 POST /api/employee/containers/register
 POST /api/employee/containers/:id/units
 DELETE /api/employee/containers/:id/units/:unitId
+POST /api/webhooks/terminal49/:secret
+POST /api/webhooks/safecube/:secret
 DELETE /api/dashboard/containers/:id
