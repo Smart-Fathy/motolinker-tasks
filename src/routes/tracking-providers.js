@@ -54,7 +54,16 @@ function authHeader(defaultHeader, shape) {
 function classify(status, text) {
   const t = String(text || '').toLowerCase();
   if (/paid plan|billing|upgrade|subscription|not included in your plan/.test(t)) return 'plan-required';
-  if (status === 401 || status === 403) return 'unauthorized';
+  // 401 and 403 are DIFFERENT answers and this used to collapse them, which hid
+  // the single most useful fact a vendor gives you:
+  //   401 — no credential was recognised. Usually the wrong header name.
+  //   403 — the credential WAS recognised, and the answer is still no. The key
+  //         is fine; the account, plan, scope or path is not.
+  // Safecube returned 403 to API_KEY and 401 to every other header, which
+  // identified the header exactly — and read as "all five refused" until this
+  // told them apart.
+  if (status === 401) return 'unauthorized';
+  if (status === 403) return 'forbidden';
   if (status === 404) return 'not-found';
   if (status === 429) return 'rate-limited';
   if (status >= 500) return 'provider-down';
@@ -334,7 +343,15 @@ async function t49Register(number, scac, requestType) {
 //
 // Like Terminal49 it is a register-then-read platform: POST /shipments starts
 // tracking, POST /shipments/search reads back.
-const SAFECUBE_BASE = 'https://api.sinay.ai/safecube/api/v1/public';
+// Published references disagree about the /public segment, and a gateway that
+// does not know a path answers 403 as readily as 404 — so the base is
+// configurable, and the connection check tries the known candidates.
+const SAFECUBE_BASES = [
+  'https://api.sinay.ai/safecube/api/v1/public',
+  'https://api.sinay.ai/safecube/api/v1',
+];
+const safecubeBase = () =>
+  String(process.env.SAFECUBE_BASE_URL || SAFECUBE_BASES[0]).replace(/\/+$/, '');
 
 function safecubeHeaders(shape) {
   return { ...authHeader('API_KEY', shape), 'Content-Type': 'application/json' };
@@ -442,7 +459,7 @@ function safecubeSearchBody(containerNo) {
 
 async function safecubeLookup(containerNo) {
   if (!trackingKey()) return { ok: false, code: 'not-configured', reason: 'not-configured' };
-  const r = await getJson(`${SAFECUBE_BASE}/shipments/search`, safecubeHeaders(),
+  const r = await getJson(`${safecubeBase()}/shipments/search`, safecubeHeaders(),
     { method: 'POST', body: safecubeSearchBody(containerNo) });
   if (!r.ok) return r;
 
@@ -458,7 +475,7 @@ async function safecubeLookup(containerNo) {
 
 async function safecubeRegister(containerNo) {
   if (!trackingKey()) return { ok: false, code: 'not-configured', reason: 'not-configured' };
-  const r = await getJson(`${SAFECUBE_BASE}/shipments`, safecubeHeaders(),
+  const r = await getJson(`${safecubeBase()}/shipments`, safecubeHeaders(),
     { method: 'POST', body: { containerNumber: containerNo } });
   if (!r.ok) return r;
   const sh = everyObject(r.json, 0, []).find(o => o.id || o.shipmentId) || {};
@@ -519,12 +536,20 @@ async function registerContainer(containerNo, scac) {
 // why it needs no second vendor; the others do not.
 const carrierHasPosition = () => containerProviderName() === 'safecube';
 
-// Try each auth shape once and report which one the vendor accepts.
+// Two-stage diagnosis, because a vendor answers two different questions and the
+// answers are separable.
 //
-// This exists because the vendor's docs are the only place the answer lives and
-// they are not always reachable — but the answer is discoverable with one
-// request per shape, using the key the user already has. Diagnosis only: normal
-// requests send exactly one header, the pinned one.
+//   Stage 1 — WHICH HEADER is recognised? A 401 means no credential was seen.
+//             Anything else — 403, 404, 422, 200 — means the key was read. So
+//             the shape that does NOT return 401 is the right one, even when it
+//             is refused for another reason entirely.
+//   Stage 2 — WITH that header, which BASE PATH is not refused? Published
+//             references disagree about Safecube's /public segment, and a
+//             gateway answers 403 to a path it does not know just as readily as
+//             404. A 403 on one base and a 404 on another is the path telling
+//             you which one exists.
+//
+// Diagnosis only: normal requests send exactly one header to exactly one base.
 async function diagnoseAuth() {
   const name = containerProviderName();
   if (name !== 'safecube' && name !== 'terminal49') {
@@ -532,30 +557,62 @@ async function diagnoseAuth() {
   }
   if (!trackingKey()) return { ok: false, reason: 'no key set' };
 
-  const attempts = [];
-  for (const shape of AUTH_SHAPES) {
-    const headers = name === 'safecube'
-      ? { ...authHeader('API_KEY', shape), 'Content-Type': 'application/json' }
-      : { ...authHeader('Authorization', shape), 'Content-Type': 'application/json' };
-    // Terminal49's own prefix is "Token ", which is not in the generic list.
-    const r = name === 'safecube'
-      ? await getJson(`${SAFECUBE_BASE}/shipments/search`, headers,
-          { method: 'POST', body: safecubeSearchBody('CSQU3054383'), timeout: 8000 })
-      : await getJson(`${T49_BASE}/containers?page[size]=1`, headers, { timeout: 8000 });
+  const label = sh => (sh.prefix ? `${sh.header}: ${sh.prefix.trim()} <key>` : `${sh.header}: <key>`);
+  const headersFor = sh => (name === 'safecube'
+    ? { ...authHeader('API_KEY', sh), 'Content-Type': 'application/json' }
+    : { ...authHeader('Authorization', sh), 'Content-Type': 'application/json' });
+  const probe = (base, headers) => (name === 'safecube'
+    ? getJson(`${base}/shipments/search`, headers, { method: 'POST', body: safecubeSearchBody('CSQU3054383'), timeout: 8000 })
+    : getJson(`${base}/containers?page[size]=1`, headers, { timeout: 8000 }));
 
-    const label = shape.prefix ? `${shape.header}: ${shape.prefix.trim()} <key>` : `${shape.header}: <key>`;
-    // Anything that is not an auth refusal means the key was ACCEPTED — a 404 or
-    // a 422 is the endpoint talking to us, which is what we are testing for.
-    const accepted = r.ok || (r.code && r.code !== 'unauthorized' && r.code !== 'plan-required');
-    attempts.push({ shape: label, status: r.status || null, accepted, code: r.ok ? 'ok' : r.code });
-    if (accepted) {
-      return { ok: true, header: shape.header, prefix: shape.prefix, shape: label, attempts,
-        env: shape.prefix
-          ? `CONTAINER_TRACKING_HEADER=${shape.header} and CONTAINER_TRACKING_AUTH_PREFIX=${JSON.stringify(shape.prefix)}`
-          : `CONTAINER_TRACKING_HEADER=${shape.header}` };
+  const bases = name === 'safecube'
+    ? [...new Set([safecubeBase(), ...SAFECUBE_BASES])]
+    : [T49_BASE];
+
+  // ── Stage 1: the header ────────────────────────────────────────────────────
+  const attempts = [];
+  let recognised = null;
+  for (const shape of AUTH_SHAPES) {
+    const r = await probe(bases[0], headersFor(shape));
+    const code = r.ok ? 'ok' : (r.code || 'error');
+    attempts.push({ shape: label(shape), status: r.status || null, code, accepted: code !== 'unauthorized' });
+    if (code !== 'unauthorized' && !recognised) recognised = { shape, code, status: r.status || null };
+  }
+  if (!recognised) {
+    return { ok: false, stage: 'header', attempts,
+      reason: 'every header shape came back 401, so none of them was recognised as a credential — the key itself looks wrong, or is not active yet' };
+  }
+
+  const envHeader = recognised.shape.prefix
+    ? `CONTAINER_TRACKING_HEADER=${recognised.shape.header} and CONTAINER_TRACKING_AUTH_PREFIX=${JSON.stringify(recognised.shape.prefix)}`
+    : `CONTAINER_TRACKING_HEADER=${recognised.shape.header}`;
+
+  // The key was read. If that first base already worked, there is nothing else
+  // to find.
+  if (recognised.code === 'ok' || recognised.code === 'not-tracked-yet' || recognised.code === 'not-found') {
+    return { ok: true, header: recognised.shape.header, prefix: recognised.shape.prefix,
+      shape: label(recognised.shape), base: bases[0], env: envHeader, attempts };
+  }
+
+  // ── Stage 2: the path ──────────────────────────────────────────────────────
+  const headers = headersFor(recognised.shape);
+  const baseAttempts = [];
+  for (const base of bases) {
+    const r = await probe(base, headers);
+    const code = r.ok ? 'ok' : (r.code || 'error');
+    baseAttempts.push({ base, status: r.status || null, code });
+    if (code === 'ok' || code === 'not-tracked-yet') {
+      return { ok: true, header: recognised.shape.header, prefix: recognised.shape.prefix,
+        shape: label(recognised.shape), base, attempts, baseAttempts,
+        env: base === SAFECUBE_BASES[0] ? envHeader : `${envHeader}\nSAFECUBE_BASE_URL=${base}` };
     }
   }
-  return { ok: false, reason: 'every auth shape was refused — the key itself looks wrong or not yet active', attempts };
+
+  // Recognised everywhere, refused everywhere: not a header problem and not a
+  // path problem. That is the account.
+  return { ok: false, stage: 'permission', attempts, baseAttempts,
+    header: recognised.shape.header, shape: label(recognised.shape),
+    reason: `the key IS recognised — ${label(recognised.shape)} came back ${recognised.status}, not 401, which means it was read and then refused. That is an account, plan or scope limit rather than a wrong key or a wrong header.` };
 }
 
 // ── AIS: where the ship is ───────────────────────────────────────────────────

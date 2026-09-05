@@ -506,7 +506,8 @@
       unknown: 'CONTAINER_TRACKING_PROVIDER is not a name I recognise — check the spelling.',
       // The one that matters here: the key is fine, the plan is the limit.
       'plan-required': `${label} accepted the key, but reading containers back needs a paid plan — the free key may only register them. Register it below and follow it in ${label}, or enter the details by hand.`,
-      unauthorized: `${label} rejected the key. Check CONTAINER_TRACKING_KEY.`,
+      unauthorized: `${label} did not recognise the key at all. Check CONTAINER_TRACKING_KEY, and that it is the right kind of key.`,
+      forbidden: `${label} recognised the key and refused the request — an account, plan or scope limit rather than a wrong key. Test connection says which.`,
       'rate-limited': `${label} is rate-limiting us — try again shortly.`,
       'provider-down': `${label} is not responding right now.`,
       timeout: `${label} did not answer in time.`,
@@ -562,6 +563,25 @@
     if (d.auth) {
       const box = document.getElementById('logi-ct-result');
       if (!box) return;
+      const tried = list => (list || []).map(a =>
+        `<li><code>${esc(a.shape || a.base)}</code> → ${esc(a.code)}${a.status ? ' (' + a.status + ')' : ''}</li>`).join('');
+      // Recognised but refused: the key is FINE. Saying "rejected" here is what
+      // sends somebody rotating a key that was never the problem.
+      if (d.auth.ok === false && d.auth.stage === 'permission') {
+        box.innerHTML = `<div class="logi-empty" style="text-align:left">
+          <div style="font-weight:700;color:var(--warning,#c9a35e);margin-bottom:8px">
+            ${ic('key-round', 14)} The key is valid — the account is not permitted</div>
+          <div style="margin-bottom:10px">${esc(d.auth.reason)}</div>
+          <div style="margin-bottom:6px">Worth checking, in this order: that the trial includes API access;
+            whether this is a sandbox key being sent to production; and whether the API product needs enabling on the account.</div>
+          <div style="font-size:11.5px;color:var(--muted,#8d897f);margin-top:10px">Headers tried:</div>
+          <ul style="margin:6px 0 0 18px;font-size:11.5px;color:var(--muted,#8d897f)">${tried(d.auth.attempts)}</ul>
+          ${d.auth.baseAttempts ? `<div style="font-size:11.5px;color:var(--muted,#8d897f);margin-top:8px">Base paths tried with <code>${esc(d.auth.shape)}</code>:</div>
+            <ul style="margin:6px 0 0 18px;font-size:11.5px;color:var(--muted,#8d897f)">${tried(d.auth.baseAttempts)}</ul>` : ''}
+        </div>`;
+        requestAnimationFrame(() => lucide.createIcons());
+        return;
+      }
       box.innerHTML = d.auth.ok
         ? `<div class="logi-empty" style="text-align:left">
              <div style="font-weight:700;color:var(--success,#8a9a86);margin-bottom:8px">
@@ -569,15 +589,14 @@
              <div style="margin-bottom:10px">${esc(d.provider)} accepted <code>${esc(d.auth.shape)}</code>.</div>
              <div>Set this and redeploy:</div>
              <pre style="margin:8px 0 0;padding:10px 12px;background:rgba(255,255,255,.05);border-radius:8px;overflow-x:auto;font-size:12px">${esc(d.auth.env)}</pre>
+             ${d.auth.base ? `<div style="font-size:11.5px;color:var(--muted,#8d897f);margin-top:8px">Working base: <code>${esc(d.auth.base)}</code></div>` : ''}
            </div>`
         : `<div class="logi-empty" style="text-align:left">
              <div style="font-weight:700;color:var(--danger,#c97d6e);margin-bottom:8px">
                ${ic('alert-triangle', 14)} Every header shape was refused</div>
              <div style="margin-bottom:10px">${esc(d.auth.reason || 'The key itself looks wrong, or is not active yet.')}</div>
              <div style="font-size:11.5px;color:var(--muted,#8d897f)">Tried:</div>
-             <ul style="margin:6px 0 0 18px;font-size:11.5px;color:var(--muted,#8d897f)">
-               ${(d.auth.attempts || []).map(a => `<li><code>${esc(a.shape)}</code> → ${esc(a.code)}${a.status ? ' (' + a.status + ')' : ''}</li>`).join('')}
-             </ul>
+             <ul style="margin:6px 0 0 18px;font-size:11.5px;color:var(--muted,#8d897f)">${tried(d.auth.attempts)}</ul>
            </div>`;
       requestAnimationFrame(() => lucide.createIcons());
     }
@@ -707,7 +726,8 @@
     // real and common outcome, and one summary line would hide it.
     const say = [];
     const SHORT = { 'not-configured': 'no carrier feed set up', 'not-tracked-yet': 'carrier is not watching this box yet',
-      'plan-required': 'carrier reads need a paid plan', unauthorized: 'carrier rejected the key',
+      'plan-required': 'carrier reads need a paid plan',
+      unauthorized: 'carrier did not recognise the key', forbidden: 'carrier recognised the key but refused',
       'rate-limited': 'carrier is rate-limiting us', 'provider-down': 'carrier is down',
       timeout: 'carrier timed out', 'no-vessel-id': 'no IMO on this container yet' };
     if (d.carrier && d.carrier.ok) say.push('carrier updated');
