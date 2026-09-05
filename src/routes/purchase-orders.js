@@ -95,6 +95,15 @@ function poTotal(items) {
   return (items || []).reduce((s, it) => s + (Number(it.pi_price) || 0) * (Number(it.units) || 1), 0);
 }
 
+// The lead a purchase order is attached to is its client of record. A line that
+// names nobody borrows that name rather than printing an empty CLIENT cell.
+async function poClientName(po) {
+  const id = po && po.customer_id;
+  if (!id) return '';
+  const { data } = await supabase.from('customers').select('name').eq('id', id).single();
+  return String((data && data.name) || '').trim();
+}
+
 // Mounted for both portals over one set of handlers — see contracts.js for why.
 function mountPurchaseOrderRoutes(base, guard) {
   receiver.router.get(base, guard, requirePerm('purchaseorders', 'view'), async (_req, res) => {
@@ -178,7 +187,8 @@ function mountPurchaseOrderRoutes(base, guard) {
       const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
       const settings = {};
       for (const r of settingsRows || []) settings[r.key] = r.value;
-      const html = buildPurchaseOrderHtml({ ...req.body, ...poBuildRow(req.body), settings });
+      const row = poBuildRow(req.body);
+      const html = buildPurchaseOrderHtml({ ...req.body, ...row, client_name: await poClientName(row), settings });
       const pdf = await renderQuotationPdf(html);   // portrait A4, like the paper form
       res.json({ pdf: Buffer.from(pdf).toString('base64') });
     } catch (e) {
@@ -195,7 +205,8 @@ function mountPurchaseOrderRoutes(base, guard) {
       const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
       const settings = {};
       for (const s of settingsRows || []) settings[s.key] = s.value;
-      const pdf = await renderQuotationPdf(buildPurchaseOrderHtml({ ...row, settings }));
+      const pdf = await renderQuotationPdf(
+        buildPurchaseOrderHtml({ ...row, client_name: await poClientName(row), settings }));
       res.json({ pdf: Buffer.from(pdf).toString('base64'), name: row.po_number || 'purchase-order' });
     } catch (e) {
       console.error('[po-pdf-id]', e);
@@ -236,6 +247,7 @@ function docChromeCss(T) {
   table.grid td { border:1px solid ${GOLD}; padding:6px 5px; vertical-align:middle; word-wrap:break-word; min-height:26px; }
   td.c { text-align:center; } td.r { text-align:right; }
   td.acc { font-size:8px; line-height:1.5; text-align:center; font-weight:700; color:${INK}; }
+  td .sub { display:block; font-size:8px; font-weight:600; color:#555; margin-top:2px; }
   .tot td { background:${SOFT}; font-weight:800; font-size:10.5px; }
   .red { color:#c00; font-weight:700; }
   .foot { position:absolute; left:26px; right:26px; bottom:14px; display:flex; align-items:flex-end;
@@ -307,13 +319,26 @@ function buildPurchaseOrderHtml(po) {
   const cur = escHtml(po.currency || 'USD');
   // Always print at least 5 rows so the form looks like the paper original.
   const padded = items.concat(Array.from({ length: Math.max(0, 5 - items.length) }, () => null));
+  // The line grid carries both a CLIENT and a CONSIGNEE, and the printed form has
+  // one name column. A sheet filled in with only the consignee — which is what
+  // happens when lines come from the supplier catalogue, since it seeds neither —
+  // printed an empty CLIENT column, so the names the team had typed never reached
+  // the supplier. Fall back through the line's own names to the lead the PO is
+  // attached to, and keep a consignee who is somebody else visible underneath
+  // rather than dropping them.
+  const clientCell = it => {
+    const consignee = String(it.consignee || '').trim();
+    const client = String(it.client || '').trim() || consignee || String(po.client_name || '').trim();
+    return escHtml(client) + (consignee && consignee !== client
+      ? `<span class="sub">Consignee: ${escHtml(consignee)}</span>` : '');
+  };
   const rows = padded.map((it, i) => {
     if (!it) return `<tr><td class="c">&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
     const qty = Number(it.units) || 1;
     const price = Number(it.pi_price) || 0;
     return `<tr>
       <td class="c">${i + 1}</td>
-      <td>${escHtml(it.client)}</td>
+      <td>${clientCell(it)}</td>
       <td class="c">${escHtml(it.brand)}</td>
       <td>${escHtml(it.model)}</td>
       <td>${escHtml(it.trim)}</td>
@@ -367,4 +392,4 @@ function buildPurchaseOrderHtml(po) {
 }
 
 
-module.exports = { DOC_DEFAULT_ACCESSORIES, DOC_DEFAULT_DOCUMENTS, DOC_DEFAULT_PAYMENT_TERMS, buildPurchaseOrderHtml, docChromeCss, docFooterHtml, docSupplierBlock, docTermsHtml, quoteTheme };
+module.exports = { DOC_DEFAULT_ACCESSORIES, DOC_DEFAULT_DOCUMENTS, DOC_DEFAULT_PAYMENT_TERMS, buildPurchaseOrderHtml, docChromeCss, docFooterHtml, docSupplierBlock, docTermsHtml, poClientName, quoteTheme };
