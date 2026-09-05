@@ -35,7 +35,24 @@ const str = (v, max) => String(v ?? '').trim().slice(0, max || 200);
 // is the ctx.writeOptional contract: try with them, retry once without.
 const POSITION_COLUMNS = ['vessel_lat', 'vessel_lon', 'vessel_position_at',
   'vessel_course', 'vessel_speed', 'vessel_mmsi', 'position_source'];
-const dateOrNull = v => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim()) ? String(v).trim() : null);
+// A DATE column. A person's date picker sends YYYY-MM-DD, but every carrier feed
+// sends a full ISO timestamp for the same field, and the old strict regex refused
+// those outright — so pod_eta came back NULL from every sync, on every provider,
+// while the eta timestamp beside it saved fine. The damage was not only a blank
+// column: the container list is ordered by pod_eta, so a synced box sorted after
+// every hand-typed one instead of by when it actually arrives. A timestamp is
+// narrowed to its UTC date rather than thrown away; anything that is not one of
+// those two shapes is still refused.
+function dateOrNull(v) {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const t = Date.parse(s);
+    return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : null;
+  }
+  return null;
+}
 // A coordinate, or null. Out of range is not a coordinate, and 0,0 — Null
 // Island, in the Gulf of Guinea — is what a broken feed reports rather than
 // where a container ship is.

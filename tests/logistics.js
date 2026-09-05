@@ -545,6 +545,82 @@ const atBothBases = (method, tail, perm) => {
   eq('a repeated container is written once', CT.webhookUpdates('safecube', dup).length, 2);
 }
 
+// ── The POD ETA a sync could never write ────────────────────────────────────
+// pod_eta is a DATE column and every carrier feed sends a full ISO timestamp for
+// it. The old validator demanded exactly YYYY-MM-DD and refused anything else,
+// so pod_eta came back NULL from every sync on every provider while the eta
+// timestamp beside it saved fine. The blank column was the visible half; the
+// container LIST is ordered by pod_eta, so the invisible half was synced boxes
+// sorting after hand-typed ones instead of by when they actually arrive.
+{
+  const row = b => CT.containerBuildRow({ container_no: 'MSDU7337230', ...b }).row;
+
+  eq('a date picker value is kept as-is', row({ pod_eta: '2026-09-25' }).pod_eta, '2026-09-25');
+  eq('an ISO timestamp is narrowed to its date, not thrown away',
+    row({ pod_eta: '2026-09-25T00:00:00Z' }).pod_eta, '2026-09-25');
+  eq('…including one with an offset', row({ pod_eta: '2026-09-25T23:30:00+02:00' }).pod_eta, '2026-09-25');
+  // Still a DATE column: anything that is not one of those two shapes is refused
+  // rather than coerced into a plausible-looking wrong day.
+  eq('free text is still refused', row({ pod_eta: 'next tuesday' }).pod_eta, null);
+  eq('a bare year is still refused', row({ pod_eta: '2026' }).pod_eta, null);
+  eq('an impossible date is refused', row({ pod_eta: '2026-13-45T00:00:00Z' }).pod_eta, null);
+  eq('empty is null, not today', row({ pod_eta: '' }).pod_eta, null);
+
+  // The whole point: what Safecube sends must survive the round trip.
+  const P = require('../src/routes/tracking-providers');
+  const mapped = P.safecubeMap({
+    metadata: { shipmentType: 'CT', shipmentNumber: 'MSDU7337230', sealineName: 'MSC', shippingStatus: 'IN_TRANSIT' },
+    route: { pod: { location: { name: 'Alexandria', locode: 'EGALY' }, date: '2026-09-25T00:00:00Z', actual: false } },
+    containers: [{ number: 'MSDU7337230', events: [] }],
+  }, 'MSDU7337230');
+  eq('the mapper still emits the timestamp it was given', mapped.pod_eta, '2026-09-25T00:00:00Z');
+  eq('…and the row now stores a real date for it',
+    row({ pod_eta: mapped.pod_eta }).pod_eta, '2026-09-25');
+
+  // The ordering this protects.
+  const SRC = fs.readFileSync('src/routes/containers.js', 'utf8');
+  c('the container list is ordered by pod_eta, which is why the drop mattered',
+    /order\('pod_eta'/.test(SRC));
+}
+
+// ── Seeing what the carrier said ────────────────────────────────────────────
+// The webhook path logged every delivery; the pull path logged nothing at all,
+// so "no data for this box", "your key was refused" and "we could not tell which
+// shipping line this is" were one indistinguishable silence from outside the
+// process. That is the ambiguity that cost this integration two wrong turns.
+{
+  const P = require('../src/routes/tracking-providers');
+  const PSRC = fs.readFileSync('src/routes/tracking-providers.js', 'utf8');
+
+  c('the pull path has a log of its own', typeof P.logLookup === 'function');
+  c('…and the dispatcher is what calls it, so every caller is covered',
+    /if \(!r \|\| r\.code !== 'not-configured'\) logLookup\(name, containerNo, r\)/.test(PSRC));
+
+  const said = [];
+  const real = console.log;
+  console.log = (...a) => said.push(a.join(' '));
+  try {
+    P.logLookup('safecube', 'MSDU7337230',
+      { ok: false, code: 'forbidden', status: 403, reason: 'provider returned 403',
+        detail: '{"message":"NO_CREDITS"}' });
+    P.logLookup('safecube', 'MSDU7337230',
+      { ok: true, fields: { carrier: 'MSC', eta: 'x' }, position: { vessel_lat: 1 } });
+  } finally { console.log = real; }
+
+  c('a refusal names the code and the HTTP status', /forbidden/.test(said[0]) && /403/.test(said[0]));
+  c('…and carries the vendor’s own words, which are the useful part',
+    /NO_CREDITS/.test(said[0]));
+  c('a hit says how much came back', /2 field\(s\)/.test(said[1]) && /carrier MSC/.test(said[1]));
+  c('…and whether a position rode along with it', /position included/.test(said[1]));
+  // The one thing it must never do.
+  c('the key is never printed', !said.some(l => /CONTAINER_TRACKING_KEY|sk_|API_KEY:/.test(l)));
+
+  // JSON.stringify(null) is the string "null", and handing a person the word
+  // "null" as a vendor's explanation is worse than saying nothing.
+  c('an empty error body is reported as nothing, not as the word "null"',
+    /detail == null \? '' :/.test(PSRC));
+}
+
 // ── Auth shape ──────────────────────────────────────────────────────────────
 // A vendor's docs are the only place the header name is written down, and they
 // are not always reachable. The key is, though — so the shape is configurable
