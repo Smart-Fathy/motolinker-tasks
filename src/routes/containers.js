@@ -82,7 +82,6 @@ function sanitizeMoves(v) {
   if (!Array.isArray(v)) return [];
   return v
     .filter(m => m && typeof m === 'object')
-    .slice(0, MOVES_MAX)
     .map(m => ({
       at: tsOrNull(m.at) || dateOrNull(m.at) || '',
       event: str(m.event, 120),
@@ -90,7 +89,11 @@ function sanitizeMoves(v) {
       vessel: str(m.vessel, 120),
     }))
     .filter(m => m.at || m.event || m.place)
-    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+    // Sort BEFORE the cap. Carriers send their events oldest-first, so capping
+    // first kept the sixty oldest and threw away everything recent — the exact
+    // opposite of a log whose point is where the box is now.
+    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))
+    .slice(0, MOVES_MAX);
 }
 
 function containerBuildRow(body) {
@@ -270,7 +273,13 @@ function mountContainerReads(base, guard) {
     // the vendor's docs name the header, and if they are unreachable the key is
     // still here to try each candidate with. One request per shape, and only
     // ever from this check — never as a retry on a normal request.
-    if (probe.code === 'unauthorized') out.auth = await providers.diagnoseAuth();
+    // Also on 'forbidden'. A refused-but-recognised key is the case the diagnosis
+    // was built for — it is the one that separates "your key is wrong" from "your
+    // key is fine and this account cannot read containers" — and gating it on 401
+    // alone meant the one situation worth diagnosing never got diagnosed.
+    if (probe.code === 'unauthorized' || probe.code === 'forbidden') {
+      out.auth = await providers.diagnoseAuth();
+    }
     res.json(out);
   });
 
@@ -315,9 +324,20 @@ function mountContainerWrites(base, guard, who) {
   receiver.router.put(`${base}/containers/:id`, guard, requirePerm('stock', 'tracking'), express.json(), async (req, res) => {
     const { row, error: verr, check } = containerBuildRow(req.body);
     if (verr) return res.status(400).json({ error: verr });
-    row.updated_at = new Date().toISOString();
+    // A PUT carries the FORM, not the row, and containerBuildRow always emits
+    // every column — moves as [], po_id as null, supplier as ''. Writing all of
+    // that back erased the three things the form has no input for: the port-call
+    // log a sync had just filled, the purchase order somebody linked, and the
+    // supplier. Correcting one ETA destroyed the timeline. Only the columns the
+    // request actually carried are written; the rest keep whatever they hold.
+    const patch = {};
+    for (const k of Object.keys(row)) {
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, k)) patch[k] = row[k];
+    }
+    patch.container_no = row.container_no;
+    patch.updated_at = new Date().toISOString();
     const { data, error } = await ctx.writeOptional(
-      r => supabase.from('shipment_containers').update(r).eq('id', req.params.id).select().single(), row, POSITION_COLUMNS);
+      r => supabase.from('shipment_containers').update(r).eq('id', req.params.id).select().single(), patch, POSITION_COLUMNS);
     if (error) return dbFail(res, error, 'Container tracking');
     res.json({ ...data, check });
   });

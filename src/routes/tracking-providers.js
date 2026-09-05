@@ -485,7 +485,14 @@ function safecubeMap(payload, containerNo) {
     // of arrival, which is exactly when it beats the carrier's number.
     eta: route.pod && !route.pod.actual
       ? (route.pod.predictiveEta || route.pod.date) : undefined,
-    latest_move: last ? last.description : undefined,
+    // The port belongs in the sentence. "Loaded On Vessel" on its own, at a
+    // transhipment in Singapore, reads on a card as though the box had been
+    // loaded for the final leg — t49Map has always named the place and this
+    // did not.
+    latest_move: last
+      ? [last.description, (last.location && last.location.name) || '']
+          .filter(Boolean).join(' — ') || undefined
+      : undefined,
     latest_move_at: last ? last.date : undefined,
     moves: safecubeMoves(events),
   };
@@ -775,9 +782,29 @@ async function diagnoseAuth() {
 
   // Recognised everywhere, refused everywhere: not a header problem and not a
   // path problem. That is the account.
-  return { ok: false, stage: 'permission', attempts, baseAttempts,
+  //
+  // Sinay sells its APIs as separate products behind one key, so "refused" is
+  // ambiguous in a way worth resolving: a key can be entitled to Webhooks and not
+  // to Container Tracking, which is a sentence about a PLAN, versus a key that is
+  // dead everywhere, which is a sentence about the KEY. One extra call to a base
+  // we already know how to reach separates them, and it is the difference between
+  // "buy tracking credits" and "check your key".
+  const elsewhere = name === 'safecube' ? await probeWebhookApi(headers) : null;
+  return { ok: false, stage: 'permission', attempts, baseAttempts, elsewhere,
     header: recognised.shape.header, shape: label(recognised.shape),
-    reason: `the key IS recognised — ${label(recognised.shape)} came back ${recognised.status}, not 401, which means it was read and then refused. That is an account, plan or scope limit rather than a wrong key or a wrong header.` };
+    reason: `the key IS recognised — ${label(recognised.shape)} came back ${recognised.status}, not 401, which means it was read and then refused.`
+      + (elsewhere && elsewhere.ok
+        ? ` The same key works on Sinay's Webhook API, so the key is fine and this account simply has no Container Tracking access — push will deliver, on-demand lookups will not until that product is added.`
+        : ` That is an account, plan or scope limit rather than a wrong key or a wrong header.`) };
+}
+
+// Does this key work on a DIFFERENT Sinay product? GET /endpoint on the Webhook
+// API is a read that lists what already exists, so it registers nothing and
+// tracks nothing — it only answers "is this key alive over there".
+async function probeWebhookApi(headers) {
+  const r = await getJson(`${safecubeWebhookBase()}/endpoint`, headers, { timeout: 8000 });
+  return { ok: !!r.ok, base: safecubeWebhookBase(), status: r.status || null,
+    code: r.ok ? 'ok' : (r.code || 'error') };
 }
 
 // ── AIS: where the ship is ───────────────────────────────────────────────────

@@ -345,7 +345,10 @@ const atBothBases = (method, tail, perm) => {
   eq('the size type becomes the container type', f.container_type, "40' High Cube Dry");
   eq('the ETA maps', f.pod_eta, '2026-09-20T00:00:00Z');
   // The LAST ACTUAL event is where the box is — the arrival is still a plan.
-  eq('the latest ACTUAL event is the latest move', f.latest_move, 'Loaded on board');
+  // The place is part of the sentence: "Loaded on board" alone, at a
+  // transhipment, reads as though the box were loaded for the final leg.
+  eq('the latest ACTUAL event is the latest move, named with its port',
+    f.latest_move, 'Loaded on board — Singapore');
   eq('…and carries that event’s time, not the response’s', f.latest_move_at, '2026-08-11T03:51:00Z');
   // ATD is a fact about a departure that happened; route.pol.actual says so.
   eq('a confirmed departure becomes the ATD', f.atd, '2026-08-11T04:18:00Z');
@@ -516,9 +519,9 @@ const atBothBases = (method, tail, perm) => {
   eq('the shipment-level route reaches the container row',
     [first.pol_code, first.pod_code], ['SGSIN', 'ITGIT']);
   eq('…and so does the vessel', first.vessel_name, 'MSC ELISABETTA');
-  eq('…and each box keeps its own events', first.latest_move, 'Loaded on board');
+  eq('…and each box keeps its own events', first.latest_move, 'Loaded on board — Singapore');
   eq('the second box is mapped against its own, not the first’s',
-    ups[1].fields().latest_move, 'Gate out');
+    ups[1].fields().latest_move, 'Gate out — Gioia Tauro');
   eq('the position rides in on the same delivery',
     [ups[0].position().vessel_lat, ups[0].position().vessel_lon], [-22.94, 4.31]);
 
@@ -543,6 +546,25 @@ const atBothBases = (method, tail, perm) => {
   const dup = JSON.parse(JSON.stringify(shipment));
   dup.containers.push({ number: 'MSDU7337230', events: [] });
   eq('a repeated container is written once', CT.webhookUpdates('safecube', dup).length, 2);
+}
+
+// ── Telling a dead key apart from an unentitled one ─────────────────────────
+// Sinay sells several APIs behind ONE key, so "refused" is ambiguous in a way
+// that matters: a key entitled to Webhooks but not Container Tracking is a
+// sentence about a PLAN, and a key that is dead everywhere is a sentence about
+// the KEY. They need different actions and the app used to say the same thing
+// for both.
+{
+  const PSRC = fs.readFileSync('src/routes/tracking-providers.js', 'utf8');
+  c('a refused key is cross-checked against another Sinay product',
+    /async function probeWebhookApi/.test(PSRC));
+  c('…using a read that lists what exists, so the check registers nothing',
+    /\$\{safecubeWebhookBase\(\)\}\/endpoint/.test(PSRC));
+  c('…and the verdict says which of the two it is',
+    /has no Container Tracking access/.test(PSRC));
+  // Only Safecube runs several products off one key; Terminal49 does not, and
+  // probing it would be a request that answers nothing.
+  c('the cross-check is Safecube-only', /name === 'safecube' \? await probeWebhookApi/.test(PSRC));
 }
 
 // ── The POD ETA a sync could never write ────────────────────────────────────
@@ -619,6 +641,58 @@ const atBothBases = (method, tail, perm) => {
   // "null" as a vendor's explanation is worse than saying nothing.
   c('an empty error body is reported as nothing, not as the word "null"',
     /detail == null \? '' :/.test(PSRC));
+}
+
+// ── Editing a card must not destroy what the sync filled ────────────────────
+// containerBuildRow emits EVERY column, and the edit form has inputs for only
+// some of them. A full-row PUT therefore wrote moves as [], po_id as null and
+// supplier as '' — so correcting one ETA on a synced container silently deleted
+// its port-call log, unlinked its purchase order and cleared its supplier.
+{
+  const SRC = fs.readFileSync('src/routes/containers.js', 'utf8');
+  const CL = fs.readFileSync('public/assets/logistics.js', 'utf8');
+
+  c('the PUT writes only the columns the request actually carried',
+    /hasOwnProperty\.call\(req\.body \|\| \{\}, k\)\) patch\[k\] = row\[k\]/.test(SRC));
+  c('…and the container number is always among them, since it identifies the row',
+    /patch\.container_no = row\.container_no/.test(SRC));
+
+  // The three fields with no input. If the form ever grows one, this test should
+  // be the thing that notices.
+  const form = (CL.match(/const payload = \{[\s\S]*?\n    \};/) || [''])[0];
+  c('the edit form still has no input for the port call log', !/\bmoves\b/.test(form));
+  c('…nor for the purchase order link', !/\bpo_id\b/.test(form));
+  c('…nor for the supplier', !/\bsupplier\b/.test(form));
+  c('…which is exactly why the PUT may not write them', /const patch = \{\};/.test(SRC));
+}
+
+// ── The port call log, capped from the right end and finally rendered ───────
+{
+  const SRC = fs.readFileSync('src/routes/containers.js', 'utf8');
+  const CL = fs.readFileSync('public/assets/logistics.js', 'utf8');
+
+  // Carriers send events oldest-first. Capping before sorting kept the sixty
+  // OLDEST and threw away everything recent — the opposite of a log whose whole
+  // point is where the box is now.
+  const fn = (SRC.match(/function sanitizeMoves[\s\S]*?\n}/) || [''])[0];
+  c('the moves list is sorted before it is capped',
+    fn.indexOf('.sort(') >= 0 && fn.indexOf('.slice(0, MOVES_MAX)') > fn.indexOf('.sort('));
+
+  const many = Array.from({ length: 90 }, (_, i) =>
+    ({ at: `2026-${String(1 + (i % 12)).padStart(2, '0')}-01T00:00:00Z`, event: `e${i}` }));
+  const kept = CT.containerBuildRow({ container_no: 'MSDU7337230', moves: many }).row.moves;
+  eq('the cap keeps sixty', kept.length, 60);
+  c('…and they are the NEWEST sixty, newest first',
+    kept[0].at >= kept[kept.length - 1].at && kept[0].at.startsWith('2026-12'));
+
+  // Stored by every sync since this feature shipped, read by nothing.
+  c('the card now renders the port call log', /function movesHtml/.test(CL));
+  c('…and it is on the card, not merely defined', /\$\{movesHtml\(c\)\}/.test(CL));
+  c('…marking an unconfirmed leg rather than passing a plan off as a fact',
+    /logi-move-est/.test(CL) && /expected/.test(CL));
+  c('…and both portals can style it',
+    /\.logi-moves/.test(fs.readFileSync('public/assets/dashboard.css', 'utf8'))
+    && /\.logi-moves/.test(fs.readFileSync('public/assets/employee.css', 'utf8')));
 }
 
 // ── Auth shape ──────────────────────────────────────────────────────────────
@@ -905,8 +979,13 @@ const atBothBases = (method, tail, perm) => {
     const SRC = fs.readFileSync('src/routes/containers.js', 'utf8');
     const calls = [...SRC.matchAll(/diagnoseAuth\(/g)];
     eq('auth discovery is called exactly once in the codebase', calls.length, 1);
-    c('…and only when the probe came back unauthorized',
-      /probe\.code === 'unauthorized'\) out\.auth = await providers\.diagnoseAuth\(\)/.test(SRC));
+    // 401 and 403 both, and ONLY those two. A refused-but-recognised key is the
+    // case the diagnosis exists for; gating it on 401 alone meant the one
+    // situation worth diagnosing never got diagnosed.
+    c('…and only when the key was refused, on either of the two ways to be refused',
+      /probe\.code === 'unauthorized' \|\| probe\.code === 'forbidden'/.test(SRC));
+    c('…and not on a merely empty answer, which would spend five requests for nothing',
+      !/probe\.code === 'not-tracked-yet'[\s\S]{0,80}diagnoseAuth/.test(SRC));
     // In the provider module it is DEFINED once and never invoked — the export
     // list mentions it by name, which is not a call, so count parenthesised uses.
     const PSRC = fs.readFileSync('src/routes/tracking-providers.js', 'utf8');
