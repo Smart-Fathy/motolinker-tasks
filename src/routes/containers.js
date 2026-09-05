@@ -237,14 +237,22 @@ function mountContainerReads(base, guard) {
     // never touches a real shipment — the point is the vendor's REPLY, not the
     // data. A well-formed number keeps it past our own validation.
     const probe = await providers.lookupContainer('CSQU3054383');
-    res.json({
+    const reachable = probe.ok || probe.code === 'not-tracked-yet' || probe.code === 'not-found';
+    const out = {
       ...status,
       probe: probe.ok ? 'ok' : (probe.code || 'error'),
       // not-tracked-yet means the vendor answered us properly and simply does
       // not watch that box — which is exactly what a working key looks like.
-      reachable: probe.ok || probe.code === 'not-tracked-yet' || probe.code === 'not-found',
+      reachable,
+      http: probe.status || null,
       detail: probe.ok ? null : (probe.detail || probe.reason || null),
-    });
+    };
+    // A refused key is the one failure where the app can find the answer itself:
+    // the vendor's docs name the header, and if they are unreachable the key is
+    // still here to try each candidate with. One request per shape, and only
+    // ever from this check — never as a retry on a normal request.
+    if (probe.code === 'unauthorized') out.auth = await providers.diagnoseAuth();
+    res.json(out);
   });
 
   receiver.router.get(`${base}/containers/:id`, guard, requirePerm('stock', 'tracking'), async (req, res) => {

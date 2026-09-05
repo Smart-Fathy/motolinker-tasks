@@ -340,6 +340,34 @@ const atBothBases = (method, tail, perm) => {
   c('a record is found however it is wrapped', wrapped.some(o => o.containerNumber === 'X'));
 }
 
+// ── Auth shape ──────────────────────────────────────────────────────────────
+// A vendor's docs are the only place the header name is written down, and they
+// are not always reachable. The key is, though — so the shape is configurable
+// and discoverable rather than hard-coded on a guess.
+{
+  const P = require('../src/routes/tracking-providers');
+  const saved = process.env.CONTAINER_TRACKING_KEY;
+
+  // A value pasted into a hosting variable field can carry a stray space, and a
+  // vendor answers that with a 401 — which reads as "wrong key" and is not.
+  process.env.CONTAINER_TRACKING_KEY = '  sk_abc123\n';
+  eq('the key is trimmed before it is ever sent', P.trackingKey(), 'sk_abc123');
+  c('…and whitespace alone does not count as configured',
+    (process.env.CONTAINER_TRACKING_KEY = '   ', P.trackingKey()) === '');
+
+  // The candidates cover what vendors actually do, and each is distinct — a
+  // duplicate would waste a request and muddle the report.
+  const shapes = P.AUTH_SHAPES.map(x => x.header + '|' + x.prefix);
+  eq('every candidate auth shape is distinct', shapes.length, new Set(shapes).size);
+  c('the candidates cover the four common conventions',
+    ['API_KEY', 'x-api-key', 'apikey', 'Authorization'].every(h => P.AUTH_SHAPES.some(x => x.header === h)));
+  c('and one of them is a Bearer token',
+    P.AUTH_SHAPES.some(x => x.header === 'Authorization' && /bearer/i.test(x.prefix)));
+
+  process.env.CONTAINER_TRACKING_KEY = saved || '';
+  if (!saved) delete process.env.CONTAINER_TRACKING_KEY;
+}
+
 // ── Picking a provider, now that two of them take a bare key ────────────────
 {
   const P = require('../src/routes/tracking-providers');
@@ -574,6 +602,24 @@ const atBothBases = (method, tail, perm) => {
     && !!route('POST', '/api/webhooks/safecube/:secret'));
   c('the connection probe is behind the tracking grant at both bases',
     atBothBases('GET', '/containers/provider-status', 'stock.tracking'));
+
+  // Trying five auth headers is a fine diagnosis and an unacceptable retry
+  // policy — five 401s per lookup would get the key rate-limited or locked. It
+  // may only run from the probe, and only when the key was actually refused.
+  {
+    const SRC = fs.readFileSync('src/routes/containers.js', 'utf8');
+    const calls = [...SRC.matchAll(/diagnoseAuth\(/g)];
+    eq('auth discovery is called exactly once in the codebase', calls.length, 1);
+    c('…and only when the probe came back unauthorized',
+      /probe\.code === 'unauthorized'\) out\.auth = await providers\.diagnoseAuth\(\)/.test(SRC));
+    // In the provider module it is DEFINED once and never invoked — the export
+    // list mentions it by name, which is not a call, so count parenthesised uses.
+    const PSRC = fs.readFileSync('src/routes/tracking-providers.js', 'utf8');
+    const invoked = [...PSRC.matchAll(/diagnoseAuth\(/g)];
+    eq('the provider module defines it and never calls it itself', invoked.length, 1);
+    c('…and that one occurrence is the declaration',
+      /async function diagnoseAuth\(\)/.test(PSRC));
+  }
 
   // Registration ORDER is load-bearing and a route table alone will not show it:
   // Express matches in order, so a literal path registered after /containers/:id
