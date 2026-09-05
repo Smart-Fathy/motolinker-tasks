@@ -291,24 +291,91 @@ const atBothBases = (method, tail, perm) => {
 // no second AIS vendor. The two halves are mapped separately because refresh
 // treats them differently — milestones through the hand-edit guard, a position
 // as a fresh observation.
+//
+// The fixture below is the documented GET /shipment response shape, trimmed.
+// It is NOT a guess: this adapter previously mapped an invented shape against
+// the wrong API entirely, so the test now pins it to what Sinay publishes.
 {
   const P = require('../src/routes/tracking-providers');
   const sh = {
-    containerNumber: 'MSDU7337230', status: 'In transit', containerType: "40' HIGH CUBE",
-    carrier: 'MSC', eta: '2026-09-20T00:00:00Z', lastUpdate: '2026-09-01T06:00:00Z',
-    vessel: { name: 'MSC ELISABETTA', imo: '9954747', mmsi: '636092123' },
-    location: { lat: -22.94, lng: 4.31, name: 'At sea', timestamp: '2026-09-01T05:12:00Z', speed: 16.4, course: 318 },
-    pol: { locode: 'SGSIN', name: 'Singapore' },
-    pod: { locode: 'ITGIT', name: 'Gioia Tauro' },
-    routeData: [{ lat: 1.26, lng: 103.8 }, { lat: -22.94, lng: 4.31 }],
+    metadata: {
+      shipmentType: 'CT', shipmentNumber: 'MSDU7337230', sealine: 'MSCU',
+      sealineName: 'Mediterranean Shipping Company (MSC)', shippingStatus: 'IN_TRANSIT',
+      updatedAt: '2026-09-01T06:00:00Z', warnings: [],
+    },
+    route: {
+      prepol: { location: null, date: null, actual: false, predictiveEta: null },
+      pol: { location: { name: 'Singapore', locode: 'SGSIN' }, date: '2026-08-11T04:18:00Z', actual: true, predictiveEta: null },
+      pod: { location: { name: 'Gioia Tauro', locode: 'ITGIT' }, date: '2026-09-20T00:00:00Z', actual: false, predictiveEta: null },
+      postpod: { location: null, date: null, actual: false, predictiveEta: null },
+    },
+    vessels: [{ name: 'MSC ELISABETTA', imo: 9954747, mmsi: 636092123, flag: 'PT' }],
+    containers: [{
+      number: 'MSDU7337230', isoCode: '45G1', sizeType: "40' High Cube Dry", status: 'IN_TRANSIT',
+      events: [
+        { description: 'Gate in at Port terminal', eventCode: 'GTIN', status: 'CGI', date: '2026-08-09T07:34:00Z',
+          isActual: true, location: { name: 'Singapore', locode: 'SGSIN' }, vessel: null },
+        { description: 'Loaded on board', eventCode: 'LOAD', status: 'CLL', date: '2026-08-11T03:51:00Z',
+          isActual: true, location: { name: 'Singapore', locode: 'SGSIN' },
+          vessel: { name: 'MSC ELISABETTA', imo: 9954747, mmsi: 636092123 } },
+        { description: 'Vessel Arrival', eventCode: 'ARRI', status: 'VAD', date: '2026-09-20T00:00:00Z',
+          isActual: false, location: { name: 'Gioia Tauro', locode: 'ITGIT' },
+          vessel: { name: 'MSC ELISABETTA', imo: 9954747 } },
+      ],
+    }],
+    routeData: {
+      routeSegments: [{ path: [{ lat: 1.26, lng: 103.8 }], routeType: 'SEA' }],
+      coordinates: { lat: -20.1, lng: 5.0 },
+      ais: {
+        status: 'OK',
+        data: {
+          vessel: { name: 'MSC ELISABETTA', imo: 9954747, mmsi: 636092123 },
+          lastVesselPosition: { lat: -22.94, lng: 4.31, updatedAt: '2026-09-01T05:12:00Z' },
+          updatedAt: '2026-09-01T05:40:00Z',
+        },
+      },
+    },
   };
 
-  const f = P.safecubeMap(sh);
-  eq('the vessel and its IMO map', [f.vessel_name, f.vessel_imo], ['MSC ELISABETTA', '9954747']);
+  const f = P.safecubeMap(sh, 'MSDU7337230');
+  eq('the vessel and its IMO map', [f.vessel_name, f.vessel_imo], ['MSC ELISABETTA', 9954747]);
   eq('both ports map', [f.pol_code, f.pol_name, f.pod_code, f.pod_name],
     ['SGSIN', 'Singapore', 'ITGIT', 'Gioia Tauro']);
+  eq('the carrier is the full sealine name', f.carrier, 'Mediterranean Shipping Company (MSC)');
+  eq('the size type becomes the container type', f.container_type, "40' High Cube Dry");
   eq('the ETA maps', f.pod_eta, '2026-09-20T00:00:00Z');
-  eq('the location name becomes the latest move', f.latest_move, 'At sea');
+  // The LAST ACTUAL event is where the box is — the arrival is still a plan.
+  eq('the latest ACTUAL event is the latest move', f.latest_move, 'Loaded on board');
+  eq('…and carries that event’s time, not the response’s', f.latest_move_at, '2026-08-11T03:51:00Z');
+  // ATD is a fact about a departure that happened; route.pol.actual says so.
+  eq('a confirmed departure becomes the ATD', f.atd, '2026-08-11T04:18:00Z');
+  // Looked up by container, the shipmentNumber IS the container. Copying it into
+  // bl_number would invent a bill of lading that does not exist.
+  c('a container lookup does not invent a BL number', f.bl_number === undefined);
+  eq('the port call log is carried over', f.moves.length, 3);
+  c('…and an unconfirmed event is labelled rather than passed off as fact',
+    f.moves.some(m => /Vessel Arrival \(expected\)/.test(m.event)));
+
+  // DCSA status beats the headline: IN_TRANSIT covers gate-in through the far
+  // quay, so the last actual event is the sharper signal.
+  eq('the status comes from the last actual event', f.status, 'in_transit');
+  const arrived = JSON.parse(JSON.stringify(sh));
+  arrived.containers[0].events[2].isActual = true;
+  eq('…so a confirmed vessel arrival reads as arrived',
+    P.safecubeMap(arrived, 'MSDU7337230').status, 'arrived');
+  c('…and once arrived the ETA is dropped rather than kept as a due date',
+    (() => { const a2 = JSON.parse(JSON.stringify(sh)); a2.route.pod.actual = true;
+             return P.safecubeMap(a2, 'MSDU7337230').eta === undefined; })());
+
+  // A bill of lading can carry several boxes. Mapping the first one onto a row
+  // for a different number would be silently wrong rather than loudly wrong.
+  const two = JSON.parse(JSON.stringify(sh));
+  two.containers.push({ number: 'MSDU7337231', sizeType: "20' Dry", events: [
+    { description: 'Gate out', eventCode: 'GTOT', status: 'CGO', date: '2026-09-25T09:00:00Z', isActual: true,
+      location: { name: 'Gioia Tauro' } }] });
+  eq('the named container is the one mapped', P.safecubeMap(two, 'MSDU7337231').container_type, "20' Dry");
+  eq('…with its own status, not its neighbour’s', P.safecubeMap(two, 'MSDU7337231').status, 'cleared');
+  eq('…and without a name it falls back to the first', P.safecubeMap(two).container_type, "40' High Cube Dry");
 
   const pos = P.safecubePosition(sh);
   // lng, not lon — getting that wrong yields a ship in the wrong ocean.
@@ -316,26 +383,42 @@ const atBothBases = (method, tail, perm) => {
   eq('the fix carries the vendor and its own time',
     [pos.position_source, pos.vessel_position_at], ['safecube', '2026-09-01T05:12:00.000Z']);
   eq('MMSI comes across as a string', pos.vessel_mmsi, '636092123');
+  // The AIS fix and the carrier's coordinate are different claims. AIS wins
+  // because it is the one with an age on it.
+  c('the AIS fix is preferred over the carrier coordinate',
+    pos.vessel_lat === -22.94 && pos.vessel_lat !== -20.1);
+  const noAis = JSON.parse(JSON.stringify(sh));
+  noAis.routeData.ais = { status: 'NO_AIS_DATA' };
+  eq('…and the carrier coordinate is the fallback',
+    [P.safecubePosition(noAis).vessel_lat, P.safecubePosition(noAis).vessel_lon], [-20.1, 5.0]);
+  c('no coordinates at all means no position',
+    P.safecubePosition({ metadata: {} }) === null);
+  c('Null Island is refused here too',
+    P.safecubePosition({ routeData: { coordinates: { lat: 0, lng: 0 } } }) === null);
+  c('an out-of-range fix is refused',
+    P.safecubePosition({ routeData: { coordinates: { lat: 91, lng: 4 } } }) === null);
+  // This feed reports neither, and a zero would draw a stopped ship facing north.
+  c('course and speed are absent rather than invented',
+    pos.vessel_course === undefined && pos.vessel_speed === undefined);
 
-  // routeData's last point is the most recent fix when `location` is absent.
-  const viaRoute = P.safecubePosition({ routeData: sh.routeData, vessel: sh.vessel });
-  eq('the route track is the fallback position', [viaRoute.vessel_lat, viaRoute.vessel_lon], [-22.94, 4.31]);
-  c('no location and no route means no position', P.safecubePosition({ vessel: sh.vessel }) === null);
-  c('Null Island is refused here too', P.safecubePosition({ location: { lat: 0, lng: 0 } }) === null);
-  c('an out-of-range fix is refused', P.safecubePosition({ location: { lat: 91, lng: 4 } }) === null);
-
-  // The search body is the one guess a wrong answer breaks completely, so it is
-  // overridable without a deploy.
-  // Published references disagree about the /public segment, and a gateway
-  // answers 403 to an unknown path as readily as 404 — so it is overridable and
-  // the candidates are enumerable.
+  // Sinay runs several APIs behind one key and they are NOT interchangeable.
+  // safecube/api/v1 is the PREMIUM Shipment Management product — pointing the
+  // tracking adapter at it is what made a valid key answer 403 to everything.
   {
     const PSRC = fs.readFileSync('src/routes/tracking-providers.js', 'utf8');
+    c('tracking goes to the Container Tracking API',
+      /api\.sinay\.ai\/container-tracking\/api\/v2/.test(PSRC));
+    c('…and never to the premium Shipment Management one',
+      !/api\.sinay\.ai\/safecube\/api\/v1/.test(PSRC));
+    c('registration goes to the Webhook API, which is where it lives',
+      /api\.sinay\.ai\/webhook\/api\/v1/.test(PSRC)
+      && /easy-shipment-asynchronous/.test(PSRC));
     c('the Safecube base is overridable', /process\.env\.SAFECUBE_BASE_URL/.test(PSRC));
-    c('…and both published path shapes are candidates',
-      /safecube\/api\/v1\/public'/.test(PSRC) && /safecube\/api\/v1'/.test(PSRC));
     c('…with a trailing slash trimmed so a set value cannot double up',
       /replace\(\/\\\/\+\$\/, ''\)/.test(PSRC));
+    // The connection check must not cost a tracking credit or register anything.
+    c('the connection probe uses the free sealines endpoint',
+      /\$\{base\}\/sealines/.test(PSRC));
     // Diagnosis is header-then-path, and the second stage only runs once a
     // header has actually been recognised.
     c('the diagnosis separates the header question from the path question',
@@ -344,18 +427,122 @@ const atBothBases = (method, tail, perm) => {
       /stage: 'permission'/.test(PSRC));
   }
 
-  eq('the default search body names the container',
-    P.safecubeSearchBody('MSDU7337230'), { containerNumbers: ['MSDU7337230'] });
-  process.env.SAFECUBE_SEARCH_BODY = '{"q":"{container}"}';
-  eq('and an override is honoured', P.safecubeSearchBody('MSDU7337230'), { q: 'MSDU7337230' });
-  process.env.SAFECUBE_SEARCH_BODY = 'not json';
-  eq('a broken override falls back rather than throwing',
-    P.safecubeSearchBody('MSDU7337230'), { containerNumbers: ['MSDU7337230'] });
-  delete process.env.SAFECUBE_SEARCH_BODY;
+  // Auto-detection of the carrier is documented to fail; naming it skips the
+  // guess. The hint is optional, threaded from the caller, and defaultable.
+  {
+    const saved = process.env.SAFECUBE_SEALINE;
+    delete process.env.SAFECUBE_SEALINE;
+    const q = new URLSearchParams(P.safecubeQuery('MSDU7337230'));
+    eq('the lookup asks by container number', q.get('shipmentNumber'), 'MSDU7337230');
+    eq('…and says it is a container, not a BL', q.get('shipmentType'), 'CT');
+    // route=true is what turns the AIS block on; without it there is no position.
+    eq('…and asks for the route, which is what carries AIS', q.get('route'), 'true');
+    eq('…and for AIS itself', q.get('ais'), 'true');
+    c('no sealine is sent when none is known', q.get('sealine') === null);
+    eq('an explicit hint is sent, upper-cased',
+      new URLSearchParams(P.safecubeQuery('MSDU7337230', 'mscu')).get('sealine'), 'MSCU');
+    process.env.SAFECUBE_SEALINE = 'hlcu';
+    eq('…and the environment supplies a default',
+      new URLSearchParams(P.safecubeQuery('MSDU7337230')).get('sealine'), 'HLCU');
+    eq('…which an explicit hint still beats',
+      new URLSearchParams(P.safecubeQuery('MSDU7337230', 'MSCU')).get('sealine'), 'MSCU');
+    if (saved == null) delete process.env.SAFECUBE_SEALINE; else process.env.SAFECUBE_SEALINE = saved;
+  }
+
+  // A carrier Sinay cannot identify is a 400 with a named code — one missing
+  // parameter, not a broken integration, and the UI has to say which.
+  eq('an undetectable sealine is its own code',
+    P.classify(400, '{"message":"AUTO_CANT_DETECT_SEALINE"}'), 'sealine-unknown');
+  eq('an unsupported sealine reads the same way',
+    P.classify(400, '{"message":"SEALINE_NOT_SUPPORTED"}'), 'sealine-unknown');
+  eq('a rejected number is distinct from a rejected carrier',
+    P.classify(400, '{"message":"WRONG_NUMBER"}'), 'bad-number');
+
+  // The register button and the register dispatcher must agree. They used to be
+  // two hardcoded lists, and the UI hid the one button that worked.
+  {
+    const saved = process.env.CONTAINER_TRACKING_PROVIDER;
+    for (const [name, expected] of [['safecube', true], ['terminal49', true], ['generic', false], ['', false]]) {
+      process.env.CONTAINER_TRACKING_PROVIDER = name;
+      eq(`registration is ${expected ? 'offered' : 'withheld'} for ${name || '(none)'}`,
+        P.canRegister(), expected);
+    }
+    if (saved == null) delete process.env.CONTAINER_TRACKING_PROVIDER;
+    else process.env.CONTAINER_TRACKING_PROVIDER = saved;
+    const CSRC = fs.readFileSync('src/routes/containers.js', 'utf8');
+    c('…and the route asks the provider module rather than naming a vendor',
+      /can_register: !prov\.ok && providers\.canRegister\(\)/.test(CSRC));
+  }
 
   // Vendors wrap lists differently; the finder looks for shape, not a path.
   const wrapped = P.everyObject({ content: { items: [{ containerNumber: 'X' }] } }, 0, []);
   c('a record is found however it is wrapped', wrapped.some(o => o.containerNumber === 'X'));
+}
+
+// ── What a webhook delivery IS, per vendor ──────────────────────────────────
+// The two vendors disagree, and flattening that here is what keeps the write
+// half of the handler a single path.
+//
+// Safecube (via Svix) posts a whole SHIPMENT. Reading a container out of it in
+// isolation — which this code used to do — throws away the route, the vessel
+// and the position, because those live on the shipment and not on the box. The
+// result was a delivery that matched, wrote almost nothing, and looked fine.
+{
+  const shipment = {
+    metadata: { shipmentType: 'CT', shipmentNumber: 'MSDU7337230', sealine: 'MSCU',
+      sealineName: 'MSC', shippingStatus: 'IN_TRANSIT' },
+    route: { pol: { location: { name: 'Singapore', locode: 'SGSIN' }, date: '2026-08-11T04:18:00Z', actual: true },
+             pod: { location: { name: 'Gioia Tauro', locode: 'ITGIT' }, date: '2026-09-20T00:00:00Z', actual: false } },
+    vessels: [{ name: 'MSC ELISABETTA', imo: 9954747, mmsi: 636092123 }],
+    containers: [
+      { number: 'MSDU7337230', sizeType: "40' High Cube Dry", events: [
+        { description: 'Loaded on board', status: 'CLL', date: '2026-08-11T03:51:00Z', isActual: true,
+          location: { name: 'Singapore' }, vessel: { name: 'MSC ELISABETTA', imo: 9954747 } }] },
+      { number: 'MSDU7337231', sizeType: "20' Dry", events: [
+        { description: 'Gate out', status: 'CGO', date: '2026-09-25T09:00:00Z', isActual: true,
+          location: { name: 'Gioia Tauro' } }] },
+    ],
+    routeData: { ais: { status: 'OK', data: {
+      vessel: { name: 'MSC ELISABETTA', mmsi: 636092123 },
+      lastVesselPosition: { lat: -22.94, lng: 4.31, updatedAt: '2026-09-01T05:12:00Z' } } } },
+  };
+
+  const ups = CT.webhookUpdates('safecube', shipment);
+  eq('every container on the shipment becomes an update', ups.map(u => u.no),
+    ['MSDU7337230', 'MSDU7337231']);
+  const first = ups[0].fields();
+  // The proof the shipment is not being thrown away: none of these fields is on
+  // the container object at all.
+  eq('the shipment-level route reaches the container row',
+    [first.pol_code, first.pod_code], ['SGSIN', 'ITGIT']);
+  eq('…and so does the vessel', first.vessel_name, 'MSC ELISABETTA');
+  eq('…and each box keeps its own events', first.latest_move, 'Loaded on board');
+  eq('the second box is mapped against its own, not the first’s',
+    ups[1].fields().latest_move, 'Gate out');
+  eq('the position rides in on the same delivery',
+    [ups[0].position().vessel_lat, ups[0].position().vessel_lon], [-22.94, 4.31]);
+
+  // An event with no container in it is a legitimate delivery, not an error.
+  eq('a shipment-less event yields nothing to write',
+    CT.webhookUpdates('safecube', { type: 'ping' }).length, 0);
+
+  // Terminal49 posts JSON:API, where the container IS the unit and the shipment
+  // is a sibling record to be resolved.
+  const t49 = {
+    data: { type: 'container', id: 'c1', attributes: { number: 'MSDU7337230' },
+      relationships: { shipment: { data: { type: 'shipment', id: 's1' } } } },
+    included: [{ type: 'shipment', id: 's1', attributes: { pol_locode: 'SGSIN' } }],
+  };
+  const t = CT.webhookUpdates('terminal49', t49);
+  eq('a JSON:API container is still found', t.map(u => u.no), ['MSDU7337230']);
+  c('…and its sibling shipment is resolved with it', !!t[0].fields());
+  c('…and it claims no position, because that feed carries none',
+    t[0].position() === null);
+
+  // The same box named twice in one delivery is one update, not two writes.
+  const dup = JSON.parse(JSON.stringify(shipment));
+  dup.containers.push({ number: 'MSDU7337230', events: [] });
+  eq('a repeated container is written once', CT.webhookUpdates('safecube', dup).length, 2);
 }
 
 // ── Auth shape ──────────────────────────────────────────────────────────────

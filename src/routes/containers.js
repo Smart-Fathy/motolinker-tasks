@@ -222,8 +222,10 @@ function mountContainerReads(base, guard) {
       // key it is the only one that works. So the offer stands whenever the box
       // was not found and the provider supports registration, rather than only
       // when the read succeeded enough to say "not tracked yet". Conditioning it
-      // on the read is what hid the one button that would have worked.
-      can_register: !prov.ok && providers.containerProviderName() === 'terminal49',
+      // on the read is what hid the one button that would have worked. The
+      // provider module decides who supports it, so this cannot offer a button
+      // the dispatcher would refuse.
+      can_register: !prov.ok && providers.canRegister(),
     });
   });
 
@@ -371,9 +373,11 @@ function mountContainerWrites(base, guard, who) {
     res.json({ ...out, changed: Object.keys(patch).length, container: data });
   });
 
-  // Ask the carrier's platform to start tracking a box it does not know yet.
-  // Terminal49 tracks what you have registered, so this is the step between
-  // "never heard of it" and data arriving on a later refresh.
+  // Ask the carrier's platform to start watching a box. On Terminal49 that is
+  // the step between "never heard of it" and data arriving on a later refresh.
+  // On Safecube reads already work without it — there this attaches the box to
+  // a webhook endpoint, so milestones arrive when they happen rather than when
+  // somebody opens the page.
   receiver.router.post(`${base}/containers/register`, guard, requirePerm('stock', 'tracking'), express.json(), async (req, res) => {
     const seen = inspectContainerNo(req.body && req.body.container_no);
     if (!seen.valid) return res.status(400).json({ error: 'A container number is four letters then seven digits, like MSDU7337230.' });
@@ -435,18 +439,17 @@ function webhookSecretOk(given) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-// Pull every container-shaped record out of a payload, wherever it sits. The
-// event envelope differs by event type, so this looks for the shape rather than
-// a fixed path.
+// Pull every container-shaped record out of a Terminal49 payload, wherever it
+// sits. The event envelope differs by event type, so this looks for the shape
+// rather than a fixed path.
 function webhookContainers(payload) {
   const out = [];
   const seen = new Set();
   const walk = (node, depth) => {
     if (!node || typeof node !== 'object' || depth > 6) return;
     if (Array.isArray(node)) { node.forEach(x => walk(x, depth + 1)); return; }
-    // Terminal49 wraps in JSON:API (type + attributes); Safecube posts the
-    // shipment object itself. Either counts as a record if it names a container,
-    // and the caller reads the number from whichever place it sits in.
+    // JSON:API wraps the number under attributes and names the type; a bare
+    // containerNumber counts too, for the generic adapter.
     const a = node.attributes || {};
     const num = (node.type === 'container' && (a.number || a.container_number))
       || node.containerNumber || node.container_number || node.containerNo;
@@ -457,6 +460,51 @@ function webhookContainers(payload) {
     Object.values(node).forEach(v => walk(v, depth + 1));
   };
   walk(payload, 0);
+  return out;
+}
+
+// The two vendors disagree about what a webhook delivery IS, and flattening
+// that difference here keeps the write half below a single path.
+//
+// Safecube (via Svix) posts a whole SHIPMENT — one metadata block, one route,
+// and the containers inside it. Reading a container out of it in isolation
+// would throw away the route, the vessel and the position, which live on the
+// shipment and not on the box. Terminal49 posts JSON:API records where the
+// container IS the unit and the shipment is a sibling to be looked up.
+//
+// A bill of lading can carry several boxes, so each is mapped against its own
+// events rather than against whichever happened to be first.
+function webhookUpdates(vendor, payload) {
+  const out = [];
+  const seen = new Set();
+  const add = (no, fields, position) => {
+    if (!no || seen.has(no)) return;
+    seen.add(no);
+    out.push({ no, fields, position });
+  };
+
+  if (vendor === 'safecube') {
+    const ships = providers.everyObject(payload, 0, [])
+      .filter(o => o && Array.isArray(o.containers) && o.containers.length);
+    for (const sh of ships) {
+      for (const box of sh.containers) {
+        add(normContainerNo(box && box.number),
+          () => providers.safecubeMap(sh, normContainerNo(box && box.number)),
+          () => providers.safecubePosition(sh));
+      }
+    }
+    return out;
+  }
+
+  const all = (payload.included || []).concat(payload.data ? [].concat(payload.data) : []);
+  for (const rec of webhookContainers(payload)) {
+    const a = rec.attributes || {};
+    const shipment = providers.t49Related(rec, all, 'shipment')
+      || all.find(x => x && x.type === 'shipment') || null;
+    add(normContainerNo(a.number || a.container_number
+      || rec.containerNumber || rec.container_number || rec.containerNo),
+      () => providers.t49Map(rec, shipment), () => null);
+  }
   return out;
 }
 
@@ -481,8 +529,7 @@ async function handleTrackingWebhook(vendor, req, res) {
   if (!webhookSecretOk(req.params.secret)) return res.sendStatus(404);
 
   const payload = req.body || {};
-  const all = (payload.included || []).concat(payload.data ? [].concat(payload.data) : []);
-  const found = webhookContainers(payload);
+  const found = webhookUpdates(vendor, payload);
   if (!found.length) {
     logWebhook(vendor, payload, [], 0);
     return res.json({ ok: true, matched: 0, note: 'no container in this event' });
@@ -490,25 +537,15 @@ async function handleTrackingWebhook(vendor, req, res) {
 
   let matched = 0;
   const numbers = [];
-  for (const rec of found) {
-    const a = rec.attributes || {};
-    const no = normContainerNo(a.number || a.container_number
-      || rec.containerNumber || rec.container_number || rec.containerNo);
-    if (!no) continue;
+  for (const upd of found) {
+    const no = upd.no;
     numbers.push(no);
     const cur = await supabase.from('shipment_containers').select('*').eq('container_no', no).maybeSingle();
     // Not ours: acknowledge so it is not retried forever, and change nothing.
     if (cur.error || !cur.data) continue;
 
-    let mapped, position = null;
-    if (vendor === 'safecube') {
-      mapped = providers.safecubeMap(rec);
-      position = providers.safecubePosition(rec);
-    } else {
-      const shipment = providers.t49Related(rec, all, 'shipment')
-        || all.find(x => x && x.type === 'shipment') || null;
-      mapped = providers.t49Map(rec, shipment);
-    }
+    const mapped = upd.fields();
+    const position = upd.position();
     const built = containerBuildRow({ ...cur.data, ...mapped });
     if (built.error) continue;
 
@@ -546,5 +583,5 @@ receiver.router.delete('/api/dashboard/containers/:id', requireAuth, async (req,
 
 // mapProviderPayload moved to tracking-providers.js with the rest of the vendor
 // plumbing; re-exported so callers and tests have one place to reach it from.
-module.exports = { containerBuildRow, mergeSynced, sanitizeMoves,
+module.exports = { containerBuildRow, mergeSynced, sanitizeMoves, webhookUpdates,
   mapProviderPayload: providers.mapProviderPayload, providers };

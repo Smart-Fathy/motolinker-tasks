@@ -513,6 +513,11 @@
       timeout: `${label} did not answer in time.`,
       unreachable: `Could not reach ${label}.`,
       'not-found': `${label} has no record of this container.`,
+      // Not a broken integration — one missing parameter. Auto-detection of the
+      // shipping line is documented to fail on some numbers, and naming the line
+      // fixes it outright.
+      'sealine-unknown': `${label} could not work out which shipping line this container belongs to. Set SAFECUBE_SEALINE to the line's SCAC code (MSC is MSCU) and try again.`,
+      'bad-number': `${label} rejected the number itself — check it against the bill of lading.`,
     };
     const why = d.code === 'ok' ? 'Prefilled from the carrier.'
       : (WHY[d.code] || `Carrier lookup unavailable — enter it by hand.`);
@@ -729,7 +734,9 @@
       'plan-required': 'carrier reads need a paid plan',
       unauthorized: 'carrier did not recognise the key', forbidden: 'carrier recognised the key but refused',
       'rate-limited': 'carrier is rate-limiting us', 'provider-down': 'carrier is down',
-      timeout: 'carrier timed out', 'no-vessel-id': 'no IMO on this container yet' };
+      timeout: 'carrier timed out', 'no-vessel-id': 'no IMO on this container yet',
+      'sealine-unknown': 'carrier could not be auto-detected — set SAFECUBE_SEALINE',
+      'bad-number': 'the carrier rejected this container number' };
     if (d.carrier && d.carrier.ok) say.push('carrier updated');
     else if (d.carrier) say.push(SHORT[d.carrier.code] || `carrier: ${d.carrier.reason}`);
     if (d.position && d.position.ok) say.push('position updated');
