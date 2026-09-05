@@ -8,6 +8,7 @@
 const fs = require('fs');
 
 const results = [];
+const PENDING = [];
 const c = (n, ok, x) => { results.push(!!ok); console.log((ok ? '  ok  ' : ' FAIL ') + n + (x ? '  ' + x : '')); };
 const eq = (n, got, want) => c(n, JSON.stringify(got) === JSON.stringify(want), `got ${JSON.stringify(got)} want ${JSON.stringify(want)}`);
 
@@ -637,10 +638,69 @@ const atBothBases = (method, tail, perm) => {
   // The one thing it must never do.
   c('the key is never printed', !said.some(l => /CONTAINER_TRACKING_KEY|sk_|API_KEY:/.test(l)));
 
-  // JSON.stringify(null) is the string "null", and handing a person the word
-  // "null" as a vendor's explanation is worse than saying nothing.
-  c('an empty error body is reported as nothing, not as the word "null"',
-    /detail == null \? '' :/.test(PSRC));
+}
+
+// ── What the vendor said, all the way through the real request path ─────────
+// Every classification test in this file used to call classify() directly, and
+// classify() was never the thing that was broken — getJson was, by handing it a
+// field plucked out of the body instead of the body. So 'plan-required' passed
+// its test and failed in production against the exact captured body it was
+// written for, and the first Terminal49 screenshot in this project's history
+// said "key rejected" about a key that was fine.
+//
+// These drive the WHOLE path — stubbed transport, real getJson, real classify —
+// because that is the seam the unit tests skipped.
+{
+  const P = require('../src/routes/tracking-providers');
+  const saved = { p: process.env.CONTAINER_TRACKING_PROVIDER, k: process.env.CONTAINER_TRACKING_KEY };
+  const realFetch = globalThis.fetch;
+  const realLog = console.log;
+
+  const through = async (status, body, provider) => {
+    process.env.CONTAINER_TRACKING_PROVIDER = provider || 'terminal49';
+    process.env.CONTAINER_TRACKING_KEY = 'k';
+    globalThis.fetch = async () => ({ ok: false, status, text: async () => body });
+    console.log = () => {};
+    try { return await P.lookupContainer('MSDU7337230'); }
+    finally { console.log = realLog; globalThis.fetch = realFetch; }
+  };
+
+  const run = async () => {
+    // THE captured body. A top-level ARRAY, so errors/error/message are all
+    // undefined on it — which is exactly how the words went missing.
+    const freeKey = '[{"detail":"You do not have permissions for using the API, except for creating tracking requests. All other permissions require a paid plan. See https://app.terminal49.com/settings/billing"}]';
+    const r1 = await through(401, freeKey);
+    eq('a free-key refusal survives the request path as a PLAN limit, not a bad key',
+      r1.code, 'plan-required');
+    eq('…which is what classify said about it all along', P.classify(401, freeKey), 'plan-required');
+    c('…and the vendor’s own words reach the caller', /paid plan/.test(String(r1.detail)));
+
+    // Sinay names the problem in `message` on one endpoint and in `code` beside a
+    // `description` on another. Reading key names picks one and loses the other;
+    // reading the body finds it either way.
+    eq('a named code in `message` is recognised',
+      (await through(400, '{"errorCode":400,"message":"AUTO_CANT_DETECT_SEALINE","details":[]}', 'safecube')).code,
+      'sealine-unknown');
+    eq('…and the same code beside a description is recognised too',
+      (await through(400, '{"code":"AUTO_CANT_DETECT_SEALINE","description":"Sealine could not be detected"}', 'safecube')).code,
+      'sealine-unknown');
+
+    // No JSON at all: a gateway or WAF page. The status is then all there is.
+    const html = await through(403, '<html><body>Forbidden</body></html>', 'safecube');
+    eq('a non-JSON gateway page still classifies by status', html.code, 'forbidden');
+    c('…and its text is carried rather than discarded', /Forbidden/.test(String(html.detail)));
+
+    // JSON.stringify(null) is the STRING "null"; handing somebody that word as an
+    // explanation is worse than saying nothing.
+    eq('an empty body explains nothing rather than explaining "null"',
+      (await through(400, '', 'safecube')).detail, '');
+
+    process.env.CONTAINER_TRACKING_PROVIDER = saved.p || '';
+    process.env.CONTAINER_TRACKING_KEY = saved.k || '';
+    if (!saved.p) delete process.env.CONTAINER_TRACKING_PROVIDER;
+    if (!saved.k) delete process.env.CONTAINER_TRACKING_KEY;
+  };
+  PENDING.push(run());
 }
 
 // ── Editing a card must not destroy what the sync filled ────────────────────
@@ -1120,6 +1180,10 @@ const atBothBases = (method, tail, perm) => {
     /procCan\('deals', 'payments'\)[\s\S]{0,200}openPaymentsPanel/.test(fs.readFileSync('public/assets/procurement.js', 'utf8')));
 }
 
-const passed = results.filter(Boolean).length;
-console.log(`\n${passed}/${results.length} passed`);
-process.exit(passed === results.length ? 0 : 1);
+// One block drives the real request path through a stubbed transport, which has
+// to settle before the count is meaningful.
+Promise.all(PENDING).then(() => {
+  const passed = results.filter(Boolean).length;
+  console.log(`\n${passed}/${results.length} passed`);
+  process.exit(passed === results.length ? 0 : 1);
+});

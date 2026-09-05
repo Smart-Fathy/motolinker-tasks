@@ -580,8 +580,23 @@
       : `Provider: ${d.provider}`;
     const parts = [name];
     if (d.provider !== 'none' && d.provider !== 'unknown') {
+      // "key rejected" is a claim about the KEY, and most of the ways a probe
+      // fails say nothing about it: a timeout, an unreachable host, a rate limit
+      // and a carrier we could not auto-detect are all a working key. Reserve
+      // the accusation for the two codes that actually mean it, and describe
+      // everything else as what it is.
+      const REFUSED = { unauthorized: 'key rejected', forbidden: 'key accepted, request refused' };
+      const OTHER = {
+        timeout: 'carrier did not answer in time', unreachable: 'carrier unreachable',
+        'rate-limited': 'carrier is rate-limiting us', 'provider-down': 'carrier is down',
+        'plan-required': 'key accepted, reads need a paid plan',
+        'sealine-unknown': 'key accepted, carrier not auto-detected',
+        'bad-number': 'key accepted, probe number refused',
+        'not-configured': 'no key set',
+      };
       parts.push(d.reachable ? 'key accepted'
-        : `key rejected (${d.probe}${d.http ? ' ' + d.http : ''})`);
+        : `${REFUSED[d.probe] || OTHER[d.probe] || `check failed (${d.probe})`}`
+          + `${d.http ? ` — HTTP ${d.http}` : ''}`);
       // Safecube carries the position on the same shipment, so it needs no
       // second vendor — worth saying, because otherwise somebody goes shopping
       // for an AIS subscription they do not need.
