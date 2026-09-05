@@ -95,15 +95,31 @@ async function getJson(url, headers, opts) {
     if (!r.ok) {
       // A vendor's own message is the useful part, but it is a JSON blob and the
       // UI must never shout one at a salesperson. So it is CLASSIFIED here into
-      // a code the client turns into a sentence, and the raw text rides along as
-      // `detail` for a tooltip and the logs.
-      const detail = json && (json.errors || json.error || json.message);
-      // JSON.stringify(null) is the STRING "null", and a vendor that answers with
-      // an empty or non-JSON body would otherwise hand the UI the word "null" as
-      // its explanation. Nothing to say is said as nothing.
-      const text = (detail == null ? '' : String(JSON.stringify(detail) || '')).slice(0, 400);
-      return { ok: false, status: r.status, code: classify(r.status, text), detail: text,
-        reason: `provider returned ${r.status}` };
+      // a code the client turns into a sentence, and a readable version rides
+      // along as `detail` for a tooltip and the logs.
+      //
+      // CLASSIFY THE WHOLE BODY, never a field plucked out of it. Vendors put the
+      // words that name the problem wherever they like: Terminal49's real
+      // free-key refusal is a TOP-LEVEL ARRAY of {detail} objects, Sinay pairs a
+      // `code` with a `description`, a gateway answers in HTML with no JSON at
+      // all. This used to read three key names and hand classify() whatever it
+      // found — which on an array is nothing — so the string worth recognising
+      // was thrown away before the classifier ever saw it.
+      //
+      // That is not hypothetical. 'plan-required' exists precisely for the body
+      // Terminal49 returns on a free key, and against that exact captured body it
+      // returned 'unauthorized' instead — sending somebody to hunt for a key that
+      // was never broken. The suite stayed green because every classify test
+      // called classify() directly and none of them came through here.
+      const said = String(text || '').replace(/\s+/g, ' ').trim();
+      const code = classify(r.status, said);
+      // For a HUMAN the vendor's own sentence beats the envelope around it — but
+      // only when there is one. JSON.stringify(null) is the string "null", and
+      // nothing to say is said as nothing, not as a word meaning nothing.
+      const spoken = json && (json.message || json.error || json.errors
+        || json.detail || json.description);
+      const detail = (spoken == null ? said : String(JSON.stringify(spoken) || '')).slice(0, 400);
+      return { ok: false, status: r.status, code, detail, reason: `provider returned ${r.status}` };
     }
     // A 2xx with no body is a legitimate answer, not a failure: 202 Accepted is
     // how Sinay acknowledges an asynchronous registration and 204 is how it
