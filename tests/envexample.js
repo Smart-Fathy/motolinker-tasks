@@ -43,7 +43,7 @@ c('the README still points at it', /\.env\.example/.test(fs.readFileSync('README
 // The tracking settings are the ones people are actively pasting keys into, so
 // they are named explicitly rather than left to the count above.
 for (const k of ['CONTAINER_TRACKING_PROVIDER', 'CONTAINER_TRACKING_KEY',
-  'TRACKING_WEBHOOK_SECRET', 'AIS_TRACKING_URL', 'SAFECUBE_SEARCH_BODY']) {
+  'TRACKING_WEBHOOK_SECRET', 'AIS_TRACKING_URL', 'SAFECUBE_SEALINE', 'SAFECUBE_ENDPOINT_ID']) {
   c(`${k} is documented`, documented.has(k));
 }
 // And the file has to say which provider names are valid, or the one setting

@@ -62,6 +62,13 @@ function classify(status, text) {
   // Safecube returned 403 to API_KEY and 401 to every other header, which
   // identified the header exactly — and read as "all five refused" until this
   // told them apart.
+  // Sinay answers a carrier it could not identify with a 400 and a named code.
+  // That is not a broken integration — it is one missing parameter — and saying
+  // so is the difference between a fix and a support ticket.
+  if (/auto_cant_detect|auto_cant_find_info|wrong_sealine|sealine_not_supported|type_not_supported/.test(t)) {
+    return 'sealine-unknown';
+  }
+  if (/wrong_number|bad_request|param:/.test(t)) return 'bad-number';
   if (status === 401) return 'unauthorized';
   if (status === 403) return 'forbidden';
   if (status === 404) return 'not-found';
@@ -95,8 +102,13 @@ async function getJson(url, headers, opts) {
       return { ok: false, status: r.status, code: classify(r.status, text), detail: text,
         reason: `provider returned ${r.status}` };
     }
-    if (!json) return { ok: false, reason: 'provider did not return JSON' };
-    return { ok: true, json };
+    // A 2xx with no body is a legitimate answer, not a failure: 202 Accepted is
+    // how Sinay acknowledges an asynchronous registration and 204 is how it
+    // confirms a delete. Reporting those as errors would have every successful
+    // register read as a failed one. Callers get an empty object rather than
+    // null so none of them has to guard a property read.
+    if (!json) return { ok: true, json: {}, empty: true, status: r.status };
+    return { ok: true, json, status: r.status };
   } catch (e) {
     return { ok: false, code: e.name === 'AbortError' ? 'timeout' : 'unreachable',
       reason: e.name === 'AbortError' ? 'provider timed out' : String((e && e.message) || e) };
@@ -332,35 +344,34 @@ async function t49Register(number, scac, requestType) {
 }
 
 // ── Safecube (Sinay) ─────────────────────────────────────────────────────────
-// https://api.sinay.ai/safecube/api/v1/public/, header `API_KEY`, JSON.
+// Sinay publishes several APIs behind one key and one header (`API_KEY`), and
+// they are NOT interchangeable:
 //
-// Worth its own adapter for a reason the others do not have: Safecube answers
-// BOTH questions in one call. The shipment carries the container milestones AND
-// the vessel — name, IMO, MMSI — AND a `location` with lat/lng. So with Safecube
-// configured there is no second AIS vendor to buy: the position rides in on the
-// same response, and lookupContainer returns it separately so refresh can treat
-// it as the fresh observation it is rather than a field to merge.
+//   container-tracking/api/v2   GET /shipment — the tracking data. FREE tier.
+//   webhook/api/v1              push instead of polling, and the only place a
+//                               container can be registered for tracking.
+//   safecube/api/v1             Shipment Management — a PREMIUM add-on that
+//                               files shipments in Safecube's own web app and
+//                               returns share links. It is not tracking at all.
 //
-// Like Terminal49 it is a register-then-read platform: POST /shipments starts
-// tracking, POST /shipments/search reads back.
-// Published references disagree about the /public segment, and a gateway that
-// does not know a path answers 403 as readily as 404 — so the base is
-// configurable, and the connection check tries the known candidates.
-const SAFECUBE_BASES = [
-  'https://api.sinay.ai/safecube/api/v1/public',
-  'https://api.sinay.ai/safecube/api/v1',
-];
+// This adapter used to point at safecube/api/v1 and POST /shipments/search,
+// which is why a valid key came back 403 on every single request: the key
+// authenticated fine, and the account simply is not entitled to the premium
+// product. The 403 was the honest answer; the path was the mistake.
+const SAFECUBE_BASE = 'https://api.sinay.ai/container-tracking/api/v2';
+const SAFECUBE_WEBHOOK_BASE = 'https://api.sinay.ai/webhook/api/v1';
 const safecubeBase = () =>
-  String(process.env.SAFECUBE_BASE_URL || SAFECUBE_BASES[0]).replace(/\/+$/, '');
+  String(process.env.SAFECUBE_BASE_URL || SAFECUBE_BASE).replace(/\/+$/, '');
+const safecubeWebhookBase = () =>
+  String(process.env.SAFECUBE_WEBHOOK_BASE_URL || SAFECUBE_WEBHOOK_BASE).replace(/\/+$/, '');
 
 function safecubeHeaders(shape) {
   return { ...authHeader('API_KEY', shape), 'Content-Type': 'application/json' };
 }
 
-// Every object in a payload, depth-first. Vendors wrap their lists differently
-// ({data:[…]}, {shipments:[…]}, {content:[…]} for a Spring backend), and looking
-// for the SHAPE rather than a fixed path survives all of them — and survives the
-// wrapper changing, which a fixed path does not.
+// Every object in a payload, depth-first. Used by the webhook path, where the
+// envelope around the shipment differs by event type and looking for the SHAPE
+// survives a wrapper change that a fixed path does not.
 function everyObject(node, depth, out) {
   const acc = out || [];
   if (!node || typeof node !== 'object' || depth > 8) return acc;
@@ -372,114 +383,220 @@ function everyObject(node, depth, out) {
 
 const scNum = v => { const n = Number(v); return Number.isFinite(n) ? n : undefined; };
 
-// The container half of a Safecube shipment.
-function safecubeMap(sh) {
-  if (!sh) return {};
-  const v = sh.vessel || {};
-  const loc = sh.location || sh.currentLocation || {};
-  const pol = sh.pol || sh.portOfLoading || sh.origin || {};
-  const pod = sh.pod || sh.portOfDischarge || sh.destination || {};
-  const pick = (...vals) => vals.find(x => x != null && x !== '') ?? undefined;
+// Sinay writes longitude as `lng`; the column is vessel_lon. Every coordinate
+// crosses that rename exactly once, here, so no caller has to remember it.
+function scCoord(o) {
+  if (!o) return null;
+  const lat = scNum(o.lat);
+  const lon = scNum(o.lng != null ? o.lng : o.lon);
+  if (lat == null || lon == null) return null;
+  return { lat, lon };
+}
+
+// DCSA status codes, which every carrier on the platform reports the same way.
+// The LAST ACTUAL event is a sharper signal than the headline shippingStatus —
+// "IN_TRANSIT" covers everything from gate-in to the quay at the far end, while
+// CDD says the box is off the ship.
+const SAFECUBE_EVENT_STATUS = {
+  CEP: 'booked', CPS: 'booked',
+  CGI: 'in_transit', CLL: 'in_transit', VDL: 'in_transit', VAT: 'in_transit',
+  CDT: 'in_transit', TSD: 'in_transit', CLT: 'in_transit', VDT: 'in_transit',
+  LTS: 'in_transit', BTS: 'in_transit',
+  VAD: 'arrived',
+  CDD: 'discharged',
+  CGO: 'cleared', CDC: 'cleared',
+  CER: 'closed',
+};
+const SAFECUBE_SHIPPING_STATUS = {
+  PLANNED: 'booked', IN_TRANSIT: 'in_transit', DELIVERED: 'discharged',
+};
+
+// The port-call log. An estimated event is kept but labelled, because a date
+// nobody has confirmed sitting unmarked next to confirmed ones is how a plan
+// gets read as a fact.
+function safecubeMoves(events) {
+  if (!Array.isArray(events)) return [];
+  return events.filter(e => e && (e.date || e.description)).map(e => ({
+    at: e.date,
+    event: e.isActual === false ? `${e.description || ''} (expected)`.trim() : (e.description || ''),
+    place: (e.location && e.location.name) || '',
+    vessel: (e.vessel && e.vessel.name) || '',
+  }));
+}
+
+// Pick the container this update is about. A BL can carry several boxes, and
+// mapping the first one onto a row for a different number would be silently
+// wrong rather than loudly wrong.
+function safecubeBox(payload, containerNo) {
+  const list = (payload && Array.isArray(payload.containers)) ? payload.containers : [];
+  if (!list.length) return {};
+  const want = String(containerNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (want) {
+    const hit = list.find(c => String((c && c.number) || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === want);
+    if (hit) return hit;
+  }
+  return list[0];
+}
+
+// The container half of a GET /shipment response (and of a webhook payload,
+// which carries the same shipment shape).
+function safecubeMap(payload, containerNo) {
+  if (!payload) return {};
+  const md = payload.metadata || {};
+  const route = payload.route || {};
+  const box = safecubeBox(payload, containerNo);
+  const events = Array.isArray(box.events) ? box.events : [];
+  // Chronological, actual only: the last one is where the box is now.
+  const actual = events.filter(e => e && e.isActual && e.date)
+    .slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const last = actual[actual.length - 1] || null;
+
+  const ais = ((payload.routeData || {}).ais || {}).data || {};
+  const vessels = Array.isArray(payload.vessels) ? payload.vessels : [];
+  // The ship carrying it now: the one on the last actual event, else the one
+  // AIS is following, else the last leg of the plan.
+  const v = (last && last.vessel) || ais.vessel || vessels[vessels.length - 1] || {};
+  const pol = (route.pol && route.pol.location) || {};
+  const pod = (route.pod && route.pod.location) || {};
 
   const out = {
-    container_type: pick(sh.containerType, sh.equipmentType, sh.type),
-    carrier: pick(sh.carrier, sh.carrierName, sh.shippingLine, sh.scac),
-    bl_number: pick(sh.blNumber, sh.billOfLading, sh.bookingNumber),
-    pod_eta: pick(sh.eta, sh.podEta, pod.eta),
-    eta: pick(sh.eta, sh.podEta, pod.eta),
-    vessel_name: pick(v.name, sh.vesselName),
-    vessel_imo: pick(v.imo, sh.vesselImo),
-    pol_code: pick(pol.locode, pol.unlocode, pol.code),
-    pol_name: pick(pol.name, pol.portName),
-    pod_code: pick(pod.locode, pod.unlocode, pod.code),
-    pod_name: pick(pod.name, pod.portName),
-    atd: pick(sh.atd, pol.atd, sh.departureDate),
-    latest_move: pick(loc.name, sh.statusLabel, sh.status),
-    latest_move_at: pick(sh.lastUpdate, sh.updatedAt, loc.timestamp),
+    container_type: box.sizeType || box.isoCode,
+    carrier: md.sealineName || md.sealine,
+    // Only a document number belongs in bl_number. When the shipment was looked
+    // up by container the shipmentNumber IS the container, and copying it here
+    // would invent a bill of lading that does not exist.
+    bl_number: (md.shipmentType === 'BL' || md.shipmentType === 'BK') ? md.shipmentNumber : undefined,
+    status: (last && SAFECUBE_EVENT_STATUS[last.status]) || SAFECUBE_SHIPPING_STATUS[md.shippingStatus],
+    vessel_name: v.name,
+    vessel_imo: v.imo,
+    vessel_mmsi: v.mmsi != null ? String(v.mmsi) : undefined,
+    pol_code: pol.locode,
+    pol_name: pol.name,
+    pod_code: pod.locode,
+    pod_name: pod.name,
+    // ATD only once the carrier confirms the departure happened.
+    atd: route.pol && route.pol.actual ? route.pol.date : undefined,
+    // ETA only while arrival has NOT happened: after it, route.pod.date is an
+    // ACTUAL arrival, and writing that into eta shows a delivered box as still
+    // due. predictiveEta is Sinay's own model and only appears within three days
+    // of arrival, which is exactly when it beats the carrier's number.
+    eta: route.pod && !route.pod.actual
+      ? (route.pod.predictiveEta || route.pod.date) : undefined,
+    latest_move: last ? last.description : undefined,
+    latest_move_at: last ? last.date : undefined,
+    moves: safecubeMoves(events),
   };
-  // Anything the explicit names missed still gets the alias table, run over the
-  // flattened shipment rather than the response envelope.
-  const fallback = readAliases(flatten(sh, 0, {}));
-  for (const [k, val] of Object.entries(fallback)) if (out[k] == null || out[k] === '') out[k] = val;
+  out.pod_eta = out.eta;
+  if (Array.isArray(out.moves) && !out.moves.length) delete out.moves;
   for (const k of Object.keys(out)) if (out[k] == null || out[k] === '') delete out[k];
   return out;
 }
 
-// The position half. Safecube reports lat/lng on `location`; `routeData` is the
-// track it has drawn, whose last point is the most recent fix when `location`
-// is absent.
-function safecubePosition(sh) {
-  if (!sh) return null;
-  const v = sh.vessel || {};
-  const loc = sh.location || sh.currentLocation || {};
-  let lat = scNum(pickCoord(loc, ['lat', 'latitude', 'y']));
-  let lon = scNum(pickCoord(loc, ['lng', 'lon', 'longitude', 'x']));
-
-  if (lat == null || lon == null) {
-    const route = Array.isArray(sh.routeData) ? sh.routeData : null;
-    const last = route && route.length ? route[route.length - 1] : null;
-    if (last) {
-      lat = scNum(pickCoord(last, ['lat', 'latitude', 'y']));
-      lon = scNum(pickCoord(last, ['lng', 'lon', 'longitude', 'x']));
-    }
-  }
-  if (lat == null || lon == null) return null;
-  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+// The position half. Two positions can be present and they are not the same
+// thing: lastVesselPosition is an AIS fix and carries its own timestamp;
+// routeData.coordinates is where the CARRIER believes the box is. AIS wins,
+// because it is the one with an age on it — and a dot drawn without an age
+// implies a precision nobody is paying for.
+function safecubePosition(payload) {
+  if (!payload) return null;
+  const rd = payload.routeData || {};
+  const ais = rd.ais || {};
+  const d = ais.data || {};
+  const fix = (ais.status === 'OK' && d.lastVesselPosition) ? d.lastVesselPosition : null;
+  const p = scCoord(fix) || scCoord(rd.coordinates);
+  if (!p) return null;
+  if (p.lat < -90 || p.lat > 90 || p.lon < -180 || p.lon > 180) return null;
   // Null Island is a broken feed, not a container ship.
-  if (lat === 0 && lon === 0) return null;
+  if (p.lat === 0 && p.lon === 0) return null;
 
+  const v = d.vessel || {};
   const out = {
-    vessel_lat: lat,
-    vessel_lon: lon,
-    vessel_position_at: aisTime(loc.timestamp || loc.date || sh.lastUpdate || sh.updatedAt),
-    vessel_course: scNum(loc.course ?? loc.heading ?? v.course),
-    vessel_speed: scNum(loc.speed ?? v.speed),
+    vessel_lat: p.lat,
+    vessel_lon: p.lon,
+    // A carrier coordinate has no timestamp of its own, so it inherits the one
+    // on the data it came with rather than pretending to be current.
+    vessel_position_at: aisTime(
+      (fix && fix.updatedAt) || d.updatedAt || (payload.metadata || {}).updatedAt),
     vessel_mmsi: v.mmsi != null ? String(v.mmsi) : undefined,
-    position_source: 'safecube',
+    // Course and speed are deliberately absent: this feed does not report them,
+    // and a zero would draw a stopped ship pointing north.
+    position_source: process.env.CONTAINER_TRACKING_NAME || 'safecube',
   };
   for (const k of Object.keys(out)) if (out[k] == null) delete out[k];
   return out;
 }
-function pickCoord(o, names) {
-  for (const n of names) if (o && o[n] != null && o[n] !== '') return o[n];
-  return undefined;
+
+// Auto-detection of the carrier is the documented default and it does fail —
+// on failure the API says so rather than guessing. A SCAC skips the guess
+// entirely and is both faster and more reliable, so it is threaded through from
+// the caller and can be defaulted for a fleet that ships with one line.
+function safecubeQuery(containerNo, sealine) {
+  const q = new URLSearchParams({
+    shipmentNumber: String(containerNo),
+    shipmentType: 'CT',
+    route: 'true',   // route segments AND the AIS block ride on this flag
+    ais: 'true',
+  });
+  const line = sealine || process.env.SAFECUBE_SEALINE;
+  if (line) q.set('sealine', String(line).toUpperCase().trim());
+  return q.toString();
 }
 
-// The search body. Defaulted to the documented shape and overridable, because
-// this is the one part of the integration a wrong guess breaks completely and
-// correcting it should not need a deploy.
-function safecubeSearchBody(containerNo) {
-  const tpl = process.env.SAFECUBE_SEARCH_BODY;
-  if (tpl) {
-    try { return JSON.parse(tpl.replace(/\{container\}/g, containerNo)); }
-    catch (_) { /* fall through to the default */ }
+async function safecubeLookup(containerNo, sealine) {
+  if (!trackingKey()) return { ok: false, code: 'not-configured', reason: 'not-configured' };
+  const r = await getJson(`${safecubeBase()}/shipment?${safecubeQuery(containerNo, sealine)}`,
+    safecubeHeaders());
+  if (!r.ok) return r;
+
+  // A 200 is not automatically data. When the carrier answers "nothing here"
+  // Sinay passes that through as a SUCCESS with a message, and treating it as a
+  // hit would write an empty shipment over a good row.
+  const md = (r.json && r.json.metadata) || {};
+  const msg = String((r.json && (r.json.message || r.json.status)) || '').toUpperCase();
+  const empty = /HASNT_PROVIDE_INFO|CANCELED_SHIPMENT|CANT_FIND_INFO/.test(msg);
+  const hasBox = Array.isArray(r.json && r.json.containers) && r.json.containers.length > 0;
+  if (empty || (!hasBox && !md.sealine)) {
+    return { ok: false, code: 'not-tracked-yet', reason: 'not-tracked-yet', raw: r.json };
   }
-  return { containerNumbers: [containerNo] };
+  return {
+    ok: true,
+    fields: safecubeMap(r.json, containerNo),
+    position: safecubePosition(r.json),
+    raw: r.json,
+  };
 }
 
-async function safecubeLookup(containerNo) {
-  if (!trackingKey()) return { ok: false, code: 'not-configured', reason: 'not-configured' };
-  const r = await getJson(`${safecubeBase()}/shipments/search`, safecubeHeaders(),
-    { method: 'POST', body: safecubeSearchBody(containerNo) });
+// Registration lives in the webhook API, not the tracking one: GET /shipment is
+// a pull and needs no setup, but push needs the box attached to an endpoint.
+// The endpoint id can be pinned, and is otherwise discovered — but only when
+// there is exactly one, because picking between several would silently decide
+// which of your webhooks receives the milestones.
+async function safecubeEndpointId() {
+  const pinned = String(process.env.SAFECUBE_ENDPOINT_ID || '').trim();
+  if (pinned) return { ok: true, id: pinned };
+  const r = await getJson(`${safecubeWebhookBase()}/endpoint`, safecubeHeaders());
   if (!r.ok) return r;
-
-  const wanted = String(containerNo).toUpperCase();
-  const objs = everyObject(r.json, 0, []);
-  const norm = x => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const sh = objs.find(o => norm(o.containerNumber || o.container_number || o.containerNo) === wanted)
-    || objs.find(o => o.containerNumber || o.container_number || o.containerNo);
-
-  if (!sh) return { ok: false, code: 'not-tracked-yet', reason: 'not-tracked-yet', raw: r.json };
-  return { ok: true, fields: safecubeMap(sh), position: safecubePosition(sh), raw: r.json };
+  const list = (r.json && Array.isArray(r.json.data)) ? r.json.data : [];
+  if (list.length === 1 && list[0] && list[0].id) return { ok: true, id: list[0].id };
+  return { ok: false, code: 'not-configured', raw: r.json,
+    reason: list.length
+      ? 'several webhook endpoints exist — set SAFECUBE_ENDPOINT_ID to say which one'
+      : 'no webhook endpoint exists yet — create one in Safecube first' };
 }
 
-async function safecubeRegister(containerNo) {
+async function safecubeRegister(containerNo, sealine) {
   if (!trackingKey()) return { ok: false, code: 'not-configured', reason: 'not-configured' };
-  const r = await getJson(`${safecubeBase()}/shipments`, safecubeHeaders(),
-    { method: 'POST', body: { containerNumber: containerNo } });
+  const ep = await safecubeEndpointId();
+  if (!ep.ok) return ep;
+  const ship = { number: String(containerNo), type: 'CT' };
+  const line = sealine || process.env.SAFECUBE_SEALINE;
+  if (line) ship.sealine = String(line).toUpperCase().trim();
+  const r = await getJson(`${safecubeWebhookBase()}/easy-shipment-asynchronous`,
+    safecubeHeaders(), { method: 'POST', body: { [ep.id]: { shipments: [ship] } } });
   if (!r.ok) return r;
-  const sh = everyObject(r.json, 0, []).find(o => o.id || o.shipmentId) || {};
-  return { ok: true, id: sh.id || sh.shipmentId, status: sh.status || 'created', raw: r.json };
+  // 202 means accepted, not tracked. What says it worked is the
+  // shipment.added.to.endpoint webhook; shipment.in.error says it did not.
+  return { ok: true, id: ep.id, status: 'accepted', raw: r.json };
 }
 
 // ── Which container provider is in play ──────────────────────────────────────
@@ -512,25 +629,35 @@ function providerStatus() {
   };
 }
 
-async function lookupContainer(containerNo) {
+// `scac` is an optional carrier hint. Safecube's auto-detection is documented
+// to fail on some numbers, and naming the line skips the guess entirely.
+async function lookupContainer(containerNo, scac) {
   switch (containerProviderName()) {
-    case 'safecube':   return safecubeLookup(containerNo);
+    case 'safecube':   return safecubeLookup(containerNo, scac);
     case 'terminal49': return t49Lookup(containerNo);
     case 'generic':    return genericLookup(containerNo);
     default:           return { ok: false, code: 'not-configured', reason: 'not-configured' };
   }
 }
 
-// Both register-then-read platforms need a box announced before they will watch
-// it. A GET-by-number vendor does not, and says so rather than pretending.
+// Registration means different things per vendor and neither is "you cannot read
+// until you do this". Terminal49 will not watch a box until it is registered.
+// Safecube's tracking API is a pure pull that needs no setup at all — there,
+// registering attaches the box to a webhook endpoint so milestones are PUSHED
+// instead of waited for. A GET-by-number vendor has nothing to register and
+// says so rather than pretending.
 async function registerContainer(containerNo, scac) {
   switch (containerProviderName()) {
-    case 'safecube':   return safecubeRegister(containerNo);
+    case 'safecube':   return safecubeRegister(containerNo, scac);
     case 'terminal49': return t49Register(containerNo, scac, 'container');
     default: return { ok: false, code: 'not-supported',
       reason: 'this provider tracks on lookup — nothing to register' };
   }
 }
+
+// Which providers have something to register at all. Kept beside the dispatcher
+// above so the UI cannot offer a button the dispatcher would refuse.
+const canRegister = () => ['safecube', 'terminal49'].includes(containerProviderName());
 
 // Does the carrier feed also carry the ship's position? Safecube does, which is
 // why it needs no second vendor; the others do not.
@@ -561,12 +688,15 @@ async function diagnoseAuth() {
   const headersFor = sh => (name === 'safecube'
     ? { ...authHeader('API_KEY', sh), 'Content-Type': 'application/json' }
     : { ...authHeader('Authorization', sh), 'Content-Type': 'application/json' });
+  // GET /sealines is the cheapest honest probe Sinay has: the docs state it is
+  // free on the FREE plan, so a connection check never spends a tracking credit
+  // and never registers anything.
   const probe = (base, headers) => (name === 'safecube'
-    ? getJson(`${base}/shipments/search`, headers, { method: 'POST', body: safecubeSearchBody('CSQU3054383'), timeout: 8000 })
+    ? getJson(`${base}/sealines`, headers, { timeout: 8000 })
     : getJson(`${base}/containers?page[size]=1`, headers, { timeout: 8000 }));
 
   const bases = name === 'safecube'
-    ? [...new Set([safecubeBase(), ...SAFECUBE_BASES])]
+    ? [...new Set([safecubeBase(), SAFECUBE_BASE])]
     : [T49_BASE];
 
   // ── Stage 1: the header ────────────────────────────────────────────────────
@@ -604,7 +734,7 @@ async function diagnoseAuth() {
     if (code === 'ok' || code === 'not-tracked-yet') {
       return { ok: true, header: recognised.shape.header, prefix: recognised.shape.prefix,
         shape: label(recognised.shape), base, attempts, baseAttempts,
-        env: base === SAFECUBE_BASES[0] ? envHeader : `${envHeader}\nSAFECUBE_BASE_URL=${base}` };
+        env: base === SAFECUBE_BASE ? envHeader : `${envHeader}\nSAFECUBE_BASE_URL=${base}` };
     }
   }
 
@@ -699,10 +829,10 @@ const aisConfigured = () => !!process.env.AIS_TRACKING_URL;
 
 module.exports = {
   lookupContainer, registerContainer, containerProviderName, carrierHasPosition, providerStatus,
-  diagnoseAuth, trackingKey, AUTH_SHAPES,
+  diagnoseAuth, trackingKey, AUTH_SHAPES, canRegister,
   CONTAINER_PROVIDERS,
   lookupPosition, aisConfigured,
-  safecubeMap, safecubePosition, safecubeSearchBody, everyObject,
+  safecubeMap, safecubePosition, safecubeBox, safecubeMoves, safecubeQuery, everyObject,
   // Exported for the tests, which exercise the mapping rather than the network.
   mapProviderPayload, mapAisPayload, aisTime, t49Map, t49Records, t49Related, t49EquipmentLabel, classify,
 };
