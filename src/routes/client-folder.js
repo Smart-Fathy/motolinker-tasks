@@ -119,7 +119,7 @@ const DOC_TYPES = {
   po: {
     table: 'purchase_orders', label: 'Purchase order',
     name: r => `PO ${r.po_number || r.id}`,
-    html: async (r, settings) => ctx.buildPurchaseOrderHtml({ ...r, settings }),
+    html: async (r, settings) => ctx.buildPurchaseOrderHtml({ ...r, client_name: await ctx.poClientName(r), settings }),
   },
   contract: {
     table: 'contracts', label: 'Contract',
