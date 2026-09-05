@@ -460,20 +460,42 @@ function webhookContainers(payload) {
   return out;
 }
 
+// A delivery that changes nothing looks exactly like success from the vendor's
+// side — 200 back, webhook stays green, and nothing here moves. Three different
+// causes produce it, and without a line in the log they are indistinguishable:
+// the event genuinely carries no container, the container is one we do not
+// track, or the payload is shaped differently than webhookContainers expects.
+// The last one is the only bug, so an unmatched delivery prints a truncated
+// sample to identify the shape. Carrier milestones, not credentials — the
+// secret is in the URL path and never in the body.
+function logWebhook(vendor, payload, numbers, matched) {
+  const head = `[webhook:${vendor}] ${numbers.length} container(s) in payload, ${matched} matched`;
+  if (matched) return console.log(`${head} — ${numbers.join(', ')}`);
+  const sample = JSON.stringify(payload);
+  console.log(`${head}${numbers.length ? ` — ${numbers.join(', ')} (not tracked here)` : ''}`
+    + `\n[webhook:${vendor}] keys: ${Object.keys(payload).join(', ') || '(none)'}`
+    + `\n[webhook:${vendor}] body: ${sample.length > 2000 ? `${sample.slice(0, 2000)}…[${sample.length}b]` : sample}`);
+}
+
 async function handleTrackingWebhook(vendor, req, res) {
   if (!webhookSecretOk(req.params.secret)) return res.sendStatus(404);
 
   const payload = req.body || {};
   const all = (payload.included || []).concat(payload.data ? [].concat(payload.data) : []);
   const found = webhookContainers(payload);
-  if (!found.length) return res.json({ ok: true, matched: 0, note: 'no container in this event' });
+  if (!found.length) {
+    logWebhook(vendor, payload, [], 0);
+    return res.json({ ok: true, matched: 0, note: 'no container in this event' });
+  }
 
   let matched = 0;
+  const numbers = [];
   for (const rec of found) {
     const a = rec.attributes || {};
     const no = normContainerNo(a.number || a.container_number
       || rec.containerNumber || rec.container_number || rec.containerNo);
     if (!no) continue;
+    numbers.push(no);
     const cur = await supabase.from('shipment_containers').select('*').eq('container_no', no).maybeSingle();
     // Not ours: acknowledge so it is not retried forever, and change nothing.
     if (cur.error || !cur.data) continue;
@@ -507,6 +529,7 @@ async function handleTrackingWebhook(vendor, req, res) {
       patch, POSITION_COLUMNS);
     matched++;
   }
+  logWebhook(vendor, payload, numbers, matched);
   res.json({ ok: true, matched });
 }
 
