@@ -326,6 +326,24 @@ const atBothBases = (method, tail, perm) => {
 
   // The search body is the one guess a wrong answer breaks completely, so it is
   // overridable without a deploy.
+  // Published references disagree about the /public segment, and a gateway
+  // answers 403 to an unknown path as readily as 404 — so it is overridable and
+  // the candidates are enumerable.
+  {
+    const PSRC = fs.readFileSync('src/routes/tracking-providers.js', 'utf8');
+    c('the Safecube base is overridable', /process\.env\.SAFECUBE_BASE_URL/.test(PSRC));
+    c('…and both published path shapes are candidates',
+      /safecube\/api\/v1\/public'/.test(PSRC) && /safecube\/api\/v1'/.test(PSRC));
+    c('…with a trailing slash trimmed so a set value cannot double up',
+      /replace\(\/\\\/\+\$\/, ''\)/.test(PSRC));
+    // Diagnosis is header-then-path, and the second stage only runs once a
+    // header has actually been recognised.
+    c('the diagnosis separates the header question from the path question',
+      /Stage 1: the header/.test(PSRC) && /Stage 2: the path/.test(PSRC));
+    c('…and reports a permission limit as its own outcome',
+      /stage: 'permission'/.test(PSRC));
+  }
+
   eq('the default search body names the container',
     P.safecubeSearchBody('MSDU7337230'), { containerNumbers: ['MSDU7337230'] });
   process.env.SAFECUBE_SEARCH_BODY = '{"q":"{container}"}';
@@ -404,19 +422,33 @@ const atBothBases = (method, tail, perm) => {
   const freeKey = '[{"detail":"You do not have permissions for using the API, except for creating tracking requests. All other permissions require a paid plan. See https://app.terminal49.com/settings/billing"}]';
   eq('a plan limit is not reported as a bad key', P.classify(401, freeKey), 'plan-required');
   eq('a genuinely bad key is', P.classify(401, '{"detail":"Invalid API token"}'), 'unauthorized');
-  eq('a 403 with no billing wording is still an auth problem', P.classify(403, 'forbidden'), 'unauthorized');
+  // THE distinction, learned the hard way: Safecube answered 403 to API_KEY and
+  // 401 to every other header, which identified the header exactly — and read
+  // as "all five refused" while these two shared one code.
+  //   401 — no credential recognised. Usually the wrong header name.
+  //   403 — credential recognised, request refused anyway. The key is fine.
+  eq('403 is not 401 — recognised-and-refused is its own answer', P.classify(403, 'forbidden'), 'forbidden');
+  c('…so the two are never the same code', P.classify(401, '') !== P.classify(403, ''));
+  // A 403 that names the plan is still a plan limit; the text wins over status.
+  eq('a 403 naming the plan is still plan-required', P.classify(403, 'upgrade your subscription'), 'plan-required');
   eq('rate limiting is its own answer', P.classify(429, ''), 'rate-limited');
   eq('a vendor outage is its own answer', P.classify(503, ''), 'provider-down');
   eq('anything else is generic', P.classify(422, 'bad scac'), 'error');
   // Every code the server can emit must have a sentence in the client, or the
   // UI falls back to something vague at exactly the moment it needs to be clear.
   const CLIENT_SRC = fs.readFileSync('public/assets/logistics.js', 'utf8');
-  const codes = ['not-configured', 'not-tracked-yet', 'plan-required', 'unauthorized',
+  const codes = ['not-configured', 'not-tracked-yet', 'plan-required', 'unauthorized', 'forbidden',
     'rate-limited', 'provider-down', 'timeout', 'unreachable', 'not-found'];
   const missing = codes.filter(k => !new RegExp(`['"]?${k}['"]?\\s*:`).test(CLIENT_SRC));
   c('the client names Safecube rather than calling it "the carrier platform"',
     /safecube: 'Safecube'/.test(CLIENT_SRC));
   c('and offers a one-click connection check', /function ctProviderCheck\(/.test(CLIENT_SRC));
+  // A recognised-but-refused key must never be described as rejected — that is
+  // what sends somebody rotating a key that was never the problem.
+  c('a forbidden key is described as valid, not rejected',
+    /forbidden: `\$\{label\} recognised the key/.test(CLIENT_SRC));
+  c('an unrecognised key says so specifically',
+    /unauthorized: `\$\{label\} did not recognise the key/.test(CLIENT_SRC));
   eq('the client has a sentence for every code the server emits', missing, []);
   // And it must not render the vendor's raw JSON as body text.
   c('the vendor blob is a tooltip, not the message',
