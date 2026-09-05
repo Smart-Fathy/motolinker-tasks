@@ -502,7 +502,7 @@
     const label = esc(NAMES[d.provider_name] || 'The carrier platform');
     const WHY = {
       'not-configured': 'Automatic lookup is not set up, so enter what the carrier shows.',
-      'not-tracked-yet': `${label} is not watching this container yet. Register it and the milestones arrive on the next refresh.`,
+      'not-tracked-yet': `${label} is not watching this container yet. Register it below to start.`,
       unknown: 'CONTAINER_TRACKING_PROVIDER is not a name I recognise — check the spelling.',
       // The one that matters here: the key is fine, the plan is the limit.
       'plan-required': `${label} accepted the key, but reading containers back needs a paid plan — the free key may only register them. Register it below and follow it in ${label}, or enter the details by hand.`,
@@ -623,7 +623,14 @@
         : `Carrier would not take it: ${d.reason}`);
       return;
     }
-    toast(`Registered — status ${d.status}. Milestones arrive on the next refresh.`);
+    // How the data actually gets here depends on the vendor, and saying the
+    // wrong one sends people to press Refresh forever. Safecube registers a box
+    // against a WEBHOOK: nothing is pulled, the milestones are pushed when the
+    // carrier reports them. Terminal49 is register-then-read, where a refresh is
+    // exactly the right next move.
+    toast(d.provider === 'safecube'
+      ? `Registered — ${d.status}. Updates now arrive on their own; nothing to refresh. Save the card below so they have somewhere to land.`
+      : `Registered — status ${d.status}. Milestones arrive on the next refresh.`);
     openContainerForm(null, { container_no: no });
   }
 
