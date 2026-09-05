@@ -398,6 +398,33 @@
     </div>`;
   }
 
+  // The port call log. A sync has always written this column and nothing has ever
+  // read it, so the eight-row timeline a carrier supplies — the part that answers
+  // "where has this box actually been" — was invisible in the app while sitting in
+  // the database. Collapsed by default because a long-haul box carries dozens of
+  // rows and the card is a summary, not a report.
+  //
+  // An unconfirmed event is marked. The carrier sends future legs alongside past
+  // ones and they look identical once they are two strings in a list; presenting a
+  // plan as a fact is the one thing a tracking screen must not do.
+  function movesHtml(c) {
+    const moves = Array.isArray(c.moves) ? c.moves : [];
+    if (!moves.length) return '';
+    const row = m => {
+      const expected = / \(expected\)$/.test(m.event || '');
+      const label = String(m.event || '').replace(/ \(expected\)$/, '');
+      return `<li class="logi-move${expected ? ' logi-move-est' : ''}">
+        <span class="logi-move-at">${esc(fmtDate(m.at))}</span>
+        <span class="logi-move-what">${esc(label)}${expected ? ' <em>expected</em>' : ''}</span>
+        <span class="logi-move-where">${esc([m.place, m.vessel].filter(Boolean).join(' · '))}</span>
+      </li>`;
+    };
+    return `<details class="logi-moves">
+      <summary>${ic('list', 14)} Port calls <span>${moves.length}</span></summary>
+      <ul>${moves.map(row).join('')}</ul>
+    </details>`;
+  }
+
   function ctRow(icon, label, value) {
     return `<div class="logi-ct-row">
       <span class="logi-ct-ic">${ic(icon, 22)}</span>
@@ -426,6 +453,7 @@
           : ''}
       </div>
       ${voyageHtml(c)}
+      ${movesHtml(c)}
       ${positionHtml(c)}
       <div class="logi-ct-foot">
         ${ctRow('timer', 'POD ETA', fmtDate(c.pod_eta))}

@@ -98,7 +98,10 @@ async function getJson(url, headers, opts) {
       // a code the client turns into a sentence, and the raw text rides along as
       // `detail` for a tooltip and the logs.
       const detail = json && (json.errors || json.error || json.message);
-      const text = String(JSON.stringify(detail) || '').slice(0, 400);
+      // JSON.stringify(null) is the STRING "null", and a vendor that answers with
+      // an empty or non-JSON body would otherwise hand the UI the word "null" as
+      // its explanation. Nothing to say is said as nothing.
+      const text = (detail == null ? '' : String(JSON.stringify(detail) || '')).slice(0, 400);
       return { ok: false, status: r.status, code: classify(r.status, text), detail: text,
         reason: `provider returned ${r.status}` };
     }
@@ -482,7 +485,14 @@ function safecubeMap(payload, containerNo) {
     // of arrival, which is exactly when it beats the carrier's number.
     eta: route.pod && !route.pod.actual
       ? (route.pod.predictiveEta || route.pod.date) : undefined,
-    latest_move: last ? last.description : undefined,
+    // The port belongs in the sentence. "Loaded On Vessel" on its own, at a
+    // transhipment in Singapore, reads on a card as though the box had been
+    // loaded for the final leg — t49Map has always named the place and this
+    // did not.
+    latest_move: last
+      ? [last.description, (last.location && last.location.name) || '']
+          .filter(Boolean).join(' — ') || undefined
+      : undefined,
     latest_move_at: last ? last.date : undefined,
     moves: safecubeMoves(events),
   };
@@ -629,15 +639,47 @@ function providerStatus() {
   };
 }
 
+// The pull was the half of this integration with no record of what the vendor
+// actually said. A webhook that changes nothing prints a line; a lookup that
+// returned nothing printed nothing at all — so "the carrier has no data for this
+// box", "the carrier refused our key" and "the carrier could not tell which
+// shipping line it is" were indistinguishable from outside the process. That
+// ambiguity is what sent this integration down two wrong paths, and one line per
+// lookup ends it.
+//
+// The key is never printed. getJson has already reduced the vendor's own error
+// body to a truncated `detail`, and that is the part worth keeping.
+function logLookup(provider, containerNo, r) {
+  const head = `[lookup:${provider}] ${containerNo}`;
+  if (r && r.ok) {
+    const f = r.fields || {};
+    return console.log(`${head} ok — ${Object.keys(f).length} field(s)`
+      + `${f.carrier ? `, carrier ${f.carrier}` : ''}`
+      + `${r.position ? ', position included' : ', no position'}`);
+  }
+  const x = r || {};
+  console.log(`${head} ${x.code || 'error'}`
+    + `${x.status ? ` http ${x.status}` : ''}`
+    + `${x.reason && x.reason !== x.code ? ` — ${x.reason}` : ''}`
+    + `${x.detail ? ` — ${String(x.detail).slice(0, 300)}` : ''}`);
+}
+
 // `scac` is an optional carrier hint. Safecube's auto-detection is documented
 // to fail on some numbers, and naming the line skips the guess entirely.
 async function lookupContainer(containerNo, scac) {
-  switch (containerProviderName()) {
-    case 'safecube':   return safecubeLookup(containerNo, scac);
-    case 'terminal49': return t49Lookup(containerNo);
-    case 'generic':    return genericLookup(containerNo);
-    default:           return { ok: false, code: 'not-configured', reason: 'not-configured' };
-  }
+  const name = containerProviderName();
+  const r = await (async () => {
+    switch (name) {
+      case 'safecube':   return safecubeLookup(containerNo, scac);
+      case 'terminal49': return t49Lookup(containerNo);
+      case 'generic':    return genericLookup(containerNo);
+      default:           return { ok: false, code: 'not-configured', reason: 'not-configured' };
+    }
+  })();
+  // 'not-configured' is a settings state, not an event — logging it would print a
+  // line on every page load of an installation that has no provider at all.
+  if (!r || r.code !== 'not-configured') logLookup(name, containerNo, r);
+  return r;
 }
 
 // Registration means different things per vendor and neither is "you cannot read
@@ -740,9 +782,29 @@ async function diagnoseAuth() {
 
   // Recognised everywhere, refused everywhere: not a header problem and not a
   // path problem. That is the account.
-  return { ok: false, stage: 'permission', attempts, baseAttempts,
+  //
+  // Sinay sells its APIs as separate products behind one key, so "refused" is
+  // ambiguous in a way worth resolving: a key can be entitled to Webhooks and not
+  // to Container Tracking, which is a sentence about a PLAN, versus a key that is
+  // dead everywhere, which is a sentence about the KEY. One extra call to a base
+  // we already know how to reach separates them, and it is the difference between
+  // "buy tracking credits" and "check your key".
+  const elsewhere = name === 'safecube' ? await probeWebhookApi(headers) : null;
+  return { ok: false, stage: 'permission', attempts, baseAttempts, elsewhere,
     header: recognised.shape.header, shape: label(recognised.shape),
-    reason: `the key IS recognised — ${label(recognised.shape)} came back ${recognised.status}, not 401, which means it was read and then refused. That is an account, plan or scope limit rather than a wrong key or a wrong header.` };
+    reason: `the key IS recognised — ${label(recognised.shape)} came back ${recognised.status}, not 401, which means it was read and then refused.`
+      + (elsewhere && elsewhere.ok
+        ? ` The same key works on Sinay's Webhook API, so the key is fine and this account simply has no Container Tracking access — push will deliver, on-demand lookups will not until that product is added.`
+        : ` That is an account, plan or scope limit rather than a wrong key or a wrong header.`) };
+}
+
+// Does this key work on a DIFFERENT Sinay product? GET /endpoint on the Webhook
+// API is a read that lists what already exists, so it registers nothing and
+// tracks nothing — it only answers "is this key alive over there".
+async function probeWebhookApi(headers) {
+  const r = await getJson(`${safecubeWebhookBase()}/endpoint`, headers, { timeout: 8000 });
+  return { ok: !!r.ok, base: safecubeWebhookBase(), status: r.status || null,
+    code: r.ok ? 'ok' : (r.code || 'error') };
 }
 
 // ── AIS: where the ship is ───────────────────────────────────────────────────
@@ -829,7 +891,7 @@ const aisConfigured = () => !!process.env.AIS_TRACKING_URL;
 
 module.exports = {
   lookupContainer, registerContainer, containerProviderName, carrierHasPosition, providerStatus,
-  diagnoseAuth, trackingKey, AUTH_SHAPES, canRegister,
+  diagnoseAuth, trackingKey, AUTH_SHAPES, logLookup, canRegister,
   CONTAINER_PROVIDERS,
   lookupPosition, aisConfigured,
   safecubeMap, safecubePosition, safecubeBox, safecubeMoves, safecubeQuery, everyObject,
