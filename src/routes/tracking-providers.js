@@ -36,10 +36,24 @@ const AUTH_SHAPES = [
   { header: 'Authorization', prefix: 'Bearer ' },
   { header: 'Authorization', prefix: '' },
 ];
+// A header NAME is an HTTP token: no spaces, no newlines. A value pasted into a
+// hosting provider's variable field routinely arrives carrying one of those, and
+// the key was already trimmed while the name was not — so `API_KEY ` became a
+// header nobody recognises, and setting CONTAINER_TRACKING_HEADER to the value
+// it already defaulted to turned a working request into a 401. An unusable name
+// falls back to the default rather than being sent, because the default is the
+// one thing known to work; providerStatus reports auth_header so what is
+// actually being sent stays visible.
+const HEADER_TOKEN = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
+function headerName(configured, fallback) {
+  const s = String(configured || '').trim();
+  return s && HEADER_TOKEN.test(s) ? s : fallback;
+}
+
 function authHeader(defaultHeader, shape) {
   const key = trackingKey();
   if (!key) return {};
-  const h = shape ? shape.header : (process.env.CONTAINER_TRACKING_HEADER || defaultHeader);
+  const h = shape ? shape.header : headerName(process.env.CONTAINER_TRACKING_HEADER, defaultHeader);
   const prefix = shape ? shape.prefix : (process.env.CONTAINER_TRACKING_AUTH_PREFIX || '');
   return { [h]: prefix + key };
 }
@@ -746,11 +760,24 @@ async function diagnoseAuth() {
   const headersFor = sh => (name === 'safecube'
     ? { ...authHeader('API_KEY', sh), 'Content-Type': 'application/json' }
     : { ...authHeader('Authorization', sh), 'Content-Type': 'application/json' });
-  // GET /sealines is the cheapest honest probe Sinay has: the docs state it is
-  // free on the FREE plan, so a connection check never spends a tracking credit
-  // and never registers anything.
-  const probe = (base, headers) => (name === 'safecube'
+  // TWO probes, because the two stages ask different questions and one endpoint
+  // cannot answer both.
+  //
+  // Stage 1 asks WHICH HEADER is recognised, and 401-or-not is all it needs. For
+  // that, Sinay's GET /sealines is ideal: the docs say it is free on the FREE
+  // plan, so five candidate shapes cost nothing.
+  //
+  // Stage 2 asks WHETHER THE THING WE ACTUALLY CALL WORKS, and free-on-the-free
+  // plan is exactly the property that makes /sealines incapable of answering it.
+  // Using it here reported a green connection while every real lookup came back
+  // 403 — and then advised setting a variable to the value it already had, which
+  // is worse than saying nothing. Stage 2 calls GET /shipment, the endpoint the
+  // app uses, with a container number that is well-formed and cannot exist.
+  const cheapProbe = (base, headers) => (name === 'safecube'
     ? getJson(`${base}/sealines`, headers, { timeout: 8000 })
+    : getJson(`${base}/containers?page[size]=1`, headers, { timeout: 8000 }));
+  const realProbe = (base, headers) => (name === 'safecube'
+    ? getJson(`${base}/shipment?${safecubeQuery('CSQU3054383')}`, headers, { timeout: 8000 })
     : getJson(`${base}/containers?page[size]=1`, headers, { timeout: 8000 }));
 
   const bases = name === 'safecube'
@@ -761,7 +788,7 @@ async function diagnoseAuth() {
   const attempts = [];
   let recognised = null;
   for (const shape of AUTH_SHAPES) {
-    const r = await probe(bases[0], headersFor(shape));
+    const r = await cheapProbe(bases[0], headersFor(shape));
     const code = r.ok ? 'ok' : (r.code || 'error');
     attempts.push({ shape: label(shape), status: r.status || null, code, accepted: code !== 'unauthorized' });
     if (code !== 'unauthorized' && !recognised) recognised = { shape, code, status: r.status || null };
@@ -771,27 +798,37 @@ async function diagnoseAuth() {
       reason: 'every header shape came back 401, so none of them was recognised as a credential — the key itself looks wrong, or is not active yet' };
   }
 
-  const envHeader = recognised.shape.prefix
-    ? `CONTAINER_TRACKING_HEADER=${recognised.shape.header} and CONTAINER_TRACKING_AUTH_PREFIX=${JSON.stringify(recognised.shape.prefix)}`
-    : `CONTAINER_TRACKING_HEADER=${recognised.shape.header}`;
+  // Advice that changes nothing is worse than no advice: acting on it looks like
+  // a fix, and a variable set by hand to the value it already defaulted to is one
+  // stray keystroke away from breaking auth that worked. Only say "set this" when
+  // it would actually differ from what is being sent today.
+  const defaultHeader = name === 'safecube' ? 'API_KEY' : 'Authorization';
+  const defaultPrefix = name === 'terminal49' ? 'Token ' : '';
+  const already = recognised.shape.header === headerName(process.env.CONTAINER_TRACKING_HEADER, defaultHeader)
+    && recognised.shape.prefix === (process.env.CONTAINER_TRACKING_AUTH_PREFIX || defaultPrefix);
+  const envHeader = already
+    ? `nothing to change — ${label(recognised.shape)} is already what this app sends`
+    : (recognised.shape.prefix
+      ? `CONTAINER_TRACKING_HEADER=${recognised.shape.header} and CONTAINER_TRACKING_AUTH_PREFIX=${JSON.stringify(recognised.shape.prefix)}`
+      : `CONTAINER_TRACKING_HEADER=${recognised.shape.header}`);
 
   // The key was read. If that first base already worked, there is nothing else
   // to find.
   if (recognised.code === 'ok' || recognised.code === 'not-tracked-yet' || recognised.code === 'not-found') {
     return { ok: true, header: recognised.shape.header, prefix: recognised.shape.prefix,
-      shape: label(recognised.shape), base: bases[0], env: envHeader, attempts };
+      shape: label(recognised.shape), base: bases[0], env: envHeader, attempts, already };
   }
 
   // ── Stage 2: the path ──────────────────────────────────────────────────────
   const headers = headersFor(recognised.shape);
   const baseAttempts = [];
   for (const base of bases) {
-    const r = await probe(base, headers);
+    const r = await realProbe(base, headers);
     const code = r.ok ? 'ok' : (r.code || 'error');
     baseAttempts.push({ base, status: r.status || null, code });
     if (code === 'ok' || code === 'not-tracked-yet') {
       return { ok: true, header: recognised.shape.header, prefix: recognised.shape.prefix,
-        shape: label(recognised.shape), base, attempts, baseAttempts,
+        shape: label(recognised.shape), base, attempts, baseAttempts, already,
         env: base === SAFECUBE_BASE ? envHeader : `${envHeader}\nSAFECUBE_BASE_URL=${base}` };
     }
   }
@@ -907,7 +944,7 @@ const aisConfigured = () => !!process.env.AIS_TRACKING_URL;
 
 module.exports = {
   lookupContainer, registerContainer, containerProviderName, carrierHasPosition, providerStatus,
-  diagnoseAuth, trackingKey, AUTH_SHAPES, logLookup, canRegister,
+  diagnoseAuth, trackingKey, AUTH_SHAPES, logLookup, canRegister, headerName, authHeader,
   CONTAINER_PROVIDERS,
   lookupPosition, aisConfigured,
   safecubeMap, safecubePosition, safecubeBox, safecubeMoves, safecubeQuery, everyObject,

@@ -755,6 +755,57 @@ const atBothBases = (method, tail, perm) => {
     && /\.logi-moves/.test(fs.readFileSync('public/assets/employee.css', 'utf8')));
 }
 
+// ── A connection test that can detect the failure it is testing for ─────────
+// The two stages ask different questions and one endpoint cannot answer both.
+// Probing a FREE endpoint to decide whether a PAID one works is structurally
+// incapable of the job: it reported a green connection while every real lookup
+// came back 403, and then advised setting a variable to the value it already
+// had — advice that changed nothing and broke a working header when acted on.
+{
+  const P = require('../src/routes/tracking-providers');
+  const PSRC = fs.readFileSync('src/routes/tracking-providers.js', 'utf8');
+
+  c('the header question uses the free endpoint, since 401-or-not is all it asks',
+    /const cheapProbe[\s\S]{0,220}\/sealines/.test(PSRC));
+  c('…and the does-it-work question calls the endpoint the app actually uses',
+    /const realProbe[\s\S]{0,220}\/shipment\?/.test(PSRC));
+  c('…so stage 1 is the cheap one', /const r = await cheapProbe\(bases\[0\]/.test(PSRC));
+  c('…and stage 2, which decides success, is the real one',
+    /const r = await realProbe\(base, headers\)/.test(PSRC));
+
+  // Header NAMES are HTTP tokens. A value pasted into a hosting variable field
+  // arrives with whitespace often enough that the key was already trimmed — and
+  // the name was not, so setting the variable to its own default produced a 401.
+  eq('a clean name is used as given', P.headerName('API_KEY', 'X'), 'API_KEY');
+  eq('surrounding whitespace is trimmed off', P.headerName('  API_KEY  ', 'X'), 'API_KEY');
+  eq('…including a trailing newline', P.headerName('API_KEY\n', 'X'), 'API_KEY');
+  eq('a name that cannot be a header falls back to the one known to work',
+    P.headerName('api key', 'API_KEY'), 'API_KEY');
+  eq('…as does an empty value', P.headerName('', 'API_KEY'), 'API_KEY');
+  // A different VALID name is a deliberate choice, not a typo to be overridden.
+  eq('a valid but different name is respected', P.headerName('X-Api-Key', 'API_KEY'), 'X-Api-Key');
+
+  // And the whole point: the trimmed name is what actually gets sent.
+  const saved = { h: process.env.CONTAINER_TRACKING_HEADER, k: process.env.CONTAINER_TRACKING_KEY };
+  process.env.CONTAINER_TRACKING_KEY = 'k';
+  process.env.CONTAINER_TRACKING_HEADER = 'API_KEY ';
+  eq('a pasted value with a trailing space still sends the right header',
+    Object.keys(P.authHeader('API_KEY')), ['API_KEY']);
+  process.env.CONTAINER_TRACKING_HEADER = saved.h || '';
+  process.env.CONTAINER_TRACKING_KEY = saved.k || '';
+  if (!saved.h) delete process.env.CONTAINER_TRACKING_HEADER;
+  if (!saved.k) delete process.env.CONTAINER_TRACKING_KEY;
+
+  // Advice that changes nothing is worse than none: acting on it looks like a
+  // fix and risks breaking what already worked.
+  c('the diagnosis knows when its own advice would be a no-op',
+    /const already = recognised\.shape\.header ===/.test(PSRC));
+  c('…and says so instead of naming a variable', /nothing to change —/.test(PSRC));
+  const CL = fs.readFileSync('public/assets/logistics.js', 'utf8');
+  c('…and the panel drops the "set this and redeploy" framing in that case',
+    /d\.auth\.already/.test(CL) && /header is already right/.test(CL));
+}
+
 // ── Auth shape ──────────────────────────────────────────────────────────────
 // A vendor's docs are the only place the header name is written down, and they
 // are not always reachable. The key is, though — so the shape is configurable

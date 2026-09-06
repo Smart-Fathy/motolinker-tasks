@@ -630,15 +630,28 @@
         requestAnimationFrame(() => lucide.createIcons());
         return;
       }
+      // Two very different results share this branch. Either the app is sending
+      // the wrong header and there is a variable to set, or it is ALREADY sending
+      // the right one and there is nothing to do. Telling somebody to set a
+      // variable to the value it already has looks like a fix, changes nothing,
+      // and is one stray character away from breaking auth that worked.
       box.innerHTML = d.auth.ok
-        ? `<div class="logi-empty" style="text-align:left">
-             <div style="font-weight:700;color:var(--success,#8a9a86);margin-bottom:8px">
-               ${ic('check', 14)} The key works — it just needs a different header</div>
-             <div style="margin-bottom:10px">${esc(d.provider)} accepted <code>${esc(d.auth.shape)}</code>.</div>
-             <div>Set this and redeploy:</div>
-             <pre style="margin:8px 0 0;padding:10px 12px;background:rgba(255,255,255,.05);border-radius:8px;overflow-x:auto;font-size:12px">${esc(d.auth.env)}</pre>
-             ${d.auth.base ? `<div style="font-size:11.5px;color:var(--muted,#8d897f);margin-top:8px">Working base: <code>${esc(d.auth.base)}</code></div>` : ''}
-           </div>`
+        ? (d.auth.already
+          ? `<div class="logi-empty" style="text-align:left">
+               <div style="font-weight:700;color:var(--success,#8a9a86);margin-bottom:8px">
+                 ${ic('check', 14)} The key works and the header is already right</div>
+               <div style="margin-bottom:10px">${esc(d.provider)} accepted <code>${esc(d.auth.shape)}</code>, which is what this app already sends. Nothing to change here.</div>
+               ${d.auth.base ? `<div style="font-size:11.5px;color:var(--muted,#8d897f)">Working base: <code>${esc(d.auth.base)}</code></div>` : ''}
+               <div style="font-size:11.5px;color:var(--muted,#8d897f);margin-top:8px">If lookups are still failing, the cause is not the header — check the log line for what the carrier said.</div>
+             </div>`
+          : `<div class="logi-empty" style="text-align:left">
+               <div style="font-weight:700;color:var(--success,#8a9a86);margin-bottom:8px">
+                 ${ic('check', 14)} The key works — it just needs a different header</div>
+               <div style="margin-bottom:10px">${esc(d.provider)} accepted <code>${esc(d.auth.shape)}</code>.</div>
+               <div>Set this and redeploy:</div>
+               <pre style="margin:8px 0 0;padding:10px 12px;background:rgba(255,255,255,.05);border-radius:8px;overflow-x:auto;font-size:12px">${esc(d.auth.env)}</pre>
+               ${d.auth.base ? `<div style="font-size:11.5px;color:var(--muted,#8d897f);margin-top:8px">Working base: <code>${esc(d.auth.base)}</code></div>` : ''}
+             </div>`)
         : `<div class="logi-empty" style="text-align:left">
              <div style="font-weight:700;color:var(--danger,#c97d6e);margin-bottom:8px">
                ${ic('alert-triangle', 14)} Every header shape was refused</div>
