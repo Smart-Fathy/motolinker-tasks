@@ -41,15 +41,21 @@ const POSITION_COLUMNS = ['vessel_lat', 'vessel_lon', 'vessel_position_at',
 // while the eta timestamp beside it saved fine. The damage was not only a blank
 // column: the container list is ordered by pod_eta, so a synced box sorted after
 // every hand-typed one instead of by when it actually arrives. A timestamp is
-// narrowed to its UTC date rather than thrown away; anything that is not one of
-// those two shapes is still refused.
+// narrowed to the date the vendor wrote rather than thrown away; anything that is
+// not one of those two shapes is still refused.
 function dateOrNull(v) {
   const s = String(v ?? '').trim();
   if (!s) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
-    const t = Date.parse(s);
-    return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : null;
+    // Take the date the VENDOR wrote, not the date that instant falls on in UTC.
+    // Sinay reports port local time, so an Alexandria arrival of
+    // 2026-09-25T00:00:00+03:00 is the 25th at the quay and 2026-09-24T21:00Z as
+    // an instant — and converting first put "24/09" in the POD ETA column of a
+    // box the carrier says lands on the 25th. `eta` keeps the exact instant and
+    // is rendered in the reader's zone; this column answers "which day does it
+    // arrive", and that is a question about the port's calendar.
+    return Number.isFinite(Date.parse(s)) ? s.slice(0, 10) : null;
   }
   return null;
 }
@@ -255,9 +261,13 @@ function mountContainerReads(base, guard) {
   receiver.router.get(`${base}/containers/provider-status`, guard, requirePerm('stock', 'tracking'), async (req, res) => {
     const status = providers.providerStatus();
     if (String(req.query.probe || '') !== '1') return res.json(status);
-    // A container that cannot exist, so the probe never registers anything and
-    // never touches a real shipment — the point is the vendor's REPLY, not the
-    // data. A well-formed number keeps it past our own validation.
+    // CSQU3054383 is the ISO 6346 specification's own example number, chosen so
+    // the probe passes our validation. It is NOT fictional — the first live run
+    // came back with real Hapag-Lloyd tracking data — so this reads one real
+    // shipment. That costs a shipment against a metered plan, once per month per
+    // number, which is the price of a connection test that actually calls the
+    // endpoint it is testing. It registers nothing and writes nothing; the point
+    // is the vendor's REPLY, not the data.
     const probe = await providers.lookupContainer('CSQU3054383');
     const reachable = probe.ok || probe.code === 'not-tracked-yet' || probe.code === 'not-found';
     const out = {

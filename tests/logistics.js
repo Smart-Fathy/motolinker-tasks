@@ -581,7 +581,19 @@ const atBothBases = (method, tail, perm) => {
   eq('a date picker value is kept as-is', row({ pod_eta: '2026-09-25' }).pod_eta, '2026-09-25');
   eq('an ISO timestamp is narrowed to its date, not thrown away',
     row({ pod_eta: '2026-09-25T00:00:00Z' }).pod_eta, '2026-09-25');
-  eq('…including one with an offset', row({ pod_eta: '2026-09-25T23:30:00+02:00' }).pod_eta, '2026-09-25');
+  // The date the VENDOR wrote, not the day that instant lands on in UTC. Sinay
+  // reports port local time, so Alexandria's real 2026-09-25T00:00:00+03:00
+  // arrival is the 25th at the quay and the 24th at 21:00Z — and converting first
+  // printed "24/09" in the POD ETA column of a box the carrier says lands on the
+  // 25th. Observed in production, not invented for the test.
+  eq('an offset keeps the port’s day, not UTC’s',
+    row({ pod_eta: '2026-09-25T00:00:00+03:00' }).pod_eta, '2026-09-25');
+  eq('…and a plain UTC timestamp is unaffected',
+    row({ pod_eta: '2026-09-24T23:00:00Z' }).pod_eta, '2026-09-24');
+  // eta keeps the exact instant; only the DATE column takes the local day.
+  eq('the instant is still stored exactly',
+    CT.containerBuildRow({ container_no: 'MSDU7337230', eta: '2026-09-25T00:00:00+03:00' }).row.eta,
+    '2026-09-24T21:00:00.000Z');
   // Still a DATE column: anything that is not one of those two shapes is refused
   // rather than coerced into a plausible-looking wrong day.
   eq('free text is still refused', row({ pod_eta: 'next tuesday' }).pod_eta, null);

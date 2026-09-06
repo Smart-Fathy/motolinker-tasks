@@ -787,7 +787,9 @@ async function diagnoseAuth() {
   // Using it here reported a green connection while every real lookup came back
   // 403 — and then advised setting a variable to the value it already had, which
   // is worse than saying nothing. Stage 2 calls GET /shipment, the endpoint the
-  // app uses, with a container number that is well-formed and cannot exist.
+  // app uses. The probe number is ISO 6346's own example, so it passes our
+  // validation — and it turns out to be a real, tracked shipment, so this reads
+  // one. That is the price of a test that calls the endpoint it is testing.
   const cheapProbe = (base, headers) => (name === 'safecube'
     ? getJson(`${base}/sealines`, headers, { timeout: 8000 })
     : getJson(`${base}/containers?page[size]=1`, headers, { timeout: 8000 }));
