@@ -617,7 +617,7 @@ const atBothBases = (method, tail, perm) => {
 
   c('the pull path has a log of its own', typeof P.logLookup === 'function');
   c('…and the dispatcher is what calls it, so every caller is covered',
-    /if \(!r \|\| r\.code !== 'not-configured'\) logLookup\(name, containerNo, r\)/.test(PSRC));
+    /if \(!r \|\| r\.code !== 'not-configured'\) logLookup\(name, containerNo, r, lookupWhere\(name\)\)/.test(PSRC));
 
   const said = [];
   const real = console.log;
@@ -631,6 +631,34 @@ const atBothBases = (method, tail, perm) => {
   } finally { console.log = real; }
 
   c('a refusal names the code and the HTTP status', /forbidden/.test(said[0]) && /403/.test(said[0]));
+
+  // WHERE the request went, not only what came back. A 403 from the endpoint we
+  // mean to call is an entitlement; the identical 403 from a base left pointing
+  // at the vendor's OTHER product is a stale variable, and they need opposite
+  // responses. Without this the two are the same line.
+  {
+    const saved = { b: process.env.SAFECUBE_BASE_URL, s: process.env.SAFECUBE_SEALINE };
+    delete process.env.SAFECUBE_BASE_URL; delete process.env.SAFECUBE_SEALINE;
+    c('a lookup records the base it used',
+      /container-tracking\/api\/v2/.test(P.lookupWhere('safecube')));
+    c('…and says so when no carrier hint was sent', /sealine=auto/.test(P.lookupWhere('safecube')));
+    process.env.SAFECUBE_BASE_URL = 'https://api.sinay.ai/safecube/api/v1';
+    process.env.SAFECUBE_SEALINE = 'mscu';
+    c('…so a base left on a stale value is visible rather than guessed at',
+      /safecube\/api\/v1/.test(P.lookupWhere('safecube')));
+    c('…and the carrier hint is recorded too, upper-cased',
+      /sealine=MSCU/.test(P.lookupWhere('safecube')));
+    if (saved.b == null) delete process.env.SAFECUBE_BASE_URL; else process.env.SAFECUBE_BASE_URL = saved.b;
+    if (saved.s == null) delete process.env.SAFECUBE_SEALINE; else process.env.SAFECUBE_SEALINE = saved.s;
+  }
+  {
+    const spoke = [];
+    const back = console.log;
+    console.log = (...a) => spoke.push(a.join(' '));
+    try { P.logLookup('safecube', 'MSDU7337230', { ok: false, code: 'forbidden', status: 403 }, 'BASE/v2 sealine=auto'); }
+    finally { console.log = back; }
+    c('…and the line carries it', /via BASE\/v2 sealine=auto/.test(spoke[0]));
+  }
   c('…and carries the vendor’s own words, which are the useful part',
     /NO_CREDITS/.test(said[0]));
   c('a hit says how much came back', /2 field\(s\)/.test(said[1]) && /carrier MSC/.test(said[1]));

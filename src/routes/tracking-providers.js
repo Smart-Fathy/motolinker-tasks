@@ -679,8 +679,23 @@ function providerStatus() {
 //
 // The key is never printed. getJson has already reduced the vendor's own error
 // body to a truncated `detail`, and that is the part worth keeping.
-function logLookup(provider, containerNo, r) {
-  const head = `[lookup:${provider}] ${containerNo}`;
+function lookupWhere(name) {
+  if (name === 'safecube') {
+    const base = safecubeBase();
+    const line = process.env.SAFECUBE_SEALINE;
+    return base + (line ? ` sealine=${String(line).toUpperCase().trim()}` : ' sealine=auto');
+  }
+  if (name === 'terminal49') return T49_BASE;
+  return process.env.CONTAINER_TRACKING_URL || '';
+}
+
+// The answer alone is not enough to act on. A 403 from the endpoint we mean to
+// call is an entitlement; the identical 403 from a base left pointing at a
+// vendor's OTHER product is a stale variable, and the two need opposite
+// responses. Recording WHERE the request went is what separates them, and
+// leaving it out cost a round of guessing at a value nobody could read back.
+function logLookup(provider, containerNo, r, where) {
+  const head = `[lookup:${provider}] ${containerNo}${where ? ` via ${where}` : ''}`;
   if (r && r.ok) {
     const f = r.fields || {};
     return console.log(`${head} ok — ${Object.keys(f).length} field(s)`
@@ -708,7 +723,7 @@ async function lookupContainer(containerNo, scac) {
   })();
   // 'not-configured' is a settings state, not an event — logging it would print a
   // line on every page load of an installation that has no provider at all.
-  if (!r || r.code !== 'not-configured') logLookup(name, containerNo, r);
+  if (!r || r.code !== 'not-configured') logLookup(name, containerNo, r, lookupWhere(name));
   return r;
 }
 
@@ -944,7 +959,7 @@ const aisConfigured = () => !!process.env.AIS_TRACKING_URL;
 
 module.exports = {
   lookupContainer, registerContainer, containerProviderName, carrierHasPosition, providerStatus,
-  diagnoseAuth, trackingKey, AUTH_SHAPES, logLookup, canRegister, headerName, authHeader,
+  diagnoseAuth, trackingKey, AUTH_SHAPES, logLookup, lookupWhere, canRegister, headerName, authHeader,
   CONTAINER_PROVIDERS,
   lookupPosition, aisConfigured,
   safecubeMap, safecubePosition, safecubeBox, safecubeMoves, safecubeQuery, everyObject,
