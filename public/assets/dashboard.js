@@ -118,9 +118,12 @@ async function fetchTasks() {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+// Values arrive straight from the database, so they are not reliably strings —
+// a numeric latitude used to throw here and take the entire container list down
+// with it. Coerce rather than assume, and keep 0, which is a real coordinate.
 function esc(s) {
-  if (!s) return '';
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 const TODAY = new Date().toISOString().split('T')[0];
