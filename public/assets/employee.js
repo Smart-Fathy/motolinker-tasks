@@ -1344,7 +1344,13 @@ async function submitRequest() {
 }
 
 /* ── Drive / Sheets ── */
-function esc(s) { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
+// Same contract as the dashboard's copy: coerce, keep 0, and escape the double
+// quote — the shared modules interpolate this into attribute values, and the
+// DOM round-trip this replaced left quotes intact.
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 function driveIcon(m) {
   if (!m) return '<i data-lucide="paperclip" style="width:16px;height:16px;vertical-align:middle"></i>';
   if (m === 'application/vnd.google-apps.folder') return '<i data-lucide="folder" style="width:16px;height:16px;vertical-align:middle"></i>';

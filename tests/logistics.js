@@ -972,6 +972,45 @@ const atBothBases = (method, tail, perm) => {
   eq('a nested, upper-cased vendor maps too', [alt.vessel_lat, alt.vessel_lon], [5.5, -3.2]);
 }
 
+// ── esc() has to survive the values the database actually returns ───────────
+// The container card is the first screen to interpolate raw numeric columns —
+// vessel_lat, vessel_lon, vessel_course. Both portals' esc() assumed a string,
+// so the first container that ever carried a real position threw
+// "s.replace is not a function" inside positionHtml and left the whole Tracking
+// tab on "Loading containers…". Grepping the source would not have caught that,
+// so run the real functions.
+{
+  const grab = (file) => {
+    const s = fs.readFileSync(file, 'utf8');
+    const m = s.match(/function esc\(s\) \{[\s\S]*?\n\}/);
+    if (!m) throw new Error('no esc() found in ' + file);
+    return new Function(`${m[0]}; return esc;`)();
+  };
+  const CL = fs.readFileSync('public/assets/logistics.js', 'utf8');
+
+  for (const [portal, file] of [['dashboard', 'public/assets/dashboard.js'],
+                                ['employee', 'public/assets/employee.js']]) {
+    const esc = grab(file);
+    eq(`${portal}: a numeric latitude survives escaping`, esc(27.80326), '27.80326');
+    eq(`${portal}: …and a negative one`, esc(-13.71121), '-13.71121');
+    // Zero is the equator and the prime meridian, not "no position".
+    eq(`${portal}: zero is a coordinate, not an absence`, esc(0), '0');
+    eq(`${portal}: null and undefined are still empty`, [esc(null), esc(undefined)], ['', '']);
+    eq(`${portal}: markup is still escaped`, esc('<b>&</b>'), '&lt;b&gt;&amp;&lt;/b&gt;');
+    // Shared modules interpolate esc() into attribute values, so a bare double
+    // quote is an attribute breakout, not a cosmetic problem.
+    eq(`${portal}: a double quote cannot break out of an attribute`,
+      esc('" onload="x'), '&quot; onload=&quot;x');
+  }
+
+  // And the call sites that fed it numbers are still there, so the coercion is
+  // load-bearing rather than defensive decoration.
+  c('the map box still takes its coordinates straight from the row',
+    /data-lat="\$\{esc\(c\.vessel_lat\)\}" data-lon="\$\{esc\(c\.vessel_lon\)\}"/.test(CL));
+  c('…and the course, which Safecube does not send at all',
+    /data-course="\$\{esc\(c\.vessel_course == null \? '' : c\.vessel_course\)\}"/.test(CL));
+}
+
 // ── The webhook ─────────────────────────────────────────────────────────────
 {
   const CT_SRC = fs.readFileSync('src/routes/containers.js', 'utf8');
