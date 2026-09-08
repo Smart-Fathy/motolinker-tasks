@@ -20,7 +20,7 @@ const requirePerm = (...a) => ctx.requirePerm(...a);
 
 const { BASE_CURRENCY, CURRENCIES, PAYMENT_KINDS, PAYMENT_KIND_KEYS,
   PAYMENT_METHODS, PAYMENT_DIRECTIONS, sanitizeAttachments } = require('../lib/constants');
-const { dbFail } = require('./vehicle-units');
+const { dbFail } = require('../lib/vehicles');
 
 const num = v => {
   const n = Number(String(v ?? '').replace(/[^\d.-]/g, ''));

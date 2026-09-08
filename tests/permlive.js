@@ -115,20 +115,17 @@ setTimeout(async () => {
   {
     const withInv = mint('perm-live-inv', {
       stock: true,
-      stockActions: { view: true, browse: true, create: false, edit: false, units: true, tracking: true },
+      stockActions: { view: true, browse: true, create: false, edit: false, tracking: true },
     });
-    const u = await hit('GET', '/api/employee/units', withInv);
     const t = await hit('GET', '/api/employee/containers', withInv);
-    c('a granted vehicle register reaches its handler', !refused(u), String(u.status));
     c('granted container tracking reaches its handler', !refused(t), String(t.status));
-    // The default employee holds `stock` and must still be refused both.
-    const nu = await hit('GET', '/api/employee/units', no);
+    // The default employee holds `stock` and must still be refused it.
     const nt = await hit('GET', '/api/employee/containers', no);
-    c('the register is refused without its own grant', refused(nu), String(nu.status));
     c('tracking is refused without its own grant', refused(nt), String(nt.status));
-    // Writing a unit is a separate grant again, so read does not imply write.
-    const w = await hit('POST', '/api/employee/units', withInv);
-    c('reading the register does not carry the right to add to it', refused(w), String(w.status));
+    // Linking a car to a box is the same grant as reading the board, but the
+    // default employee still may not do it.
+    const w = await hit('POST', '/api/employee/containers/1/units', no);
+    c('linking a vehicle to a container needs the tracking grant', refused(w), String(w.status));
   }
 
   // ── One action at a time ────────────────────────────────────────────────────

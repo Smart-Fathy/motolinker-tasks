@@ -22,10 +22,10 @@
     if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=137">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=138">
   <!-- Shared with the team portal. Last on purpose: several mobile rules were being
        beaten by later same-specificity rules in the sheet above. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=137">
+  <link rel="stylesheet" href="/assets/mobile.css?v=138">
 </head>
 <body>
 
@@ -536,7 +536,6 @@
     </div>
   </div>
 
-
   <!-- ── Leads Page ── -->
   <div id="page-customers" class="page">
     <div class="page-body" style="max-width:none">
@@ -685,15 +684,15 @@
       <span class="page-title">Inventory &amp; Logistics</span>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="openStockCsvModal()"><i data-lucide="upload" style="width:14px;height:14px"></i> Bulk upload CSV</button>
-        <button class="btn btn-primary" onclick="openStockForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add vehicle</button>
+        <button class="btn btn-primary" id="stock-add-btn" onclick="openStockForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add model</button>
       </div>
     </div>
     <div style="padding:0 28px 28px">
-      <!-- Inventory is three views of one register now: the models, the physical
-           vehicles behind them, and the containers they arrive in. -->
+      <!-- Two views of one register: the models with their cars nested inside,
+           and the containers those cars arrive in. A car is linked to a box by
+           its VIN, so there is no third list to keep in step. -->
       <div class="deal-tabs" style="margin-top:18px">
         <button class="deal-tab logi-tab active" data-tab="models"   onclick="inventoryTab('models')">Models</button>
-        <button class="deal-tab logi-tab"        data-tab="units"    onclick="inventoryTab('units')">Vehicle register</button>
         <button class="deal-tab logi-tab"        data-tab="tracking" onclick="inventoryTab('tracking')">Tracking</button>
       </div>
 
@@ -703,27 +702,6 @@
         <div id="stock-table-container" style="margin-top:14px">
           <div class="loading"><div class="spinner"></div> Loading stock…</div>
         </div>
-      </div>
-
-      <div id="inv-pane-units" style="display:none;margin-top:18px">
-        <div class="logi-bar">
-          <input id="logi-unit-search" class="form-input" type="text" placeholder="Search VIN, make, model or supplier…" oninput="loadUnits()" style="max-width:320px">
-          <select id="logi-unit-status" class="form-input" onchange="loadUnits()" style="max-width:190px">
-            <option value="">Every status</option>
-            <option value="ordered">Ordered</option>
-            <option value="produced">In production</option>
-            <option value="shipped">Shipped</option>
-            <option value="landed">Landed</option>
-            <option value="cleared">Customs cleared</option>
-            <option value="in_stock">In stock</option>
-            <option value="allocated">Allocated</option>
-            <option value="delivered">Delivered</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-          <button class="btn btn-primary" onclick="openUnitForm(null)"><i data-lucide="plus" style="width:15px;height:15px"></i> Add vehicle</button>
-        </div>
-        <div class="logi-hint" style="margin-bottom:12px">One row per physical vehicle. Landed cost is the purchase price at the rate it was booked, plus freight, customs and clearing.</div>
-        <div id="logi-units-table"></div>
       </div>
 
       <div id="inv-pane-tracking" style="display:none;margin-top:18px">
@@ -1529,21 +1507,21 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
-<script src="/assets/mobile.js?v=137"></script>
-<script src="/assets/columns.js?v=137"></script>
-<script src="/assets/client-folder.js?v=137"></script>
-<script src="/assets/lead-filters.js?v=137"></script>
-<script src="/assets/lead-views.js?v=137"></script>
-<script src="/assets/chat-extras.js?v=137"></script>
-<script src="/assets/home.js?v=137"></script>
-<script src="/assets/huddle.js?v=137"></script>
-<script src="/assets/procurement.js?v=137"></script>
-<script src="/assets/quote.js?v=137"></script>
-<script src="/assets/meetings.js?v=137"></script>
-<script src="/assets/calendar.js?v=137"></script>
-<script src="/assets/availability.js?v=137"></script>
-<script src="/assets/logistics.js?v=137"></script>
-<script src="/assets/dashboard.js?v=137"></script>
+<script src="/assets/mobile.js?v=138"></script>
+<script src="/assets/columns.js?v=138"></script>
+<script src="/assets/client-folder.js?v=138"></script>
+<script src="/assets/lead-filters.js?v=138"></script>
+<script src="/assets/lead-views.js?v=138"></script>
+<script src="/assets/chat-extras.js?v=138"></script>
+<script src="/assets/home.js?v=138"></script>
+<script src="/assets/huddle.js?v=138"></script>
+<script src="/assets/procurement.js?v=138"></script>
+<script src="/assets/quote.js?v=138"></script>
+<script src="/assets/meetings.js?v=138"></script>
+<script src="/assets/calendar.js?v=138"></script>
+<script src="/assets/availability.js?v=138"></script>
+<script src="/assets/logistics.js?v=138"></script>
+<script src="/assets/dashboard.js?v=138"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
@@ -1576,6 +1554,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=137"></script>
+<script src="/help-docs.js?v=138"></script>
 </body>
 </html>

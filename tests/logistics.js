@@ -9,7 +9,12 @@ const fs = require('fs');
 
 const results = [];
 const PENDING = [];
-const c = (n, ok, x) => { results.push(!!ok); console.log((ok ? '  ok  ' : ' FAIL ') + n + (x ? '  ' + x : '')); };
+const FAILED = [];
+const c = (n, ok, x) => {
+  results.push(!!ok);
+  if (!ok) FAILED.push(n + (x ? '  ' + x : ''));
+  console.log((ok ? '  ok  ' : ' FAIL ') + n + (x ? '  ' + x : ''));
+};
 const eq = (n, got, want) => c(n, JSON.stringify(got) === JSON.stringify(want), `got ${JSON.stringify(got)} want ${JSON.stringify(want)}`);
 
 const K = require('../src/lib/constants');
@@ -45,7 +50,7 @@ Object.assign(ctx, {
 });
 ctx.requirePerm = (section, action) => tag(() => {}, { __perm: `${section}.${action}` });
 
-const UNITS = require('../src/routes/vehicle-units');
+const VEH   = require('../src/lib/vehicles');
 const PAY   = require('../src/routes/payments');
 const CT    = require('../src/routes/containers');
 
@@ -131,7 +136,7 @@ const atBothBases = (method, tail, perm) => {
 
 // ── Landed cost ─────────────────────────────────────────────────────────────
 {
-  const { unitCosts } = UNITS;
+  const { unitCosts } = VEH;
   const u = { purchase_cost: 10000, fx_rate: 48.5, freight_cost: 30000, customs_cost: 120000, clearing_cost: 15000, other_cost: 0 };
   eq('landed cost converts the purchase and adds the local charges',
     unitCosts(u).landed_base, 10000 * 48.5 + 165000);
@@ -1011,6 +1016,50 @@ const atBothBases = (method, tail, perm) => {
     /data-course="\$\{esc\(c\.vessel_course == null \? '' : c\.vessel_course\)\}"/.test(CL));
 }
 
+// ── A container carries cars, and the cars live in the Models tab ───────────
+// The Vehicle register is gone, so the link is stored as a VIN rather than a
+// row id. That is the whole point: the car's description can be re-entered,
+// renamed or moved to another model row without the box losing track of it.
+{
+  const { withUnits } = CT;
+  const box = { id: 7, container_no: 'MSDU7337230' };
+  // What vehiclesByVin() hands back, already flattened out of stock_vehicles.
+  const cars = [
+    { vin: 'LS6CME0P7TK504025', make: 'Deepal', model: 'S05', trim: '620 Max EV', consignee: 'Sara saied' },
+    { vin: 'LS6CME0P9TK504026', make: 'Deepal', model: 'S05', trim: '620 Max EV', consignee: 'Moahmed Fawzy' },
+    { vin: 'JTDBR32E560099999', make: 'Toyota', model: 'Corolla', trim: '', consignee: '' },
+  ];
+  const links = [
+    { container_id: 7, vin: 'LS6CME0P7TK504025' },
+    { container_id: 7, vin: 'LS6CME0P9TK504026' },
+    { container_id: 8, vin: 'JTDBR32E560099999' },   // a different box
+  ];
+
+  const got = withUnits(box, links, cars);
+  eq('a box carries the cars linked to it, and only those',
+    got.units.map(u => u.vin), ['LS6CME0P7TK504025', 'LS6CME0P9TK504026']);
+  eq('…with the model carried across from its stock row',
+    got.units[0].consignee, 'Sara saied');
+  eq('the box itself survives the join', got.container_no, 'MSDU7337230');
+
+  // A VIN can be linked before anybody types the car in. Hiding it would make
+  // the box look emptier than it is, which is the opposite of the job.
+  const partial = withUnits(box, [...links, { container_id: 7, vin: 'WVWZZZ1JZXW000001' }], cars);
+  eq('a VIN with no car recorded yet still shows', partial.units.length, 3);
+  c('…and says so rather than pretending to be a car',
+    partial.units[2].unrecorded === true && partial.units[2].vin === 'WVWZZZ1JZXW000001');
+
+  // The link table's primary key stops this, but a hand-written row or a merge
+  // should not be able to draw the same car twice.
+  eq('the same VIN linked twice is listed once',
+    withUnits(box, [links[0], links[0]], cars).units.length, 1);
+  // Stored casing is not something a join should depend on.
+  eq('casing and punctuation do not break the match',
+    withUnits(box, [{ container_id: 7, vin: 'ls6cme0p7tk-504025' }], cars).units.map(u => u.vin),
+    ['LS6CME0P7TK504025']);
+  eq('a box with nothing linked reports nothing', withUnits({ id: 99 }, links, cars).units, []);
+}
+
 // ── The webhook ─────────────────────────────────────────────────────────────
 {
   const CT_SRC = fs.readFileSync('src/routes/containers.js', 'utf8');
@@ -1060,17 +1109,22 @@ const atBothBases = (method, tail, perm) => {
 
 // ── Validation ──────────────────────────────────────────────────────────────
 {
-  const { unitBuildRow } = UNITS;
+  const { normVin, VIN_RE } = VEH;
   const { paymentBuildRow } = PAY;
   const { containerBuildRow } = CT;
 
-  c('a unit needs a make and a model', !!unitBuildRow({ make: '', model: 'X' }).error);
-  c('a 17-character VIN is accepted', !unitBuildRow({ make: 'A', model: 'B', vin: '1HGCM82633A004352' }).error);
+  // The Vehicle register's own form is gone; a car is now linked to a container
+  // by the VIN written on it in the Models tab, so normVin is the part that has
+  // to stay strict about what a chassis number looks like.
+  eq('a VIN is upper-cased and stripped of punctuation',
+    normVin(' ls6cme0p7tk-504025 '), 'LS6CME0P7TK504025');
+  eq('…and never runs past seventeen characters',
+    normVin('LS6CME0P7TK504025EXTRA').length, 17);
+  eq('nothing at all normalises to nothing', [normVin(''), normVin(null), normVin(undefined)], ['', '', '']);
   // I, O and Q were left out of the VIN alphabet because they read as 1 and 0.
-  c('a VIN containing O is refused', !!unitBuildRow({ make: 'A', model: 'B', vin: '1HGCM8263OA004352' }).error);
-  c('a short VIN is refused', !!unitBuildRow({ make: 'A', model: 'B', vin: '1HGCM82' }).error);
-  c('no VIN at all is fine — it arrives later', !unitBuildRow({ make: 'A', model: 'B', vin: '' }).error);
-  eq('an unknown status falls back to ordered', unitBuildRow({ make: 'A', model: 'B', status: 'teleported' }).row.status, 'ordered');
+  c('a well-formed VIN matches the shape', VIN_RE.test('1HGCM82633A004352'));
+  c('one containing O does not', !VIN_RE.test('1HGCM8263OA004352'));
+  c('nor does a short one', !VIN_RE.test('1HGCM82'));
 
   c('a payment needs an amount', !!paymentBuildRow({ amount: 0 }).error);
   // A foreign payment without a rate would be booked as worthless, so it is
@@ -1115,10 +1169,13 @@ const atBothBases = (method, tail, perm) => {
   // Every read and write is mounted once for each portal, behind that portal's
   // guard and the same permission — which is what makes the team portal's copy
   // of a feature identical to the admin's apart from the grant.
-  c('the register lists and reads at both bases',
-    atBothBases('GET', '/units', 'stock.units') && atBothBases('GET', '/units/:id', 'stock.units'));
-  c('the register writes at both bases',
-    atBothBases('POST', '/units', 'stock.create') && atBothBases('PUT', '/units/:id', 'stock.edit'));
+  // The Vehicle register is gone: every car lives in the Models tab, and a
+  // container links to one by VIN. Its routes must be gone from BOTH portals —
+  // a half-removal would leave the team portal serving what the admin's does not.
+  c('the register\'s routes are gone from both portals',
+    !route('GET', '/api/dashboard/units') && !route('GET', '/api/employee/units')
+    && !route('POST', '/api/dashboard/units') && !route('POST', '/api/employee/units')
+    && !route('PUT', '/api/dashboard/units/:id') && !route('DELETE', '/api/dashboard/units/:id'));
   c('the ledger reads at both bases',
     atBothBases('GET', '/sales/:id/payments', 'deals.payments') && atBothBases('GET', '/payments', 'deals.payments'));
   c('the ledger writes at both bases',
@@ -1144,7 +1201,7 @@ const atBothBases = (method, tail, perm) => {
     atBothBases('POST', '/containers/register', 'stock.tracking'));
   c('the container-to-vehicle link works from both portals',
     atBothBases('POST', '/containers/:id/units', 'stock.tracking')
-    && atBothBases('DELETE', '/containers/:id/units/:unitId', 'stock.tracking'));
+    && atBothBases('DELETE', '/containers/:id/units/:vin', 'stock.tracking'));
 
   // Nothing may be read without a grant. Inventory's master switch is on for
   // everybody, so a route that forgot its permission would hand the whole team
@@ -1209,21 +1266,22 @@ const atBothBases = (method, tail, perm) => {
   // Deleting money, or a costed vehicle, stays the admin's alone.
   c('deleting a payment is admin-only',
     route('DELETE', '/api/dashboard/payments/:id') && !route('DELETE', '/api/employee/payments/:id'));
-  c('deleting a unit is admin-only',
-    route('DELETE', '/api/dashboard/units/:id') && !route('DELETE', '/api/employee/units/:id'));
   c('deleting a container is admin-only',
     route('DELETE', '/api/dashboard/containers/:id') && !route('DELETE', '/api/employee/containers/:id'));
 
-  c('index.js loads all three modules',
-    /routes\/vehicle-units/.test(INDEX) && /routes\/payments/.test(INDEX) && /routes\/containers/.test(INDEX));
+  c('index.js loads the two modules that survived',
+    /routes\/payments/.test(INDEX) && /routes\/containers/.test(INDEX));
+  c('…and no longer loads the register it deleted', !/routes\/vehicle-units/.test(INDEX));
 
   c('the new actions are declared on their sections',
-    /stock: \[.*'units', 'tracking'\]/.test(PORTAL) && /deals: \[.*'payments', 'paymentsEdit'\]/.test(PORTAL));
-  c('the admin editor labels them', /'stock\.units':/.test(PORTAL) && /'deals\.payments':/.test(PORTAL));
+    /stock: \[.*'tracking'\]/.test(PORTAL) && /deals: \[.*'payments', 'paymentsEdit'\]/.test(PORTAL));
+  c('the admin editor labels them', /'stock\.tracking':/.test(PORTAL) && /'deals\.payments':/.test(PORTAL));
+  // A permission nobody can spend is a toggle that lies about what it does.
+  c('the register\'s permission went with it', !/stock\.units/.test(PORTAL));
   // Cost and supplier routes must not arrive switched on for the whole team the
   // day this deploys, the way `browse` was careful not to.
-  c('the register and tracking are never inherited',
-    /PERM_ACTION_NEVER_INHERIT[\s\S]*?'stock\.units', 'stock\.tracking'\]/.test(PORTAL));
+  c('tracking is never inherited',
+    /PERM_ACTION_NEVER_INHERIT[\s\S]*?'stock\.tracking'\]/.test(PORTAL));
   c('payments follow the Sales tab an employee already had',
     /'deals\.payments': acts => acts\.sales === true/.test(PORTAL));
 }
@@ -1295,17 +1353,20 @@ const atBothBases = (method, tail, perm) => {
 {
   for (const portal of ['dashboard', 'employee']) {
     const html = fs.readFileSync(`public/${portal}.html`, 'utf8');
-    c(`${portal} has the three Inventory tabs`,
-      /data-tab="models"/.test(html) && /data-tab="units"/.test(html) && /data-tab="tracking"/.test(html));
+    c(`${portal} has the two Inventory tabs`,
+      /data-tab="models"/.test(html) && /data-tab="tracking"/.test(html));
+    c(`${portal} no longer offers the register`,
+      !/data-tab="units"/.test(html) && !/id="logi-units-table"/.test(html));
     c(`${portal} has somewhere to enter a container number`, /id="logi-ct-search"/.test(html));
-    c(`${portal} has the register and container panes`,
-      /id="logi-units-table"/.test(html) && /id="logi-containers"/.test(html));
+    c(`${portal} has the container pane`, /id="logi-containers"/.test(html));
+    // Two buttons both reading "Add vehicle" is how one car became four rows.
+    c(`${portal} names the header button for what it makes`, /id="stock-add-btn"[^>]*>[\s\S]{0,120}Add model/.test(html));
   }
   // The team portal hides what the employee was not granted; the admin's is
   // ungated, so it carries no data-perm and must not grow one by accident.
   const emp = fs.readFileSync('public/employee.html', 'utf8');
-  c('the team portal gates the two new tabs',
-    /data-perm="stock\.units"/.test(emp) && /data-perm="stock\.tracking"/.test(emp));
+  c('the team portal gates the tracking tab',
+    /data-perm="stock\.tracking"/.test(emp) && !/data-perm="stock\.units"/.test(emp));
   c('the sales row offers the ledger behind its permission',
     /procCan\('deals', 'payments'\)[\s\S]{0,200}openPaymentsPanel/.test(fs.readFileSync('public/assets/procurement.js', 'utf8')));
 }
@@ -1314,6 +1375,9 @@ const atBothBases = (method, tail, perm) => {
 // to settle before the count is meaningful.
 Promise.all(PENDING).then(() => {
   const passed = results.filter(Boolean).length;
+  if (FAILED.length) console.log('\nFailed:\n' + FAILED.map(n => '  · ' + n).join('\n'));
   console.log(`\n${passed}/${results.length} passed`);
-  process.exit(passed === results.length ? 0 : 1);
+  // Not process.exit(): it drops buffered stdout, which on a run this long is
+  // most of it — the FAIL lines included.
+  process.exitCode = passed === results.length ? 0 : 1;
 });
