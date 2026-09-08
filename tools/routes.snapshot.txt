@@ -416,3 +416,4 @@ DELETE /api/employee/containers/:id/units/:vin
 POST /api/webhooks/terminal49/:secret
 POST /api/webhooks/safecube/:secret
 DELETE /api/dashboard/containers/:id
+GET /api/inventory/track
