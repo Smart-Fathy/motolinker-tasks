@@ -35,6 +35,8 @@ const sandbox = new Function('ctx', 'PO_LINE_STATUS_KEYS',
 const { stockBuildRow, stockUnitGaps } = sandbox;
 
 const results = [];
+// Checks that cannot answer synchronously; the count at the bottom waits on them.
+const SETTLED = [];
 const c = (n, ok, x) => { results.push(ok); console.log((ok ? '  ok  ' : ' FAIL ') + n + (x ? '  ' + x : '')); };
 
 // 1. Cars are the count
@@ -131,5 +133,98 @@ c('quantity is gone from the CSV headers',
     && !/procGridCollect\('\.stk-unit-row'[\s\S]{0,120}\.filter\(u => u\.vin/.test(proc));
 }
 
-console.log('\n' + results.filter(Boolean).length + '/' + results.length + ' passed');
-process.exit(results.every(Boolean) ? 0 : 1);
+// 10. A status the admin defined in the Columns editor must survive the save
+//
+// The editor let an admin add "In house", "Pending", "In customs clearance" and
+// so on; every save path then checked the value against the four hard-coded
+// built-ins and rewrote anything else to send_to_supplier. The form accepted it,
+// the database got something else, and nothing said so. This ran against a real
+// account for months.
+{
+  const { parseStockUnits } = sandbox;
+  // The eleven options one real account had configured for the stock grid.
+  const configured = ['send_to_supplier', 'in_preparation', 'in_logistics', 'delivered',
+    'in_house', 'off_site', 'pending', 'delivered_to_client', 'delivered_to_client_2',
+    'in_customs_clearance', 'in_pre_delivery_inspection'];
+  const statusOf = (v, allowed) => parseStockUnits([{ vin: 'A1', status: v }], allowed)[0].status;
+
+  const survived = configured.filter(k => statusOf(k, configured) === k);
+  c('every configured status survives the save', survived.length === configured.length,
+    survived.length + '/' + configured.length + ' kept');
+
+  // …without turning the field into a free-text column.
+  c('a value nobody configured is still refused',
+    statusOf('not_a_status', configured) === 'send_to_supplier');
+
+  // If the config cannot be read — no row yet, malformed JSON, database down —
+  // the old rule has to hold rather than the field falling open or shut.
+  c('no config falls back to the built-ins', statusOf('in_logistics', undefined) === 'in_logistics'
+    && statusOf('in_house', undefined) === 'send_to_supplier');
+  c('an empty config list is treated as no config', statusOf('delivered', []) === 'delivered');
+}
+
+// 11. …and the save routes actually ask for those options
+{
+  const src = serverSrc('function stockBuildRow(');
+  c('the stock save path reads the configured statuses',
+    /ctx\.columnOptionKeys\('stock', 'status', ctx\.PO_LINE_STATUS_KEYS\)/.test(src));
+  c('…and passes them to the parser rather than dropping them',
+    /stockBuildRow\(req\.body, await allowedUnitStatuses\(\)\)/.test(src));
+  // The CSV import reads the config once, not once per row.
+  c('the bulk import resolves them once for the whole file',
+    /const allowed = await allowedUnitStatuses\(\);\n  rows\.forEach/.test(src));
+
+  // The same defect sat in two other save paths, one of them equally live.
+  const idx = fs.readFileSync('index.js', 'utf8');
+  c('the sales grid reads its own configured statuses',
+    /ctx\.columnOptionKeys\('sales', 'status', PO_LINE_STATUS_KEYS\)/.test(idx));
+  const po = fs.readFileSync('src/routes/purchase-orders.js', 'utf8');
+  c('so do purchase order line items',
+    /ctx\.columnOptionKeys\('po_items', 'status', ctx\.PO_LINE_STATUS_KEYS\)/.test(po));
+}
+
+// 12. columnOptionKeys itself: the union, and what happens when the read fails
+{
+  const BUILTINS = ['send_to_supplier', 'in_preparation', 'in_logistics', 'delivered'];
+  const stored = JSON.stringify([
+    { key: 'vin', label: 'VIN', type: 'text' },
+    { key: 'status', label: 'Status', type: 'select',
+      options: [{ key: 'delivered', label: 'In transit' }, { key: 'in_house', label: 'In house' }] },
+  ]);
+  // The real function, handed a stub for the one query it makes.
+  const src = fs.readFileSync('src/routes/columns.js', 'utf8');
+  const body = src.slice(src.indexOf('async function columnOptionKeys('));
+  const fn = new Function('supabase', 'ENTITY_COLUMNS',
+    body.slice(0, body.indexOf('\n}\n') + 3) + '\nreturn columnOptionKeys;');
+  const make = value => fn(
+    { from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: value }) }) }) }) },
+    { stock: { kvKey: 'columns_config:stock' } });
+
+  const pending = [];
+  pending.push(make({ value: stored })('stock', 'status', BUILTINS).then(keys => {
+    // The built-ins stay valid: rows saved before a rename still carry them.
+    c('configured options are added to the built-ins, not swapped for them',
+      BUILTINS.every(k => keys.includes(k)) && keys.includes('in_house'));
+    c('…and a key is never listed twice', new Set(keys).size === keys.length);
+  }));
+  pending.push(make({ value: 'not json' })('stock', 'status', BUILTINS).then(keys => {
+    c('malformed config falls back to the built-ins', JSON.stringify(keys) === JSON.stringify(BUILTINS));
+  }));
+  pending.push(make(null)('stock', 'status', BUILTINS).then(keys => {
+    c('no stored config falls back to the built-ins', JSON.stringify(keys) === JSON.stringify(BUILTINS));
+  }));
+  pending.push(make({ value: stored })('unknown_entity', 'status', BUILTINS).then(keys => {
+    c('an entity with no config registered falls back too', JSON.stringify(keys) === JSON.stringify(BUILTINS));
+  }));
+  pending.push(make({ value: stored })('stock', 'colour', BUILTINS).then(keys => {
+    c('options are read from the named column only', JSON.stringify(keys) === JSON.stringify(BUILTINS));
+  }));
+
+  // These are the only async checks in the file; the counter below waits on them.
+  SETTLED.push(...pending);
+}
+
+Promise.all(SETTLED).then(() => {
+  console.log('\n' + results.filter(Boolean).length + '/' + results.length + ' passed');
+  process.exit(results.every(Boolean) ? 0 : 1);
+});

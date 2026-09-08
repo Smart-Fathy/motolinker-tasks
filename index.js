@@ -389,13 +389,26 @@ const SALE_FIELDS = ['client', 'consignee', 'brand', 'model', 'trim', 'colour', 
 const SALE_MONEY  = ['price_list', 'down_payment', 'discounted', 'remaining'];
 const SALE_DATES  = ['remaining_due', 'reservation_date', 'delivery_date'];
 
-function saleBuildRow(body) {
+// `allowed` is the status vocabulary this save may write — the Columns editor's
+// options for the sales grid, or the built-ins when it defines none. Without it
+// a status the admin added ("In site", "Pending", "Delivered to client") was
+// accepted by the form and silently rewritten to `send_to_supplier` on save.
+// src/routes/columns.js publishes columnOptionKeys on the context and loads
+// after this file, so resolve it per request rather than at require time.
+function allowedSaleStatuses() {
+  return ctx.columnOptionKeys
+    ? ctx.columnOptionKeys('sales', 'status', PO_LINE_STATUS_KEYS)
+    : Promise.resolve(PO_LINE_STATUS_KEYS);
+}
+
+function saleBuildRow(body, allowed) {
   const b = body || {};
+  const statusKeys = (Array.isArray(allowed) && allowed.length) ? allowed : PO_LINE_STATUS_KEYS;
   const row = {};
   for (const k of SALE_FIELDS) row[k] = String(b[k] ?? '').trim();
   for (const k of SALE_MONEY) row[k] = Number(String(b[k] ?? '').replace(/[^\d.]/g, '')) || 0;
   for (const k of SALE_DATES) row[k] = String(b[k] ?? '').trim() || null;
-  row.status = PO_LINE_STATUS_KEYS.includes(b.status) ? b.status : 'send_to_supplier';
+  row.status = statusKeys.includes(b.status) ? b.status : 'send_to_supplier';
   row.customer_id = b.customer_id ? parseInt(b.customer_id) : null;
   if (b.deal_id !== undefined) row.deal_id = b.deal_id ? parseInt(b.deal_id) : null;
   // Remaining defaults to what's actually left when the user hasn't typed one.
@@ -417,7 +430,7 @@ function mountSaleRoutes(base, guard) {
   });
 
   receiver.router.post(base, guard, requirePerm('deals', 'salesEdit'), express.json(), async (req, res) => {
-    const { row } = saleBuildRow(req.body);
+    const { row } = saleBuildRow(req.body, await allowedSaleStatuses());
     row.created_by = chatCallerIdentity(req).key;
     const { data, error } = await supabase.from('sales').insert(row).select().single();
     if (error) return res.status(500).json({ error: error.message });
@@ -425,7 +438,7 @@ function mountSaleRoutes(base, guard) {
   });
 
   receiver.router.put(`${base}/:id`, guard, requirePerm('deals', 'salesEdit'), express.json(), async (req, res) => {
-    const { row } = saleBuildRow(req.body);
+    const { row } = saleBuildRow(req.body, await allowedSaleStatuses());
     row.updated_at = new Date().toISOString();
     const { data, error } = await supabase.from('sales').update(row).eq('id', req.params.id).select().single();
     if (error) return res.status(500).json({ error: error.message });

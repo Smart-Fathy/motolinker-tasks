@@ -31,8 +31,12 @@ function generatePoNumber() {
 }
 
 // Normalize one vehicle line from the UI / import.
-function poBuildItem(raw) {
+function poBuildItem(raw, allowed) {
   const r = raw || {};
+  // What this save may write in `status`: the po_items Columns editor options,
+  // or the built-ins when it defines none. Hard-coding the built-ins meant an
+  // admin-added status was silently rewritten to `send_to_supplier`.
+  const statusKeys = (Array.isArray(allowed) && allowed.length) ? allowed : ctx.PO_LINE_STATUS_KEYS;
   const num = (v, def = 0) => {
     const n = Number(String(v ?? '').replace(/[^\d.]/g, ''));
     return isFinite(n) && n > 0 ? n : def;
@@ -49,7 +53,7 @@ function poBuildItem(raw) {
     accessories:  String(r.accessories || '').trim(),
     payment_term: String(r.payment_term || '').trim(),
     pi_price:     num(r.pi_price),
-    status:       ctx.PO_LINE_STATUS_KEYS.includes(r.status) ? r.status : 'send_to_supplier',
+    status:       statusKeys.includes(r.status) ? r.status : 'send_to_supplier',
     vin:          String(r.vin || '').trim(),
     file_link:    String(r.file_link || '').trim(),
   };
@@ -59,9 +63,17 @@ function poBuildItem(raw) {
 const PO_ITEM_BUILTINS = { client: 1, consignee: 1, units: 1, brand: 1, model: 1, trim: 1,
   color: 1, year: 1, accessories: 1, payment_term: 1, pi_price: 1, status: 1, vin: 1, file_link: 1 };
 
-function poBuildRow(body) {
+// columns.js publishes columnOptionKeys on the context; feature modules load in
+// no fixed order, so resolve it per request rather than at require time.
+function allowedItemStatuses() {
+  return ctx.columnOptionKeys
+    ? ctx.columnOptionKeys('po_items', 'status', ctx.PO_LINE_STATUS_KEYS)
+    : Promise.resolve(ctx.PO_LINE_STATUS_KEYS);
+}
+
+function poBuildRow(body, allowed) {
   const b = body || {};
-  const items = (Array.isArray(b.items) ? b.items : []).map(poBuildItem)
+  const items = (Array.isArray(b.items) ? b.items : []).map(it => poBuildItem(it, allowed))
     .filter(it => it.client || it.brand || it.model || it.vin
       || ctx.hasGridExtras(it, PO_ITEM_BUILTINS));
   return {
@@ -151,7 +163,7 @@ function mountPurchaseOrderRoutes(base, guard) {
 
   receiver.router.post(base, guard, requirePerm('purchaseorders', 'create'), express.json({ limit: '2mb' }), async (req, res) => {
     const who = callerIdentity(req);
-    const row = poBuildRow(req.body);
+    const row = poBuildRow(req.body, await allowedItemStatuses());
     row.created_by = who.key;
     const { data, error } = await ctx.writeOptional(
       p => supabase.from('purchase_orders').insert(p).select().single(), row, ['custom_fields']);
@@ -167,7 +179,7 @@ function mountPurchaseOrderRoutes(base, guard) {
   });
 
   receiver.router.put(`${base}/:id`, guard, requirePerm('purchaseorders', 'edit'), express.json({ limit: '2mb' }), async (req, res) => {
-    const row = poBuildRow(req.body);
+    const row = poBuildRow(req.body, await allowedItemStatuses());
     row.updated_at = new Date().toISOString();
     delete row.po_number; // immutable once issued
     const { data, error } = await ctx.writeOptional(
@@ -187,7 +199,7 @@ function mountPurchaseOrderRoutes(base, guard) {
       const { data: settingsRows } = await supabase.from('quotation_settings').select('key,value');
       const settings = {};
       for (const r of settingsRows || []) settings[r.key] = r.value;
-      const row = poBuildRow(req.body);
+      const row = poBuildRow(req.body, await allowedItemStatuses());
       const html = buildPurchaseOrderHtml({ ...req.body, ...row, client_name: await poClientName(row), settings });
       const pdf = await renderQuotationPdf(html);   // portrait A4, like the paper form
       res.json({ pdf: Buffer.from(pdf).toString('base64') });
