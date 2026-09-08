@@ -297,11 +297,12 @@ const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', perm
     // Same for writing: the register is the company's, not everyone's to edit.
     && M.normEmpPerms({}).stockActions.create === false
     && M.normEmpPerms({}).stockActions.edit === false
-    // And the same for the two that came with the vehicle register: they carry
-    // landed cost and the supplier route, so `stock: true` must not hand them
-    // to the whole team the day they ship.
-    && M.normEmpPerms({}).stockActions.units === false
-    && M.normEmpPerms({}).stockActions.tracking === false,
+    // And the same for container tracking: it shows where a customer's car is
+    // right now, so `stock: true` must not hand it to the whole team.
+    && M.normEmpPerms({}).stockActions.tracking === false
+    // `units` was the Vehicle register's grant. The register is gone — the cars
+    // live in the Models tab — so the action must not linger as a dead toggle.
+    && M.normEmpPerms({}).stockActions.units === undefined,
     JSON.stringify(M.normEmpPerms({}).stockActions));
   c('every section the portal gates is one the server models',
     [...gated].every(k => M.PERM_ACTIONS[k]), [...gated].filter(k => !M.PERM_ACTIONS[k]).join(','));

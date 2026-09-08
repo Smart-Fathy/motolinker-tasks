@@ -137,10 +137,11 @@ const PERM_ACTIONS = {
   // is the Inventory PAGE, which is a different question: the whole register,
   // every model, every price. It is granted, never inherited, so adding the page
   // did not hand it to the entire team on one deploy.
-  // `units` is the VIN register and `tracking` the container board — both are
-  // the whole logistics picture including landed cost, so they are granted the
-  // same way `browse` is rather than riding in on the section master.
-  stock: ['view', 'browse', 'create', 'edit', 'units', 'tracking'],
+  // `tracking` is the container board — the whole logistics picture, including
+  // where a customer's car is right now — so it is granted the same way `browse`
+  // is rather than riding in on the section master. (`units` sat beside it for
+  // the Vehicle register, which is gone: the cars live in the Models tab.)
+  stock: ['view', 'browse', 'create', 'edit', 'tracking'],
   // Operations and procurement. The handlers are the dashboard's own, mounted a
   // second time under /api/employee — so these actions are the only difference
   // between what an employee may do here and what the admin may.
@@ -210,7 +211,7 @@ const PERM_ACTION_NEVER_INHERIT = new Set(['leads.clientFolder', 'stock.browse',
   // vehicle actually cost the company — and tracking exposes the supplier
   // route. Neither should arrive on the day of a deploy for everyone who
   // happens to have Inventory switched on.
-  'stock.units', 'stock.tracking']);
+  'stock.tracking']);
 
 function normEmpPerms(raw) {
   const p = { ...DEFAULT_PERMISSIONS, ...(raw || {}) };
@@ -297,7 +298,7 @@ const PERM_ACTION_LABELS = {
   'stock.view': 'Look vehicles up (picker and Home)',
   'stock.browse': 'Open the Inventory page',
   'stock.create': 'Add a vehicle', 'stock.edit': 'Edit a vehicle',
-  'stock.units': 'Vehicle register (VIN, cost)', 'stock.tracking': 'Container tracking',
+  'stock.tracking': 'Container tracking',
   'suppliers.catalogue': 'Manage the vehicle catalogue',
   'suppliers.purchases': 'Purchases tab',
   'deals.sales': 'Sales tab', 'deals.salesEdit': 'Edit sales records',

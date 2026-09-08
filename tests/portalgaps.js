@@ -207,8 +207,11 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
     const add = await page.evaluate(async () => {
       navigate('stock');
       await new Promise(r => setTimeout(r, 500));
-      const btn = [...document.querySelectorAll('#page-stock button')].find(b => /Add vehicle/.test(b.textContent));
-      const shown = !!btn && btn.style.display !== 'none';
+      // It says "Add model" now, and it is the only button on the page that adds
+      // anything to Inventory — the second one, which also said "Add vehicle"
+      // and meant something else entirely, went with the Vehicle register.
+      const btn = document.getElementById('stock-add-btn');
+      const shown = !!btn && btn.style.display !== 'none' && !btn.hidden;
       setStockView('model');
       await new Promise(r => setTimeout(r, 300));
       const cardText = document.getElementById('page-stock').textContent.replace(/\s+/g, ' ');
@@ -234,7 +237,7 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       !/Available colours|No colours recorded/i.test(add.cardText)
       && add.chips === 0 && /Colour EXT \/ INT/.test(add.cardText),
       JSON.stringify({ chips: add.chips }));
-    check('a rep with stock.create is offered Add vehicle, with the real form',
+    check('a rep with stock.create is offered Add model, with the real form',
       add.shown === true && add.fields === true, JSON.stringify(add));
     check('the form no longer asks for a list of colours offered',
       add.colours === false && add.colourBtn === false, JSON.stringify(add));

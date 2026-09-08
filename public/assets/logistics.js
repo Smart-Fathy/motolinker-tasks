@@ -464,8 +464,8 @@
       </div>
       <div class="logi-units">
         <span style="font-size:11px;color:var(--muted,#8d897f)">${units.length ? 'Vehicles inside' : 'No vehicles linked yet'}</span>
-        ${units.map(u => `<span class="logi-unit-chip">${ic('car-front', 12)} ${esc(u.vin || (u.make + ' ' + u.model))}
-          ${mayEdit ? `<button title="Remove" onclick="ctUnlinkUnit(${c.id},${u.id})">×</button>` : ''}</span>`).join('')}
+        ${units.map(u => `<span class="logi-unit-chip"${u.unrecorded ? ' title="This VIN is not in the Models tab yet"' : ` title="${esc([u.make, u.model, u.trim, u.colour, u.consignee].filter(Boolean).join(' · '))}"`}>${ic('car-front', 12)} ${esc(u.vin)}
+          ${mayEdit ? `<button title="Remove" onclick="ctUnlinkUnit(${c.id},'${esc(u.vin)}')">×</button>` : ''}</span>`).join('')}
         ${mayEdit ? `<button class="btn btn-outline btn-sm" style="padding:3px 10px;font-size:11px" onclick="ctLinkUnit(${c.id})">${ic('plus', 12)} Add vehicle</button>` : ''}
       </div>
     </div>`;
@@ -814,26 +814,35 @@
   }
 
   async function ctLinkUnit(containerId) {
-    const units = await loadUnitList();
-    const free = units.filter(u => u.status !== 'delivered' && u.status !== 'cancelled');
+    const cars = await loadStockCars();
+    if (!cars.length) {
+      toast('No vehicles with a VIN in the Models tab yet — add one there first.');
+      return;
+    }
+    // A car is in one box at a time, so anything already linked anywhere is not
+    // offered again. Re-adding is harmless server-side, but offering it is not
+    // an honest list.
+    const taken = new Set(_containers.flatMap(c => (c.units || []).map(u => u.vin)));
+    const free = cars.filter(u => !taken.has(u.vin));
     if (!free.length) {
-      toast('No vehicles in the register yet — add one under Register first.');
+      toast('Every vehicle with a VIN is already in a container.');
       return;
     }
     modal('Add a vehicle to the container', `
       <div class="form-group"><label class="form-label">Vehicle</label>
         <select class="form-control" id="ct-unit-pick">
-          ${free.map(u => `<option value="${u.id}">${esc([u.vin || 'no VIN', u.make, u.model, u.trim, u.colour].filter(Boolean).join(' · '))}</option>`).join('')}
+          ${free.map(u => `<option value="${esc(u.vin)}">${esc([u.vin, [u.make, u.model, u.trim].filter(Boolean).join(' '), u.colour, u.consignee].filter(Boolean).join(' · '))}</option>`).join('')}
         </select></div>
+      <div class="logi-hint">Vehicles come from the Models tab. A car with no VIN cannot be linked yet.</div>
       <div id="ct-unit-err" class="error-msg" style="display:none"></div>`,
       `<button class="btn btn-outline" onclick="PROCFG.closeModal()">Cancel</button>
        <button class="btn btn-primary" onclick="ctLinkUnitSave(${containerId})">Add</button>`);
   }
 
   async function ctLinkUnitSave(containerId) {
-    const unitId = Number(val('ct-unit-pick'));
+    const vin = val('ct-unit-pick');
     const r = await api(`/api/dashboard/containers/${containerId}/units`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unit_id: unitId }) });
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vin }) });
     const d = await r.json().catch(() => ({}));
     const err = document.getElementById('ct-unit-err');
     if (!r.ok) { if (err) { err.textContent = d.error || 'Could not add.'; err.style.display = 'block'; } return; }
@@ -841,140 +850,36 @@
     loadContainers();
   }
 
-  async function ctUnlinkUnit(containerId, unitId) {
-    const r = await api(`/api/dashboard/containers/${containerId}/units/${unitId}`, { method: 'DELETE' });
+  async function ctUnlinkUnit(containerId, vin) {
+    const r = await api(`/api/dashboard/containers/${containerId}/units/${encodeURIComponent(vin)}`, { method: 'DELETE' });
     if (!r.ok) { toast('Could not remove that vehicle.'); return; }
     loadContainers();
   }
 
-  // ═══ Vehicle register ═════════════════════════════════════════════════════
-  let _units = [];
+  // ═══ The cars a container can carry ═══════════════════════════════════════
+  // There is no separate register any more. Every car the business owns lives in
+  // the Models tab, as a unit inside a stock row, so that is what this reads and
+  // flattens. A car with no VIN yet is left out on purpose: the VIN is how the
+  // link is stored, and a box on the water always has one by then.
+  let _stockCars = [];
 
-  async function loadUnitList() {
+  async function loadStockCars() {
     try {
-      const r = await api('/api/dashboard/units');
+      const r = await api('/api/dashboard/stock');
       const d = await r.json();
-      if (r.ok && Array.isArray(d)) { _units = d; return d; }
-    } catch (_) { /* fall through */ }
-    return _units;
+      if (r.ok && Array.isArray(d)) {
+        _stockCars = d.flatMap(v => (Array.isArray(v.units) ? v.units : [])
+          .filter(u => String(u.vin || '').trim())
+          .map(u => ({
+            vin: String(u.vin).toUpperCase().replace(/[^A-Z0-9]/g, ''),
+            make: v.make || '', model: v.model || '', trim: v.trim || '',
+            colour: u.colour || '', status: u.status || '', consignee: u.consignee || '',
+          })));
+      }
+    } catch (_) { /* keep whatever the last read gave us */ }
+    return _stockCars;
   }
 
-  async function loadUnits() {
-    injectStyles();
-    const box = document.getElementById('logi-units-table');
-    if (!box) return;
-    box.innerHTML = '<div class="loading"><span class="spinner"></span> Loading the register…</div>';
-    const q = (document.getElementById('logi-unit-search') || {}).value || '';
-    const status = (document.getElementById('logi-unit-status') || {}).value || '';
-    const qs = new URLSearchParams();
-    if (q.trim()) qs.set('q', q.trim());
-    if (status) qs.set('status', status);
-    let list;
-    try {
-      const r = await api('/api/dashboard/units' + (qs.toString() ? '?' + qs : ''));
-      const d = await r.json();
-      if (!r.ok) { box.innerHTML = `<div class="error-msg" style="display:block">${esc(d.error || 'Could not load the register.')}</div>`; return; }
-      list = d;
-    } catch (_) {
-      box.innerHTML = '<div class="error-msg" style="display:block">Could not load the register.</div>';
-      return;
-    }
-    _units = list;
-    if (!list.length) {
-      box.innerHTML = `<div class="logi-empty">${q || status ? 'No vehicle matches that.' : 'No vehicles yet. Add one to start costing and tracking it.'}</div>`;
-      return;
-    }
-    const mayEdit = can('stock', 'edit');
-    box.innerHTML = `<div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:900px">
-      <thead><tr style="text-align:left;color:var(--muted,#8d897f);border-bottom:1px solid var(--border,rgba(255,255,255,.09))">
-        <th style="padding:8px 10px">VIN</th><th style="padding:8px 10px">Vehicle</th>
-        <th style="padding:8px 10px">Colour</th><th style="padding:8px 10px">Status</th>
-        <th style="padding:8px 10px">Supplier</th><th style="padding:8px 10px;text-align:right">Landed cost</th>
-        <th style="padding:8px 10px">Location</th><th></th>
-      </tr></thead><tbody>
-      ${list.map(u => `<tr style="border-bottom:1px solid rgba(255,255,255,.05)">
-        <td style="padding:8px 10px;font-family:ui-monospace,monospace">${esc(u.vin || '—')}</td>
-        <td style="padding:8px 10px">${esc([u.make, u.model, u.trim].filter(Boolean).join(' '))}</td>
-        <td style="padding:8px 10px">${esc(u.colour || '—')}</td>
-        <td style="padding:8px 10px">${statusPill(UNIT_STATUSES, u.status)}</td>
-        <td style="padding:8px 10px">${esc(u.supplier || '—')}</td>
-        <td style="padding:8px 10px;text-align:right;white-space:nowrap">${
-          u.costs && u.costs.landed_known
-            ? esc(money(u.costs.landed_base))
-            : `<span title="No exchange rate booked against the purchase price yet" style="color:var(--muted,#8d897f)">rate not set</span>`}</td>
-        <td style="padding:8px 10px">${esc(u.location || '—')}</td>
-        <td style="padding:8px 10px;text-align:right">${mayEdit
-          ? `<button class="btn btn-outline btn-sm" style="padding:3px 10px;font-size:11px" onclick="openUnitForm(${u.id})">Edit</button>` : ''}</td>
-      </tr>`).join('')}
-      </tbody></table></div>`;
-    requestAnimationFrame(() => lucide.createIcons());
-  }
-
-  function openUnitForm(id) {
-    const u = id ? (_units.find(x => String(x.id) === String(id)) || {}) : {};
-    const f = (label, idAttr, value, type, ph) => `<div class="form-group">
-      <label class="form-label">${esc(label)}</label>
-      <input class="form-control" id="${idAttr}" type="${type || 'text'}" value="${esc(value ?? '')}"${ph ? ` placeholder="${esc(ph)}"` : ''}>
-    </div>`;
-    modal(id ? `Vehicle ${u.vin || u.model || ''}` : 'Add a vehicle to the register', `
-      <div class="qt-grid-3">
-        ${f('VIN', 'vu-vin', u.vin, 'text', 'Leave empty until the supplier sends it')}
-        ${f('Make *', 'vu-make', u.make)}
-        ${f('Model *', 'vu-model', u.model)}
-        ${f('Trim', 'vu-trim', u.trim)}
-        ${f('Model year', 'vu-year', u.model_year, 'number')}
-        ${f('Colour', 'vu-colour', u.colour)}
-        <div class="form-group"><label class="form-label">Status</label>
-          <select class="form-control" id="vu-status">${opts(UNIT_STATUSES, u.status || 'ordered', o => o.key, o => o.label)}</select></div>
-        ${f('Supplier', 'vu-supplier', u.supplier)}
-        ${f('Location', 'vu-location', u.location, 'text', 'Yard, port, showroom…')}
-      </div>
-      <div style="font-size:12px;font-weight:700;margin:14px 0 8px">Cost</div>
-      <div class="logi-hint" style="margin-bottom:10px">Purchase price is in the currency you bought in; the rate converts it to ${BASE_CURRENCY}. Freight, customs and clearing are local charges, so they are already in ${BASE_CURRENCY}.</div>
-      <div class="qt-grid-3">
-        <div class="form-group"><label class="form-label">Purchase currency</label>
-          <select class="form-control" id="vu-ccy">${opts(CURRENCIES, u.purchase_ccy || 'USD')}</select></div>
-        ${f('Purchase price', 'vu-cost', u.purchase_cost, 'number')}
-        ${f(`Rate → ${BASE_CURRENCY}`, 'vu-fx', u.fx_rate, 'number')}
-        ${f('Freight', 'vu-freight', u.freight_cost, 'number')}
-        ${f('Customs', 'vu-customs', u.customs_cost, 'number')}
-        ${f('Clearing', 'vu-clearing', u.clearing_cost, 'number')}
-      </div>
-      <div style="font-size:12px;font-weight:700;margin:14px 0 8px">Dates</div>
-      <div class="qt-grid-3">
-        ${f('Ordered', 'vu-ordered', String(u.ordered_on || '').slice(0, 10), 'date')}
-        ${f('Shipped', 'vu-shipped', String(u.shipped_on || '').slice(0, 10), 'date')}
-        ${f('Arrived', 'vu-arrived', String(u.arrived_on || '').slice(0, 10), 'date')}
-      </div>
-      <div class="form-group"><label class="form-label">Notes</label>
-        <textarea class="form-control" id="vu-notes" rows="2">${esc(u.notes || '')}</textarea></div>
-      <div id="vu-err" class="error-msg" style="display:none"></div>`,
-      `<button class="btn btn-outline" onclick="PROCFG.closeModal()">Cancel</button>
-       <button class="btn btn-primary" onclick="saveUnit(${id || 'null'})">${id ? 'Save changes' : 'Add vehicle'}</button>`,
-      { wide: true });
-  }
-
-  async function saveUnit(id) {
-    const err = document.getElementById('vu-err');
-    const payload = {
-      vin: val('vu-vin'), make: val('vu-make'), model: val('vu-model'), trim: val('vu-trim'),
-      model_year: val('vu-year'), colour: val('vu-colour'), status: val('vu-status'),
-      supplier: val('vu-supplier'), location: val('vu-location'),
-      purchase_ccy: val('vu-ccy'), purchase_cost: val('vu-cost'), fx_rate: val('vu-fx'),
-      freight_cost: val('vu-freight'), customs_cost: val('vu-customs'), clearing_cost: val('vu-clearing'),
-      ordered_on: val('vu-ordered'), shipped_on: val('vu-shipped'), arrived_on: val('vu-arrived'),
-      notes: val('vu-notes'),
-    };
-    if (!payload.make || !payload.model) {
-      err.textContent = 'Make and Model are required.'; err.style.display = 'block'; return;
-    }
-    const r = await api(id ? `/api/dashboard/units/${id}` : '/api/dashboard/units',
-      { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) { err.textContent = d.error || 'Could not save.'; err.style.display = 'block'; return; }
-    closeModal();
-    loadUnits();
-  }
 
   // ═══ Payments ═════════════════════════════════════════════════════════════
   // Opened from a sale. The summary is the server's — the client never does the
@@ -1093,18 +998,22 @@
     injectStyles();
     _invTab = tab;
     document.querySelectorAll('.logi-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    ['models', 'units', 'tracking'].forEach(t => {
+    ['models', 'tracking'].forEach(t => {
       const el = document.getElementById('inv-pane-' + t);
       if (el) el.style.display = t === tab ? '' : 'none';
     });
-    if (tab === 'units') loadUnits();
+    // The page header's button means something different per tab — a model on
+    // Models, nothing on Tracking, which has its own buttons. Two buttons both
+    // reading "Add vehicle" is what put four rows in for one car.
+    const add = document.getElementById('stock-add-btn');
+    if (add) add.hidden = tab !== 'models';
     if (tab === 'tracking') loadContainers();
     requestAnimationFrame(() => lucide.createIcons());
   }
 
   Object.assign(window, {
     inventoryTab, injectLogiStyles: injectStyles,
-    loadUnits, loadUnitList, openUnitForm, saveUnit,
+    loadStockCars,
     loadContainers, ctLookup, openContainerForm, saveContainer, deleteContainer,
     ctRefresh, ctRegister, ctProviderCheck, ctLinkUnit, ctLinkUnitSave, ctUnlinkUnit,
     logiMountMaps: mountMaps, logiPositionAge: positionAge, logiDegrees: dm,

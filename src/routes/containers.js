@@ -25,7 +25,7 @@ const { express, receiver, requireAuth, requireEmployeeAuth, supabase } =
 const requirePerm = (...a) => ctx.requirePerm(...a);
 
 const { CONTAINER_STATUS_KEYS, CONTAINER_TYPES, inspectContainerNo, normContainerNo } = require('../lib/constants');
-const { dbFail } = require('./vehicle-units');
+const { dbFail, normVin } = require('../lib/vehicles');
 
 const str = (v, max) => String(v ?? '').trim().slice(0, max || 200);
 
@@ -177,9 +177,53 @@ function mergeSynced(existing, fields) {
 ctx.mergeSyncedContainer = mergeSynced;
 
 // ── Read ──────────────────────────────────────────────────────────────────────
-function withUnits(row, links, units) {
-  const ids = (links || []).filter(l => l.container_id === row.id).map(l => l.unit_id);
-  return { ...row, units: (units || []).filter(u => ids.includes(u.id)) };
+// ── Which cars are in the box ───────────────────────────────────────────────
+// The link stores a VIN, not a row id, because the car it names lives as a unit
+// inside a stock_vehicles row and those units have no id of their own. Reading
+// the stock table once and flattening its units is cheaper than it looks: this
+// is a list of models, not of cars, and the same read serves every box on the
+// page.
+async function vehiclesByVin(vins) {
+  const want = new Set((vins || []).map(normVin).filter(Boolean));
+  if (!want.size) return [];
+  const { data } = await supabase.from('stock_vehicles').select('id,make,model,trim,units');
+  const out = [];
+  for (const row of data || []) {
+    for (const u of Array.isArray(row.units) ? row.units : []) {
+      const vin = normVin(u.vin);
+      if (!vin || !want.has(vin)) continue;
+      out.push({
+        vin, stock_id: row.id,
+        make: row.make || '', model: row.model || '', trim: row.trim || '',
+        colour: u.colour || '', status: u.status || '', consignee: u.consignee || '',
+      });
+    }
+  }
+  return out;
+}
+
+// Every link for these containers, plus the cars they name. Two reads for the
+// whole page rather than two per box.
+async function linkedVehicles(containerIds) {
+  const ids = (containerIds || []).filter(id => id != null);
+  if (!ids.length) return { links: [], cars: [] };
+  try {
+    const { data } = await supabase.from('container_vehicles').select('container_id,vin').in('container_id', ids);
+    const links = data || [];
+    return { links, cars: links.length ? await vehiclesByVin(links.map(l => l.vin)) : [] };
+  } catch (_) {
+    // migrations/020 not applied yet — the boxes still list, without their cars.
+    return { links: [], cars: [] };
+  }
+}
+
+// A VIN that is linked but matches no car we have recorded still deserves to
+// show: it is what the container is carrying, whether or not anybody has typed
+// the car in yet.
+function withUnits(row, links, cars) {
+  const vins = (links || []).filter(l => l.container_id === row.id).map(l => normVin(l.vin)).filter(Boolean);
+  const byVin = new Map((cars || []).map(u => [u.vin, u]));
+  return { ...row, units: [...new Set(vins)].map(v => byVin.get(v) || { vin: v, unrecorded: true }) };
 }
 
 function mountContainerReads(base, guard) {
@@ -195,17 +239,8 @@ function mountContainerReads(base, guard) {
     const rows = data || [];
     if (!rows.length) return res.json([]);
     // Two extra reads rather than N: the vehicles in every box on the page.
-    let links = [], units = [];
-    try {
-      const l = await supabase.from('container_units').select('container_id,unit_id').in('container_id', rows.map(r => r.id));
-      links = l.data || [];
-      if (links.length) {
-        const u = await supabase.from('vehicle_units').select('id,vin,make,model,trim,colour,status,customer_id')
-          .in('id', [...new Set(links.map(x => x.unit_id))]);
-        units = u.data || [];
-      }
-    } catch (_) { /* register not applied yet — the boxes still list */ }
-    res.json(rows.map(r => withUnits(r, links, units)));
+    const { links, cars } = await linkedVehicles(rows.map(r => r.id));
+    res.json(rows.map(r => withUnits(r, links, cars)));
   });
 
   // Look one up by its number. This is the entry point the team asked for: type
@@ -219,16 +254,8 @@ function mountContainerReads(base, guard) {
     const { data, error } = await supabase.from('shipment_containers').select('*').eq('container_no', seen.no).maybeSingle();
     if (error && !/no rows/i.test(String(error.message || ''))) return dbFail(res, error, 'Container tracking');
     if (data) {
-      let links = [], units = [];
-      try {
-        const l = await supabase.from('container_units').select('container_id,unit_id').eq('container_id', data.id);
-        links = l.data || [];
-        if (links.length) {
-          const u = await supabase.from('vehicle_units').select('*').in('id', links.map(x => x.unit_id));
-          units = u.data || [];
-        }
-      } catch (_) { /* register not applied yet */ }
-      return res.json({ found: true, check: seen, container: withUnits(data, links, units) });
+      const { links, cars } = await linkedVehicles([data.id]);
+      return res.json({ found: true, check: seen, container: withUnits(data, links, cars) });
     }
 
     const prov = await providers.lookupContainer(seen.no);
@@ -296,16 +323,8 @@ function mountContainerReads(base, guard) {
   receiver.router.get(`${base}/containers/:id`, guard, requirePerm('stock', 'tracking'), async (req, res) => {
     const { data, error } = await supabase.from('shipment_containers').select('*').eq('id', req.params.id).single();
     if (error) return dbFail(res, error, 'Container tracking');
-    let links = [], units = [];
-    try {
-      const l = await supabase.from('container_units').select('container_id,unit_id').eq('container_id', data.id);
-      links = l.data || [];
-      if (links.length) {
-        const u = await supabase.from('vehicle_units').select('*').in('id', links.map(x => x.unit_id));
-        units = u.data || [];
-      }
-    } catch (_) { /* register not applied yet */ }
-    res.json(withUnits(data, links, units));
+    const { links, cars } = await linkedVehicles([data.id]);
+    res.json(withUnits(data, links, cars));
   });
 }
 mountContainerReads('/api/dashboard', requireAuth);
@@ -433,19 +452,23 @@ function mountContainerWrites(base, guard, who) {
     res.json({ ok: true, status: r.status, provider: providers.containerProviderName() });
   });
 
-  // Which vehicles are in the box.
+  // Which vehicles are in the box, by VIN. A car is linked by its chassis number
+  // rather than by a row id so the link survives the car being re-entered,
+  // renamed or moved between model rows — the VIN is the part that cannot change.
   receiver.router.post(`${base}/containers/:id/units`, guard, requirePerm('stock', 'tracking'), express.json(), async (req, res) => {
-    const unitId = Number(req.body && req.body.unit_id);
-    if (!(unitId > 0)) return res.status(400).json({ error: 'Pick a vehicle to add.' });
-    const { error } = await supabase.from('container_units')
-      .upsert({ container_id: Number(req.params.id), unit_id: unitId }, { onConflict: 'container_id,unit_id' });
+    const vin = normVin((req.body || {}).vin);
+    if (!vin) return res.status(400).json({ error: 'Pick a vehicle to add.' });
+    const { error } = await supabase.from('container_vehicles')
+      .upsert({ container_id: Number(req.params.id), vin, linked_by: who(req) }, { onConflict: 'container_id,vin' });
     if (error) return dbFail(res, error, 'Container tracking');
-    res.json({ ok: true });
+    res.json({ ok: true, vin });
   });
 
-  receiver.router.delete(`${base}/containers/:id/units/:unitId`, guard, requirePerm('stock', 'tracking'), async (req, res) => {
-    const { error } = await supabase.from('container_units').delete()
-      .eq('container_id', req.params.id).eq('unit_id', req.params.unitId);
+  receiver.router.delete(`${base}/containers/:id/units/:vin`, guard, requirePerm('stock', 'tracking'), async (req, res) => {
+    const vin = normVin(req.params.vin);
+    if (!vin) return res.status(400).json({ error: 'Which vehicle?' });
+    const { error } = await supabase.from('container_vehicles').delete()
+      .eq('container_id', req.params.id).eq('vin', vin);
     if (error) return dbFail(res, error, 'Container tracking');
     res.json({ ok: true });
   });
@@ -630,5 +653,5 @@ receiver.router.delete('/api/dashboard/containers/:id', requireAuth, async (req,
 
 // mapProviderPayload moved to tracking-providers.js with the rest of the vendor
 // plumbing; re-exported so callers and tests have one place to reach it from.
-module.exports = { containerBuildRow, mergeSynced, sanitizeMoves, webhookUpdates,
+module.exports = { containerBuildRow, mergeSynced, sanitizeMoves, webhookUpdates, withUnits,
   mapProviderPayload: providers.mapProviderPayload, providers };
