@@ -15,13 +15,17 @@ const STOCK_CSV_HEADERS = ['make', 'model', 'trim', 'price', 'units', 'notes'];
 
 // Individual physical cars held against a model row. Accepts the UI's array form
 // or a CSV cell like "VIN123:White:in_logistics | VIN124:Black:delivered".
-function parseStockUnits(val) {
+function parseStockUnits(val, allowed) {
+  // The statuses this save may write: whatever the Columns editor defines, or
+  // the built-ins when it defines nothing. Passed in rather than read here so
+  // one CSV import does not re-read the config for every row.
+  const keys = (Array.isArray(allowed) && allowed.length) ? allowed : ctx.PO_LINE_STATUS_KEYS;
   const one = u => {
     const built = {
       consignee:  String(u.consignee  ?? '').trim(),
       colour:     String(u.colour     ?? u.color ?? '').trim(),
       vin:        String(u.vin        ?? '').trim().toUpperCase(),
-      status:     ctx.PO_LINE_STATUS_KEYS.includes(u.status) ? u.status : 'send_to_supplier',
+      status:     keys.includes(u.status) ? u.status : 'send_to_supplier',
       price_list: Number(String(u.price_list ?? '').replace(/[^\d.]/g, '')) || 0,
       discounted: Number(String(u.discounted ?? '').replace(/[^\d.]/g, '')) || 0,
       logistics:  String(u.logistics  ?? '').trim(),
@@ -45,7 +49,16 @@ function parseStockUnits(val) {
   }).filter(u => u.vin || u.colour);
 }
 
-function stockBuildRow(body) {
+// columns.js publishes columnOptionKeys on the context; load order between
+// feature modules is not fixed, so resolve it per request and fall back to the
+// built-ins if it is not there.
+function allowedUnitStatuses() {
+  return ctx.columnOptionKeys
+    ? ctx.columnOptionKeys('stock', 'status', ctx.PO_LINE_STATUS_KEYS)
+    : Promise.resolve(ctx.PO_LINE_STATUS_KEYS);
+}
+
+function stockBuildRow(body, allowed) {
   const b = body || {};
   const make = String(b.make || '').trim();
   const model = String(b.model || '').trim();
@@ -53,7 +66,7 @@ function stockBuildRow(body) {
   if (!model) return { error: 'Model is required' };
   const priceNum = Number(String(b.price ?? '').replace(/[^\d.]/g, ''));
 
-  const units = parseStockUnits(b.units);
+  const units = parseStockUnits(b.units, allowed);
   // Every car has its own VIN, so the cars themselves are the count. A typed-in
   // total and per-colour tallies were summaries nobody could trace back to a
   // vehicle; quantity is now derived and the client no longer sends one.
@@ -126,7 +139,7 @@ mountStockReadRoute('/api/employee', requireEmployeeAuth);
 // the VINs with them.
 function mountStockWriteRoutes(base, guard, who) {
   receiver.router.post(`${base}/stock`, guard, requirePerm('stock', 'create'), express.json(), async (req, res) => {
-    const { row, error: verr } = stockBuildRow(req.body);
+    const { row, error: verr } = stockBuildRow(req.body, await allowedUnitStatuses());
     if (verr) return res.status(400).json({ error: verr });
     row.created_by = who(req);
     const { data, error } = await stockWrite(row, null);
@@ -135,7 +148,7 @@ function mountStockWriteRoutes(base, guard, who) {
   });
 
   receiver.router.put(`${base}/stock/:id`, guard, requirePerm('stock', 'edit'), express.json(), async (req, res) => {
-    const { row, error: verr } = stockBuildRow(req.body);
+    const { row, error: verr } = stockBuildRow(req.body, await allowedUnitStatuses());
     if (verr) return res.status(400).json({ error: verr });
     row.updated_at = new Date().toISOString();
     const { data, error } = await stockWrite(row, req.params.id);
@@ -174,8 +187,9 @@ receiver.router.post('/api/dashboard/stock/bulk', requireAuth, upload.single('fi
   const rows = parseCSV(req.file.buffer.toString('utf-8'));
   if (!rows.length) return res.status(400).json({ error: 'CSV has no data rows' });
   const inserts = [], errors = [];
+  const allowed = await allowedUnitStatuses();
   rows.forEach((row, i) => {
-    const { row: built, error } = stockBuildRow(row);
+    const { row: built, error } = stockBuildRow(row, allowed);
     if (error) { errors.push(`Row ${i + 2}: ${error}`); return; }
     built.created_by = 'dashboard_bulk';
     inserts.push(built);

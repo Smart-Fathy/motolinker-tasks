@@ -112,4 +112,39 @@ receiver.router.put('/api/employee/columns/:entity', requireEmployeeAuth, expres
   writeColumns(req.params.entity, req.body, res);
 });
 
-module.exports = { ENTITY_COLUMNS, sanitizeColumns };
+// ── What a select column will actually accept on save ───────────────────────
+// The admin defines a select's options here, but every save path validated the
+// value against the four hard-coded built-ins instead. So a status added in the
+// Columns editor — "In house", "Pending", "In customs clearance" — was accepted
+// by the form, silently rewritten to `send_to_supplier` on the way to the
+// database, and came back as something else entirely. No error, no warning.
+//
+// The configured options ARE the vocabulary. The built-ins stay valid on top of
+// them because rows saved before a rename still carry the old key, and editing
+// one must not quietly restate its status.
+//
+// Read at save time rather than cached: an admin who adds an option expects to
+// use it on the next save, not after a TTL. Reads are untouched, so this is one
+// small query on write only.
+async function columnOptionKeys(entity, columnKey, builtins) {
+  const base = Array.isArray(builtins) ? builtins : [];
+  const ent = ENTITY_COLUMNS[entity];
+  if (!ent) return base;
+  try {
+    const { data } = await supabase.from('quotation_settings').select('value').eq('key', ent.kvKey).single();
+    const cols = data && data.value ? JSON.parse(data.value) : null;
+    if (!Array.isArray(cols)) return base;
+    const col = cols.find(c => c && c.key === columnKey);
+    const opts = (col && Array.isArray(col.options)) ? col.options : [];
+    return [...new Set([...base, ...opts.map(o => String((o && o.key) || '')).filter(Boolean)])];
+  } catch (_) {
+    // A missing row, malformed JSON or an unreachable database must neither
+    // widen nor narrow what saves — fall back to the built-ins, the old rule.
+    return base;
+  }
+}
+// Published on the context because the feature modules that need it load in no
+// fixed order relative to this one.
+ctx.columnOptionKeys = columnOptionKeys;
+
+module.exports = { ENTITY_COLUMNS, sanitizeColumns, columnOptionKeys };
