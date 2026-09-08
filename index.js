@@ -1967,6 +1967,7 @@ Object.assign(ctx, require('./src/routes/calendar-feed'));
 // so they mount together, after everything they reference (sales, POs, stock).
 Object.assign(ctx, require('./src/routes/payments'));
 Object.assign(ctx, require('./src/routes/containers'));
+Object.assign(ctx, require('./src/routes/inventory-track'));
 // ─── Lead follow-up reminders ─────────────────────────────────────────────────
 // Fires within ~5 minutes of a follow-up's due time: notifies the assigned
 // employee (or admin when unassigned) once per follow-up.
