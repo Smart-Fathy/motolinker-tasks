@@ -417,3 +417,5 @@ POST /api/webhooks/terminal49/:secret
 POST /api/webhooks/safecube/:secret
 DELETE /api/dashboard/containers/:id
 GET /api/inventory/track
+POST /api/inventory/verify-owner
+POST /api/inventory/vehicle
