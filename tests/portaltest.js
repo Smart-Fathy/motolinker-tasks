@@ -151,6 +151,58 @@ const VIN = 'LS6CME0P7TK504025';
     /createHash\('sha256'\)/.test(SRC) && !/hits\.get\(String\(header/.test(SRC));
   c('the token is compared in constant time', /timingSafeEqual/.test(SRC));
 
+  // ── A placeholder is not a credential ────────────────────────────────────
+  // normalizePhone canonicalises; it does not validate. "TBC 0" reduces to "0",
+  // and the old gate rejected only the empty string — so a phone field holding
+  // a placeholder became a one-guess secret, and the whole keyspace of short
+  // strings was brute-forceable inside the rate limit.
+  reset();
+  STOCK[0].units[0].customer_id = 77;
+  for (const junk of ['TBC 0', '0', 'ext 12', 'no phone - 0']) {
+    CUSTOMER = { phone: junk, phone_norm: junk.replace(/\D/g, '') };
+    const submitted = junk.replace(/\D/g, '');
+    eq(`a stored placeholder ${JSON.stringify(junk)} is not proof of ownership`,
+      (await verify({ vin: VIN, phone: submitted })).body, { match: false });
+  }
+  // …and the same on the number-written-on-the-car path, which is worse: that
+  // field will be a free-text Columns-editor column with no format check.
+  reset();
+  STOCK[0].units[0].phone = 'TBC 0';
+  eq('a placeholder on the car itself is not proof either',
+    (await verify({ vin: VIN, phone: '0' })).body, { match: false });
+  // A real number still works, including the two that are legitimately not
+  // Egyptian mobiles — the floor is nine digits, not eleven.
+  reset();
+  STOCK[0].units[0].customer_id = 77;
+  for (const [what, num] of [['an Egyptian mobile', '01000500577'],
+                             ['a Cairo landline', '0244828359'],
+                             ['a foreign number', '+218917847237']]) {
+    CUSTOMER = { phone: num, phone_norm: null };
+    eq(`${what} still proves ownership`, (await verify({ vin: VIN, phone: num })).body, { match: true });
+  }
+  reset();
+
+  // ── One token is one rate-limit budget, however it is spelled ────────────
+  // tokenOk strips a case-insensitive "Bearer" and trims; the bucket used to
+  // hash the RAW header. Every spelling authenticated and every spelling got
+  // its own budget, so the limit bounded nobody who wanted to get around it.
+  {
+    const SRCP = fs.readFileSync('src/routes/inventory-portal.js', 'utf8');
+    const grab = n => { const i = SRCP.indexOf(n); let j = SRCP.indexOf('{', i), d = 0, k = j;
+      for (; k < SRCP.length; k++) { if (SRCP[k] === '{') d++; else if (SRCP[k] === '}') { d--; if (!d) break; } }
+      return SRCP.slice(i, k + 1); };
+    const crypto = require('crypto');
+    const fns = new Function('crypto',
+      `${grab('const normToken')}\n${grab('function tokenOk')}\n${grab('const tokenBucket')}\nreturn {tokenOk, tokenBucket};`)(crypto);
+    const spellings = [`Bearer ${TOKEN}`, `bearer ${TOKEN}`, `BEARER ${TOKEN}`,
+      `Bearer  ${TOKEN}`, `Bearer\t${TOKEN}`, TOKEN, `${TOKEN} `, `${TOKEN}   `];
+    c('every spelling of the token still authenticates', spellings.every(h => fns.tokenOk(h)));
+    eq('…and they all share ONE rate-limit budget',
+      new Set(spellings.map(h => fns.tokenBucket(h))).size, 1);
+    c('a different token gets a different budget',
+      fns.tokenBucket(`Bearer ${'z'.repeat(64)}`) !== fns.tokenBucket(`Bearer ${TOKEN}`));
+  }
+
   // ── The two customer-facing endpoints cannot drift apart ─────────────────
   // A buyer reading "In transit" on the public tracker and something else on
   // their own portal page has caught us contradicting ourselves.

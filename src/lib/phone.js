@@ -30,4 +30,18 @@ function normalizePhone(raw) {
   return d;
 }
 
-module.exports = { normalizePhone };
+// Canonicalising is not validating, and the customer portal uses a stored
+// number as a credential — it proves ownership of a car by comparing what the
+// visitor typed against what is on file. normalizePhone keeps whatever digits
+// it found, so a placeholder like "TBC 0" or "ext 12" reduces to "0" or "12",
+// and a one-character secret is not a secret.
+//
+// The floor is nine digits rather than eleven so the numbers that legitimately
+// are not Egyptian mobiles still count: a Cairo landline is ten (0244828359)
+// and foreign numbers on file run to twelve (+218…). Fifteen is E.164's own
+// ceiling.
+function isDiallablePhone(v) {
+  return /^[0-9]{9,15}$/.test(String(v || ''));
+}
+
+module.exports = { normalizePhone, isDiallablePhone };

@@ -18,7 +18,7 @@ const crypto = require('crypto');
 const ctx = require('../ctx');
 const { express, receiver, supabase } = ctx.need('express', 'receiver', 'supabase');
 const { normVin } = require('../lib/vehicles');
-const { normalizePhone } = require('../lib/phone');
+const { normalizePhone, isDiallablePhone } = require('../lib/phone');
 const {
   customerStatus, findCarByVin, shipmentForVin, arrivalDate, lastUpdated, modelName,
 } = require('../lib/customer-view');
@@ -28,10 +28,16 @@ const VIN_RE = /^[A-HJ-NPR-Z0-9]{17}$/;
 // ─── Auth ───────────────────────────────────────────────────────────────────
 // A different secret from the public tracker's on purpose. Unset means not
 // commissioned: refuse everything rather than serve a name to whoever asks.
+// The token as it is actually compared. Everything downstream must use THIS
+// string, not the raw header: `Bearer x`, `bearer x`, `BEARER  x` and `x  ` are
+// one secret spelled five ways, and treating them as five would hand a caller a
+// fresh rate-limit budget per spelling.
+const normToken = header => String(header || '').replace(/^Bearer\s+/i, '').trim();
+
 function tokenOk(header) {
   const want = process.env.INVENTORY_PORTAL_TOKEN || '';
   if (!want) return false;
-  const given = String(header || '').replace(/^Bearer\s+/i, '').trim();
+  const given = normToken(header);
   const a = Buffer.from(given), b = Buffer.from(want);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
@@ -54,8 +60,12 @@ function rateLimited(key) {
 }
 // Bucketed by a hash of the token, never the token itself — this map is in
 // memory and its keys end up in heap dumps.
+// One bucket per secret, not per spelling of it. Hashing the raw header gave a
+// token holder unlimited buckets — the 240/min budget was not a limit at all,
+// and the flood of unique keys also defeated the prune below, since it only
+// evicts entries that have gone stale.
 const tokenBucket = header =>
-  crypto.createHash('sha256').update(String(header || '')).digest('hex').slice(0, 16);
+  crypto.createHash('sha256').update(normToken(header)).digest('hex').slice(0, 16);
 
 // ─── Who owns this car ──────────────────────────────────────────────────────
 // The phone numbers that count as proof of ownership for one vehicle.
@@ -75,8 +85,12 @@ const tokenBucket = header =>
 async function ownerPhones(unit) {
   const out = new Set();
 
+  // isDiallablePhone, not truthiness: a placeholder typed into a phone field
+  // reduces to "0" or "12", and admitting that would make the whole keyspace of
+  // short strings a live credential. A value too short to dial fails closed,
+  // which costs a phone call to the account manager — the right direction.
   const direct = normalizePhone(unit.phone || unit.cf_phone || '');
-  if (direct) out.add(direct);
+  if (isDiallablePhone(direct)) out.add(direct);
 
   const id = parseInt(unit.customer_id, 10);
   if (Number.isFinite(id) && id > 0) {
@@ -89,7 +103,7 @@ async function ownerPhones(unit) {
         // matches. The raw `phone` is the fact; phone_norm is a derived value.
         for (const p of [data.phone_norm, data.phone]) {
           const n = normalizePhone(p);
-          if (n) out.add(n);
+          if (isDiallablePhone(n)) out.add(n);
         }
       }
     } catch (_) { /* an unreachable customers table must fail closed, not open */ }
@@ -110,7 +124,7 @@ receiver.router.post('/api/inventory/verify-owner', express.json({ limit: '8kb' 
   const body = req.body || {};
   const vin = normVin(body.vin);
   const phone = normalizePhone(body.phone);
-  if (!VIN_RE.test(vin) || !phone) return res.json(no);
+  if (!VIN_RE.test(vin) || !isDiallablePhone(phone)) return res.json(no);
 
   let found;
   try {
