@@ -768,14 +768,8 @@ function normalizeLeadDate(raw) {
 
 // Canonicalize a phone number for duplicate detection (Egypt-aware): digits only,
 // drop 0020 / leading 20 country code -> local 01XXXXXXXXX form.
-function normalizePhone(raw) {
-  let d = String(raw || '').replace(/\D/g, '');
-  if (!d) return '';
-  if (d.startsWith('0020')) d = d.slice(4);
-  else if (d.startsWith('20') && d.length === 12) d = '0' + d.slice(2);
-  if (d.length === 10 && d.startsWith('1')) d = '0' + d;
-  return d;
-}
+// One implementation, shared with the customer portal — see src/lib/phone.js.
+const { normalizePhone } = require('../lib/phone');
 
 // Parse one budget token ("1700000", "1.7m", "500k", "1,700,000") -> integer or null.
 function parseBudgetPart(s) {
