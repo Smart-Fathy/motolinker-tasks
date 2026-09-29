@@ -27,7 +27,7 @@ const renderQuotationPdf = (...a) => ctx.renderQuotationPdf(...a);
 const { BRAND_LOGO_URL, EXPENSE_CATEGORIES, PAYMENT_KINDS, PAYMENT_METHODS, PAYMENT_DIRECTIONS,
   CURRENCIES, BASE_CURRENCY } = require('../lib/constants');
 const fin = require('../lib/finance');
-const { geminiCall, geminiConfigured, geminiState, detectLang, parseAiJson } = require('../lib/gemini');
+const { geminiCall, geminiConverse, geminiConfigured, geminiState, detectLang, parseAiJson } = require('../lib/gemini');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MISSING_RE = /(does not exist|could not find the table|schema cache)/i;
@@ -171,40 +171,10 @@ function runTool(name, args, data, pack) {
   return { error: 'Unknown tool ' + name };
 }
 
-// One conversation with the model, tools included. Bounded: at most four tool
-// rounds, then one last call that must answer in words. Returns
-// { ok:true, text, model, tool_calls } or the failing geminiCall result.
-async function converse({ systemText, history, message, data, pack, generationConfig }) {
-  const contents = [];
-  for (const h of (Array.isArray(history) ? history.slice(-8) : [])) {
-    if (!h || !h.content) continue;
-    const role = (h.role === 'bot' || h.role === 'model' || h.role === 'assistant') ? 'model' : 'user';
-    contents.push({ role, parts: [{ text: String(h.content).slice(0, 2000) }] });
-  }
-  contents.push({ role: 'user', parts: [{ text: String(message).slice(0, 4000) }] });
-  const gen = { temperature: 0.2, maxOutputTokens: 1500, ...(generationConfig || {}) };
-  const toolCalls = [];
-  let res = null;
-  for (let round = 0; round < 4; round++) {
-    res = await geminiCall({ systemText, contents, tools: TOOLS, toolConfig: { functionCallingConfig: { mode: 'AUTO' } }, generationConfig: gen });
-    if (!res.ok) return res;
-    const calls = (res.parts || []).filter(p => p && p.functionCall);
-    if (!calls.length) return { ok: true, text: res.text, model: res.model, tool_calls: toolCalls };
-    // The model's turn goes back verbatim (it may carry a thought signature),
-    // then one functionResponse per call, in the order they were made.
-    contents.push({ role: 'model', parts: res.parts });
-    contents.push({
-      role: 'user',
-      parts: calls.map(p => {
-        const { name, args } = p.functionCall;
-        const result = runTool(name, args, data, pack);
-        toolCalls.push({ name, args: args || {}, result });
-        return { functionResponse: { name, response: { result } } };
-      }),
-    });
-  }
-  res = await geminiCall({ systemText, contents, tools: TOOLS, toolConfig: { functionCallingConfig: { mode: 'NONE' } }, generationConfig: gen });
-  return res.ok ? { ok: true, text: res.text, model: res.model, tool_calls: toolCalls } : res;
+// One conversation with the finance tools; the loop itself is the shared one.
+function converse({ systemText, history, message, data, pack, generationConfig }) {
+  return geminiConverse({ systemText, history, message, tools: TOOLS, generationConfig,
+    runTool: (name, args) => runTool(name, args, data, pack) });
 }
 
 // Per-tab insight cards. JSON mode, no tools (the two cannot be combined), so
