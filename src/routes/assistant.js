@@ -39,13 +39,13 @@ const columnOptionKeys = (...a) => ctx.columnOptionKeys(...a);
 const { LEADS_ENUM_DEFAULTS } = require('../lib/constants');
 const S = require('../lib/sections');
 const fin = require('../lib/finance');
-const { geminiCall, geminiConverse, geminiConfigured, geminiState, detectLang, parseAiJson } = require('../lib/gemini');
+const { aiCall, aiConverse, aiConfigured, aiState, detectLang, parseAiJson } = require('../lib/llm');
 
 const today = () => new Date().toISOString().slice(0, 10);
 const dayShift = (day, n) => new Date(Date.parse(day + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 const BUSY = {
-  en: 'The assistant is busy right now (free-tier rate limit) — please try again in a few seconds.',
-  ar: 'المساعد مشغول حالياً (تجاوز حد الاستخدام المجاني) — من فضلك حاول مرة أخرى بعد بضع ثوانٍ.',
+  en: 'The assistant is busy right now — please try again in a few seconds.',
+  ar: 'المساعد مشغول حالياً — من فضلك حاول مرة أخرى بعد بضع ثوانٍ.',
 };
 const langOf = (v, text) => (v === 'ar' || v === 'en') ? v : detectLang(text || '');
 const ACCOUNTING_CHIPS = { en: ['Summarise this month', 'Who should we chase first?', 'Forecast next month\'s cash'], ar: ['لخّص هذا الشهر', 'بمن نبدأ التحصيل؟'] };
@@ -266,16 +266,16 @@ async function insightsFor(section, req, lang, refresh) {
   const hit = _aiCache.get(key);
   if (hit && !refresh && Date.now() - hit.at < AI_TTL) return { ...hit.payload, cached: true };
   const { pack } = await packFor(section, req);
-  const res = await geminiCall({
+  const res = await aiCall({
     systemText: systemPrompt({ lang, section, pack: S.trimSectionPack(pack), who: whoIs(req), act: false, task: S.SECTIONS[section].task }),
-    contents: [{ role: 'user', parts: [{ text: lang === 'ar' ? 'حلّل هذا القسم.' : 'Analyse this section.' }] }],
-    generationConfig: { temperature: 0.2, maxOutputTokens: 1500, responseMimeType: 'application/json' },
+    messages: [{ role: 'user', content: lang === 'ar' ? 'حلّل هذا القسم.' : 'Analyse this section.' }],
+    json: true, generationConfig: { temperature: 0.2, maxOutputTokens: 1500 },
   });
   if (!res.ok) return { ai: true, ok: false, error: res.error, status: res.status, busy: res.status === 429 ? BUSY[lang] : undefined };
   const parsed = parseAiJson(res.text);
   if (!parsed || typeof parsed !== 'object') return { ai: true, ok: false, error: 'The model did not return JSON', model: res.model };
   const list = v => (Array.isArray(v) ? v.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).slice(0, 6) : []);
-  const payload = { ai: true, ok: true, model: res.model, generated_at: new Date().toISOString(), section, label: S.SECTIONS[section].label, lang,
+  const payload = { ai: true, ok: true, model: res.model, provider: res.provider, generated_at: new Date().toISOString(), section, label: S.SECTIONS[section].label, lang,
     insights: { highlights: list(parsed.highlights), risks: list(parsed.risks), suggestions: list(parsed.suggestions) }, extra: {} };
   if (Array.isArray(parsed.call_list)) payload.extra.call_list = parsed.call_list.slice(0, 6).map(x => ({ customer_id: Number(x.customer_id) || null, name: String(x.name || ''), why: String(x.why || '') }));
   _aiCache.set(key, { at: Date.now(), payload });
@@ -405,12 +405,12 @@ function mountAssistant(base, guard) {
     const sections = Object.entries(S.SECTIONS).filter(([k]) => allowed(k, emp))
       .map(([k, s]) => ({ key: k, label: s.label, chips: s.chips, actions: canAct(emp) ? s.actions : [] }));
     if (!emp || empCan(emp, 'accounting', 'ai')) sections.push({ key: 'accounting', label: 'Accounting', chips: ACCOUNTING_CHIPS, actions: [] });
-    res.json({ ai: geminiConfigured(), act: canAct(emp), sections, pages: S.PAGE_TO_SECTION });
+    res.json({ ai: aiConfigured(), act: canAct(emp), sections, pages: S.PAGE_TO_SECTION });
   });
 
   receiver.router.get(`${base}/ai/status`, guard, chat, (_req, res) => {
-    if (!geminiConfigured()) return res.json({ ai: false, ok: false });
-    res.json({ ai: true, ...geminiState() });
+    if (!aiConfigured()) return res.json({ ai: false, ok: false });
+    res.json({ ai: true, ...aiState() });
   });
 
   // The pack itself — what the model is told. Handy for checking a figure.
@@ -427,8 +427,8 @@ function mountAssistant(base, guard) {
     try {
       const b = req.body || {};
       const section = resolveSection(b.section || b.page, req.employee || null);
-      if (section === 'accounting') return res.json({ ai: geminiConfigured(), ok: false, section, note: 'The Accounting page carries its own insight cards.' });
-      if (!geminiConfigured()) return res.json({ ai: false, section });
+      if (section === 'accounting') return res.json({ ai: aiConfigured(), ok: false, section, note: 'The Accounting page carries its own insight cards.' });
+      if (!aiConfigured()) return res.json({ ai: false, section });
       res.json(await insightsFor(section, req, langOf(b.lang, '') || 'en', b.refresh === true));
     } catch (e) { fail(res, e, 'insights'); }
   });
@@ -441,7 +441,7 @@ function mountAssistant(base, guard) {
       const emp = req.employee || null;
       const section = resolveSection(b.section || b.page, emp);
       const lang = langOf(b.lang, message);
-      if (!geminiConfigured()) return res.json({ ai: false, section });
+      if (!aiConfigured()) return res.json({ ai: false, section });
       if (section === 'accounting') {
         if (typeof ctx.accountingChat !== 'function') return res.json({ ai: true, ok: false, error: 'The finance assistant is not loaded' });
         const out = await ctx.accountingChat({ message, history: b.history, lang, tab: b.tab, period: b.period, from: b.from, to: b.to });
@@ -450,7 +450,7 @@ function mountAssistant(base, guard) {
       const { pack } = await packFor(section, req);
       const trimmed = S.trimSectionPack(pack);
       const act = canAct(emp);
-      const out = await geminiConverse({
+      const out = await aiConverse({
         systemText: systemPrompt({ lang, section, pack: trimmed, who: whoIs(req), act }),
         history: b.history, message, tools: toolsFor(section, act),
         runTool: (name, args) => runTool(section, pack, name, args),
@@ -458,7 +458,7 @@ function mountAssistant(base, guard) {
       if (!out.ok) return res.json({ ai: true, ok: false, section, error: out.error, status: out.status, busy: out.status === 429 ? BUSY[lang] : undefined });
       const proposals = (out.tool_calls || []).filter(c => c.name === 'propose_action' && c.result && c.result.proposed)
         .map(c => ({ action: c.result.action, label: c.result.label, description: c.result.description }));
-      res.json({ ai: true, ok: true, section, label: S.SECTIONS[section].label, answer: out.text, model: out.model, tool_calls: out.tool_calls, proposals, lang });
+      res.json({ ai: true, ok: true, section, label: S.SECTIONS[section].label, answer: out.text, model: out.model, provider: out.provider, tool_calls: out.tool_calls, proposals, lang });
     } catch (e) { fail(res, e, 'chat'); }
   });
 

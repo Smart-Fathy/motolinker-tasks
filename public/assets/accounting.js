@@ -319,7 +319,7 @@
       const r = await api('/api/dashboard/accounting/ai/insights', { method: 'POST',
         body: JSON.stringify({ tab, ...rangeBody(), lang: _acct.lang === 'auto' ? undefined : _acct.lang, refresh: !!refresh }) });
       const d = await acctJson(r);
-      if (d.ai === false) { body.innerHTML = '<div class="acct-empty">AI not configured — set GEMINI_API_KEY on the server to turn on insights, reports and the finance assistant.</div>'; if (st) st.textContent = 'AI off'; return; }
+      if (d.ai === false) { body.innerHTML = '<div class="acct-empty">AI not configured — set CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN (or GEMINI_API_KEY) on the server to turn on insights, reports and the finance assistant.</div>'; if (st) st.textContent = 'AI off'; return; }
       if (!d.ok) { body.innerHTML = `<div class="acct-empty">${h(d.busy || d.error || 'The AI could not answer just now.')}</div>`; if (st) st.textContent = d.status === 429 ? 'busy' : 'error'; return; }
       if (st) st.textContent = (d.cached ? 'cached · ' : '') + (d.model || 'AI') + ' · ' + String(d.generated_at || '').slice(11, 16);
       const ins = d.insights || {};
@@ -647,7 +647,7 @@
     if (st) st.textContent = 'Computing the figures and asking the AI to write the analysis… this takes a few seconds.';
     try {
       const d = await acctJson(await api('/api/dashboard/accounting/reports', { method: 'POST', body: JSON.stringify(body) }));
-      if (d.ai === false) toast('Report saved with figures only — set GEMINI_API_KEY for the AI narrative');
+      if (d.ai === false) toast('Report saved with figures only — configure the AI provider for the narrative');
       else if (d.ok === false) toast(d.busy || ('The AI could not write the narrative: ' + (d.error || 'unknown error')));
       else toast('Report generated');
       const p = document.getElementById('acct-pane-reports'); if (p) p.dataset.loadedFor = '';
@@ -688,7 +688,7 @@
           ${kpi('Cash in', cash.in, '#6dd8a4')}${kpi('Cash out', cash.out, '#e57373')}${kpi('Revenue (cash)', rev.cash, '#c9a35e')}${kpi('Gross margin', gm.amount, N(gm.amount) < 0 ? '#e57373' : '#6dd8a4', `${N(gm.pct)}%`)}
           ${kpi('Expenses', opex.total, '#a78bfa')}${kpi('Net result', p.net_result, N(p.net_result) < 0 ? '#e57373' : '#6dd8a4')}${kpi('Receivables', recv.outstanding, '#e6a850', `EGP ${money(recv.overdue)} overdue`)}
         </div>
-        <div class="acct-narr" dir="${r.lang === 'ar' ? 'rtl' : 'ltr'}">${String(r.narrative || '').trim() ? mdHtml(r.narrative) : '<p class="acct-empty">No AI narrative was generated for this report (GEMINI_API_KEY was not set). The figures above stand on their own.</p>'}</div>
+        <div class="acct-narr" dir="${r.lang === 'ar' ? 'rtl' : 'ltr'}">${String(r.narrative || '').trim() ? mdHtml(r.narrative) : '<p class="acct-empty">No AI narrative was generated for this report (no AI provider was configured). The figures above stand on their own.</p>'}</div>
       </div>`;
       box.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) { box.innerHTML = `<div class="error-msg">${h(e.message)}</div>`; }
@@ -767,9 +767,9 @@
     if (!el) return;
     try {
       const d = await acctJson(await api('/api/dashboard/accounting/ai/status'));
-      if (!d.ai) { el.textContent = '● AI not configured — set GEMINI_API_KEY on the server'; el.style.color = '#e6a850'; return; }
-      if (d.ok) { el.textContent = '● Connected (' + (d.model || 'Gemini') + ') · reading ' + rangeLabel(); el.style.color = '#6dd8a4'; }
-      else if (d.status === 429) { el.textContent = '● Busy — free-tier rate limit, retry shortly'; el.style.color = '#e6a850'; }
+      if (!d.ai) { el.textContent = '● AI not configured — set CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN (or GEMINI_API_KEY) on the server'; el.style.color = '#e6a850'; return; }
+      if (d.ok) { el.textContent = '● Connected (' + String(d.model || 'AI').replace(/^@cf\/[^/]+\//, '') + ') · reading ' + rangeLabel(); el.style.color = '#6dd8a4'; }
+      else if (d.status === 429) { el.textContent = '● Busy — out of capacity, retry shortly'; el.style.color = '#e6a850'; }
       else if (d.ok === false) { el.textContent = '● Key set but failing: ' + (d.error || 'unknown error'); el.style.color = '#e6a850'; }
       else { el.textContent = '● Ready · reading ' + rangeLabel(); el.style.color = 'var(--muted,#9a958a)'; }
     } catch (_) { el.textContent = ''; }
@@ -826,7 +826,7 @@
       const d = await acctJson(r);
       typing.remove();
       let ans;
-      if (d.ai === false) ans = 'The finance AI is not configured. Set GEMINI_API_KEY on the server and I will read the figures for you.';
+      if (d.ai === false) ans = 'The finance AI is not configured. Set CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN (or GEMINI_API_KEY) on the server and I will read the figures for you.';
       else if (d.ok === false) ans = d.busy || ('I could not answer just now: ' + (d.error || 'unknown error'));
       else ans = d.answer || 'I have nothing to add.';
       acctAiAppend(ans, 'bot', d.ok ? d : null);

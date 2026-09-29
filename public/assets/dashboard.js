@@ -5392,8 +5392,8 @@ async function helpRefreshStatus() {
   try {
     const d = await apiFetch('/api/dashboard/help/status').then(r => r.json());
     el.style.display = 'block'; el.title = '';
-    if (d.ai && d.ok) { el.textContent = '● AI connected (' + (d.model || 'Gemini') + ')'; el.style.color = '#6dd8a4'; }
-    else if (d.ai && d.status === 429) { el.textContent = '● AI busy — free-tier rate limit, retry shortly'; el.style.color = '#e6a850'; el.title = d.error || ''; }
+    if (d.ai && d.ok) { el.textContent = '● AI connected (' + String(d.model || 'AI').replace(/^@cf\/[^/]+\//, '') + (d.provider ? ' via ' + d.provider : '') + ')'; el.style.color = '#6dd8a4'; }
+    else if (d.ai && d.status === 429) { el.textContent = '● AI busy — out of capacity, retry shortly'; el.style.color = '#e6a850'; el.title = d.error || ''; }
     else if (d.ai && d.ok === false) { el.textContent = '● AI key set but failing — tap for details'; el.style.color = '#e6a850'; el.title = d.error || 'unknown error'; }
     else if (d.ai) { el.textContent = '● AI ready — send a message to test'; el.style.color = 'var(--muted,#9a958a)'; }
     else { el.textContent = '● AI off — answering from the built-in guide'; el.style.color = 'var(--muted,#9a958a)'; }

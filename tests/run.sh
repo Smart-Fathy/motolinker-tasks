@@ -52,6 +52,7 @@ run availtest   node tests/availtest.js
 run logistics   node tests/logistics.js
 run accttest    node tests/accttest.js
 run assisttest  node tests/assisttest.js
+run llmtest     node tests/llmtest.js
 run tracktest   node tests/tracktest.js
 run portaltest  node tests/portaltest.js
 run envexample  node tests/envexample.js

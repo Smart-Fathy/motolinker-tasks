@@ -616,7 +616,7 @@ const REPORT_LABELS = {
     month: 'Month', in: 'In', out: 'Out', net_col: 'Net', opex_cat: 'Expenses by category', category: 'Category', amount: 'Amount', count: 'Count',
     aging: 'Receivables aging', bucket: 'Bucket', sales: 'Sales', top_recv: 'Largest open balances', client: 'Client', vehicle: 'Vehicle',
     agreed: 'Agreed', received: 'Received', outstanding: 'Outstanding', due: 'Due', days: 'Days overdue', top_clients: 'Top paying clients',
-    no_ai: 'No AI narrative was generated for this report (GEMINI_API_KEY was not set). The figures above stand on their own.',
+    no_ai: 'No AI narrative was generated for this report (no AI provider was configured). The figures above stand on their own.',
     footer: 'All amounts in EGP unless stated. Figures are company-wide and were computed from the ledger, the sales register, purchase orders and the expenses table at the moment the report was generated.' },
   ar: { title: 'التقرير المالي', period: 'الفترة', generated: 'تاريخ الإصدار', cash_in: 'النقد الوارد', cash_out: 'النقد الصادر', net_cash: 'صافي النقد',
     revenue: 'الإيرادات (نقدي)', cogs: 'تكلفة السيارات (المورد، الشحن، الجمارك)', gross: 'هامش الربح الإجمالي', opex: 'المصروفات التشغيلية',
@@ -624,7 +624,7 @@ const REPORT_LABELS = {
     month: 'الشهر', in: 'وارد', out: 'صادر', net_col: 'الصافي', opex_cat: 'المصروفات حسب الفئة', category: 'الفئة', amount: 'المبلغ', count: 'العدد',
     aging: 'أعمار المستحقات', bucket: 'الشريحة', sales: 'المبيعات', top_recv: 'أكبر الأرصدة المفتوحة', client: 'العميل', vehicle: 'السيارة',
     agreed: 'المتفق عليه', received: 'المحصّل', outstanding: 'المتبقي', due: 'الاستحقاق', days: 'أيام التأخير', top_clients: 'أكثر العملاء سداداً',
-    no_ai: 'لم يتم إنشاء تحليل بالذكاء الاصطناعي لهذا التقرير (مفتاح GEMINI_API_KEY غير مضبوط). الأرقام أعلاه كافية بذاتها.',
+    no_ai: 'لم يتم إنشاء تحليل بالذكاء الاصطناعي لهذا التقرير (لم يُضبط أي مزوّد ذكاء اصطناعي). الأرقام أعلاه كافية بذاتها.',
     footer: 'جميع المبالغ بالجنيه المصري ما لم يُذكر غير ذلك. الأرقام على مستوى الشركة وحُسبت من دفتر المدفوعات وسجل المبيعات وأوامر الشراء وجدول المصروفات لحظة إصدار التقرير.' },
 };
 function buildFinanceReportHtml(row, opts) {
