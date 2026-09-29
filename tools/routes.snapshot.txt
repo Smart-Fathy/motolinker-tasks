@@ -454,3 +454,15 @@ POST /api/employee/accounting/reports/:id/pdf
 GET /api/employee/accounting/ai/status
 POST /api/employee/accounting/ai/insights
 POST /api/employee/accounting/ai/chat
+GET /api/dashboard/ai/sections
+GET /api/dashboard/ai/status
+GET /api/dashboard/ai/context
+POST /api/dashboard/ai/insights
+POST /api/dashboard/ai/chat
+POST /api/dashboard/ai/actions/run
+GET /api/employee/ai/sections
+GET /api/employee/ai/status
+GET /api/employee/ai/context
+POST /api/employee/ai/insights
+POST /api/employee/ai/chat
+POST /api/employee/ai/actions/run

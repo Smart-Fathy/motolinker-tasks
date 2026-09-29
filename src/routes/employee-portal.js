@@ -96,6 +96,10 @@ const DEFAULT_PERMISSIONS = {
   issues: false,
   // Finance — the whole company's money, so granted deliberately, never by default
   accounting: false,
+  // The AI assistant. On for everyone: it reads only what the person's other
+  // permissions already let them see, and every action it proposes is confirmed
+  // by a person and gated by the permission the manual path needs.
+  assistant: true,
   // Legacy flat flag, kept because normEmpPerms still reads it — see PERM_LEGACY
   viewAllRequests: false,
 };
@@ -176,6 +180,12 @@ const PERM_ACTIONS = {
   // is CSV and PDF. `ai` is the finance assistant: insights, chat and writing a
   // report's narrative, each of which spends the Gemini quota.
   accounting: ['view', 'edit', 'export', 'ai'],
+  // The assistant on every page. `chat` is the drawer and the insight cards —
+  // reading and suggesting; `act` lets it propose actions (a follow-up, a task,
+  // a status change) that the person confirms. Each action is ALSO gated by the
+  // section permission the manual path needs (leads.edit, tasks.create, …), so
+  // `act` widens nothing on its own.
+  assistant: ['chat', 'act'],
   // System
   issues: ['view', 'resolve'],
 };
@@ -276,7 +286,7 @@ const PERM_GROUPS = [
   { group: 'Tools',      sections: ['quotation'] },
   { group: 'CRM',        sections: ['leads', 'deals', 'reports'] },
   { group: 'Finance',    sections: ['accounting'] },
-  { group: 'System',     sections: ['issues'] },
+  { group: 'System',     sections: ['issues', 'assistant'] },
 ];
 const PERM_SECTION_LABELS = {
   requests: 'Requests', tasks: 'My Tasks', hours: 'Hours', availability: 'Availability',
@@ -286,7 +296,7 @@ const PERM_SECTION_LABELS = {
   suppliers: 'Suppliers', rfq: 'RFQ', purchaseorders: 'Purchase orders',
   contracts: 'Sales contracts', submissions: 'Website submissions',
   leads: 'Leads', deals: 'Deals', reports: 'Reports', issues: 'Issues centre',
-  accounting: 'Accounting',
+  accounting: 'Accounting', assistant: 'AI assistant',
 };
 // Keyed "section.action" where the plain word would mislead, and by the bare word
 // otherwise. Reports has no generic actions at all — each one names a report.
@@ -324,6 +334,8 @@ const PERM_ACTION_LABELS = {
   'accounting.edit': 'Record expenses',
   'accounting.export': 'Export CSV / PDF',
   'accounting.ai': 'Use the finance AI',
+  'assistant.chat': 'Ask the assistant (insights and chat)',
+  'assistant.act': 'Let it propose actions to confirm',
 };
 // Starting points, not roles. Twenty-two sections is a lot to tick one at a
 // time for a new starter, and the honest shape of the job is "most of these,
@@ -336,33 +348,33 @@ const PERM_ACTION_LABELS = {
 // that no longer exists should be visible in the same file that renamed it.
 // `payments` is the read half of the ledger behind a sale, so a read-only
 // grant of Deals sees how a customer paid, not only what they owe.
-const PERM_READISH = ['view', 'log', 'draft', 'history', 'leads', 'sales', 'payments'];
+const PERM_READISH = ['view', 'log', 'draft', 'history', 'leads', 'sales', 'payments', 'chat'];
 const PERM_PRESETS = [
   { key: 'sales', label: 'Sales rep',
     hint: 'Leads, deals and quotations, plus the everyday tools.',
     sections: ['requests', 'tasks', 'hours', 'availability', 'chat', 'meet', 'calendar', 'email',
-      'drive', 'quotation', 'leads', 'deals'],
+      'drive', 'quotation', 'leads', 'deals', 'assistant'],
     readOnly: ['stock', 'contracts', 'reports'] },
   { key: 'procurement', label: 'Procurement',
     hint: 'Suppliers, RFQs and purchase orders end to end.',
     sections: ['requests', 'tasks', 'hours', 'availability', 'chat', 'meet', 'calendar', 'email',
-      'drive', 'suppliers', 'rfq', 'purchaseorders', 'stock'],
+      'drive', 'suppliers', 'rfq', 'purchaseorders', 'stock', 'assistant'],
     readOnly: ['leads', 'contracts'] },
   { key: 'ops', label: 'Operations',
     hint: 'Contracts, submissions and the paperwork around a sale.',
     sections: ['requests', 'tasks', 'hours', 'availability', 'chat', 'meet', 'calendar', 'email',
-      'drive', 'sheets', 'contracts', 'submissions', 'stock'],
+      'drive', 'sheets', 'contracts', 'submissions', 'stock', 'assistant'],
     readOnly: ['leads', 'deals', 'rfq', 'purchaseorders'] },
   { key: 'accountant', label: 'Accountant',
     hint: 'Money in, money out, expenses and the finance AI.',
     sections: ['requests', 'tasks', 'hours', 'availability', 'chat', 'meet', 'calendar', 'email',
-      'drive', 'sheets', 'accounting'],
+      'drive', 'sheets', 'accounting', 'assistant'],
     readOnly: ['deals', 'contracts', 'purchaseorders', 'reports'] },
   { key: 'readonly', label: 'Read-only',
     hint: 'Can see the work, cannot change it.',
     sections: ['requests', 'tasks', 'chat'],
     readOnly: ['leads', 'deals', 'stock', 'suppliers', 'rfq', 'purchaseorders', 'contracts',
-      'submissions', 'reports', 'quotation', 'availability', 'meet', 'hours'] },
+      'submissions', 'reports', 'quotation', 'availability', 'meet', 'hours', 'assistant'] },
   { key: 'everything', label: 'Full access', hint: 'Every section, every action.', all: true },
   { key: 'none', label: 'No access', hint: 'Start from nothing and build up.', sections: [] },
 ];

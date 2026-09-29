@@ -104,4 +104,46 @@ function parseAiJson(text) {
   try { return JSON.parse(s.slice(start, end + 1)); } catch (_) { return null; }
 }
 
-module.exports = { GEMINI_MODELS, geminiConfigured, geminiGenerate, geminiCall, geminiState, detectLang, parseAiJson };
+// One conversation with the model, tools included. The caller supplies the tool
+// declarations and a synchronous `runTool(name, args)` that executes one call;
+// this walks the exchange: at most `maxRounds` tool rounds, then one last call
+// in which the model must answer in words. Returns
+//   { ok:true, text, model, tool_calls:[{name,args,result}] }
+// or the failing geminiCall result, never throws. The model's own turn goes
+// back verbatim (it may carry a thought signature), then one functionResponse
+// per call, in the order they were made — the v1beta function-calling shape.
+async function geminiConverse({ systemText, history, message, tools, runTool, generationConfig, maxRounds } = {}) {
+  const contents = [];
+  for (const h of (Array.isArray(history) ? history.slice(-8) : [])) {
+    if (!h || !h.content) continue;
+    const role = (h.role === 'bot' || h.role === 'model' || h.role === 'assistant') ? 'model' : 'user';
+    contents.push({ role, parts: [{ text: String(h.content).slice(0, 2000) }] });
+  }
+  contents.push({ role: 'user', parts: [{ text: String(message || '').slice(0, 4000) }] });
+  const gen = { temperature: 0.2, maxOutputTokens: 1500, ...(generationConfig || {}) };
+  const toolCalls = [];
+  const rounds = Math.max(0, Math.min(8, Number(maxRounds) || 4));
+  const withTools = Array.isArray(tools) && tools.length && typeof runTool === 'function';
+  let res = null;
+  for (let round = 0; round < (withTools ? rounds : 1); round++) {
+    res = await geminiCall({ systemText, contents, tools: withTools ? tools : undefined,
+      toolConfig: withTools ? { functionCallingConfig: { mode: 'AUTO' } } : undefined, generationConfig: gen });
+    if (!res.ok) return res;
+    const calls = withTools ? (res.parts || []).filter(p => p && p.functionCall) : [];
+    if (!calls.length) return { ok: true, text: res.text, model: res.model, tool_calls: toolCalls };
+    contents.push({ role: 'model', parts: res.parts });
+    const responses = [];
+    for (const p of calls) {
+      const { name, args } = p.functionCall;
+      let result;
+      try { result = await runTool(name, args || {}); } catch (e) { result = { error: e.message }; }
+      toolCalls.push({ name, args: args || {}, result });
+      responses.push({ functionResponse: { name, response: { result } } });
+    }
+    contents.push({ role: 'user', parts: responses });
+  }
+  res = await geminiCall({ systemText, contents, tools, toolConfig: { functionCallingConfig: { mode: 'NONE' } }, generationConfig: gen });
+  return res.ok ? { ok: true, text: res.text, model: res.model, tool_calls: toolCalls } : res;
+}
+
+module.exports = { GEMINI_MODELS, geminiConfigured, geminiGenerate, geminiCall, geminiConverse, geminiState, detectLang, parseAiJson };

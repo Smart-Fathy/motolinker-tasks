@@ -1975,6 +1975,11 @@ Object.assign(ctx, require('./src/routes/inventory-portal'));
 // reports module's serializer and PDFs through the quotation renderer — so it
 // loads after all three.
 Object.assign(ctx, require('./src/routes/accounting'));
+// The assistant on every page → src/routes/assistant.js
+// Reads each section under the caller's permissions and scope, so it loads
+// after every module whose helpers it borrows (employee portal, automation,
+// notifications, columns) and after accounting, whose chat it delegates to.
+Object.assign(ctx, require('./src/routes/assistant'));
 // ─── Lead follow-up reminders ─────────────────────────────────────────────────
 // Fires within ~5 minutes of a follow-up's due time: notifies the assigned
 // employee (or admin when unassigned) once per follow-up.

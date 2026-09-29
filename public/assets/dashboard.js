@@ -3037,6 +3037,9 @@ function navigate(page) {
   openGroupForPage(page); // reveal the group containing the active item
   rememberPage(page);
   if (pageLoaders[page]) pageLoaders[page]();
+  // The assistant follows the page: its drawer reads this section, and the
+  // insight card is mounted here (shared assets/assistant.js).
+  if (typeof aiOnNavigate === 'function') { try { aiOnNavigate(page); } catch (_) {} }
   closeSidebar(); // close on mobile after navigation
   // Counts are repainted here rather than once at boot: permission gating and
   // applyNavConfig() both hide items after the rail is first drawn.

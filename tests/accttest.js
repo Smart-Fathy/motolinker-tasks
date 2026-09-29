@@ -191,6 +191,10 @@ function api(pathname) {
   if (/accounting\/ledger$/.test(pathname)) return { range: pack.range, rows: [], kinds: [], totals: { in: 0, out: 0 }, warnings: [] };
   if (/accounting\/reports$/.test(pathname)) return [];
   if (/accounting\/ai\/(status|insights)$/.test(pathname)) return { ai: false };
+  if (/\/ai\/sections$/.test(pathname)) return { ai: false, act: true, pages: {}, sections: [
+    { key: 'home', label: 'Home', chips: { en: ['What needs my attention today?'], ar: ['ما الذي يحتاج انتباهي اليوم؟'] }, actions: [] },
+    { key: 'accounting', label: 'Accounting', chips: { en: ['Summarise this month', 'Who should we chase first?'], ar: ['لخّص هذا الشهر'] }, actions: [] } ] };
+  if (/\/ai\/(status|insights)$/.test(pathname)) return { ai: false };
   return [];
 }
 async function openPortal(browser, { route, file, tokenKey, port }) {
@@ -289,16 +293,20 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
     check(`${portal.label}: receivables list largest first and re-sort by column`,
       recv.before[0].startsWith('Mona') && recv.after[0].startsWith('Ahmed') && recv.aging === 5, JSON.stringify(recv));
 
+    // The page's brain button opens the one global drawer, on the Accounting section.
     await page.evaluate(() => acctAiOpen());
-    await sleep(500);
+    await sleep(600);
     const ai = await page.evaluate(() => ({
-      open: document.getElementById('acai-panel').classList.contains('open'),
-      status: (document.getElementById('acai-status') || {}).textContent || '',
-      brain: !!document.querySelector('#acai-panel svg.ml-brain'),
-      chips: document.querySelectorAll('#acai-body .acai-chip').length,
+      open: document.getElementById('ai-panel').classList.contains('open'),
+      section: (document.getElementById('ai-title-section') || {}).textContent || '',
+      status: (document.getElementById('ai-status') || {}).textContent || '',
+      brain: !!document.querySelector('#ai-panel svg.ml-brain'),
+      chips: document.querySelectorAll('#ai-body .ai-chip').length,
+      localDrawer: !!document.getElementById('acai-panel'),
     }));
-    check(`${portal.label}: the AI drawer opens, wears the brain, and says no key is set`, ai.open && ai.brain && /not configured/.test(ai.status) && ai.chips >= 2, JSON.stringify(ai));
-    await page.evaluate(() => acctAiClose());
+    check(`${portal.label}: the brain opens the global drawer on Accounting, with the brain and the no-key notice`,
+      ai.open && ai.section === 'Accounting' && ai.brain && /not configured/.test(ai.status) && ai.chips >= 2 && !ai.localDrawer, JSON.stringify(ai));
+    await page.evaluate(() => aiClose());
 
     if (portal.label === 'admin') {
       // The favourites row clones the icon's markup: the brain must survive the

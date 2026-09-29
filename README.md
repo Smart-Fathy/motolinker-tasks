@@ -406,6 +406,34 @@ Apply `migrations/022_accounting.sql` (the `expenses` and `accounting_reports` t
 Until it is applied, reads degrade with a warning and recording an expense answers
 503 with `migration: "022"`.
 
+## 🧠 The assistant on every page
+
+The colourful brain in the header opens one drawer on every page of both portals,
+and every section carries an **AI insights** card at the top (highlights, risks,
+suggestions; fold it with *Hide*, ask again with *Refresh*). The drawer reads
+whichever section is open — Leads, Deals, Quotation, Contracts, RFQ, Purchase
+Orders, Suppliers, Inventory & tracking, Submissions, Tasks, Hours, Requests,
+Meetings, Issues, and for the admin Employees and Automations — and only what the
+person's own permissions and data scope let them see.
+
+Every figure comes from `src/lib/sections.js`, which turns a section's rows into
+a pack the model is handed; the model narrates and, when it needs a number, calls
+back into `section_query` and `calculate`, so an answer traces to code that ran
+here (the working is shown under the reply).
+
+**Actions are proposed, never taken.** Ask for something to be done — "schedule a
+follow-up with Ahmed on Thursday", "make me a task to chase PO-12" — and the model
+proposes it through `propose_action`; it arrives as a card with **Confirm**. Only
+that press writes anything, and it runs through the same checks and side effects as
+the manual path (permission, scope, activity log, notification, automations) with
+the real person as author. Actions today: a follow-up, a task, a lead status change,
+a logged call/note/WhatsApp/meeting, a lead assignment, a new deal, a notification.
+
+It is governed by the `assistant` permission (`chat` for the drawer and cards,
+`act` for proposals), **on for everyone by default** — an admin can switch it off
+per employee. It uses the same `GEMINI_API_KEY` as the Help bot and the Accounting
+AI; without one every surface says so.
+
 ## 🚗 Stock is tracked per VIN
 
 Every car in inventory is its own record with its own VIN, colour, status, price and
