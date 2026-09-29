@@ -250,7 +250,9 @@
     if (!root) return;
     acctStyle();
     if (!root.querySelector('.acct-shell')) root.innerHTML = shellHtml();
-    acctAiInit();
+    // The shared assistant (assets/assistant.js) is the one drawer everywhere;
+    // the local one is built only when it is not loaded.
+    if (typeof window.aiOpen !== 'function') acctAiInit();
     acctTab(_acct.tab);
   }
 
@@ -743,7 +745,12 @@
     icons();
   }
   function acctAiLang(v) { _acct.lang = v; }
+  // The global assistant is the one drawer everywhere; on this page it hands the
+  // conversation to the finance tools. The local drawer below is the fallback
+  // when the shared assistant is not loaded.
+  function acctAiContext() { return { tab: _acct.tab, ...rangeBody() }; }
   function acctAiOpen() {
+    if (typeof window.aiOpen === 'function') return window.aiOpen('accounting');
     acctAiInit();
     document.getElementById('acai-overlay').classList.add('open');
     document.getElementById('acai-panel').classList.add('open');
@@ -833,6 +840,6 @@
     loadAccounting, acctTab, acctSetRange, acctSetCustom, acctSort, acctInsights, acctCopy, acctExport,
     acctExpenseFilter, openExpenseForm, acctExpenseCcy, acctExpenseUpload, acctExpenseClearReceipt, saveExpense, deleteExpense,
     acctLedgerFilter, acctRepPeriod, acctReportGenerate, acctReportOpen, acctReportPdf, acctReportDelete,
-    acctAiOpen, acctAiClose, acctAiLang, acctAiChip, acctAiKey, acctAiSend, ACCT_BRAIN_SVG,
+    acctAiOpen, acctAiClose, acctAiLang, acctAiChip, acctAiKey, acctAiSend, acctAiContext, ACCT_BRAIN_SVG,
   });
 })();

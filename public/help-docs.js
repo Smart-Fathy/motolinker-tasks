@@ -264,6 +264,49 @@ An employee asking to delete a record raises a request instead. The admin review
     },
   },
   {
+    id: 'assistant',
+    title: { en: 'The AI assistant', ar: 'المساعد الذكي' },
+    body: {
+      en: `## The brain in the header
+On every page, the colourful brain opens the assistant. It reads the section you are on —
+Leads, Deals, Purchase Orders, Inventory, Tasks and the rest — and only what your own
+permissions let you see. Ask it to explain a figure, find something, work something out or
+draft a message, in English or Arabic. Every calculation it makes is shown under the answer.
+
+## The insights card
+Each section starts with an **AI insights** card: highlights, risks and suggestions for
+that section. **Refresh** asks again; **Hide** folds it and remembers.
+
+## Proposed actions
+Ask for something to be done — *schedule a follow-up with Ahmed on Thursday*, *make me a
+task to chase PO-12* — and the assistant proposes it as a card with **Confirm**. Nothing is
+written until you press it. A confirmed action runs exactly like doing it by hand: the same
+permission, the same activity log and notifications, with you as the author.
+
+## When it is off
+Without a GEMINI_API_KEY on the server every AI surface says so. An admin can also switch
+the assistant off for a person under Employees → AI assistant.`,
+      ar: `## الدماغ في الأعلى
+في كل صفحة، يفتح زر الدماغ الملوّن المساعد. يقرأ القسم الذي تعمل عليه — العملاء المحتملين،
+الصفقات، أوامر الشراء، المخزون، المهام وغيرها — وفقط ما تسمح لك صلاحياتك برؤيته. اطلب منه
+شرح رقم أو البحث عن شيء أو حساب شيء أو كتابة رسالة بالعربية أو الإنجليزية. كل حساب يقوم به
+يظهر تحت الإجابة.
+
+## بطاقة الرؤى
+يبدأ كل قسم ببطاقة **رؤى الذكاء الاصطناعي**: أبرز النقاط والمخاطر والاقتراحات لذلك القسم.
+**Refresh** يسأل مجدداً؛ **Hide** يطويها ويتذكر ذلك.
+
+## الإجراءات المقترحة
+اطلب تنفيذ شيء — *حدّد متابعة مع أحمد يوم الخميس*، *أنشئ لي مهمة لمتابعة PO-12* — فيقترحه
+المساعد كبطاقة مع زر **Confirm**. لا يُكتب شيء قبل الضغط عليه. الإجراء المؤكد يعمل تماماً
+كما لو نفذته يدوياً: نفس الصلاحية ونفس سجل النشاط والإشعارات، وأنت المؤلف.
+
+## عندما يكون متوقفاً
+بدون مفتاح GEMINI_API_KEY على الخادم تقول كل واجهة ذلك صراحةً. ويمكن للمسؤول أيضاً إيقاف
+المساعد لشخص من قسم الموظفين ← المساعد الذكي.`,
+    },
+  },
+  {
     id: 'accounting',
     title: { en: 'Accounting and the finance AI', ar: 'المحاسبة والمساعد المالي' },
     body: {

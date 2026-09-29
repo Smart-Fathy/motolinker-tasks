@@ -86,7 +86,7 @@ const PERM_SECTIONS = [
   'drive', 'sheets', 'email', 'calendar', 'meet', 'gchat',
   'chat', 'quotation', 'leads', 'deals', 'reports', 'issues',
   'suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions',
-  'accounting',
+  'accounting', 'assistant',
 ];
 // Nav items whose visibility is an action rather than a whole section.
 // stock is the same story: every employee has the section (the vehicle picker
@@ -136,7 +136,7 @@ const PERM_DEFAULTS = {
   drive:true, sheets:true, calendar:true, meet:true, email:false, gchat:false,
   chat:true, stock:true, quotation:false, leads:false, deals:false, reports:false, issues:false,
   suppliers:false, rfq:false, purchaseorders:false, contracts:false, submissions:false,
-  accounting:false,
+  accounting:false, assistant:true,
 };
 function applyPermissions(permissions) {
   const p = { ...PERM_DEFAULTS, ...(permissions || {}) };
@@ -794,6 +794,8 @@ function navigate(page) {
   rememberPage(page);
   if (pageLoaders[page]) pageLoaders[page]();
   if (page === 'hours' && typeof renderAvailabilityBoard === 'function') renderAvailabilityBoard('availability-board');
+  // The assistant follows the page (shared assets/assistant.js).
+  if (typeof aiOnNavigate === 'function') { try { aiOnNavigate(page); } catch (_) {} }
   closeSidebar();
   // Re-init lucide icons after content change
   requestAnimationFrame(() => lucide.createIcons());

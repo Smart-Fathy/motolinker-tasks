@@ -73,6 +73,9 @@ check('the operations module routes every call through the base mapping',
 const acct = fs.readFileSync('public/assets/accounting.js', 'utf8');
 check('the accounting module routes every call through the base mapping',
   !/PROCFG\.fetch\(['\`]\/api/.test(acct) && /acctPath\(url\)/.test(acct) && !/^const PROCFG = \{/m.test(acct));
+const assist = fs.readFileSync('public/assets/assistant.js', 'utf8');
+check('the assistant module routes every call through the base mapping',
+  !/PROCFG\.fetch\(['\`]\/api/.test(assist) && /aiPath\(url\)/.test(assist) && !/^const PROCFG = \{/m.test(assist));
 // The filter engine takes its adapter at runtime rather than declaring one.
 for (const portal of ['dashboard', 'employee']) {
   check(`${portal} binds the filter engine with lfInit`, /lfInit\(\{/.test(bundles[portal]));

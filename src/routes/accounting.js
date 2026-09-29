@@ -494,4 +494,17 @@ function mountAccounting(base, guard) {
 mountAccounting('/api/dashboard', requireAuth);
 mountAccounting('/api/employee', requireEmployeeAuth);
 
+// The global assistant (src/routes/assistant.js) opens one drawer on every page;
+// on the Accounting page it hands the conversation here, so the finance tools
+// and the finance pack answer it.
+ctx.accountingChat = async function accountingChat({ message, history, lang, tab, period, from, to } = {}) {
+  const l = lang === 'ar' ? 'ar' : 'en';
+  const range = rangeOf({ period, from, to });
+  const { pack, data } = await packFor(range);
+  const task = 'Answer the question in short paragraphs or numbered steps, under 200 words unless asked for detail. No markdown tables.';
+  const out = await converse({ systemText: acctSystemPrompt(l, fin.trimPack(pack), String(tab || ''), task), history, message, data, pack });
+  if (!out.ok) return { ai: true, ok: false, error: out.error, status: out.status, busy: out.status === 429 ? BUSY[l] : undefined };
+  return { ai: true, ok: true, answer: out.text, model: out.model, tool_calls: out.tool_calls, proposals: [], lang: l, label: 'Accounting' };
+};
+
 module.exports = { mountAccounting };

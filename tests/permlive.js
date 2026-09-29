@@ -83,6 +83,8 @@ const CASES = [
   ['accounting',     'POST', '/api/employee/accounting/expenses',    'edit'],
   ['accounting',     'GET',  '/api/employee/accounting/export.csv?report=ledger', 'export'],
   ['accounting',     'POST', '/api/employee/accounting/ai/chat',     'ai'],
+  ['assistant',      'POST', '/api/employee/ai/chat',                'chat'],
+  ['assistant',      'POST', '/api/employee/ai/actions/run',         'act'],
 ];
 
 setTimeout(async () => {

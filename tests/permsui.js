@@ -104,7 +104,7 @@ function api(pathname, method, body) {
                                badges: c.querySelectorAll('.perm-badge').length }));
     });
     check('the list says how much access, then which sections',
-      /2 of 23/.test(cell[0].text) && /Leads/.test(cell[0].text) && /Team chat/.test(cell[0].text),
+      /2 of 24/.test(cell[0].text) && /Leads/.test(cell[0].text) && /Team chat/.test(cell[0].text),
       JSON.stringify(cell[0]));
     check('an employee with nothing granted reads as no access',
       /No access/.test(cell[1].text), JSON.stringify(cell[1]));
