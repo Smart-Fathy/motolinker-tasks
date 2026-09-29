@@ -22,12 +22,17 @@
     if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=138">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=139">
   <!-- Shared with the team portal. Last on purpose: several mobile rules were being
        beaten by later same-specificity rules in the sheet above. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=138">
+  <link rel="stylesheet" href="/assets/mobile.css?v=139">
 </head>
 <body>
+<!-- The gradient every colourful brain icon strokes with (the Accounting nav item,
+     its page header and the finance AI drawer). Defined once, here, so a cloned
+     icon in the favourites row never duplicates the id. Not display:none — a
+     hidden SVG's gradients are not painted. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><linearGradient id="ml-ai-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f472b6"/><stop offset=".35" stop-color="#a78bfa"/><stop offset=".7" stop-color="#38bdf8"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs></svg>
 
 <!-- ── Auth Screen ─────────────────────────────────────────────────────────── -->
 <div id="auth-screen" class="auth-screen" style="display:none">
@@ -120,6 +125,12 @@
           <div class="nav-item"        onclick="navigate('submissions')" id="nav-submissions"> <span class="nav-icon"><i data-lucide="mail"></i></span> Submissions</div>
           <div class="nav-item"        onclick="navigate('reports')"    id="nav-reports">      <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span> Reports</div>
           <div class="nav-item"        onclick="navigate('automations')" id="nav-automations"> <span class="nav-icon"><i data-lucide="workflow"></i></span> Automations</div>
+        </div>
+      </div>
+      <div class="nav-group" data-group="finance">
+        <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">Finance</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <div class="nav-item"        onclick="navigate('accounting')" id="nav-accounting">   <span class="nav-icon nav-icon-ai"><svg class="ml-brain" viewBox="0 0 24 24" fill="none" stroke="url(#ml-ai-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></svg></span> Accounting</div>
         </div>
       </div>
       <div class="nav-group" data-group="logistics">
@@ -912,6 +923,13 @@
     </div>
   </div><!-- /page-reports -->
 
+  <!-- Accounting: rendered by the shared assets/accounting.js -->
+  <div id="page-accounting" class="page">
+    <div class="page-body" style="max-width:none">
+      <div id="acct-root"><div class="loading"><div class="spinner"></div> Loading…</div></div>
+    </div>
+  </div>
+
   <!-- Automations -->
   <div id="page-automations" class="page">
     <div class="page-body" style="max-width:1000px">
@@ -1507,21 +1525,22 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
-<script src="/assets/mobile.js?v=138"></script>
-<script src="/assets/columns.js?v=138"></script>
-<script src="/assets/client-folder.js?v=138"></script>
-<script src="/assets/lead-filters.js?v=138"></script>
-<script src="/assets/lead-views.js?v=138"></script>
-<script src="/assets/chat-extras.js?v=138"></script>
-<script src="/assets/home.js?v=138"></script>
-<script src="/assets/huddle.js?v=138"></script>
-<script src="/assets/procurement.js?v=138"></script>
-<script src="/assets/quote.js?v=138"></script>
-<script src="/assets/meetings.js?v=138"></script>
-<script src="/assets/calendar.js?v=138"></script>
-<script src="/assets/availability.js?v=138"></script>
-<script src="/assets/logistics.js?v=138"></script>
-<script src="/assets/dashboard.js?v=138"></script>
+<script src="/assets/mobile.js?v=139"></script>
+<script src="/assets/columns.js?v=139"></script>
+<script src="/assets/client-folder.js?v=139"></script>
+<script src="/assets/lead-filters.js?v=139"></script>
+<script src="/assets/lead-views.js?v=139"></script>
+<script src="/assets/chat-extras.js?v=139"></script>
+<script src="/assets/home.js?v=139"></script>
+<script src="/assets/huddle.js?v=139"></script>
+<script src="/assets/procurement.js?v=139"></script>
+<script src="/assets/quote.js?v=139"></script>
+<script src="/assets/meetings.js?v=139"></script>
+<script src="/assets/calendar.js?v=139"></script>
+<script src="/assets/availability.js?v=139"></script>
+<script src="/assets/logistics.js?v=139"></script>
+<script src="/assets/accounting.js?v=139"></script>
+<script src="/assets/dashboard.js?v=139"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
@@ -1554,6 +1573,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=138"></script>
+<script src="/help-docs.js?v=139"></script>
 </body>
 </html>

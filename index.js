@@ -1969,6 +1969,12 @@ Object.assign(ctx, require('./src/routes/payments'));
 Object.assign(ctx, require('./src/routes/containers'));
 Object.assign(ctx, require('./src/routes/inventory-track'));
 Object.assign(ctx, require('./src/routes/inventory-portal'));
+// The Accounting section → src/routes/accounting.js
+// Reads sales, the ledger, purchase orders and expenses through the same
+// arithmetic the Sales tab uses (ctx.paymentSummary), exports CSV through the
+// reports module's serializer and PDFs through the quotation renderer — so it
+// loads after all three.
+Object.assign(ctx, require('./src/routes/accounting'));
 // ─── Lead follow-up reminders ─────────────────────────────────────────────────
 // Fires within ~5 minutes of a follow-up's due time: notifies the assigned
 // employee (or admin when unassigned) once per follow-up.

@@ -2,6 +2,9 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { ADMIN_USERNAME, express, receiver, requireAuth, requireEmployeeAuth, upload } = ctx.need('ADMIN_USERNAME', 'express', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'upload');
+// The Gemini call itself lives in src/lib/gemini.js, shared with the Accounting
+// section's finance AI; this file keeps the FAQ, the prompt and the status line.
+const { geminiCall, detectLang } = require('../lib/gemini');
 
 // ─── Help Bot (bilingual EN/AR support assistant) ───────────────────────────────
 // Hybrid: instant curated FAQ, with an optional Google Gemini (free tier) fallback
@@ -52,6 +55,9 @@ const HELP_FAQ = [
   { keys: ['notification','notifications','اشعار','إشعار','إشعارات','تنبيه'],
     en: 'Notifications lists your alerts (mentions, assignments, approvals, follow-up reminders). Enable browser/push notifications to receive them on your device.',
     ar: 'قسم Notifications يعرض تنبيهاتك (الإشارات والإسنادات والموافقات وتذكيرات المتابعة). فعّل إشعارات المتصفح/الهاتف لتصلك على جهازك.' },
+  { keys: ['accounting','accountant','expense','expenses','cash flow','cashflow','receivable','receivables','overdue','finance report','financial report','finance ai','محاسبة','المحاسبة','مصروف','مصروفات','التدفق النقدي','مستحقات','تقرير مالي'],
+    en: 'Accounting (Finance → Accounting; needs the accounting permission) shows the company\'s money in one place: Overview KPIs and cash flow by month, Receivables with aging and a collection plan, Payables & costs, an Expenses ledger (+ Expense to record one), the full payments Ledger with CSV, and Reports — pick a period and Generate; the AI writes the analysis and you can export it as PDF. The colourful brain button opens the finance AI, which answers questions from the real figures and shows its working.',
+    ar: 'قسم المحاسبة (Finance ← Accounting؛ يحتاج صلاحية accounting) يعرض أموال الشركة في مكان واحد: مؤشرات عامة وتدفقاً نقدياً شهرياً، المستحقات مع أعمارها وخطة تحصيل، المدفوعات والتكاليف، دفتر المصروفات (زر + Expense لتسجيل مصروف)، دفتر المدفوعات الكامل مع تصدير CSV، والتقارير — اختر الفترة ثم Generate فيكتب الذكاء الاصطناعي التحليل ويمكن تصديره PDF. زر الدماغ الملوّن يفتح المساعد المالي الذي يجيب من الأرقام الحقيقية ويُظهر طريقة حسابه.' },
   // ── Section overviews (bare-word queries) — kept LAST so specific entries above match first ──
   { keys: ['lead','leads','عملاء','العملاء','ليدز'],
     en: 'Leads is your database of potential customers. Add or import leads, edit any cell inline, configure columns, and click a lead\'s name to open its 360° profile (activity, follow-ups, quotations, deals). Ask me "how to add a lead", "import leads", or "lead columns" for steps.',
@@ -60,7 +66,7 @@ const HELP_FAQ = [
     en: 'Deals is your sales pipeline as a kanban board (Lead → Contacted → Quoted → Negotiating → Won/Lost). Drag cards between stages or open one to edit. Ask "how to add a deal" for steps.',
     ar: 'قسم Deals هو مسار المبيعات على شكل لوحة كانبان (Lead ← Contacted ← Quoted ← Negotiating ← Won/Lost). اسحب البطاقات بين المراحل أو افتح بطاقة لتعديلها. اسأل "كيف أضيف صفقة" للخطوات.' },
 ];
-function helpDetectLang(text) { return /[؀-ۿ]/.test(String(text || '')) ? 'ar' : 'en'; }
+const helpDetectLang = detectLang;
 function helpFaqMatch(message, lang) {
   const m = String(message || '').toLowerCase();
   if (!m.trim()) return null;
@@ -91,6 +97,7 @@ function helpSystemPrompt(identity) {
     '- Quotation: build a PDF (ID, customer/lead, vehicle, items, logistics, exchange rate, up to 5 images). "Generate PDF" saves it to History. In History: Edit (loads it back and updates the SAME quote incl. its images), Duplicate (a copy with a new ID), Delete.',
     '- Tasks (assign work with due date/priority/multiple assignees + comments), Hours (log time), Requests (internal requests with assignment + comments).',
     '- Chat (team messaging), Notifications, Submissions (website-form leads), Reports (analytics).',
+    '- Accounting (Finance group; needs the accounting permission; figures are company-wide): Overview KPIs and cash flow, Receivables with aging and an AI collection plan, Payables & costs, an Expenses ledger (record with "+ Expense"), the full payments Ledger with CSV export, and AI-written finance Reports (EN/AR, saved, PDF/CSV). The colourful brain button opens the finance AI drawer, which answers questions from the real figures and shows every calculation.',
     '- Deletion Requests (admin): employees can\'t delete leads/deals directly — their Delete files a request an admin approves here. Permissions are set per employee under Employees.',
     '',
     'AUTOMATIONS (admin only — the Automations section): each rule is WHEN a trigger fires / ONLY IF optional conditions match / THEN actions run. Turn the rule ON to activate it.',
@@ -102,34 +109,10 @@ function helpSystemPrompt(identity) {
     'If a question is truly outside this system, say so briefly and point to the closest relevant section.',
   ].filter(Boolean).join('\n');
 }
-// Candidate models: env override first, then current free-tier fallbacks. gemini-2.0-flash was shut
-// down 2026-06-01, so defaults target the live Flash / Flash-Lite models. Self-heals on 404 or 429.
-const GEMINI_MODELS = (() => {
-  const primary = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  const list = [primary, 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
-  return [...new Set(list)];
-})();
 // Cached result of the most recent real Gemini call, so the admin status line never spends quota.
 let _helpAiState = { ok: null, model: null, error: null, status: null, at: 0 };
-async function geminiGenerate(model, key, systemText, contents) {
-  const body = { system_instruction: { parts: [{ text: systemText }] }, contents, generationConfig: { temperature: 0.3, maxOutputTokens: 800 } };
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  });
-  const raw = await r.text();
-  let json = null; try { json = JSON.parse(raw); } catch (_) {}
-  if (!r.ok) {
-    const err = new Error(json?.error?.message || raw.slice(0, 300) || ('HTTP ' + r.status));
-    err.status = r.status; err.notFound = r.status === 404 || /not found|not supported/i.test(err.message);
-    return { ok: false, err };
-  }
-  const text = json?.candidates?.[0]?.content?.parts?.map(p => p.text).join('').trim();
-  return { ok: true, text: text || '' };
-}
 // Returns { ok, text, model } on success, or { ok:false, noKey?, error, status } on failure. Never throws.
 async function helpCallGemini(systemText, history, message) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return { ok: false, noKey: true };
   const contents = [];
   for (const h of (Array.isArray(history) ? history.slice(-8) : [])) {
     if (!h || !h.content) continue;
@@ -137,21 +120,14 @@ async function helpCallGemini(systemText, history, message) {
     contents.push({ role, parts: [{ text: String(h.content).slice(0, 2000) }] });
   }
   contents.push({ role: 'user', parts: [{ text: String(message).slice(0, 2000) }] });
-  let lastErr = null;
-  for (const model of GEMINI_MODELS) {
-    try {
-      const res = await geminiGenerate(model, key, systemText, contents);
-      if (res.ok) { _helpAiState = { ok: true, model, error: null, status: null, at: Date.now() }; return { ok: true, text: res.text, model }; }
-      lastErr = res.err;
-      console.warn(`[help] gemini ${model} failed: ${res.err.status || ''} ${res.err.message}`);
-      // Roll to the next model when this one is missing/unsupported (404) OR rate-limited (429 —
-      // each model has an independent free-tier bucket). Stop on other errors (400/403/5xx).
-      if (!res.err.notFound && res.err.status !== 429) break;
-    } catch (e) { lastErr = e; console.warn(`[help] gemini ${model} threw: ${e.message}`); break; }
+  const res = await geminiCall({ systemText, contents });
+  if (res.ok) {
+    _helpAiState = { ok: true, model: res.model, error: null, status: null, at: Date.now() };
+    return { ok: true, text: res.text, model: res.model };
   }
-  const result = { ok: false, error: lastErr ? lastErr.message : 'unknown error', status: lastErr?.status };
-  _helpAiState = { ok: false, model: null, error: result.error, status: result.status, at: Date.now() };
-  return result;
+  if (res.noKey) return { ok: false, noKey: true };
+  _helpAiState = { ok: false, model: null, error: res.error, status: res.status, at: Date.now() };
+  return { ok: false, error: res.error, status: res.status };
 }
 // Live health check for the admin status line: actually pings the model.
 async function helpGeminiPing() {

@@ -264,6 +264,57 @@ An employee asking to delete a record raises a request instead. The admin review
     },
   },
   {
+    id: 'accounting',
+    title: { en: 'Accounting and the finance AI', ar: 'المحاسبة والمساعد المالي' },
+    body: {
+      en: `## What it shows
+Accounting (under **Finance**) puts the company's money in one place. Every figure is
+computed from the payments ledger, the sales register, purchase orders and the expenses
+table — company-wide, in EGP. It needs the **accounting** permission; an admin grants it
+under Employees, or applies the **Accountant** preset.
+
+## The tabs
+- **Overview** — cash in, cash out, net cash, receivables, vehicle costs, gross margin, expenses and the net result for the chosen period, with cash flow by month.
+- **Receivables** — every sale with money still owed, aged (not yet due, 1–30, 31–60, 61–90, over 90 days). Sort by any column.
+- **Payables & costs** — supplier, freight and customs payments, purchase orders with their PI totals, and the last USD rate booked.
+- **Expenses** — rent, salaries, marketing and the rest. **+ Expense** records one, with a receipt; a non-EGP amount needs the rate it was paid at.
+- **Ledger** — every payment, filterable, with CSV export.
+- **Reports** — pick a period and language and press **Generate**: the figures are computed, the AI writes the analysis, and the report is kept. Open it later, export it as PDF.
+
+## The colourful brain
+The brain button opens the **finance AI**. It reads the same figures the page shows and
+answers in English or Arabic. When it does arithmetic it uses a calculator on the server
+and shows the working under the answer — it never guesses a number. Each tab also carries
+an AI card with highlights, risks and suggestions; **Refresh** asks again.
+
+## When the AI is off
+Without a GEMINI_API_KEY on the server every AI surface says so. Everything else — the
+figures, the ledger, expenses, CSV and PDF — keeps working.`,
+      ar: `## ماذا يعرض
+قسم المحاسبة (تحت **Finance**) يجمع أموال الشركة في مكان واحد. كل رقم محسوب من دفتر
+المدفوعات وسجل المبيعات وأوامر الشراء وجدول المصروفات — على مستوى الشركة وبالجنيه المصري.
+يحتاج صلاحية **accounting**؛ يمنحها المسؤول من قسم الموظفين أو بتطبيق قالب **Accountant**.
+
+## التبويبات
+- **Overview** — النقد الوارد والصادر وصافي النقد والمستحقات وتكاليف السيارات وهامش الربح والمصروفات وصافي النتيجة للفترة المختارة، مع التدفق النقدي الشهري.
+- **Receivables** — كل بيعة ما زال عليها مبلغ، مصنفة حسب العمر (غير مستحق بعد، 1–30، 31–60، 61–90، أكثر من 90 يوماً). رتّب بأي عمود.
+- **Payables & costs** — مدفوعات الموردين والشحن والجمارك، وأوامر الشراء بإجمالي فواتيرها الأولية، وآخر سعر دولار مسجّل.
+- **Expenses** — الإيجار والرواتب والتسويق وغيرها. **+ Expense** يسجّل مصروفاً مع إيصال؛ المبلغ بغير الجنيه يحتاج سعر الصرف الذي دُفع به.
+- **Ledger** — كل المدفوعات مع فلاتر وتصدير CSV.
+- **Reports** — اختر الفترة واللغة واضغط **Generate**: تُحسب الأرقام ويكتب الذكاء الاصطناعي التحليل ويُحفظ التقرير. افتحه لاحقاً وصدّره PDF.
+
+## الدماغ الملوّن
+زر الدماغ يفتح **المساعد المالي**. يقرأ الأرقام نفسها المعروضة في الصفحة ويجيب بالعربية أو
+الإنجليزية. عندما يحسب شيئاً يستخدم آلة حاسبة على الخادم ويُظهر طريقة الحساب تحت الإجابة —
+لا يخمّن رقماً أبداً. كل تبويب يحمل أيضاً بطاقة ذكاء اصطناعي بأبرز النقاط والمخاطر والاقتراحات؛
+**Refresh** يسأل من جديد.
+
+## عندما يكون الذكاء الاصطناعي متوقفاً
+بدون مفتاح GEMINI_API_KEY على الخادم تقول كل واجهة ذكاء اصطناعي ذلك صراحةً. كل ما عدا ذلك —
+الأرقام والدفتر والمصروفات وCSV وPDF — يعمل كالمعتاد.`,
+    },
+  },
+  {
     id: 'integrations',
     title: { en: 'Google and WhatsApp', ar: 'جوجل وواتساب' },
     body: {

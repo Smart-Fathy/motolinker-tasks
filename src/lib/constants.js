@@ -80,6 +80,23 @@ const PAYMENT_KIND_KEYS = PAYMENT_KINDS.map(k => k.key);
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'cheque', 'card', 'instapay', 'other'];
 const PAYMENT_DIRECTIONS = ['in', 'out'];
 
+// What the company spends on itself. A fixed vocabulary rather than free text,
+// because a report groups by it — "Marketing" and "marketing" and "ads" as three
+// categories is how a monthly figure stops meaning anything. Anything that does
+// not fit is `other`, and the description says what it was.
+const EXPENSE_CATEGORIES = [
+  { key: 'rent',            label: 'Rent' },
+  { key: 'salaries',        label: 'Salaries' },
+  { key: 'marketing',       label: 'Marketing' },
+  { key: 'utilities',       label: 'Utilities' },
+  { key: 'logistics',       label: 'Logistics' },
+  { key: 'government_fees', label: 'Government fees' },
+  { key: 'software',        label: 'Software' },
+  { key: 'maintenance',     label: 'Maintenance' },
+  { key: 'other',           label: 'Other' },
+];
+const EXPENSE_CATEGORY_KEYS = EXPENSE_CATEGORIES.map(c => c.key);
+
 const CONTAINER_STATUSES = [
   { key: 'booked',     label: 'Booked',      bg: '#dbe4ff', fg: '#2f3f8f' },
   { key: 'in_transit', label: 'In transit',  bg: '#fdecc8', fg: '#8a5a00' },
@@ -145,5 +162,6 @@ function inspectContainerNo(raw) {
 module.exports = { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL, TASK_ATTACH_MAX, sanitizeAttachments,
   BASE_CURRENCY, CURRENCIES, UNIT_STATUSES, UNIT_STATUS_KEYS,
   PAYMENT_KINDS, PAYMENT_KIND_KEYS, PAYMENT_METHODS, PAYMENT_DIRECTIONS,
+  EXPENSE_CATEGORIES, EXPENSE_CATEGORY_KEYS,
   CONTAINER_STATUSES, CONTAINER_STATUS_KEYS, CONTAINER_TYPES,
   containerCheckDigit, normContainerNo, inspectContainerNo, CONTAINER_NO_RE };

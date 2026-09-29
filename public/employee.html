@@ -19,11 +19,13 @@
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
 </script>
-  <link rel="stylesheet" href="/assets/employee.css?v=118">
+  <link rel="stylesheet" href="/assets/employee.css?v=119">
   <!-- Shared with the admin dashboard. Last on purpose. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=118">
+  <link rel="stylesheet" href="/assets/mobile.css?v=119">
 </head>
 <body>
+<!-- The gradient the colourful brain icon strokes with — see dashboard.html. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><linearGradient id="ml-ai-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f472b6"/><stop offset=".35" stop-color="#a78bfa"/><stop offset=".7" stop-color="#38bdf8"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs></svg>
 
 <!-- ── Auth ── -->
 <div class="auth-wrap" id="auth-wrap">
@@ -277,6 +279,14 @@
           </button>
           <button class="nav-item"        id="nav-reports" onclick="navigate('reports')" style="display:none">
             <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span> Reports
+          </button>
+        </div>
+      </div>
+      <div class="nav-group" data-group="finance">
+        <div class="nav-group-head" id="nav-label-finance" onclick="toggleNavGroup(this)" style="display:none"><span class="nav-group-label">Finance</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
+        <div class="nav-group-items">
+          <button class="nav-item" id="nav-accounting" onclick="navigate('accounting')" style="display:none">
+            <span class="nav-icon nav-icon-ai"><svg class="ml-brain" viewBox="0 0 24 24" fill="none" stroke="url(#ml-ai-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></svg></span> Accounting
           </button>
         </div>
       </div>
@@ -1054,6 +1064,13 @@
       <div id="meet-meetings" style="max-width:760px;margin:0 auto;padding:0 16px 28px;box-sizing:border-box;width:100%"></div>
     </div>
 
+    <!-- ── Accounting (accounting permission; rendered by the shared assets/accounting.js) ── -->
+    <div class="page" id="page-accounting">
+      <div class="page-body" style="max-width:none">
+        <div id="acct-root"><div class="loading"><div class="spinner"></div> Loading…</div></div>
+      </div>
+    </div>
+
     <!-- ── Reports Page (per-report permission) ── -->
     <div class="page" id="page-reports">
       <div class="page-body" style="max-width:1000px">
@@ -1288,13 +1305,13 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
-<script src="/assets/mobile.js?v=118"></script>
-<script src="/assets/columns.js?v=118"></script>
-<script src="/assets/client-folder.js?v=118"></script>
-<script src="/assets/lead-filters.js?v=118"></script>
-<script src="/assets/lead-views.js?v=118"></script>
-<script src="/assets/chat-extras.js?v=118"></script>
-<script src="/assets/home.js?v=118"></script>
+<script src="/assets/mobile.js?v=119"></script>
+<script src="/assets/columns.js?v=119"></script>
+<script src="/assets/client-folder.js?v=119"></script>
+<script src="/assets/lead-filters.js?v=119"></script>
+<script src="/assets/lead-views.js?v=119"></script>
+<script src="/assets/chat-extras.js?v=119"></script>
+<script src="/assets/home.js?v=119"></script>
 
 <!-- The generic modal. The portal grew its overlays one hand-rolled div at a time
      and never had this one; the shared operations module opens its forms in it. -->
@@ -1332,14 +1349,15 @@
   </div>
 </div>
 
-<script src="/assets/huddle.js?v=118"></script>
-<script src="/assets/procurement.js?v=118"></script>
-<script src="/assets/quote.js?v=118"></script>
-<script src="/assets/meetings.js?v=118"></script>
-<script src="/assets/calendar.js?v=118"></script>
-<script src="/assets/availability.js?v=118"></script>
-<script src="/assets/logistics.js?v=118"></script>
-<script src="/assets/employee.js?v=118"></script>
+<script src="/assets/huddle.js?v=119"></script>
+<script src="/assets/procurement.js?v=119"></script>
+<script src="/assets/quote.js?v=119"></script>
+<script src="/assets/meetings.js?v=119"></script>
+<script src="/assets/calendar.js?v=119"></script>
+<script src="/assets/availability.js?v=119"></script>
+<script src="/assets/logistics.js?v=119"></script>
+<script src="/assets/accounting.js?v=119"></script>
+<script src="/assets/employee.js?v=119"></script>
 
 <!-- ── New DM Modal ── -->
 <div id="new-dm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:20px">
@@ -1401,6 +1419,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=118"></script>
+<script src="/help-docs.js?v=119"></script>
 </body>
 </html>

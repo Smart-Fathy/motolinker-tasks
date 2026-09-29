@@ -94,6 +94,8 @@ const DEFAULT_PERMISSIONS = {
   pdfscraper: false, quotation: false, leads: false, deals: false, reports: false,
   // System
   issues: false,
+  // Finance — the whole company's money, so granted deliberately, never by default
+  accounting: false,
   // Legacy flat flag, kept because normEmpPerms still reads it — see PERM_LEGACY
   viewAllRequests: false,
 };
@@ -167,6 +169,13 @@ const PERM_ACTIONS = {
   // report without the revenue figures (or vice-versa). Reports always obey the
   // employee's data scope — they aggregate only rows that employee may see.
   reports: ['leads', 'sales', 'export'],
+  // Finance. `view` opens the Accounting section and every read behind it —
+  // overview, receivables, payables, the ledger, saved reports — and those
+  // figures are COMPANY-WIDE, not scoped to the employee's own leads. `edit`
+  // records, changes and removes expenses (payments stay under deals.*). `export`
+  // is CSV and PDF. `ai` is the finance assistant: insights, chat and writing a
+  // report's narrative, each of which spends the Gemini quota.
+  accounting: ['view', 'edit', 'export', 'ai'],
   // System
   issues: ['view', 'resolve'],
 };
@@ -266,6 +275,7 @@ const PERM_GROUPS = [
   { group: 'Operations', sections: ['suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions'] },
   { group: 'Tools',      sections: ['quotation'] },
   { group: 'CRM',        sections: ['leads', 'deals', 'reports'] },
+  { group: 'Finance',    sections: ['accounting'] },
   { group: 'System',     sections: ['issues'] },
 ];
 const PERM_SECTION_LABELS = {
@@ -276,6 +286,7 @@ const PERM_SECTION_LABELS = {
   suppliers: 'Suppliers', rfq: 'RFQ', purchaseorders: 'Purchase orders',
   contracts: 'Sales contracts', submissions: 'Website submissions',
   leads: 'Leads', deals: 'Deals', reports: 'Reports', issues: 'Issues centre',
+  accounting: 'Accounting',
 };
 // Keyed "section.action" where the plain word would mislead, and by the bare word
 // otherwise. Reports has no generic actions at all — each one names a report.
@@ -309,6 +320,10 @@ const PERM_ACTION_LABELS = {
   'contracts.export': 'Generate the PDF',
   'submissions.delete': 'Delete a submission',
   'leads.clientFolder': 'Client Drive folders',
+  'accounting.view': 'Open Accounting (company-wide figures)',
+  'accounting.edit': 'Record expenses',
+  'accounting.export': 'Export CSV / PDF',
+  'accounting.ai': 'Use the finance AI',
 };
 // Starting points, not roles. Twenty-two sections is a lot to tick one at a
 // time for a new starter, and the honest shape of the job is "most of these,
@@ -319,7 +334,9 @@ const PERM_ACTION_LABELS = {
 // lists sections granted with their read-ish actions only. Everything else is
 // off. They live here, beside PERM_ACTIONS, because a preset naming a section
 // that no longer exists should be visible in the same file that renamed it.
-const PERM_READISH = ['view', 'log', 'draft', 'history', 'leads', 'sales'];
+// `payments` is the read half of the ledger behind a sale, so a read-only
+// grant of Deals sees how a customer paid, not only what they owe.
+const PERM_READISH = ['view', 'log', 'draft', 'history', 'leads', 'sales', 'payments'];
 const PERM_PRESETS = [
   { key: 'sales', label: 'Sales rep',
     hint: 'Leads, deals and quotations, plus the everyday tools.',
@@ -336,6 +353,11 @@ const PERM_PRESETS = [
     sections: ['requests', 'tasks', 'hours', 'availability', 'chat', 'meet', 'calendar', 'email',
       'drive', 'sheets', 'contracts', 'submissions', 'stock'],
     readOnly: ['leads', 'deals', 'rfq', 'purchaseorders'] },
+  { key: 'accountant', label: 'Accountant',
+    hint: 'Money in, money out, expenses and the finance AI.',
+    sections: ['requests', 'tasks', 'hours', 'availability', 'chat', 'meet', 'calendar', 'email',
+      'drive', 'sheets', 'accounting'],
+    readOnly: ['deals', 'contracts', 'purchaseorders', 'reports'] },
   { key: 'readonly', label: 'Read-only',
     hint: 'Can see the work, cannot change it.',
     sections: ['requests', 'tasks', 'chat'],

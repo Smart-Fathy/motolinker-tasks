@@ -1684,6 +1684,20 @@
   [data-group="system"]      { --nav-c:#8d897f; }
   [data-group="operations"]  { --nav-c:#9fb0bd; }
 
+  /* The Accounting item: one colourful brain among monochrome chips, on purpose.
+   * The gradient stroke lives on the inline SVG (#ml-ai-grad in the markup);
+   * this is the chip behind it. :has() carries it into the favourites row and
+   * the shortcut picker, whose clones copy the icon but not the class. */
+  [data-group="finance"]      { --nav-c:#a78bfa; }
+  .nav-item .nav-icon.nav-icon-ai, .nav-icon:has(> .ml-brain){
+    background:linear-gradient(135deg, rgba(244,114,182,.22), rgba(167,139,250,.22) 40%, rgba(56,189,248,.22) 75%, rgba(52,211,153,.22));
+  }
+  .nav-item:hover .nav-icon.nav-icon-ai, .nav-item.active .nav-icon.nav-icon-ai,
+  .nav-item:hover .nav-icon:has(> .ml-brain){
+    box-shadow:0 0 0 1px rgba(167,139,250,.35), 0 0 12px rgba(167,139,250,.35);
+  }
+  .ml-brain{ width:14px; height:14px; }
+
   .nav-group-head{ padding:11px 10px 6px; gap:8px; letter-spacing:1px; color:#8d897f; }
   .nav-group.open > .nav-group-head{ color:#b9b3a4; }
   .nav-group-head:hover{ color:var(--text); }
@@ -1763,6 +1777,8 @@
     .sidebar.collapsed .nav-quick{ display:none; }
     .sidebar.collapsed .nav-group-count{ display:none; }
     .sidebar.collapsed .nav-item .nav-icon{ background:none; }
+    /* …except the brain: its colour is how the collapsed rail says "Accounting". */
+    .sidebar.collapsed .nav-item .nav-icon.nav-icon-ai{ background:linear-gradient(135deg, rgba(244,114,182,.22), rgba(167,139,250,.22) 40%, rgba(56,189,248,.22) 75%, rgba(52,211,153,.22)); }
   }
 
   /* ── Shell: header ─────────────────────────────────────────────────────

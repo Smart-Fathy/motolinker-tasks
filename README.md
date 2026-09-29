@@ -376,6 +376,36 @@ fills up without anyone noticing. Connect it under Google → My Drive.
 Deleting a supplier document removes the row but leaves the file in Drive, so a
 mis-click is recoverable.
 
+## 🧠 Accounting — money in, money out, and a finance AI
+
+**Finance → Accounting** in both portals, behind the `accounting` permission (off for
+everyone until an admin grants it; the **Accountant** preset in the employee editor is
+the usual starting point). Figures are **company-wide** — an accountant's job is the whole
+book, so nothing here is scoped to the employee's own leads — and in EGP.
+
+| Tab | What it reads |
+| --- | --- |
+| Overview | cash in / out / net, receivables, vehicle costs, gross margin, expenses, net result; cash flow by month |
+| Receivables | every sale still owed, aged (not yet due, 1–30, 31–60, 61–90, 90+ days) |
+| Payables & costs | supplier / freight / customs payments, purchase orders with PI totals, the last USD rate booked |
+| Expenses | a new ledger of operating costs — rent, salaries, marketing, … — with receipts |
+| Ledger | every payment, filterable, CSV |
+| Reports | a period's figures, an AI-written analysis (EN/AR), kept and exportable as PDF |
+
+Every number is computed by `src/lib/finance.js` from the payments ledger, the sales
+register, purchase orders and the expenses table. **The model narrates; it never does the
+arithmetic.** The finance AI (the colourful brain button) is handed those figures and, when
+it needs a number that is not there, calls back into two server tools — a whitelisted
+`finance_query` and a `calculate` expression evaluator — so every figure in an answer can
+be traced to code that ran here, and the working is shown under the reply.
+
+It uses the same `GEMINI_API_KEY` as the Help bot. Without one, every AI surface says so
+and the rest of the section keeps working.
+
+Apply `migrations/022_accounting.sql` (the `expenses` and `accounting_reports` tables).
+Until it is applied, reads degrade with a warning and recording an expense answers
+503 with `migration: "022"`.
+
 ## 🚗 Stock is tracked per VIN
 
 Every car in inventory is its own record with its own VIN, colour, status, price and
