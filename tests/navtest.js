@@ -230,7 +230,7 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
     // config. What matters is the set: no section of the portal's own invention
     // is left behind for the arrangement to miss.
     check('every section the portal ships is one the admin ships too',
-      [...nav.groups].sort().join(',') === 'chat,crm,google,integrations,logistics,management,system',
+      [...nav.groups].sort().join(',') === 'chat,crm,finance,google,integrations,logistics,management,system',
       nav.groups.join(','));
     check('RFQ still lands in Tools although the config names the admin\'s id',
       nav.rfqGroup === 'integrations', String(nav.rfqGroup));
@@ -254,7 +254,7 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
       })));
     const names = list => list.map(g => g.key + ':' + g.name).join(' | ');
     check('both sidebars render the arrangement identically',
-      Array.isArray(adminSections) && adminSections.length === 7
+      Array.isArray(adminSections) && adminSections.length === 8
       && names(adminSections) === names(teamSections),
       `admin: ${names(adminSections || [])}  ·  team: ${names(teamSections)}`);
 

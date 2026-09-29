@@ -86,6 +86,7 @@ const PERM_SECTIONS = [
   'drive', 'sheets', 'email', 'calendar', 'meet', 'gchat',
   'chat', 'quotation', 'leads', 'deals', 'reports', 'issues',
   'suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions',
+  'accounting',
 ];
 // Nav items whose visibility is an action rather than a whole section.
 // stock is the same story: every employee has the section (the vehicle picker
@@ -135,6 +136,7 @@ const PERM_DEFAULTS = {
   drive:true, sheets:true, calendar:true, meet:true, email:false, gchat:false,
   chat:true, stock:true, quotation:false, leads:false, deals:false, reports:false, issues:false,
   suppliers:false, rfq:false, purchaseorders:false, contracts:false, submissions:false,
+  accounting:false,
 };
 function applyPermissions(permissions) {
   const p = { ...PERM_DEFAULTS, ...(permissions || {}) };
@@ -666,13 +668,15 @@ async function logout() {
 /* ── Navigation ── */
 const pageTitles = { home: 'Home', chat: 'Chat', tasks: 'My Tasks', hours: 'Hours Log', requests: 'Requests', drive: 'My Drive', sheets: 'My Sheets', email: 'My Email', quotation: 'Quotation', calendar: 'Calendar', meet: 'Meet', leads: 'Leads', deals: 'Deals', reports: 'Reports', gchat: 'Google Chat', notif: 'Notifications', issues: 'Issues',
   suppliers: 'Suppliers', rfq: 'RFQ', purchaseorders: 'Purchase Orders',
-  contracts: 'Contracts', submissions: 'Website Submissions', stock: 'Inventory' };
+  contracts: 'Contracts', submissions: 'Website Submissions', stock: 'Inventory', accounting: 'Accounting' };
 const pageLoaders = { calendar: () => loadCalendar(), home: loadHome, hours: loadMyHours, requests: loadMyRequests, drive: loadDrive, sheets: loadSheets, email: loadEmail, quotation: () => initQuotationPage(), leads: loadEmpLeads, deals: loadEmpDeals, reports: loadEmpReports, gchat: loadGChat, notif: loadNotifPage, issues: loadIssues,
   // Operations: the renderers live in the shared procurement.js, which both
   // portals load, so these are the same functions the dashboard calls.
   suppliers: () => loadSuppliers(), rfq: () => loadRfqs(), purchaseorders: () => loadPurchaseOrders(),
   contracts: () => loadContracts(), submissions: () => loadSubmissions(), meet: () => loadMeetings(),
-  stock: () => loadStock() };
+  stock: () => loadStock(),
+  // Finance: rendered by the shared accounting.js, same as the dashboard.
+  accounting: () => loadAccounting() };
 let _currentEmpPage = 'hours';
 // ── Favourites ────────────────────────────────────────────────────────────────
 // Per employee. Built from whatever they saved, intersected with the

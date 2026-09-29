@@ -14,7 +14,10 @@ const fs = require('fs');
 const results = [];
 const c = (n, ok, x) => { results.push(!!ok); console.log((ok ? '  ok  ' : ' FAIL ') + n + (x ? '  ' + x : '')); };
 
-const sources = ['index.js', ...fs.readdirSync('src/routes').filter(f => f.endsWith('.js')).map(f => 'src/routes/' + f)];
+// src/lib holds the Gemini client, which is where GEMINI_MODEL is read now.
+const sources = ['index.js',
+  ...fs.readdirSync('src/routes').filter(f => f.endsWith('.js')).map(f => 'src/routes/' + f),
+  ...fs.readdirSync('src/lib').filter(f => f.endsWith('.js')).map(f => 'src/lib/' + f)];
 const used = new Set();
 for (const f of sources) {
   for (const m of fs.readFileSync(f, 'utf8').matchAll(/process\.env\.([A-Z0-9_]+)/g)) used.add(m[1]);

@@ -69,6 +69,10 @@ check('the shared files define no adapter of their own',
 // happens — a stray '/api/dashboard' left in a fetch would 404 for the team portal.
 check('the operations module routes every call through the base mapping',
   !/PROCFG\.fetch\(['\`]\/api/.test(proc) && /procPath\(url\)/.test(proc));
+// The accounting module is the same shape: dashboard paths, mapped once.
+const acct = fs.readFileSync('public/assets/accounting.js', 'utf8');
+check('the accounting module routes every call through the base mapping',
+  !/PROCFG\.fetch\(['\`]\/api/.test(acct) && /acctPath\(url\)/.test(acct) && !/^const PROCFG = \{/m.test(acct));
 // The filter engine takes its adapter at runtime rather than declaring one.
 for (const portal of ['dashboard', 'employee']) {
   check(`${portal} binds the filter engine with lfInit`, /lfInit\(\{/.test(bundles[portal]));
@@ -110,7 +114,7 @@ for (const portal of ['dashboard', 'employee']) {
     .map(m => `${m[1]}:${m[2].trim()}`);
   const a = sections(pages.dashboard);
   const t = sections(pages.employee);
-  check('the admin ships seven sidebar sections', a.length === 7, a.join(' | '));
+  check('the admin ships eight sidebar sections', a.length === 8, a.join(' | '));
   check('the portal ships the same sections, in the same order, with the same names',
     a.length === t.length && a.every((v, i) => v === t[i]),
     `admin: ${a.join(' | ')}  ·  team: ${t.join(' | ')}`);

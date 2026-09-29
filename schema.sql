@@ -1037,3 +1037,44 @@ ALTER TABLE public.shipment_containers
   ADD COLUMN IF NOT EXISTS vessel_mmsi        TEXT DEFAULT '';
 CREATE INDEX IF NOT EXISTS shipment_containers_position_at_idx
   ON public.shipment_containers (vessel_position_at DESC NULLS LAST);
+
+-- ═══ From migrations/022_accounting.sql ═════════════════════════════════════
+-- The Accounting section: operating expenses (rent, salaries, marketing, …) so
+-- a result is more than "sales minus supplier payments", and generated finance
+-- reports kept with the exact figures they were written from.
+CREATE TABLE IF NOT EXISTS public.expenses (
+  id           BIGSERIAL PRIMARY KEY,
+  spent_on     DATE NOT NULL DEFAULT CURRENT_DATE,
+  category     TEXT NOT NULL DEFAULT 'other',
+  description  TEXT DEFAULT '',
+  vendor       TEXT DEFAULT '',
+  amount       NUMERIC(14,2) NOT NULL DEFAULT 0,
+  currency     TEXT NOT NULL DEFAULT 'EGP',
+  fx_rate      NUMERIC(14,6) NOT NULL DEFAULT 1,
+  amount_base  NUMERIC(14,2) NOT NULL DEFAULT 0,
+  method       TEXT DEFAULT '',
+  reference    TEXT DEFAULT '',
+  receipt      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  notes        TEXT DEFAULT '',
+  recorded_by  TEXT DEFAULT '',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS expenses_spent_on_idx ON public.expenses (spent_on DESC);
+CREATE INDEX IF NOT EXISTS expenses_category_idx ON public.expenses (category);
+ALTER TABLE IF EXISTS public.expenses ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.accounting_reports (
+  id           BIGSERIAL PRIMARY KEY,
+  period_from  DATE NOT NULL,
+  period_to    DATE NOT NULL,
+  period_label TEXT DEFAULT '',
+  lang         TEXT NOT NULL DEFAULT 'en',
+  pack         JSONB NOT NULL DEFAULT '{}'::jsonb,
+  narrative    TEXT DEFAULT '',
+  model        TEXT DEFAULT '',
+  created_by   TEXT DEFAULT '',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS accounting_reports_period_idx ON public.accounting_reports (period_from DESC, id DESC);
+ALTER TABLE IF EXISTS public.accounting_reports ENABLE ROW LEVEL SECURITY;

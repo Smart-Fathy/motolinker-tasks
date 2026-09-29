@@ -24,7 +24,7 @@ const NOTIFS      = fs.readFileSync('src/routes/notifications.js', 'utf8');
 // The procurement modules serve both portals from one set of handlers, so their
 // guards count as enforcement the same as anything in index.js.
 const PROC = ['suppliers', 'supplier-catalogue', 'rfq', 'purchase-orders', 'contracts', 'submissions', 'meetings', 'columns', 'availability',
-  'stock', 'client-folder', 'quotations']
+  'stock', 'client-folder', 'quotations', 'accounting']
   .map(f => fs.readFileSync(`src/routes/${f}.js`, 'utf8'));
 const SERVER_FILES = [IDX, EMP, HUDDLES, STREAMS, NOTIFS, ...PROC].join('\n');
 

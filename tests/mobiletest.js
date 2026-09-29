@@ -383,7 +383,7 @@ async function sweep(browser, o) {
     pages: ['home', 'tasks', 'employees', 'requests', 'submissions', 'deletions', 'hours',
             'quotation', 'customers', 'deals', 'suppliers', 'rfqs', 'stock', 'contracts',
             'purchaseorders', 'reports', 'automations', 'chat', 'notif', 'calendar', 'meet',
-            'email', 'drive', 'sheets', 'whatsapp'],
+            'email', 'drive', 'sheets', 'whatsapp', 'accounting'],
   });
 
   await sweep(browser, {
@@ -401,7 +401,9 @@ async function sweep(browser, o) {
     pages: ['home', 'tasks', 'hours', 'requests', 'leads', 'deals', 'reports',
             'quotation', 'chat', 'notif', 'calendar', 'meet', 'email', 'drive', 'sheets',
             // Operations, shared with the dashboard via procurement.js
-            'suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions'],
+            'suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions',
+            // Finance, shared the same way via accounting.js
+            'accounting'],
   });
 
   await browser.close(); srv.close();

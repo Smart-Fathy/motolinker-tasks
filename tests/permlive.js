@@ -79,6 +79,10 @@ const CASES = [
   ['issues',         'GET',  '/api/employee/issues',                 'view'],
   ['deals',          'GET',  '/api/employee/payments',               'payments'],
   ['deals',          'POST', '/api/employee/payments',               'paymentsEdit'],
+  ['accounting',     'GET',  '/api/employee/accounting/overview',    'view'],
+  ['accounting',     'POST', '/api/employee/accounting/expenses',    'edit'],
+  ['accounting',     'GET',  '/api/employee/accounting/export.csv?report=ledger', 'export'],
+  ['accounting',     'POST', '/api/employee/accounting/ai/chat',     'ai'],
 ];
 
 setTimeout(async () => {
@@ -97,7 +101,7 @@ setTimeout(async () => {
     if (refused(granted)) refusedWith.push(`${method} ${path} (${section}.${action})`);
     // The default employee has every one of these off — except the ones that are on
     // for the whole team, which are checked separately below.
-    if (['suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions', 'issues', 'deals'].includes(section)) {
+    if (['suppliers', 'rfq', 'purchaseorders', 'contracts', 'submissions', 'issues', 'deals', 'accounting'].includes(section)) {
       const denied = await hit(method, path, no);
       if (!refused(denied)) reachedWithout.push(`${method} ${path} → ${denied.status}`);
     }
