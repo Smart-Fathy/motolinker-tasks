@@ -178,7 +178,7 @@ const PERM_ACTIONS = {
   // figures are COMPANY-WIDE, not scoped to the employee's own leads. `edit`
   // records, changes and removes expenses (payments stay under deals.*). `export`
   // is CSV and PDF. `ai` is the finance assistant: insights, chat and writing a
-  // report's narrative, each of which spends the Gemini quota.
+  // report's narrative, each of which spends the AI provider's quota.
   accounting: ['view', 'edit', 'export', 'ai'],
   // The assistant on every page. `chat` is the drawer and the insight cards —
   // reading and suggesting; `act` lets it propose actions (a follow-up, a task,

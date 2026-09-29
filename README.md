@@ -399,8 +399,10 @@ it needs a number that is not there, calls back into two server tools — a whit
 `finance_query` and a `calculate` expression evaluator — so every figure in an answer can
 be traced to code that ran here, and the working is shown under the reply.
 
-It uses the same `GEMINI_API_KEY` as the Help bot. Without one, every AI surface says so
-and the rest of the section keeps working.
+It uses the same model as the Help bot: Cloudflare Workers AI (`CLOUDFLARE_ACCOUNT_ID` +
+`CLOUDFLARE_AI_TOKEN`, the model the motolinkers.com site runs on), with `GEMINI_API_KEY`
+as the fallback. Without either, every AI surface says so and the rest of the section
+keeps working.
 
 Apply `migrations/022_accounting.sql` (the `expenses` and `accounting_reports` tables).
 Until it is applied, reads degrade with a warning and recording an expense answers
@@ -431,8 +433,9 @@ a logged call/note/WhatsApp/meeting, a lead assignment, a new deal, a notificati
 
 It is governed by the `assistant` permission (`chat` for the drawer and cards,
 `act` for proposals), **on for everyone by default** — an admin can switch it off
-per employee. It uses the same `GEMINI_API_KEY` as the Help bot and the Accounting
-AI; without one every surface says so.
+per employee. It uses the same provider as the Help bot and the Accounting AI —
+Cloudflare Workers AI first, Gemini as the fallback (`src/lib/llm.js`); without
+either every surface says so.
 
 ## 🚗 Stock is tracked per VIN
 

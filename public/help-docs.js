@@ -284,7 +284,7 @@ written until you press it. A confirmed action runs exactly like doing it by han
 permission, the same activity log and notifications, with you as the author.
 
 ## When it is off
-Without a GEMINI_API_KEY on the server every AI surface says so. An admin can also switch
+Without an AI provider on the server (Cloudflare Workers AI, or a Gemini key as the fallback) every AI surface says so. An admin can also switch
 the assistant off for a person under Employees → AI assistant.`,
       ar: `## الدماغ في الأعلى
 في كل صفحة، يفتح زر الدماغ الملوّن المساعد. يقرأ القسم الذي تعمل عليه — العملاء المحتملين،
@@ -302,7 +302,7 @@ the assistant off for a person under Employees → AI assistant.`,
 كما لو نفذته يدوياً: نفس الصلاحية ونفس سجل النشاط والإشعارات، وأنت المؤلف.
 
 ## عندما يكون متوقفاً
-بدون مفتاح GEMINI_API_KEY على الخادم تقول كل واجهة ذلك صراحةً. ويمكن للمسؤول أيضاً إيقاف
+بدون مزوّد ذكاء اصطناعي على الخادم (Cloudflare Workers AI، أو مفتاح Gemini كبديل) تقول كل واجهة ذلك صراحةً. ويمكن للمسؤول أيضاً إيقاف
 المساعد لشخص من قسم الموظفين ← المساعد الذكي.`,
     },
   },
@@ -331,7 +331,7 @@ and shows the working under the answer — it never guesses a number. Each tab a
 an AI card with highlights, risks and suggestions; **Refresh** asks again.
 
 ## When the AI is off
-Without a GEMINI_API_KEY on the server every AI surface says so. Everything else — the
+Without an AI provider on the server (Cloudflare Workers AI, or a Gemini key as the fallback) every AI surface says so. Everything else — the
 figures, the ledger, expenses, CSV and PDF — keeps working.`,
       ar: `## ماذا يعرض
 قسم المحاسبة (تحت **Finance**) يجمع أموال الشركة في مكان واحد. كل رقم محسوب من دفتر
@@ -353,7 +353,7 @@ figures, the ledger, expenses, CSV and PDF — keeps working.`,
 **Refresh** يسأل من جديد.
 
 ## عندما يكون الذكاء الاصطناعي متوقفاً
-بدون مفتاح GEMINI_API_KEY على الخادم تقول كل واجهة ذكاء اصطناعي ذلك صراحةً. كل ما عدا ذلك —
+بدون مزوّد ذكاء اصطناعي على الخادم (Cloudflare Workers AI، أو مفتاح Gemini كبديل) تقول كل واجهة ذكاء اصطناعي ذلك صراحةً. كل ما عدا ذلك —
 الأرقام والدفتر والمصروفات وCSV وPDF — يعمل كالمعتاد.`,
     },
   },

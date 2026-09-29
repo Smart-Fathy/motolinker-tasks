@@ -215,7 +215,7 @@
     body.innerHTML = '<div class="ai-empty">Reading this section…</div>';
     try {
       const d = await aiJson(await api('/api/dashboard/ai/insights', { method: 'POST', body: JSON.stringify({ page, lang: _ai.lang === 'auto' ? undefined : _ai.lang, refresh: !!refresh }) }));
-      if (d.ai === false) { body.innerHTML = '<div class="ai-empty">AI not configured — set GEMINI_API_KEY on the server to turn on insights and the assistant.</div>'; if (st) st.textContent = 'AI off'; return; }
+      if (d.ai === false) { body.innerHTML = '<div class="ai-empty">AI not configured — set CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN (or GEMINI_API_KEY) on the server to turn on insights and the assistant.</div>'; if (st) st.textContent = 'AI off'; return; }
       if (!d.ok) { body.innerHTML = `<div class="ai-empty">${h(d.busy || d.error || d.note || 'The AI could not answer just now.')}</div>`; if (st) st.textContent = d.status === 429 ? 'busy' : ''; return; }
       if (st) st.textContent = (d.cached ? 'cached · ' : '') + (d.model || 'AI') + ' · ' + String(d.generated_at || '').slice(11, 16);
       const ins = d.insights || {};
@@ -275,9 +275,9 @@
     if (!el) return;
     try {
       const d = await aiJson(await api('/api/dashboard/ai/status'));
-      if (d.ai === false) { el.textContent = '● AI not configured — set GEMINI_API_KEY on the server'; el.style.color = '#e6a850'; return; }
-      if (d.ok) { el.textContent = '● Connected (' + (d.model || 'Gemini') + ') · reading ' + _ai.label; el.style.color = '#6dd8a4'; }
-      else if (d.status === 429) { el.textContent = '● Busy — free-tier rate limit, retry shortly'; el.style.color = '#e6a850'; }
+      if (d.ai === false) { el.textContent = '● AI not configured — set CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN (or GEMINI_API_KEY) on the server'; el.style.color = '#e6a850'; return; }
+      if (d.ok) { el.textContent = '● Connected (' + String(d.model || 'AI').replace(/^@cf\/[^/]+\//, '') + ') · reading ' + _ai.label; el.style.color = '#6dd8a4'; }
+      else if (d.status === 429) { el.textContent = '● Busy — out of capacity, retry shortly'; el.style.color = '#e6a850'; }
       else if (d.ok === false) { el.textContent = '● Key set but failing: ' + (d.error || 'unknown error'); el.style.color = '#e6a850'; }
       else { el.textContent = '● Ready · reading ' + _ai.label; el.style.color = 'var(--muted,#9a958a)'; }
     } catch (_) { el.textContent = ''; }
@@ -392,7 +392,7 @@
       const d = await aiJson(r);
       typing.remove();
       let ans, meta = null;
-      if (d.ai === false) ans = 'The assistant is not configured. Set GEMINI_API_KEY on the server and I will read this section for you.';
+      if (d.ai === false) ans = 'The assistant is not configured. Set CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN (or GEMINI_API_KEY) on the server and I will read this section for you.';
       else if (d.ok === false) ans = d.busy || ('I could not answer just now: ' + (d.error || 'unknown error'));
       else { ans = d.answer || 'I have nothing to add.'; meta = { model: d.model, tool_calls: d.tool_calls, proposals: A(d.proposals) }; }
       aiAppend(ans, 'bot', meta);

@@ -2,13 +2,14 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { ADMIN_USERNAME, express, receiver, requireAuth, requireEmployeeAuth, upload } = ctx.need('ADMIN_USERNAME', 'express', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'upload');
-// The Gemini call itself lives in src/lib/gemini.js, shared with the Accounting
-// section's finance AI; this file keeps the FAQ, the prompt and the status line.
-const { geminiCall, detectLang } = require('../lib/gemini');
+// The model call itself lives in src/lib/llm.js (Cloudflare Workers AI first,
+// Gemini as the fallback), shared with the Accounting finance AI and the
+// assistant on every page; this file keeps the FAQ, the prompt and the status line.
+const { aiCall, aiConfigured, detectLang } = require('../lib/llm');
 
 // ─── Help Bot (bilingual EN/AR support assistant) ───────────────────────────────
-// Hybrid: instant curated FAQ, with an optional Google Gemini (free tier) fallback
-// when GEMINI_API_KEY is set. Never throws — always returns some answer.
+// Hybrid: instant curated FAQ, with an optional AI answer when a provider is
+// configured. Never throws — always returns some answer.
 const HELP_FAQ = [
   { keys: ['add lead','new lead','create lead','اضافة عميل','إضافة عميل','عميل جديد','ليد جديد'],
     en: 'To add a lead: open Leads → click "Add Lead", fill in the name (required), phone, status, budget, etc., then Save. To add many at once use "Import CSV" (upload a .csv file or paste a public Google Sheets link).',
@@ -113,31 +114,32 @@ function helpSystemPrompt(identity) {
     'If a question is truly outside this system, say so briefly and point to the closest relevant section.',
   ].filter(Boolean).join('\n');
 }
-// Cached result of the most recent real Gemini call, so the admin status line never spends quota.
-let _helpAiState = { ok: null, model: null, error: null, status: null, at: 0 };
-// Returns { ok, text, model } on success, or { ok:false, noKey?, error, status } on failure. Never throws.
-async function helpCallGemini(systemText, history, message) {
-  const contents = [];
+// Cached result of the most recent real model call, so the admin status line never spends quota.
+let _helpAiState = { ok: null, provider: null, model: null, error: null, status: null, at: 0 };
+// Returns { ok, text, model, provider } on success, or { ok:false, noKey?, error, status } on failure. Never throws.
+async function helpCallAi(systemText, history, message) {
+  const messages = [];
   for (const h of (Array.isArray(history) ? history.slice(-8) : [])) {
     if (!h || !h.content) continue;
-    const role = (h.role === 'bot' || h.role === 'model' || h.role === 'assistant') ? 'model' : 'user';
-    contents.push({ role, parts: [{ text: String(h.content).slice(0, 2000) }] });
+    const role = (h.role === 'bot' || h.role === 'model' || h.role === 'assistant') ? 'assistant' : 'user';
+    messages.push({ role, content: String(h.content).slice(0, 2000) });
   }
-  contents.push({ role: 'user', parts: [{ text: String(message).slice(0, 2000) }] });
-  const res = await geminiCall({ systemText, contents });
+  messages.push({ role: 'user', content: String(message).slice(0, 2000) });
+  const res = await aiCall({ systemText, messages });
   if (res.ok) {
-    _helpAiState = { ok: true, model: res.model, error: null, status: null, at: Date.now() };
-    return { ok: true, text: res.text, model: res.model };
+    _helpAiState = { ok: true, provider: res.provider, model: res.model, error: null, status: null, at: Date.now() };
+    return { ok: true, text: res.text, model: res.model, provider: res.provider };
   }
   if (res.noKey) return { ok: false, noKey: true };
-  _helpAiState = { ok: false, model: null, error: res.error, status: res.status, at: Date.now() };
-  return { ok: false, error: res.error, status: res.status };
+  _helpAiState = { ok: false, provider: res.provider || null, model: null, error: res.error, status: res.status, at: Date.now() };
+  return { ok: false, error: res.error, status: res.status, provider: res.provider };
 }
 // Live health check for the admin status line: actually pings the model.
-async function helpGeminiPing() {
-  if (!process.env.GEMINI_API_KEY) return { ai: false, ok: false };
-  const res = await helpCallGemini('You are a health check. Reply with the single word OK.', [], 'ping');
-  return res.ok ? { ai: true, ok: true, model: res.model } : { ai: true, ok: false, error: res.error, status: res.status };
+async function helpAiPing() {
+  if (!aiConfigured()) return { ai: false, ok: false };
+  const res = await helpCallAi('You are a health check. Reply with the single word OK.', [], 'ping');
+  return res.ok ? { ai: true, ok: true, model: res.model, provider: res.provider }
+    : { ai: true, ok: false, error: res.error, status: res.status, provider: res.provider };
 }
 async function handleHelpChat(req, res, identity) {
   try {
@@ -145,17 +147,17 @@ async function handleHelpChat(req, res, identity) {
     if (!message.trim()) return res.status(400).json({ error: 'message required' });
     const lang = (req.body?.lang === 'ar' || req.body?.lang === 'en') ? req.body.lang : helpDetectLang(message);
     let aiError = null;
-    // AI-FIRST: when a key is configured, let the model answer (it has the full system prompt + identity).
-    if (process.env.GEMINI_API_KEY) {
-      const ai = await helpCallGemini(helpSystemPrompt(identity), req.body?.history, message);
+    // AI-FIRST: when a provider is configured, let the model answer (it has the full system prompt + identity).
+    if (aiConfigured()) {
+      const ai = await helpCallAi(helpSystemPrompt(identity), req.body?.history, message);
       if (ai.ok && ai.text) return res.json({ answer: ai.text, source: 'ai' });
       if (!ai.noKey) { aiError = ai.error; console.warn('[help] AI unavailable, falling back to FAQ:', ai.error); }
-      // Rate-limited on every model → tell the user plainly (+ a guide answer if one matches).
+      // Out of capacity on every provider → tell the user plainly (+ a guide answer if one matches).
       if (ai.status === 429) {
         const faqRl = helpFaqMatch(message, lang);
         const busy = lang === 'ar'
-          ? 'المساعد الذكي مشغول حالياً (تجاوز حد الاستخدام المجاني) — من فضلك حاول مرة أخرى بعد بضع ثوانٍ.'
-          : 'The AI assistant is busy right now (free-tier rate limit) — please try again in a few seconds.';
+          ? 'المساعد الذكي مشغول حالياً — من فضلك حاول مرة أخرى بعد بضع ثوانٍ.'
+          : 'The AI assistant is busy right now — please try again in a few seconds.';
         return res.json({ answer: busy + (faqRl ? '\n\n' + faqRl : ''), source: 'ratelimit' });
       }
     }
@@ -175,14 +177,14 @@ async function handleHelpChat(req, res, identity) {
 }
 receiver.router.post('/api/dashboard/help/chat', requireAuth, express.json(), (req, res) => handleHelpChat(req, res, { role: 'admin', username: ADMIN_USERNAME, name: 'Admin' }));
 receiver.router.post('/api/employee/help/chat', requireEmployeeAuth, express.json(), (req, res) => handleHelpChat(req, res, { role: 'employee', ...req.employee }));
-// Admin-only: is the AI (Gemini) configured AND working? Uses the cached result of the last real
+// Admin-only: is the AI configured AND working? Uses the cached result of the last real
 // call (updated on every chat) so opening the panel never spends quota; only pings live if nothing
 // has been observed in the last 10 minutes.
 receiver.router.get('/api/dashboard/help/status', requireAuth, async (_req, res) => {
-  if (!process.env.GEMINI_API_KEY) return res.json({ ai: false, ok: false });
+  if (!aiConfigured()) return res.json({ ai: false, ok: false });
   const fresh = _helpAiState.at && (Date.now() - _helpAiState.at < 10 * 60 * 1000);
-  if (fresh) return res.json({ ai: true, ok: _helpAiState.ok, model: _helpAiState.model, error: _helpAiState.error, status: _helpAiState.status, tested: true });
-  try { res.json({ ...(await helpGeminiPing()), tested: true }); }
+  if (fresh) return res.json({ ai: true, ok: _helpAiState.ok, provider: _helpAiState.provider, model: _helpAiState.model, error: _helpAiState.error, status: _helpAiState.status, tested: true });
+  try { res.json({ ...(await helpAiPing()), tested: true }); }
   catch (e) { res.json({ ai: true, ok: false, error: e.message, tested: true }); }
 });
 

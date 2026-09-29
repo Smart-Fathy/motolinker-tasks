@@ -1,16 +1,17 @@
-// One Gemini client for every feature that talks to the model.
+// Google Gemini, one of the two providers behind src/lib/llm.js.
 //
 // The Help bot carried its own copy of this inside src/routes/help-bot.js. The
-// Accounting section needs the same call with two more things — function
-// calling and JSON mode — and two copies of "walk the model list, roll to the
-// next one on 404 or 429, stop on anything else" is how they drift apart the
-// first time one of them is fixed. So the call lives here and both use it.
+// Accounting section needed the same call with two more things — function
+// calling and JSON mode — so the call moved here. Then the free tier started
+// answering "high demand" on most calls, and Cloudflare Workers AI (the model
+// the motolinkers.com site runs on) became the first choice, with this as the
+// fallback: routes call src/lib/llm.js, which tries Cloudflare, then this.
 //
 // Nothing in this file throws: a failed call is a result, not an exception.
 // No SDK — the REST API is one POST, and the SDK would be the only dependency
 // in the project that exists to save a fetch.
 
-// Candidate models: env override first, then current free-tier fallbacks.
+// Candidate models: env override first, then the current Flash fallbacks.
 // gemini-2.0-flash was shut down 2026-06-01, so defaults target the live Flash /
 // Flash-Lite models. Each model has an independent free-tier quota bucket, which
 // is why a 429 rolls to the next one rather than giving up.
@@ -104,46 +105,47 @@ function parseAiJson(text) {
   try { return JSON.parse(s.slice(start, end + 1)); } catch (_) { return null; }
 }
 
-// One conversation with the model, tools included. The caller supplies the tool
-// declarations and a synchronous `runTool(name, args)` that executes one call;
-// this walks the exchange: at most `maxRounds` tool rounds, then one last call
-// in which the model must answer in words. Returns
-//   { ok:true, text, model, tool_calls:[{name,args,result}] }
-// or the failing geminiCall result, never throws. The model's own turn goes
-// back verbatim (it may carry a thought signature), then one functionResponse
-// per call, in the order they were made — the v1beta function-calling shape.
-async function geminiConverse({ systemText, history, message, tools, runTool, generationConfig, maxRounds } = {}) {
+// The provider-neutral call src/lib/llm.js makes. `messages` is the transcript
+//   { role:'user', content }
+//   { role:'assistant', content, toolCalls:[{ id, name, args }], raw }   raw = this
+//        model's own parts, sent back verbatim (they may carry a thought signature)
+//   { role:'tool', results:[{ id, name, result }] }
+// `tools` are the v1beta declarations the routes already carry; toolChoice is
+// 'auto' or 'none'; json asks for application/json. Returns
+//   { ok:true, text, toolCalls:[{ id, name, args }], model, raw:parts }
+// or the failing geminiCall result.
+function toContents(transcript) {
   const contents = [];
-  for (const h of (Array.isArray(history) ? history.slice(-8) : [])) {
-    if (!h || !h.content) continue;
-    const role = (h.role === 'bot' || h.role === 'model' || h.role === 'assistant') ? 'model' : 'user';
-    contents.push({ role, parts: [{ text: String(h.content).slice(0, 2000) }] });
-  }
-  contents.push({ role: 'user', parts: [{ text: String(message || '').slice(0, 4000) }] });
-  const gen = { temperature: 0.2, maxOutputTokens: 1500, ...(generationConfig || {}) };
-  const toolCalls = [];
-  const rounds = Math.max(0, Math.min(8, Number(maxRounds) || 4));
-  const withTools = Array.isArray(tools) && tools.length && typeof runTool === 'function';
-  let res = null;
-  for (let round = 0; round < (withTools ? rounds : 1); round++) {
-    res = await geminiCall({ systemText, contents, tools: withTools ? tools : undefined,
-      toolConfig: withTools ? { functionCallingConfig: { mode: 'AUTO' } } : undefined, generationConfig: gen });
-    if (!res.ok) return res;
-    const calls = withTools ? (res.parts || []).filter(p => p && p.functionCall) : [];
-    if (!calls.length) return { ok: true, text: res.text, model: res.model, tool_calls: toolCalls };
-    contents.push({ role: 'model', parts: res.parts });
-    const responses = [];
-    for (const p of calls) {
-      const { name, args } = p.functionCall;
-      let result;
-      try { result = await runTool(name, args || {}); } catch (e) { result = { error: e.message }; }
-      toolCalls.push({ name, args: args || {}, result });
-      responses.push({ functionResponse: { name, response: { result } } });
+  for (const m of (Array.isArray(transcript) ? transcript : [])) {
+    if (!m) continue;
+    if (m.role === 'tool') {
+      contents.push({ role: 'user', parts: (m.results || []).map(r => ({ functionResponse: { name: r.name, response: { result: r.result === undefined ? null : r.result } } })) });
+    } else if (m.role === 'assistant') {
+      if (m.provider === 'gemini' && Array.isArray(m.raw) && m.raw.length && m.raw.some(p => p && (p.functionCall || p.text))) { contents.push({ role: 'model', parts: m.raw }); continue; }
+      const parts = [];
+      if (m.content) parts.push({ text: String(m.content) });
+      for (const c of (m.toolCalls || [])) parts.push({ functionCall: { name: c.name, args: c.args || {} } });
+      contents.push({ role: 'model', parts: parts.length ? parts : [{ text: '' }] });
+    } else {
+      contents.push({ role: 'user', parts: [{ text: String(m.content || '') }] });
     }
-    contents.push({ role: 'user', parts: responses });
   }
-  res = await geminiCall({ systemText, contents, tools, toolConfig: { functionCallingConfig: { mode: 'NONE' } }, generationConfig: gen });
-  return res.ok ? { ok: true, text: res.text, model: res.model, tool_calls: toolCalls } : res;
+  return contents;
+}
+async function geminiChat({ systemText, messages, tools, toolChoice, json, generationConfig } = {}) {
+  const gen = { ...(generationConfig || {}) };
+  if (json) gen.responseMimeType = 'application/json';
+  const hasTools = Array.isArray(tools) && tools.length > 0;
+  const res = await geminiCall({
+    systemText, contents: toContents(messages),
+    tools: hasTools ? tools : undefined,
+    toolConfig: hasTools ? { functionCallingConfig: { mode: toolChoice === 'none' ? 'NONE' : 'AUTO' } } : undefined,
+    generationConfig: gen,
+  });
+  if (!res.ok) return res;
+  const toolCalls = (res.parts || []).filter(p => p && p.functionCall)
+    .map((p, i) => ({ id: `call_${i}`, name: String(p.functionCall.name || ''), args: p.functionCall.args || {} })).filter(c => c.name);
+  return { ok: true, text: res.text, toolCalls, model: res.model, raw: res.parts };
 }
 
-module.exports = { GEMINI_MODELS, geminiConfigured, geminiGenerate, geminiCall, geminiConverse, geminiState, detectLang, parseAiJson };
+module.exports = { GEMINI_MODELS, geminiConfigured, geminiGenerate, geminiCall, geminiChat, geminiState, detectLang, parseAiJson, toContents };

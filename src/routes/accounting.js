@@ -3,7 +3,7 @@
 //
 // Every figure here is computed by src/lib/finance.js from the ledger, the sales
 // register, purchase orders and the expenses table — deterministic code. The
-// model (src/lib/gemini.js) is handed those figures and narrates, prioritises
+// model (src/lib/llm.js) is handed those figures and narrates, prioritises
 // and suggests; when it needs a number that is not in the pack it calls back
 // into the same code through two tools, `finance_query` and `calculate`, so an
 // answer can always be traced to arithmetic that ran here.
@@ -27,7 +27,7 @@ const renderQuotationPdf = (...a) => ctx.renderQuotationPdf(...a);
 const { BRAND_LOGO_URL, EXPENSE_CATEGORIES, PAYMENT_KINDS, PAYMENT_METHODS, PAYMENT_DIRECTIONS,
   CURRENCIES, BASE_CURRENCY } = require('../lib/constants');
 const fin = require('../lib/finance');
-const { geminiCall, geminiConverse, geminiConfigured, geminiState, detectLang, parseAiJson } = require('../lib/gemini');
+const { aiCall, aiConverse, aiConfigured, aiState, detectLang, parseAiJson } = require('../lib/llm');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MISSING_RE = /(does not exist|could not find the table|schema cache)/i;
@@ -104,8 +104,8 @@ function invalidate() { _packCache.clear(); _aiCache.clear(); }
 
 // ── The finance AI ───────────────────────────────────────────────────────────
 const BUSY = {
-  en: 'The finance AI is busy right now (free-tier rate limit) — please try again in a few seconds.',
-  ar: 'المساعد المالي مشغول حالياً (تجاوز حد الاستخدام المجاني) — من فضلك حاول مرة أخرى بعد بضع ثوانٍ.',
+  en: 'The finance AI is busy right now — please try again in a few seconds.',
+  ar: 'المساعد المالي مشغول حالياً — من فضلك حاول مرة أخرى بعد بضع ثوانٍ.',
 };
 const langOf = (v, text) => (v === 'ar' || v === 'en') ? v : detectLang(text || '');
 
@@ -173,7 +173,7 @@ function runTool(name, args, data, pack) {
 
 // One conversation with the finance tools; the loop itself is the shared one.
 function converse({ systemText, history, message, data, pack, generationConfig }) {
-  return geminiConverse({ systemText, history, message, tools: TOOLS, generationConfig,
+  return aiConverse({ systemText, history, message, tools: TOOLS, generationConfig,
     runTool: (name, args) => runTool(name, args, data, pack) });
 }
 
@@ -194,17 +194,17 @@ async function insightsFor(tab, range, lang, refresh) {
   if (hit && !refresh && Date.now() - hit.at < AI_TTL) return { ...hit.payload, cached: true };
   const { pack } = await packFor(range);
   const trimmed = fin.trimPack(pack);
-  const res = await geminiCall({
+  const res = await aiCall({
     systemText: acctSystemPrompt(lang, trimmed, tab, INSIGHT_TASKS[tab]),
-    contents: [{ role: 'user', parts: [{ text: lang === 'ar' ? 'حلّل أرقام هذه الفترة.' : 'Analyse this period.' }] }],
-    generationConfig: { temperature: 0.2, maxOutputTokens: 1800, responseMimeType: 'application/json' },
+    messages: [{ role: 'user', content: lang === 'ar' ? 'حلّل أرقام هذه الفترة.' : 'Analyse this period.' }],
+    json: true, generationConfig: { temperature: 0.2, maxOutputTokens: 1800 },
   });
   if (!res.ok) return { ai: true, ok: false, error: res.error, status: res.status, busy: res.status === 429 ? BUSY[lang] : undefined };
   const parsed = parseAiJson(res.text);
   if (!parsed || typeof parsed !== 'object') return { ai: true, ok: false, error: 'The model did not return JSON', model: res.model };
   const list = v => (Array.isArray(v) ? v.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).slice(0, 6) : []);
   const payload = {
-    ai: true, ok: true, model: res.model, generated_at: new Date().toISOString(), tab, range, lang,
+    ai: true, ok: true, model: res.model, provider: res.provider, generated_at: new Date().toISOString(), tab, range, lang,
     insights: { highlights: list(parsed.highlights), risks: list(parsed.risks), suggestions: list(parsed.suggestions) },
     extra: {},
   };
@@ -249,7 +249,7 @@ function mountAccounting(base, guard) {
           gross_margin: pack.gross_margin.amount, gross_margin_pct: pack.gross_margin.pct, net_result: pack.net_result,
         },
         cash_by_month: pack.cash.by_month, opex_by_month: pack.opex.by_month,
-        top_clients: pack.top_clients, counts: pack.counts, warnings: pack.warnings, ai: geminiConfigured(),
+        top_clients: pack.top_clients, counts: pack.counts, warnings: pack.warnings, ai: aiConfigured(),
       });
     } catch (e) { fail(res, e, 'overview'); }
   });
@@ -412,7 +412,7 @@ function mountAccounting(base, guard) {
       const lang = (b.lang === 'ar') ? 'ar' : 'en';
       const { pack, data } = await packFor(range);
       let narrative = '', model = '', aiResult = null;
-      if (geminiConfigured()) {
+      if (aiConfigured()) {
         aiResult = await converse({
           systemText: acctSystemPrompt(lang, fin.trimPack(pack), 'reports', REPORT_TASK[lang]),
           history: [], message: lang === 'ar' ? 'اكتب التقرير.' : 'Write the report.', data, pack,
@@ -424,7 +424,7 @@ function mountAccounting(base, guard) {
         created_by: ctx.callerIdentity(req).key };
       const { data: saved, error } = await supabase.from('accounting_reports').insert(row).select().single();
       if (error) return acctDbFail(res, error, 'Saved reports');
-      const out = { ai: geminiConfigured(), ok: true, row: saved };
+      const out = { ai: aiConfigured(), ok: true, row: saved };
       if (aiResult && !aiResult.ok) { out.ok = false; out.error = aiResult.error; out.status = aiResult.status; if (aiResult.status === 429) out.busy = BUSY[lang]; }
       res.json(out);
     } catch (e) { fail(res, e, 'report'); }
@@ -455,15 +455,15 @@ function mountAccounting(base, guard) {
 
   // ── The finance AI ──
   receiver.router.get(`${base}/accounting/ai/status`, guard, view, (_req, res) => {
-    if (!geminiConfigured()) return res.json({ ai: false, ok: false });
-    res.json({ ai: true, ...geminiState() });
+    if (!aiConfigured()) return res.json({ ai: false, ok: false });
+    res.json({ ai: true, ...aiState() });
   });
 
   receiver.router.post(`${base}/accounting/ai/insights`, guard, ai, express.json(), async (req, res) => {
     try {
       const b = req.body || {};
       const tab = INSIGHT_TASKS[b.tab] ? b.tab : 'overview';
-      if (!geminiConfigured()) return res.json({ ai: false, tab });
+      if (!aiConfigured()) return res.json({ ai: false, tab });
       const lang = langOf(b.lang, '') || 'en';
       res.json(await insightsFor(tab, rangeOf(b), lang, b.refresh === true));
     } catch (e) { fail(res, e, 'insights'); }
@@ -474,7 +474,7 @@ function mountAccounting(base, guard) {
       const b = req.body || {};
       const message = String(b.message || '').slice(0, 4000);
       if (!message.trim()) return res.status(400).json({ error: 'message required' });
-      if (!geminiConfigured()) return res.json({ ai: false });
+      if (!aiConfigured()) return res.json({ ai: false });
       const lang = langOf(b.lang, message);
       const range = rangeOf(b);
       const { pack, data } = await packFor(range);
