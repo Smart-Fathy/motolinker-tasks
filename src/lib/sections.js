@@ -10,7 +10,7 @@
 // The rows arrive already scoped (src/routes/assistant.js applies each
 // section's permission and the employee's data scope before building), so a
 // pack never carries more than the person could see on the page itself.
-const { LEADS_ENUM_DEFAULTS, PAYMENT_KINDS } = require('./constants');
+const { LEADS_ENUM_DEFAULTS, PAYMENT_KINDS, PAYMENT_KIND_KEYS, PAYMENT_METHODS, CURRENCIES, EXPENSE_CATEGORY_KEYS } = require('./constants');
 
 const num = v => { const n = Number(String(v ?? '').replace(/[^\d.-]/g, '')); return Number.isFinite(n) ? n : 0; };
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -356,23 +356,214 @@ function buildHomePack(data, opts) {
 }
 const HOME_QUERIES = { overview: (p) => { const { _rows, ...rest } = p; return rest; } };
 
+// ── Size guard ──────────────────────────────────────────────────────────────
+// The model has a fixed window (24k tokens on the default Workers AI model),
+// and a pack, a 360 view or a tool result can each outgrow it on a busy book.
+// This shrinks a value to fit: the largest array loses its tail, again and
+// again, then long strings are cut; a marker says how much was left out, so
+// the model can ask for a narrower query instead of guessing.
+const jsonSize = v => { try { return JSON.stringify(v).length; } catch (_) { return 0; } };
+function capJson(value, maxChars) {
+  let v; try { v = JSON.parse(JSON.stringify(value === undefined ? null : value)); } catch (_) { return null; }
+  const max = Math.max(200, Math.floor(Number(maxChars)) || 20000);
+  const isMarker = x => (x && typeof x === 'object' && x._more != null) || (typeof x === 'string' && x.startsWith('…+'));
+  for (let guard = 0; guard < 120 && jsonSize(v) > max; guard++) {
+    // The biggest single thing in the value: an array with more than one real
+    // row, or a long string. Whichever is larger loses half (or its tail).
+    let bigArr = null, bigStr = null;
+    (function walk(node, parent, key) {
+      if (Array.isArray(node)) {
+        const real = node.filter(x => !isMarker(x));
+        if (real.length > 1) { const size = jsonSize(node); if (!bigArr || size > bigArr.size) bigArr = { parent, key, node, real, size }; }
+        node.forEach((x, i) => walk(x, node, i));
+      } else if (typeof node === 'string') {
+        if (node.length > 120 && !node.startsWith('…+') && (!bigStr || node.length > bigStr.size)) bigStr = { parent, key, size: node.length };
+      } else if (node && typeof node === 'object') for (const k of Object.keys(node)) walk(node[k], node, k);
+    })(v, null, null);
+    if (bigArr && bigArr.parent && (!bigStr || bigArr.size >= bigStr.size)) {
+      const prior = bigArr.node.find(isMarker);
+      const already = prior ? (typeof prior === 'string' ? Number(prior.slice(2)) || 0 : Number(prior._more) || 0) : 0;
+      const keep = Math.max(1, Math.floor(bigArr.real.length / 2));
+      const cut = bigArr.real.slice(0, keep);
+      const dropped = bigArr.real.length - keep + already;
+      cut.push(cut.some(x => x && typeof x === 'object') ? { _more: dropped } : `…+${dropped}`);
+      bigArr.parent[bigArr.key] = cut;
+      continue;
+    }
+    if (bigStr && bigStr.parent) { bigStr.parent[bigStr.key] = bigStr.parent[bigStr.key].slice(0, 100) + '…'; continue; }
+    return JSON.stringify(v).slice(0, max - 1) + '…';
+  }
+  return v;
+}
+
+// ── 360 views: one record followed across every section ─────────────────────
+// The routes load the rows (each slice under its own permission, so a slice the
+// person may not see simply arrives empty) and these shape them. Every list is
+// capped here as well as by capJson, because a lead with three years of
+// activity should still leave room for the answer.
+const evAt = v => String(v || '').slice(0, 16).replace('T', ' ');
+function activityRows(activities, limit) {
+  return arr(activities).slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, limit || 25)
+    .map(a => ({ type: str(a.type, 20), body: str(a.body, 200), by: str(a.author_name, 40), at: evAt(a.created_at), ...(a.meta && (a.meta.from || a.meta.to) ? { from: str(a.meta.from, 30), to: str(a.meta.to, 30) } : {}) }));
+}
+function saleRows(sales, payments, opts) {
+  const t = dayOf(opts && opts.today) || todayStr();
+  return arr(sales).map(s => {
+    const mine = arr(payments).filter(p => String(p.sale_id) === String(s.id));
+    const price = num(s.discounted) > 0 ? num(s.discounted) : num(s.price_list);
+    const received = round2(mine.filter(p => p.direction === 'in' && p.kind !== 'refund').reduce((x, p) => x + num(p.amount_base), 0));
+    const refunded = round2(mine.filter(p => p.direction === 'out' && p.kind === 'refund').reduce((x, p) => x + num(p.amount_base), 0));
+    const legacy = !mine.length;
+    const outstanding = legacy ? (num(s.remaining) > 0 ? num(s.remaining) : Math.max(0, price - num(s.down_payment))) : Math.max(0, round2(price - received + refunded));
+    const due = dayOf(s.remaining_due) || null;
+    return { id: s.id, deal_id: s.deal_id || null, client: str(s.client, 80), vehicle: [s.brand, s.model, s.trim].filter(Boolean).join(' '), vin: str(s.vin, 20), status: str(s.status, 30), price,
+      received: legacy ? num(s.down_payment) : received, refunded, outstanding: round2(outstanding), due, days_overdue: (due && outstanding > 0 && due < t) ? daysBetween(due, t) : 0, delivery: dayOf(s.delivery_date) || null, payments: mine.length };
+  });
+}
+function paymentRows(payments, limit) {
+  return arr(payments).slice().sort((a, b) => String(b.paid_on).localeCompare(String(a.paid_on))).slice(0, limit || 15)
+    .map(p => ({ id: p.id, sale_id: p.sale_id || null, direction: str(p.direction, 4), kind: str(p.kind, 20), amount: num(p.amount), currency: str(p.currency, 8) || 'EGP', amount_egp: num(p.amount_base), paid_on: dayOf(p.paid_on), method: str(p.method, 20), reference: str(p.reference, 40) }));
+}
+function quoteRows(quotations, limit) {
+  return arr(quotations).slice(0, limit || 8).map(q => { const d = q.data && typeof q.data === 'object' ? q.data : {}; return { id: q.id, quote_id: str(q.quote_id, 40), title: str(q.title, 100), vehicle: str(d.vehicleModel, 80), usd_total_indicative: quoteTotal(d), exchange: num(d.exchange), valid_to: str(d.validTo, 20), created_at: dayOf(q.created_at), created_by: str(q.created_by, 40) }; });
+}
+function dealRows(deals, employees, t) {
+  return arr(deals).map(x => ({ id: x.id, title: str(x.title, 100), stage: str(x.stage, 20) || 'lead', value: num(x.budget_egp), car: str(x.car_model, 60), rep: nameOf(employees, x.assigned_to), assigned_to: x.assigned_to || null,
+    notes: str(x.notes, 300), created_at: dayOf(x.created_at), closed_at: dayOf(x.closed_at) || null, days_open: dayOf(x.created_at) ? Math.max(0, daysBetween(x.created_at, t) ?? 0) : null }));
+}
+function buildLead360(data, opts) {
+  const d = data || {}, t = dayOf(opts && opts.today) || todayStr();
+  const c = d.customer || {};
+  const activities = arr(d.activities), employees = arr(d.employees);
+  const last = activities.map(a => dayOf(a.created_at)).filter(Boolean).sort().slice(-1)[0] || '';
+  const lead = { ...leadRow(c, last, t), email: str(c.email, 80), budget_max: num(c.budget_max), notes: str(c.notes, 300), sales_feedback: str(c.sales_feedback, 200), inquiry: str(c.inquiry, 200), assigned_name: nameOf(employees, c.assigned_to), created_by: str(c.created_by, 40) };
+  const deals = dealRows(d.deals, employees, t);
+  const sales = saleRows(d.sales, d.payments, { today: t });
+  const payments = paymentRows(d.payments, 15);
+  const followups = arr(d.followups).map(f => ({ id: f.id, due_day: dayOf(f.due_at), note: str(f.note, 200), status: f.status || 'pending', assigned_to: f.assigned_to || null, completed_at: dayOf(f.completed_at) || null }));
+  const quotations = quoteRows(d.quotations, 8);
+  const contracts = arr(d.contracts).slice(0, 5).map(x => ({ id: x.id, contract_no: str(x.contract_no, 40), title: str(x.title, 100), status: str(x.status, 20), deal_id: x.deal_id || null, created_at: dayOf(x.created_at) }));
+  const purchase_orders = arr(d.purchase_orders).slice(0, 5).map(po => poRow(po, t));
+  const rfqs = arr(d.rfqs).slice(0, 5).map(r => ({ id: r.id, rfq_no: str(r.rfq_no, 40), title: str(r.title, 100), supplier: str(r.supplier_name, 80), status: str(r.status, 20), rfq_date: dayOf(r.rfq_date) || dayOf(r.created_at) }));
+  const submissions = arr(d.submissions).slice(0, 5).map(s => ({ id: s.id, car: str(s.car_interest, 60), source: str(s.source, 30), message: str(s.message, 160), created_at: dayOf(s.created_at) }));
+  const tasks = arr(d.tasks).slice(0, 5).map(x => taskRow(x, employees, t));
+  const open = deals.filter(x => OPEN_STAGES.includes(x.stage));
+  const timeline = [
+    ...activities.map(a => ({ at: evAt(a.created_at), kind: str(a.type, 20), text: str(a.body, 120) })),
+    ...followups.map(f => ({ at: f.due_day, kind: 'follow_up_' + f.status, text: f.note || 'Follow-up' })),
+    ...quotations.map(q => ({ at: q.created_at, kind: 'quotation', text: `${q.quote_id || q.title} ${q.vehicle}`.trim() })),
+    ...deals.flatMap(x => [{ at: x.created_at, kind: 'deal_opened', text: x.title }, ...(x.closed_at ? [{ at: x.closed_at, kind: 'deal_' + x.stage, text: x.title }] : [])]),
+    ...payments.map(p => ({ at: p.paid_on, kind: 'payment_' + p.direction, text: `${p.kind} ${p.currency} ${p.amount.toLocaleString('en-US')}` })),
+    ...contracts.map(x => ({ at: x.created_at, kind: 'contract_' + x.status, text: x.contract_no || x.title })),
+  ].filter(e => e.at).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 20);
+  return { kind: 'lead', today: t, lead, totals: {
+      deals: deals.length, deals_open: open.length, deals_open_value: round2(open.reduce((s, x) => s + x.value, 0)), won: deals.filter(x => x.stage === 'won').length,
+      quotations: quotations.length, contracts: contracts.length, paid_in_egp: round2(payments.filter(p => p.direction === 'in').reduce((s, p) => s + p.amount_egp, 0)),
+      outstanding_egp: round2(sales.reduce((s, x) => s + x.outstanding, 0)), pending_followups: followups.filter(f => f.status === 'pending').length, last_activity_at: last || null, days_silent: lead.days_silent },
+    activities: activityRows(activities, 25), followups: followups.slice(0, 15), deals: deals.slice(0, 10), quotations, contracts, sales: sales.slice(0, 5), payments, purchase_orders, rfqs, submissions, tasks, timeline,
+    definitions: ['outstanding = agreed price − payments in + refunds, per sale; legacy sales without payment rows use their own remaining column', 'days_silent counts days since the last logged activity'] };
+}
+function buildDeal360(data, opts) {
+  const d = data || {}, t = dayOf(opts && opts.today) || todayStr();
+  const employees = arr(d.employees);
+  const deal = dealRows([d.deal || {}], employees, t)[0];
+  const c = d.customer || (d.deal && d.deal.customers) || {};
+  const activities = arr(d.activities);
+  const last = activities.map(a => dayOf(a.created_at)).filter(Boolean).sort().slice(-1)[0] || '';
+  const sales = saleRows(d.sales, d.payments, { today: t });
+  const contract = arr(d.contracts).find(x => String(x.deal_id) === String(deal.id)) || arr(d.contracts)[0] || null;
+  return { kind: 'deal', today: t, deal, customer: c.id ? { ...leadRow(c, last, t), email: str(c.email, 80), assigned_name: nameOf(employees, c.assigned_to) } : null,
+    stage_history: activityRows(activities.filter(a => a.type === 'deal' || a.type === 'status_change'), 10),
+    activities: activityRows(activities, 15),
+    followups: arr(d.followups).map(f => ({ id: f.id, due_day: dayOf(f.due_at), note: str(f.note, 200), status: f.status || 'pending' })).slice(0, 10),
+    quotations: quoteRows(d.quotations, 5),
+    contract: contract ? { id: contract.id, contract_no: str(contract.contract_no, 40), status: str(contract.status, 20), created_at: dayOf(contract.created_at) } : null,
+    sales: sales.slice(0, 3), payments: paymentRows(d.payments, 15),
+    other_deals: dealRows(arr(d.other_deals).filter(x => String(x.id) !== String(deal.id)), employees, t).slice(0, 5),
+    totals: { paid_in_egp: round2(paymentRows(d.payments, 500).filter(p => p.direction === 'in').reduce((s, p) => s + p.amount_egp, 0)), outstanding_egp: round2(sales.reduce((s, x) => s + x.outstanding, 0)), days_open: deal.days_open, last_activity_at: last || null },
+    stages: DEAL_STAGES };
+}
+function buildSupplier360(data, opts) {
+  const d = data || {}, t = dayOf(opts && opts.today) || todayStr();
+  const s = d.supplier || {};
+  const pos = arr(d.purchase_orders).map(po => poRow(po, t));
+  const byCcy = {}; for (const p of pos) byCcy[p.currency] = round2((byCcy[p.currency] || 0) + p.pi_total);
+  const offers = arr(d.supplier_vehicles).map(v => ({ brand: str(v.brand, 40), model: str(v.model, 60), trim: str(v.trim, 60), year: v.model_year || null, fob_price: num(v.fob_price), currency: str(v.currency, 8) || 'USD', lead_time: str(v.lead_time, 40), availability: str(v.availability, 40) }));
+  const units = arr(d.stock_units).slice(0, 15).map(u => ({ model: str(u.model, 80), vin: str(u.vin, 20), colour: str(u.colour, 30), status: str(u.status, 30), consignee: str(u.consignee, 80), logistics: str(u.logistics, 80) }));
+  const containers = arr(d.containers).slice(0, 8).map(c => ({ container_no: str(c.container_no, 20), status: str(c.status, 20), vessel: str(c.vessel_name, 60), pod: str(c.pod_name, 60), pod_eta: dayOf(c.pod_eta) || dayOf(c.eta) || null, latest_move: str(c.latest_move, 120) }));
+  return { kind: 'supplier', today: t,
+    supplier: { id: s.id, name: str(s.name, 80), country: str(s.country, 40), contact: str(s.contact, 80), address: str(s.address, 120), notes: str(s.notes, 300), docs: num(d.docs_count) },
+    totals: { orders: pos.length, open_orders: pos.filter(p => p.status !== 'closed').length, units: pos.reduce((x, p) => x + p.units, 0), pi_total_by_currency: byCcy, catalogue_offers: offers.length, rfqs: arr(d.rfqs).length, stock_units: arr(d.stock_units).length },
+    purchase_orders: pos.slice(0, 10), rfqs: arr(d.rfqs).slice(0, 8).map(r => ({ id: r.id, rfq_no: str(r.rfq_no, 40), title: str(r.title, 100), status: str(r.status, 20), rfq_date: dayOf(r.rfq_date) || dayOf(r.created_at), lines: arr(r.items).length })),
+    catalogue: offers.sort((a, b) => (a.fob_price || 1e12) - (b.fob_price || 1e12)).slice(0, 20), stock_units: units, containers,
+    definitions: ['pi_total_by_currency sums the PI totals of this supplier\'s purchase orders', 'fob_price is what the supplier quoted, not what was paid'] };
+}
+function buildVehicle360(data, opts) {
+  const d = data || {}, t = dayOf(opts && opts.today) || todayStr();
+  const stock = d.stock ? { model: [d.stock.row && d.stock.row.make, d.stock.row && d.stock.row.model, d.stock.row && d.stock.row.trim].filter(Boolean).join(' '), stock_id: d.stock.row && d.stock.row.id,
+    colour: str(d.stock.unit && d.stock.unit.colour, 30), status: str(d.stock.unit && d.stock.unit.status, 30), consignee: str(d.stock.unit && d.stock.unit.consignee, 80), supplier: str(d.stock.unit && d.stock.unit.supplier, 80),
+    logistics: str(d.stock.unit && d.stock.unit.logistics, 80), price_list: num(d.stock.unit && d.stock.unit.price_list) || num(d.stock.row && d.stock.row.price) } : null;
+  const c = d.container || null;
+  const sale = arr(d.sales)[0] || null;
+  const sales = saleRows(sale ? [sale] : [], d.payments, { today: t });
+  const po = d.purchase_order || null;
+  const line = po ? arr(po.items).find(it => normVinLite(it.vin) === normVinLite(d.vin)) : null;
+  return { kind: 'vehicle', today: t, vin: str(d.vin, 20).toUpperCase(),
+    stock, container: c ? { container_no: str(c.container_no, 20), status: str(c.status, 20), carrier: str(c.carrier, 40), vessel: str(c.vessel_name, 60), pol: str(c.pol_name, 60), pod: str(c.pod_name, 60), latest_move: str(c.latest_move, 120), pod_eta: dayOf(c.pod_eta) || dayOf(c.eta) || null, days_to_eta: (dayOf(c.pod_eta) || dayOf(c.eta)) ? daysBetween(t, dayOf(c.pod_eta) || dayOf(c.eta)) : null } : null,
+    purchase_order: po ? { id: po.id, po_number: str(po.po_number, 40), supplier: str(po.supplier, 80), status: str(po.status, 20), po_date: dayOf(po.po_date) || dayOf(po.created_at), line: line ? { client: str(line.client, 60), consignee: str(line.consignee, 60), model: [line.brand, line.model, line.trim].filter(Boolean).join(' '), color: str(line.color, 30), units: num(line.units) || 1, pi_price: num(line.pi_price), status: str(line.status, 30) || 'send_to_supplier' } : null } : null,
+    sale: sales[0] || null, payments: paymentRows(d.payments, 10),
+    customer: d.customer && d.customer.id ? { id: d.customer.id, name: str(d.customer.name, 80), phone: str(d.customer.phone, 30), status: str(d.customer.lead_status, 30) } : null,
+    deal: d.deal ? dealRows([d.deal], d.employees, t)[0] : null };
+}
+const normVinLite = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+// ── Search across everything the person may see ─────────────────────────────
+// The route runs one query per table (each behind its own permission) and
+// hands the raw rows here; this shapes them into short labelled hits and tells
+// the model which lookup gives the full picture.
+function buildSearch(data, q, opts) {
+  const d = data || {}, t = dayOf(opts && opts.today) || todayStr();
+  const lim = 5;
+  const group = (rows, map) => { const list = arr(rows); return { total: list.length, rows: list.slice(0, lim).map(map) }; };
+  const out = { q: str(q, 80), today: t, groups: {} };
+  const g = out.groups;
+  if (d.customers) g.leads = group(d.customers, c => ({ customer_id: c.id, name: str(c.name, 80), phone: str(c.phone, 30), status: str(c.lead_status, 30), car: str(c.car_in_question, 60), assigned_to: c.assigned_to || null }));
+  if (d.deals) g.deals = group(d.deals, x => ({ deal_id: x.id, title: str(x.title, 100), stage: str(x.stage, 20), value: num(x.budget_egp), customer_id: x.customer_id || null }));
+  if (d.quotations) g.quotations = group(d.quotations, x => ({ id: x.id, quote_id: str(x.quote_id, 40), title: str(x.title, 100), customer_id: x.customer_id || null, created_at: dayOf(x.created_at) }));
+  if (d.contracts) g.contracts = group(d.contracts, x => ({ id: x.id, contract_no: str(x.contract_no, 40), title: str(x.title, 100), status: str(x.status, 20), customer_id: x.customer_id || null }));
+  if (d.rfqs) g.rfqs = group(d.rfqs, x => ({ id: x.id, rfq_no: str(x.rfq_no, 40), title: str(x.title, 100), supplier: str(x.supplier_name, 80), status: str(x.status, 20) }));
+  if (d.purchase_orders) g.purchase_orders = group(d.purchase_orders, x => ({ id: x.id, po_number: str(x.po_number, 40), title: str(x.title, 100), supplier: str(x.supplier, 80), status: str(x.status, 20) }));
+  if (d.suppliers) g.suppliers = group(d.suppliers, x => ({ supplier_id: x.id, name: str(x.name, 80), country: str(x.country, 40) }));
+  if (d.stock_units) g.stock = group(d.stock_units, u => ({ model: str(u.model, 80), vin: str(u.vin, 20), colour: str(u.colour, 30), status: str(u.status, 30), consignee: str(u.consignee, 80) }));
+  if (d.containers) g.containers = group(d.containers, c => ({ container_no: str(c.container_no, 20), status: str(c.status, 20), pod_eta: dayOf(c.pod_eta) || dayOf(c.eta) || null }));
+  if (d.tasks) g.tasks = group(d.tasks, x => ({ task_id: x.id, title: str(x.title, 100), status: str(x.status, 20), due_date: dayOf(x.due_date) || null }));
+  if (d.requests) g.requests = group(d.requests, x => ({ request_id: x.id, title: str(x.title, 100), status: str(x.status, 20), category: str(x.category, 40) }));
+  if (d.issues) g.issues = group(d.issues, x => ({ issue_id: x.id, title: str(x.title, 100), status: str(x.status, 20) }));
+  if (d.meetings) g.meetings = group(d.meetings, x => ({ meeting_id: x.id, title: str(x.title, 100), starts_at: evAt(x.starts_at) }));
+  if (d.employees) g.employees = group(d.employees, e => ({ employee_id: e.id, name: str(e.name, 80), job_title: str(e.job_title, 60) }));
+  if (d.submissions) g.submissions = group(d.submissions, s => ({ submission_id: s.id, name: str(s.name, 80), phone: str(s.phone, 30), car: str(s.car_interest, 60), customer_id: s.customer_id || null }));
+  out.total = Object.values(g).reduce((s, x) => s + x.total, 0);
+  out.hint = 'For the full picture of a hit use lookup: kind lead + customer_id, kind deal + deal_id, kind supplier + supplier_id, kind vehicle + vin.';
+  return out;
+}
+
 // ── The registry ────────────────────────────────────────────────────────────
 // gate: the read permission the section's own page needs (null = everyone).
 // admin: true means the section exists only in the admin dashboard.
 const SECTIONS = {
-  home: { label: 'Home', gate: null, build: buildHomePack, queries: HOME_QUERIES, actions: ['create_task', 'create_followup', 'notify'],
+  home: { label: 'Home', gate: null, build: buildHomePack, queries: HOME_QUERIES, actions: ['create_task', 'create_followup', 'notify', 'update_task', 'complete_followup', 'create_request'],
     chips: { en: ['What needs my attention today?', 'Which follow-ups are overdue?', 'Plan my day'], ar: ['ما الذي يحتاج انتباهي اليوم؟', 'ما المتابعات المتأخرة؟'] },
     task: 'Return ONLY a JSON object {"highlights":[…],"risks":[…],"suggestions":[…]} — up to 4 short sentences each, about what needs attention today: overdue tasks and follow-ups, meetings, new and hot leads, open pipeline, pending requests.' },
-  leads: { label: 'Leads', gate: { section: 'leads', action: 'view' }, build: buildLeadsPack, queries: LEADS_QUERIES, actions: ['create_followup', 'set_lead_status', 'log_activity', 'assign_lead', 'create_deal', 'create_task'],
+  leads: { label: 'Leads', gate: { section: 'leads', action: 'view' }, build: buildLeadsPack, queries: LEADS_QUERIES, actions: ['create_followup', 'set_lead_status', 'log_activity', 'assign_lead', 'create_deal', 'create_task', 'edit_lead', 'complete_followup', 'set_deal_stage', 'add_deal_note', 'record_payment'],
     chips: { en: ['Which hot leads have gone quiet?', 'Who should I call first today?', 'Draft a WhatsApp follow-up for a stale lead', 'Which sources bring the most hot leads?'], ar: ['أي العملاء الساخنين لم يتم التواصل معهم؟', 'بمن أتصل أولاً اليوم؟', 'اكتب رسالة متابعة واتساب'] },
     task: 'Return ONLY a JSON object {"highlights":[…],"risks":[…],"suggestions":[…],"call_list":[{"customer_id":0,"name":"","why":""}]} — up to 4 short sentences each, quoting figures from the pack (counts by status and source, new leads, follow-ups overdue/today, stale hot and warm leads, unassigned). call_list: up to 6 leads to contact first, most urgent first (overdue follow-ups, then stale hot leads), each "why" one sentence.' },
-  deals: { label: 'Deals', gate: { section: 'deals', action: 'view' }, build: buildDealsPack, queries: DEALS_QUERIES, actions: ['create_followup', 'create_task', 'log_activity', 'notify'],
+  deals: { label: 'Deals', gate: { section: 'deals', action: 'view' }, build: buildDealsPack, queries: DEALS_QUERIES, actions: ['create_followup', 'create_task', 'log_activity', 'notify', 'set_deal_stage', 'edit_deal', 'add_deal_note', 'record_payment', 'set_lead_status', 'edit_lead'],
     chips: { en: ['Which deals are stuck?', 'What is the weighted pipeline?', 'What did we win this month?', 'Which sales still owe money?'], ar: ['أي الصفقات متوقفة؟', 'ما قيمة خط الأنابيب المرجّح؟'] },
     task: 'Return ONLY a JSON object {"highlights":[…],"risks":[…],"suggestions":[…]} — up to 4 short sentences each, quoting figures from the pack (pipeline by stage, weighted value, win rate, this month, stuck deals, open sales balances).' },
-  quotation: { label: 'Quotation', gate: { section: 'quotation', action: 'history' }, build: buildQuotationPack, queries: QUOTATION_QUERIES, actions: ['create_task', 'notify'],
+  quotation: { label: 'Quotation', gate: { section: 'quotation', action: 'history' }, build: buildQuotationPack, queries: QUOTATION_QUERIES, actions: ['create_task', 'notify', 'create_followup', 'create_deal', 'set_deal_stage'],
     chips: { en: ['How many quotes went out this month?', 'Which vehicles are quoted most?', 'Find the latest quote for a customer'], ar: ['كم عرض سعر صدر هذا الشهر؟', 'أكثر السيارات المعروضة؟'] },
     task: 'Return ONLY a JSON object {"highlights":[…],"risks":[…],"suggestions":[…]} — up to 4 short sentences each about quotation volume, the vehicles quoted most and anything worth following up.' },
-  contracts: { label: 'Contracts', gate: { section: 'contracts', action: 'view' }, build: buildContractsPack, queries: CONTRACTS_QUERIES, actions: ['create_task', 'notify'],
+  contracts: { label: 'Contracts', gate: { section: 'contracts', action: 'view' }, build: buildContractsPack, queries: CONTRACTS_QUERIES, actions: ['create_task', 'notify', 'create_followup', 'record_payment'],
     chips: { en: ['Which contracts are still unsigned?', 'How many contracts this month?'], ar: ['ما العقود غير الموقعة؟', 'كم عقداً هذا الشهر؟'] },
     task: 'Return ONLY a JSON object {"highlights":[…],"risks":[…],"suggestions":[…]} — up to 4 short sentences each about contracts by status, old unsigned drafts and this month\'s volume.' },
   rfq: { label: 'RFQ', gate: { section: 'rfq', action: 'view' }, build: buildRfqPack, queries: RFQ_QUERIES, actions: ['create_task', 'notify'],
@@ -387,16 +578,16 @@ const SECTIONS = {
   stock: { label: 'Inventory', gate: { section: 'stock', action: 'browse' }, build: buildStockPack, queries: STOCK_QUERIES, actions: ['create_task', 'notify'],
     chips: { en: ['What is in stock and unassigned?', 'Which containers arrive this week?', 'Where is a VIN?'], ar: ['ما السيارات المتاحة غير المخصصة؟', 'أي الحاويات تصل هذا الأسبوع؟'] },
     task: 'Return ONLY a JSON object {"highlights":[…],"risks":[…],"suggestions":[…]} — up to 4 short sentences each about units by model and status, unassigned cars, list value, and containers in transit or arriving within 7 days.' },
-  submissions: { label: 'Submissions', gate: { section: 'submissions', action: 'view' }, build: buildSubmissionsPack, queries: SUBMISSIONS_QUERIES, actions: ['create_task', 'notify'],
+  submissions: { label: 'Submissions', gate: { section: 'submissions', action: 'view' }, build: buildSubmissionsPack, queries: SUBMISSIONS_QUERIES, actions: ['create_task', 'notify', 'link_submission', 'create_followup', 'set_lead_status'],
     chips: { en: ['Which website submissions are not linked to a lead?', 'What are people asking for this week?'], ar: ['أي طلبات الموقع غير مرتبطة بعميل؟', 'ماذا يطلب الناس هذا الأسبوع؟'] },
     task: 'Return ONLY a JSON object {"highlights":[…],"risks":[…],"suggestions":[…]} — up to 4 short sentences each about submission volume, sources, cars asked for and submissions not yet linked to a lead.' },
-  tasks: { label: 'Tasks', gate: { section: 'tasks', action: 'view' }, build: buildTasksPack, queries: TASKS_QUERIES, actions: ['create_task', 'notify'],
+  tasks: { label: 'Tasks', gate: { section: 'tasks', action: 'view' }, build: buildTasksPack, queries: TASKS_QUERIES, actions: ['create_task', 'notify', 'update_task', 'comment_task', 'log_hours'],
     chips: { en: ['What is overdue?', 'What is due this week?', 'Who is overloaded?'], ar: ['ما المهام المتأخرة؟', 'ما المستحق هذا الأسبوع؟'] },
     task: 'Return ONLY a JSON object {"highlights":[…],"risks":[…],"suggestions":[…]} — up to 4 short sentences each about open tasks by status and priority, overdue, due today and this week, and load per assignee.' },
-  hours: { label: 'Hours', gate: { section: 'hours', action: 'view' }, build: buildHoursPack, queries: HOURS_QUERIES, actions: ['notify'],
+  hours: { label: 'Hours', gate: { section: 'hours', action: 'view' }, build: buildHoursPack, queries: HOURS_QUERIES, actions: ['notify', 'log_hours'],
     chips: { en: ['Hours logged this week', 'Which days had no hours logged?'], ar: ['الساعات المسجلة هذا الأسبوع', 'أي الأيام بلا ساعات؟'] },
     task: 'Return ONLY a JSON object {"highlights":[…],"risks":[…],"suggestions":[…]} — up to 4 short sentences each about hours in the last 7 and 30 days, by day and by employee.' },
-  requests: { label: 'Requests', gate: { section: 'requests', action: 'view' }, build: buildRequestsPack, queries: REQUESTS_QUERIES, actions: ['create_task', 'notify'],
+  requests: { label: 'Requests', gate: { section: 'requests', action: 'view' }, build: buildRequestsPack, queries: REQUESTS_QUERIES, actions: ['create_task', 'notify', 'create_request'],
     chips: { en: ['Which requests are waiting longest?', 'Requests by category'], ar: ['أي الطلبات تنتظر أطول؟', 'الطلبات حسب الفئة'] },
     task: 'Return ONLY a JSON object {"highlights":[…],"risks":[…],"suggestions":[…]} — up to 4 short sentences each about requests by status and category and the oldest pending ones.' },
   meet: { label: 'Meetings', gate: { section: 'meet', action: 'view' }, build: buildMeetPack, queries: MEET_QUERIES, actions: ['create_task', 'notify'],
@@ -405,7 +596,7 @@ const SECTIONS = {
   issues: { label: 'Issues', gate: { section: 'issues', action: 'view' }, build: buildIssuesPack, queries: ISSUES_QUERIES, actions: ['create_task', 'notify'],
     chips: { en: ['Which issues have been open longest?', 'What was resolved this week?'], ar: ['أي المشكلات مفتوحة منذ أطول وقت؟', 'ما الذي حُل هذا الأسبوع؟'] },
     task: 'Return ONLY a JSON object {"highlights":[…],"risks":[…],"suggestions":[…]} — up to 4 short sentences each about open issues, their age, reporters and what was resolved this week.' },
-  employees: { label: 'Employees', gate: null, admin: true, build: buildEmployeesPack, queries: EMPLOYEES_QUERIES, actions: ['create_task', 'notify'],
+  employees: { label: 'Employees', gate: null, admin: true, build: buildEmployeesPack, queries: EMPLOYEES_QUERIES, actions: ['create_task', 'notify', 'update_task', 'assign_lead'],
     chips: { en: ['Who has the most overdue tasks?', 'Who logged no hours this week?', 'Which rep holds the most hot leads?'], ar: ['من لديه أكثر المهام المتأخرة؟', 'من لم يسجّل ساعات هذا الأسبوع؟'] },
     task: 'Return ONLY a JSON object {"highlights":[…],"risks":[…],"suggestions":[…]} — up to 4 short sentences each about team load: open and overdue tasks, hours logged this week, leads and hot leads per employee.' },
   automations: { label: 'Automations', gate: null, admin: true, build: buildAutomationsPack, queries: AUTOMATIONS_QUERIES, actions: ['notify'],
@@ -449,6 +640,7 @@ function sectionQuery(section, pack, name, args) {
 // way whether it came from the model or from a hand-written request.
 const ACTIVITY_TYPES = ['note', 'call', 'whatsapp', 'meeting'];
 const PRIORITIES = ['low', 'medium', 'high'];
+const TASK_STATUSES = ['todo', 'in_progress', 'done'];
 const ACTIONS = {
   create_followup: { label: 'Schedule a follow-up', perm: { section: 'leads', action: 'edit' }, needsCustomer: true,
     describe: a => `Follow-up for lead #${a.customer_id} on ${a.due_at}${a.note ? ' — ' + a.note : ''}`,
@@ -475,6 +667,96 @@ const ACTIONS = {
   notify: { label: 'Send a notification', perm: null,
     describe: a => `Notify ${a.to === 'admin' ? 'the admin' : a.to === 'me' ? 'me' : 'employee #' + a.to}: ${str(a.title, 80)}`,
     validate: a => { const title = str(a.title, 120); if (!title) return { error: 'title is required' }; const to = String(a.to || 'me'); if (!(to === 'me' || to === 'admin' || num(to) > 0)) return { error: 'to must be me, admin or an employee id' }; return { args: { to: num(to) > 0 ? String(num(to)) : to, title, body: str(a.body, 1000) } }; } },
+
+  // ── The second wave: edits and records, each the manual route's twin ──
+  edit_lead: { label: 'Update a lead\'s details', perm: { section: 'leads', action: 'edit' }, needsCustomer: true,
+    describe: a => `Update lead #${a.customer_id}: ` + Object.entries(a.fields).map(([k, v]) => `${k} = ${typeof v === 'string' ? str(v, 60) : v}`).join(', '),
+    validate: a => { const customer_id = num(a.customer_id); if (!(customer_id > 0)) return { error: 'customer_id is required' };
+      const src = { ...(a.fields && typeof a.fields === 'object' ? a.fields : {}), ...a }; delete src.fields; delete src.type; delete src.customer_id;
+      const f = {};
+      const key = v => str(v, 40).toLowerCase().replace(/[\s-]+/g, '_');
+      if (src.name != null && str(src.name, 120)) f.name = str(src.name, 120);
+      if (src.phone != null) f.phone = str(src.phone, 30);
+      if (src.email != null) f.email = str(src.email, 120);
+      if (src.source != null) f.source = key(src.source);
+      if (src.car_in_question != null || src.car != null || src.car_model != null) f.car_in_question = str(src.car_in_question ?? src.car ?? src.car_model, 120);
+      if (src.budget_lead != null || src.budget != null || src.budget_egp != null) f.budget_lead = num(src.budget_lead ?? src.budget ?? src.budget_egp);
+      if (src.budget_max != null) f.budget_max = num(src.budget_max);
+      if (src.next_action != null) f.next_action = key(src.next_action);
+      if (src.notes != null || src.note != null) f.notes = str(src.notes ?? src.note, 2000);
+      if (src.sales_feedback != null) f.sales_feedback = str(src.sales_feedback, 1000);
+      if (src.inquiry != null) f.inquiry = str(src.inquiry, 1000);
+      if (src.been_contacted != null) f.been_contacted = src.been_contacted === true || src.been_contacted === 'true';
+      if (src.status != null || src.lead_status != null) return { error: 'Use set_lead_status to change the status' };
+      if (!Object.keys(f).length) return { error: 'Give at least one field: name, phone, email, source, car_in_question, budget_lead, budget_max, next_action, notes, been_contacted, sales_feedback, inquiry' };
+      return { args: { customer_id, fields: f } }; } },
+  complete_followup: { label: 'Close a follow-up', perm: { section: 'leads', action: 'edit' },
+    describe: a => `Mark follow-up #${a.followup_id} ${a.status}`,
+    validate: a => { const followup_id = num(a.followup_id); if (!(followup_id > 0)) return { error: 'followup_id is required' }; const status = a.status === 'cancelled' ? 'cancelled' : 'done'; return { args: { followup_id, status } }; } },
+  set_deal_stage: { label: 'Move a deal to another stage', perm: { section: 'deals', action: 'move' },
+    describe: a => `Move deal #${a.deal_id} to "${a.stage}"`,
+    validate: a => { const deal_id = num(a.deal_id); const stage = str(a.stage, 20).toLowerCase(); if (!(deal_id > 0)) return { error: 'deal_id is required' }; if (!DEAL_STAGES.includes(stage)) return { error: 'stage must be one of ' + DEAL_STAGES.join(', ') }; return { args: { deal_id, stage } }; } },
+  edit_deal: { label: 'Update a deal', perm: { section: 'deals', action: 'edit' },
+    describe: a => `Update deal #${a.deal_id}: ` + Object.entries(a.fields).map(([k, v]) => `${k} = ${typeof v === 'string' ? str(v, 60) : v}`).join(', '),
+    validate: a => { const deal_id = num(a.deal_id); if (!(deal_id > 0)) return { error: 'deal_id is required' };
+      const src = { ...(a.fields && typeof a.fields === 'object' ? a.fields : {}), ...a }; const f = {};
+      if (src.title != null && str(src.title, 200)) f.title = str(src.title, 200);
+      if (src.car_model != null || src.car != null) f.car_model = str(src.car_model ?? src.car, 100);
+      if (src.budget_egp != null || src.budget != null) f.budget_egp = num(src.budget_egp ?? src.budget);
+      if (src.est_value != null) f.est_value = num(src.est_value);
+      if (src.notes != null) f.notes = str(src.notes, 2000);
+      if (src.assigned_to != null || src.employee_id != null) f.assigned_to = String(num(src.assigned_to ?? src.employee_id) || '');
+      if (src.stage != null) return { error: 'Use set_deal_stage to move the deal' };
+      if (!Object.keys(f).length) return { error: 'Give at least one field: title, car_model, budget_egp, est_value, notes, assigned_to' };
+      return { args: { deal_id, fields: f } }; } },
+  add_deal_note: { label: 'Add a note to a deal', perm: { section: 'deals', action: 'edit' },
+    describe: a => `Note on deal #${a.deal_id}: ${str(a.body, 80)}`,
+    validate: a => { const deal_id = num(a.deal_id); const body = str(a.body || a.note || a.notes, 2000); if (!(deal_id > 0)) return { error: 'deal_id is required' }; if (!body) return { error: 'body is required' }; return { args: { deal_id, body } }; } },
+  update_task: { label: 'Update a task', perm: { section: 'tasks', action: 'edit' },
+    describe: a => `Update task #${a.task_id}: ` + Object.entries(a.fields).map(([k, v]) => `${k} = ${Array.isArray(v) ? v.join('/') : typeof v === 'string' ? str(v, 60) : v}`).join(', '),
+    validate: a => { const task_id = num(a.task_id); if (!(task_id > 0)) return { error: 'task_id is required' };
+      const src = { ...(a.fields && typeof a.fields === 'object' ? a.fields : {}), ...a }; const f = {};
+      if (src.status != null) { const st = str(src.status, 20).toLowerCase().replace(/[\s-]+/g, '_'); if (!TASK_STATUSES.includes(st)) return { error: 'status must be one of ' + TASK_STATUSES.join(', ') }; f.status = st; }
+      const due = dayOf(src.due_date) || (num(src.days) > 0 ? addDays(todayStr(), Math.floor(num(src.days))) : ''); if (due) f.due_date = due;
+      if (src.priority != null) f.priority = PRIORITIES.includes(src.priority) ? src.priority : 'medium';
+      if (src.title != null && str(src.title, 200)) f.title = str(src.title, 200);
+      if (src.description != null || src.body != null) f.description = str(src.description ?? src.body, 2000);
+      if (src.assignee_ids != null || src.assignee_id != null || src.employee_id != null) { const list = [...arr(src.assignee_ids), ...(src.assignee_id != null ? [src.assignee_id] : []), ...(src.employee_id != null ? [src.employee_id] : [])].map(x => String(num(x))).filter(x => x !== '0'); if (list.length) f.assignee_ids = [...new Set(list)].slice(0, 10); }
+      if (!Object.keys(f).length) return { error: 'Give at least one field: status (todo, in_progress, done), due_date or days, priority, title, description, assignee_ids' };
+      return { args: { task_id, fields: f } }; } },
+  comment_task: { label: 'Comment on a task', perm: { section: 'tasks', action: 'comment' },
+    describe: a => `Comment on task #${a.task_id}: ${str(a.body, 80)}`,
+    validate: a => { const task_id = num(a.task_id); const body = str(a.body || a.note, 2000); if (!(task_id > 0)) return { error: 'task_id is required' }; if (!body) return { error: 'body is required' }; return { args: { task_id, body } }; } },
+  create_request: { label: 'File a request', perm: { section: 'requests', action: 'create' },
+    describe: a => `Request "${a.title}"${a.category ? ' (' + a.category + ')' : ''}, ${a.priority} priority`,
+    validate: a => { const title = str(a.title, 200); if (!title) return { error: 'title is required' };
+      return { args: { title, description: str(a.description || a.body, 2000), category: str(a.category, 40), priority: PRIORITIES.includes(a.priority) ? a.priority : 'medium', assignee_id: num(a.assignee_id || a.employee_id) > 0 ? num(a.assignee_id || a.employee_id) : null } }; } },
+  log_hours: { label: 'Log hours', perm: { section: 'hours', action: 'log' },
+    describe: a => `Log ${a.hours}h on ${a.log_date}${a.task_description ? ' — ' + str(a.task_description, 60) : ''}`,
+    validate: a => { const hours = num(a.hours); if (!(hours > 0 && hours <= 24)) return { error: 'hours must be between 0 and 24' }; const task_id = num(a.task_id) > 0 ? num(a.task_id) : null; const task_description = str(a.task_description || a.description || a.title, 300);
+      if (!task_id && !task_description) return { error: 'Say what the hours were for (task_description) or which task (task_id)' };
+      return { args: { hours: Math.round(hours * 100) / 100, task_id, task_description, log_date: dayOf(a.log_date || a.day) || todayStr(), description: str(a.description, 500) } }; } },
+  record_payment: { label: 'Record a payment', perm: { section: 'deals', action: 'paymentsEdit' },
+    describe: a => `Record ${a.direction === 'out' ? 'a refund/outgoing payment' : 'a payment'} of ${a.currency} ${a.amount.toLocaleString('en-US')} (${a.kind}) on ${a.paid_on}${a.sale_id ? ' for sale #' + a.sale_id : a.customer_id ? ' for lead #' + a.customer_id : ''}`,
+    validate: a => { const amount = num(a.amount); if (!(amount > 0)) return { error: 'amount must be greater than zero' };
+      const sale_id = num(a.sale_id) > 0 ? num(a.sale_id) : null, customer_id = num(a.customer_id) > 0 ? num(a.customer_id) : null;
+      if (!sale_id && !customer_id) return { error: 'Give sale_id or customer_id' };
+      const kind = PAYMENT_KIND_KEYS.includes(a.kind) ? a.kind : 'instalment';
+      const def = PAYMENT_KINDS.find(k => k.key === kind) || {};
+      const direction = a.direction === 'out' || a.direction === 'in' ? a.direction : (def.dir || def.direction || 'in');
+      const currency = CURRENCIES.includes(String(a.currency || '').toUpperCase()) ? String(a.currency).toUpperCase() : 'EGP';
+      const fx_rate = currency === 'EGP' ? 1 : num(a.fx_rate); if (!(fx_rate > 0)) return { error: 'fx_rate (EGP per 1 ' + currency + ') is required for a non-EGP payment' };
+      return { args: { sale_id, customer_id, amount, kind, direction, currency, fx_rate, paid_on: dayOf(a.paid_on || a.day) || todayStr(), method: PAYMENT_METHODS.includes(a.method) ? a.method : '', reference: str(a.reference, 120), notes: str(a.notes || a.note, 1000) } }; } },
+  record_expense: { label: 'Record an expense', perm: { section: 'accounting', action: 'edit' },
+    describe: a => `Record an expense of ${a.currency} ${a.amount.toLocaleString('en-US')} (${a.category}) on ${a.spent_on}${a.vendor ? ' — ' + a.vendor : ''}`,
+    validate: a => { const amount = num(a.amount); if (!(amount > 0)) return { error: 'amount must be greater than zero' };
+      const category = EXPENSE_CATEGORY_KEYS.includes(str(a.category, 40).toLowerCase()) ? str(a.category, 40).toLowerCase() : 'other';
+      const currency = CURRENCIES.includes(String(a.currency || '').toUpperCase()) ? String(a.currency).toUpperCase() : 'EGP';
+      const fx_rate = currency === 'EGP' ? 1 : num(a.fx_rate); if (!(fx_rate > 0)) return { error: 'fx_rate (EGP per 1 ' + currency + ') is required for a non-EGP expense' };
+      return { args: { amount, category, currency, fx_rate, spent_on: dayOf(a.spent_on || a.day) || todayStr(), description: str(a.description || a.title || a.body, 300), vendor: str(a.vendor, 120), method: PAYMENT_METHODS.includes(a.method) ? a.method : '', reference: str(a.reference, 120), notes: str(a.notes || a.note, 1000) } }; } },
+  link_submission: { label: 'Link a website submission to a lead', perm: { section: 'submissions', action: 'view' }, needsCustomer: true,
+    describe: a => `Link submission #${a.submission_id} to lead #${a.customer_id}`,
+    validate: a => { const submission_id = num(a.submission_id), customer_id = num(a.customer_id); if (!(submission_id > 0)) return { error: 'submission_id is required' }; if (!(customer_id > 0)) return { error: 'customer_id is required' }; return { args: { submission_id, customer_id } }; } },
 };
 function validateAction(type, raw) {
   const def = ACTIONS[type];
@@ -485,8 +767,9 @@ function validateAction(type, raw) {
 }
 
 module.exports = {
-  SECTIONS, PAGE_TO_SECTION, sectionForPage, buildPack, trimSectionPack, sectionQuery,
-  ACTIONS, validateAction, DEAL_STAGES, LEAD_STATUSES,
+  SECTIONS, PAGE_TO_SECTION, sectionForPage, buildPack, trimSectionPack, sectionQuery, capJson,
+  buildLead360, buildDeal360, buildSupplier360, buildVehicle360, buildSearch,
+  ACTIONS, validateAction, DEAL_STAGES, LEAD_STATUSES, TASK_STATUSES,
   buildLeadsPack, buildDealsPack, buildQuotationPack, buildContractsPack, buildRfqPack, buildPurchaseOrdersPack,
   buildSuppliersPack, buildStockPack, buildSubmissionsPack, buildTasksPack, buildHoursPack, buildRequestsPack,
   buildMeetPack, buildIssuesPack, buildEmployeesPack, buildAutomationsPack, buildHomePack,

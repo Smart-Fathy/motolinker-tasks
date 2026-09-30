@@ -267,11 +267,28 @@ An employee asking to delete a record raises a request instead. The admin review
     id: 'assistant',
     title: { en: 'The AI assistant', ar: 'المساعد الذكي' },
     body: {
-      en: `## The brain in the header
-On every page, the colourful brain opens the assistant. It reads the section you are on —
-Leads, Deals, Purchase Orders, Inventory, Tasks and the rest — and only what your own
-permissions let you see. Ask it to explain a figure, find something, work something out or
-draft a message, in English or Arabic. Every calculation it makes is shown under the answer.
+      en: `## Ask AI, on every page
+The **Ask AI** button in the header (or **Ctrl/⌘+K**) opens the assistant. On a desktop it
+docks beside the page — nothing is covered, drag its edge to resize it, and it stays open
+across pages until you close it; on a phone it rises as a sheet. It reads the section you
+are on — Leads, Deals, Purchase Orders, Inventory, Tasks and the rest — and only what your
+own permissions let you see. Ask it to explain a figure, find something, work something out
+or draft a message, in English or Arabic. Every calculation it makes is shown under the answer.
+
+## It sees what you are looking at
+Open a lead profile, a deal, a task, a supplier, a purchase order or a container and the
+panel shows a **Looking at** chip. From then on *summarise this lead*, *what does this one
+still owe?* or *draft a reminder for him* need no name — the open record is handed to the
+assistant in full. The active tab, the search box and the filters travel with it. Press ×
+on the chip to make it ignore the record.
+
+## It follows records across the whole system
+From any page it can pull one lead's whole story (activities, follow-ups, deals, quotations,
+contracts, sales, payments and what is still owed, purchase orders, RFQs, website
+submissions, tasks), one deal, one supplier (orders, RFQs, catalogue, cars in stock,
+containers) or one VIN (stock unit, container and arrival date, purchase-order line, sale,
+payments, customer), search everything by name, phone, number or VIN, and read another
+section's figures — always only what you may see.
 
 ## The insights card
 Each section starts with an **AI insights** card: highlights, risks and suggestions for
@@ -279,18 +296,38 @@ that section. **Refresh** asks again; **Hide** folds it and remembers.
 
 ## Proposed actions
 Ask for something to be done — *schedule a follow-up with Ahmed on Thursday*, *make me a
-task to chase PO-12* — and the assistant proposes it as a card with **Confirm**. Nothing is
-written until you press it. A confirmed action runs exactly like doing it by hand: the same
-permission, the same activity log and notifications, with you as the author.
+task to chase PO-12*, *move this deal to negotiating*, *record the 50,000 down payment* —
+and the assistant proposes it as a card with **Confirm**. Nothing is written until you
+press it. A confirmed action runs exactly like doing it by hand: the same permission, the
+same activity log, notifications and automations, with you as the author. It can schedule
+or close a follow-up, create, update or comment on a task, change a lead's status or
+details, log a call or note, assign a lead, open a deal, move or edit a deal or add a note
+to it, file a request, log hours, record a payment or an expense, link a website submission
+to a lead, and send a notification.
 
 ## When it is off
 Without an AI provider on the server (Cloudflare Workers AI, or a Gemini key as the fallback) every AI surface says so. An admin can also switch
 the assistant off for a person under Employees → AI assistant.`,
-      ar: `## الدماغ في الأعلى
-في كل صفحة، يفتح زر الدماغ الملوّن المساعد. يقرأ القسم الذي تعمل عليه — العملاء المحتملين،
-الصفقات، أوامر الشراء، المخزون، المهام وغيرها — وفقط ما تسمح لك صلاحياتك برؤيته. اطلب منه
-شرح رقم أو البحث عن شيء أو حساب شيء أو كتابة رسالة بالعربية أو الإنجليزية. كل حساب يقوم به
-يظهر تحت الإجابة.
+      ar: `## اسأل الذكاء الاصطناعي في كل صفحة
+زر **Ask AI** في الأعلى (أو **Ctrl/⌘+K**) يفتح المساعد. على الحاسوب يلتصق بجانب الصفحة —
+لا يغطي شيئاً، اسحب حافته لتغيير عرضه، ويبقى مفتوحاً بين الصفحات حتى تغلقه؛ وعلى الهاتف
+يظهر كلوحة من الأسفل. يقرأ القسم الذي تعمل عليه — العملاء المحتملين، الصفقات، أوامر الشراء،
+المخزون، المهام وغيرها — وفقط ما تسمح لك صلاحياتك برؤيته. اطلب منه شرح رقم أو البحث عن شيء
+أو حساب شيء أو كتابة رسالة بالعربية أو الإنجليزية. كل حساب يقوم به يظهر تحت الإجابة.
+
+## يرى ما تنظر إليه
+افتح ملف عميل أو صفقة أو مهمة أو مورداً أو أمر شراء أو حاوية فتظهر في اللوحة شارة
+**Looking at**. بعدها لا يحتاج *لخّص هذا العميل* أو *كم تبقّى على هذا؟* أو *اكتب له تذكيراً*
+إلى ذكر اسم — السجل المفتوح يُسلَّم للمساعد كاملاً. ويرافقه التبويب النشط ومربع البحث
+والفلاتر. اضغط × على الشارة ليتجاهل السجل.
+
+## يتتبع السجلات عبر النظام كله
+من أي صفحة يستطيع جلب قصة عميل كاملة (النشاط، المتابعات، الصفقات، عروض الأسعار، العقود،
+المبيعات، المدفوعات والمتبقي، أوامر الشراء، طلبات عروض الأسعار، طلبات الموقع، المهام)،
+أو صفقة، أو مورداً (الطلبات، طلبات العروض، الكتالوج، السيارات في المخزون، الحاويات)،
+أو رقم هيكل VIN (الوحدة في المخزون، الحاوية وموعد الوصول، سطر أمر الشراء، البيع، المدفوعات،
+العميل)، والبحث في كل شيء بالاسم أو الهاتف أو الرقم أو VIN، وقراءة أرقام قسم آخر — دائماً
+فقط ما يحق لك رؤيته.
 
 ## بطاقة الرؤى
 يبدأ كل قسم ببطاقة **رؤى الذكاء الاصطناعي**: أبرز النقاط والمخاطر والاقتراحات لذلك القسم.
@@ -299,7 +336,10 @@ the assistant off for a person under Employees → AI assistant.`,
 ## الإجراءات المقترحة
 اطلب تنفيذ شيء — *حدّد متابعة مع أحمد يوم الخميس*، *أنشئ لي مهمة لمتابعة PO-12* — فيقترحه
 المساعد كبطاقة مع زر **Confirm**. لا يُكتب شيء قبل الضغط عليه. الإجراء المؤكد يعمل تماماً
-كما لو نفذته يدوياً: نفس الصلاحية ونفس سجل النشاط والإشعارات، وأنت المؤلف.
+كما لو نفذته يدوياً: نفس الصلاحية ونفس سجل النشاط والإشعارات والأتمتة، وأنت المؤلف. يستطيع
+تحديد متابعة أو إغلاقها، وإنشاء مهمة أو تحديثها أو التعليق عليها، وتغيير حالة عميل أو بياناته،
+وتسجيل مكالمة أو ملاحظة، وإسناد عميل، وفتح صفقة، ونقل صفقة أو تعديلها أو إضافة ملاحظة لها،
+وتقديم طلب، وتسجيل ساعات، وتسجيل دفعة أو مصروف، وربط طلب من الموقع بعميل، وإرسال إشعار.
 
 ## عندما يكون متوقفاً
 بدون مزوّد ذكاء اصطناعي على الخادم (Cloudflare Workers AI، أو مفتاح Gemini كبديل) تقول كل واجهة ذلك صراحةً. ويمكن للمسؤول أيضاً إيقاف
