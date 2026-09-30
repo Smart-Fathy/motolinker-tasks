@@ -101,6 +101,9 @@ async function packFor(range) {
   return entry;
 }
 function invalidate() { _packCache.clear(); _aiCache.clear(); }
+// The assistant records payments and expenses through its own confirm step;
+// this lets it drop the finance pack so the next figure is current.
+ctx.accountingInvalidate = invalidate;
 
 // ── The finance AI ───────────────────────────────────────────────────────────
 const BUSY = {
@@ -160,7 +163,24 @@ const TOOLS = [{
   ],
 }];
 
-function runTool(name, args, data, pack) {
+// The two money actions the finance assistant may propose. Validation and
+// execution live with the page assistant (src/lib/sections.js ACTIONS and
+// src/routes/assistant.js runAction), so a proposal from here is confirmed
+// and written exactly like one from any other page.
+const S = require('../lib/sections');
+function proposeTool(actions) {
+  return {
+    name: 'propose_action',
+    description: 'Propose one action for the person to confirm — nothing is written until they press Confirm. Actions: ' + actions.map(a => `${a} (${S.ACTIONS[a].label})`).join(', ') + '. Give every field: amount, currency (EGP unless told), fx_rate for a foreign currency, the date, and for a payment the sale_id (from finance_query sale_position / overdue_receivables) plus kind and direction.',
+    parameters: { type: 'OBJECT', properties: {
+      type: { type: 'STRING', enum: actions }, sale_id: { type: 'INTEGER' }, customer_id: { type: 'INTEGER' },
+      amount: { type: 'NUMBER' }, currency: { type: 'STRING' }, fx_rate: { type: 'NUMBER', description: 'EGP per 1 unit of a foreign currency' },
+      kind: { type: 'STRING', description: 'payment kind: reservation, down_payment, instalment, final, refund, supplier, freight, customs' }, direction: { type: 'STRING', enum: ['in', 'out'] },
+      category: { type: 'STRING', description: 'expense category: ' + EXPENSE_CATEGORIES.map(c => c.key).join(', ') }, description: { type: 'STRING' }, vendor: { type: 'STRING' },
+      method: { type: 'STRING' }, paid_on: { type: 'STRING', description: 'YYYY-MM-DD' }, spent_on: { type: 'STRING', description: 'YYYY-MM-DD' }, reference: { type: 'STRING' }, notes: { type: 'STRING' } }, required: ['type'] },
+  };
+}
+function runTool(name, args, data, pack, actions) {
   const a = args || {};
   if (name === 'calculate') {
     const expression = String(a.expression || '');
@@ -168,13 +188,22 @@ function runTool(name, args, data, pack) {
     catch (e) { return { expression, error: e.message }; }
   }
   if (name === 'finance_query') return fin.financeQuery(data, pack, a.query, a);
+  if (name === 'propose_action') {
+    if (!Array.isArray(actions) || !actions.includes(a.type)) return { error: `"${a.type}" cannot be proposed here` };
+    const v = S.validateAction(a.type, a);
+    if (v.error) return { error: v.error };
+    return { proposed: true, action: { type: v.type, ...v.args }, label: v.label, description: v.description };
+  }
   return { error: 'Unknown tool ' + name };
 }
 
 // One conversation with the finance tools; the loop itself is the shared one.
-function converse({ systemText, history, message, data, pack, generationConfig }) {
-  return aiConverse({ systemText, history, message, tools: TOOLS, generationConfig,
-    runTool: (name, args) => runTool(name, args, data, pack) });
+// `actions` lists what this person may propose (empty: nothing).
+function converse({ systemText, history, message, data, pack, generationConfig, actions }) {
+  const acts = Array.isArray(actions) ? actions : [];
+  const tools = acts.length ? [{ functionDeclarations: [...TOOLS[0].functionDeclarations, proposeTool(acts)] }] : TOOLS;
+  return aiConverse({ systemText, history, message, tools, generationConfig,
+    runTool: (name, args) => runTool(name, args, data, pack, acts) });
 }
 
 // Per-tab insight cards. JSON mode, no tools (the two cannot be combined), so
@@ -497,14 +526,17 @@ mountAccounting('/api/employee', requireEmployeeAuth);
 // The global assistant (src/routes/assistant.js) opens one drawer on every page;
 // on the Accounting page it hands the conversation here, so the finance tools
 // and the finance pack answer it.
-ctx.accountingChat = async function accountingChat({ message, history, lang, tab, period, from, to } = {}) {
+ctx.accountingChat = async function accountingChat({ message, history, lang, tab, period, from, to, actions } = {}) {
   const l = lang === 'ar' ? 'ar' : 'en';
   const range = rangeOf({ period, from, to });
   const { pack, data } = await packFor(range);
-  const task = 'Answer the question in short paragraphs or numbered steps, under 200 words unless asked for detail. No markdown tables.';
-  const out = await converse({ systemText: acctSystemPrompt(l, fin.trimPack(pack), String(tab || ''), task), history, message, data, pack });
+  const acts = Array.isArray(actions) ? actions.filter(a => a === 'record_expense' || a === 'record_payment') : [];
+  const task = 'Answer the question in short paragraphs or numbered steps, under 200 words unless asked for detail. No markdown tables.'
+    + (acts.length ? ` You may PROPOSE ${acts.join(' and ')} with propose_action when asked to record something; a proposal is not an execution — the person confirms it with a button. Never say it was recorded; say you have proposed it.` : '');
+  const out = await converse({ systemText: acctSystemPrompt(l, fin.trimPack(pack), String(tab || ''), task), history, message, data, pack, actions: acts });
   if (!out.ok) return { ai: true, ok: false, error: out.error, status: out.status, busy: out.status === 429 ? BUSY[l] : undefined };
-  return { ai: true, ok: true, answer: out.text, model: out.model, tool_calls: out.tool_calls, proposals: [], lang: l, label: 'Accounting' };
+  const proposals = (out.tool_calls || []).filter(c => c.name === 'propose_action' && c.result && c.result.proposed).map(c => ({ action: c.result.action, label: c.result.label, description: c.result.description }));
+  return { ai: true, ok: true, answer: out.text, model: out.model, provider: out.provider, tool_calls: out.tool_calls, proposals, lang: l, label: 'Accounting' };
 };
 
 module.exports = { mountAccounting };

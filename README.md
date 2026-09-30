@@ -410,13 +410,33 @@ Until it is applied, reads degrade with a warning and recording an expense answe
 
 ## 🧠 The assistant on every page
 
-The colourful brain in the header opens one drawer on every page of both portals,
-and every section carries an **AI insights** card at the top (highlights, risks,
-suggestions; fold it with *Hide*, ask again with *Refresh*). The drawer reads
-whichever section is open — Leads, Deals, Quotation, Contracts, RFQ, Purchase
-Orders, Suppliers, Inventory & tracking, Submissions, Tasks, Hours, Requests,
-Meetings, Issues, and for the admin Employees and Automations — and only what the
-person's own permissions and data scope let them see.
+The **Ask AI** button in the header (or Ctrl/⌘+K) opens one panel on every page
+of both portals. On a desktop it docks beside the page — the page shrinks, nothing
+is covered, you keep working while it answers — and it is resizable and remembers
+being open; on a phone it rises as a sheet. Every section also carries an **AI
+insights** card at the top (highlights, risks, suggestions; fold it with *Hide*,
+ask again with *Refresh*). The panel reads whichever section is open — Leads,
+Deals, Quotation, Contracts, RFQ, Purchase Orders, Suppliers, Inventory & tracking,
+Submissions, Tasks, Hours, Requests, Meetings, Issues, and for the admin Employees
+and Automations — and only what the person's own permissions and data scope let
+them see.
+
+**It sees what is on screen.** The panel tells the server which record is open (a
+lead profile, a deal, a task, a supplier, a purchase order, a container…), the
+active tab, the search box and the filters, so "summarise this lead" or "what
+about this one?" needs no name — an open lead, deal, supplier or VIN is handed to
+the model in full, and a *Looking at* chip in the panel shows what it is reading
+(× ignores it).
+
+**It follows records across sections.** From any page the model can call
+`lookup` for one lead (activities, follow-ups, deals, quotations, contracts,
+sales, payments and what is still owed, purchase orders, RFQs, website
+submissions, tasks, a timeline), one deal, one supplier (orders, RFQs, catalogue,
+cars in stock, containers) or one VIN (stock unit, container and arrival date,
+purchase-order line, sale, payments, customer); `search_all` finds anything by
+name, phone, email, number or VIN; `other_section` reads another section's
+figures. Each slice loads under its own permission, so a slice the person may not
+see is simply absent.
 
 Every figure comes from `src/lib/sections.js`, which turns a section's rows into
 a pack the model is handed; the model narrates and, when it needs a number, calls
@@ -428,8 +448,13 @@ follow-up with Ahmed on Thursday", "make me a task to chase PO-12" — and the m
 proposes it through `propose_action`; it arrives as a card with **Confirm**. Only
 that press writes anything, and it runs through the same checks and side effects as
 the manual path (permission, scope, activity log, notification, automations) with
-the real person as author. Actions today: a follow-up, a task, a lead status change,
-a logged call/note/WhatsApp/meeting, a lead assignment, a new deal, a notification.
+the real person as author. Actions today: a follow-up (schedule or close), a task
+(create, update, comment), a lead status change or a lead edit, a logged
+call/note/WhatsApp/meeting, a lead assignment, a new deal, a deal stage move, a deal
+edit or note, a request, logged hours, a recorded payment or expense, linking a
+website submission to a lead, and a notification. Each one is the manual route's
+twin: a won deal still drafts its contract and opens its sale, a done task still
+syncs the calendar and fires its automation.
 
 It is governed by the `assistant` permission (`chat` for the drawer and cards,
 `act` for proposals), **on for everyone by default** — an admin can switch it off

@@ -114,6 +114,57 @@ const T = '2026-09-29';
   check('action: notify only to me, admin or an employee id', S.validateAction('notify', { title: 't', to: 'everyone' }).error && S.validateAction('notify', { title: 't', to: '7' }).args.to === '7' && S.validateAction('notify', { title: 't' }).args.to === 'me');
   check('action: an unknown type names the choices', /Choose one of: create_followup/.test(S.validateAction('drop_table', {}).error));
   check('each section only offers actions the registry knows', Object.values(S.SECTIONS).every(s => s.actions.every(a => S.ACTIONS[a])));
+
+  // ── The second wave of actions ──
+  const el = S.validateAction('edit_lead', { customer_id: 3, budget: '1,200,000', next_action: 'Need Follow Up', car: 'BYD Seal', phone: '0100' });
+  check('action: edit_lead whitelists and normalises fields', el.args.fields.budget_lead === 1200000 && el.args.fields.next_action === 'need_follow_up' && el.args.fields.car_in_question === 'BYD Seal' && el.args.fields.phone === '0100' && !('type' in el.args.fields), JSON.stringify(el.args));
+  check('action: edit_lead sends a status change to set_lead_status', /set_lead_status/.test(S.validateAction('edit_lead', { customer_id: 3, status: 'hot' }).error) && /at least one field/.test(S.validateAction('edit_lead', { customer_id: 3 }).error));
+  check('action: a deal stage is validated and lower-cased', S.validateAction('set_deal_stage', { deal_id: 5, stage: 'Won' }).args.stage === 'won' && /one of lead/.test(S.validateAction('set_deal_stage', { deal_id: 5, stage: 'closed' }).error) && S.validateAction('set_deal_stage', { deal_id: 5, stage: 'won' }).perm.action === 'move');
+  const ut = S.validateAction('update_task', { task_id: 9, status: 'In Progress', days: 2, employee_id: 4 });
+  check('action: update_task normalises status, dates and assignees', ut.args.fields.status === 'in_progress' && /^\d{4}-\d{2}-\d{2}$/.test(ut.args.fields.due_date) && ut.args.fields.assignee_ids[0] === '4' && /one of todo/.test(S.validateAction('update_task', { task_id: 9, status: 'later' }).error));
+  const pay = S.validateAction('record_payment', { sale_id: 2, amount: '50,000', kind: 'refund' });
+  check('action: a refund is an outgoing payment in EGP by default; a foreign one needs its rate', pay.args.direction === 'out' && pay.args.currency === 'EGP' && pay.args.fx_rate === 1 && pay.args.amount === 50000 && /fx_rate/.test(S.validateAction('record_payment', { sale_id: 2, amount: 100, currency: 'usd' }).error) && /sale_id or customer_id/.test(S.validateAction('record_payment', { amount: 100 }).error));
+  const ex = S.validateAction('record_expense', { amount: 3000, category: 'Rent', vendor: 'Landlord' });
+  check('action: an expense takes the category vocabulary and defaults the rest', ex.args.category === 'rent' && ex.args.currency === 'EGP' && /^\d{4}-\d{2}-\d{2}$/.test(ex.args.spent_on) && S.validateAction('record_expense', { amount: 10, category: 'yachts' }).args.category === 'other');
+  check('action: hours need a reason and stay within a day', S.validateAction('log_hours', { hours: 2.5, task_description: 'calls' }).args.hours === 2.5 && /task_description/.test(S.validateAction('log_hours', { hours: 2 }).error) && /between 0 and 24/.test(S.validateAction('log_hours', { hours: 30, task_description: 'x' }).error));
+  check('action: a request, a comment, a note and a follow-up close each validate their key', S.validateAction('create_request', { title: 'Laptop', category: 'IT Support' }).args.priority === 'medium' && /task_id/.test(S.validateAction('comment_task', { body: 'hi' }).error) && S.validateAction('add_deal_note', { deal_id: 3, note: 'called' }).args.body === 'called' && S.validateAction('complete_followup', { followup_id: 8, status: 'cancelled' }).args.status === 'cancelled' && S.validateAction('complete_followup', { followup_id: 8 }).args.status === 'done');
+  check('action: linking a submission needs both ids and the lead', S.ACTIONS.link_submission.needsCustomer === true && /submission_id/.test(S.validateAction('link_submission', { customer_id: 1 }).error));
+  check('the money actions are only offered where money is handled', S.SECTIONS.deals.actions.includes('record_payment') && !S.SECTIONS.tasks.actions.includes('record_payment') && S.SECTIONS.tasks.actions.includes('update_task') && S.SECTIONS.requests.actions.includes('create_request'));
+
+  // ── The size guard ──
+  {
+    const big = { rows: Array.from({ length: 400 }, (_, i) => ({ i, name: 'row ' + i, txt: 'x'.repeat(50) })), blurb: 'y'.repeat(5000) };
+    const c = S.capJson(big, 3000);
+    check('capJson: a big value is cut to size, the biggest thing first, and says what it dropped', JSON.stringify(c).length <= 3000 && c.rows.length < 400 && c.rows[c.rows.length - 1]._more > 0 && c.blurb.length < 5000 && c.blurb.endsWith('…'), JSON.stringify(c).length + ' ' + c.rows.length);
+    check('capJson: a small value is untouched and a list of strings keeps a marker', JSON.stringify(S.capJson({ a: [1, 2, 3] }, 1000)) === '{"a":[1,2,3]}' && String(S.capJson({ vins: Array.from({ length: 100 }, (_, i) => 'VIN' + i) }, 300).vins.slice(-1)[0]).startsWith('…+'));
+  }
+
+  // ── 360 views ──
+  {
+    const l = S.buildLead360({ customer: { id: 1, name: 'Ahmed', phone: '0100', lead_status: 'hot', assigned_to: 2, created_at: '2026-09-01' }, employees: [{ id: 2, name: 'Sara' }],
+      activities: [{ type: 'call', body: 'called', author_name: 'Sara', created_at: '2026-09-20T10:00:00Z' }, { type: 'status_change', body: 'Status changed', meta: { from: 'warm', to: 'hot' }, created_at: '2026-09-10T10:00:00Z' }],
+      followups: [{ id: 1, due_at: '2026-09-25T09:00:00Z', note: 'ring', status: 'pending' }],
+      deals: [{ id: 7, title: 'Seal', stage: 'negotiating', budget_egp: 1000000, created_at: '2026-08-01' }],
+      quotations: [{ id: 3, quote_id: 'Q-3', data: { vehicleModel: 'Seal', items: [{ priceUsd: 20000, unit: 1 }], logistics: [{ priceUsd: 1500 }], exchange: 50 }, created_at: '2026-09-10' }],
+      sales: [{ id: 4, deal_id: 7, client: 'Ahmed', brand: 'BYD', model: 'Seal', price_list: 1000000, remaining_due: '2026-09-01' }],
+      payments: [{ id: 1, sale_id: 4, direction: 'in', kind: 'down_payment', amount: 300000, currency: 'EGP', amount_base: 300000, paid_on: '2026-09-05' }],
+      tasks: [{ id: 9, title: 'Call Ahmed', status: 'todo', due_date: '2026-10-01' }] }, { today: '2026-09-30' });
+    check('lead 360: profile, money and silence in one view', l.kind === 'lead' && l.lead.assigned_name === 'Sara' && l.totals.deals_open === 1 && l.totals.paid_in_egp === 300000 && l.totals.outstanding_egp === 700000 && l.totals.days_silent === 10 && l.sales[0].days_overdue === 29 && l.quotations[0].usd_total_indicative === 21500, JSON.stringify(l.totals));
+    check('lead 360: the timeline merges activities, follow-ups, quotes, deals and payments, newest first', l.timeline.length === 6 && l.timeline[0].kind === 'follow_up_pending' && l.timeline.some(e => e.kind === 'payment_in') && l.activities[1].from === 'warm' && l.tasks[0].title === 'Call Ahmed', JSON.stringify(l.timeline.map(e => e.kind)));
+    const d = S.buildDeal360({ deal: { id: 7, title: 'Seal', stage: 'negotiating', budget_egp: 1000000, customer_id: 1, created_at: '2026-08-01' }, customer: { id: 1, name: 'Ahmed', lead_status: 'hot' }, employees: [],
+      activities: [{ type: 'deal', body: 'Deal moved to Negotiating', meta: { from: 'quoted', to: 'negotiating' }, created_at: '2026-09-15T10:00:00Z' }, { type: 'note', body: 'x', created_at: '2026-09-16T10:00:00Z' }],
+      contracts: [{ id: 2, contract_no: 'C-2', status: 'draft', deal_id: 7, created_at: '2026-09-20' }], sales: [{ id: 4, deal_id: 7, price_list: 1000000 }], payments: [{ id: 1, sale_id: 4, direction: 'in', kind: 'final', amount: 1000000, currency: 'EGP', amount_base: 1000000, paid_on: '2026-09-21' }], other_deals: [{ id: 7 }, { id: 8, title: 'Atto', stage: 'lost' }] }, { today: '2026-09-30' });
+    check('deal 360: stage history, contract, settled sale and the lead\'s other deals', d.stage_history.length === 1 && d.stage_history[0].to === 'negotiating' && d.contract.contract_no === 'C-2' && d.totals.outstanding_egp === 0 && d.totals.paid_in_egp === 1000000 && d.other_deals.length === 1 && d.other_deals[0].title === 'Atto' && d.deal.days_open === 60, JSON.stringify(d.totals));
+    const sup = S.buildSupplier360({ supplier: { id: 5, name: 'Yu Motors', country: 'CN' }, purchase_orders: [{ id: 1, po_number: 'PO-1', supplier: 'Yu Motors', status: 'sent', currency: 'USD', po_date: '2026-08-01', items: [{ pi_price: 20000, units: 2 }] }],
+      rfqs: [{ id: 1, rfq_no: 'R-1', status: 'sent', items: [{}] }], supplier_vehicles: [{ brand: 'BYD', model: 'Seal', fob_price: 21000, currency: 'USD' }, { brand: 'BYD', model: 'Atto', fob_price: 15000 }], docs_count: 3,
+      stock_units: [{ model: 'BYD Seal', vin: 'LGX1', status: 'in_logistics', supplier: 'Yu Motors' }], containers: [{ container_no: 'MSDU1', status: 'in_transit', pod_eta: '2026-10-06' }] }, { today: '2026-09-30' });
+    check('supplier 360: orders, PI by currency, catalogue sorted by price, stock and boxes', sup.totals.orders === 1 && sup.totals.pi_total_by_currency.USD === 40000 && sup.totals.units === 2 && sup.catalogue[0].model === 'Atto' && sup.supplier.docs === 3 && sup.stock_units.length === 1 && sup.containers[0].container_no === 'MSDU1', JSON.stringify(sup.totals));
+    const v = S.buildVehicle360({ vin: 'LGXCE4CB5N0123456', stock: { row: { id: 1, make: 'BYD', model: 'Seal' }, unit: { vin: 'LGXCE4CB5N0123456', status: 'in_logistics', colour: 'white' } }, container: { container_no: 'MSDU1', status: 'in_transit', pod_eta: '2026-10-06' },
+      purchase_order: { id: 2, po_number: 'PO-2', supplier: 'Yu', items: [{ vin: 'lgxce4cb5n0123456', client: 'Ahmed', pi_price: 20000, status: 'in_logistics' }] }, sales: [{ id: 4, vin: 'LGXCE4CB5N0123456', price_list: 1000000, down_payment: 400000 }], payments: [], customer: { id: 1, name: 'Ahmed', phone: '0100' } }, { today: '2026-09-30' });
+    check('vehicle 360: stock unit, container ETA, the PO line by VIN, the sale and the customer', v.stock.model === 'BYD Seal' && v.container.days_to_eta === 6 && v.purchase_order.line.client === 'Ahmed' && v.purchase_order.line.status === 'in_logistics' && v.sale.outstanding === 600000 && v.customer.name === 'Ahmed', JSON.stringify(v.purchase_order));
+    const sr = S.buildSearch({ customers: [{ id: 1, name: 'Ahmed', lead_status: 'hot' }], tasks: [{ id: 2, title: 'Call Ahmed', status: 'todo' }], deals: [], stock_units: Array.from({ length: 9 }, (_, i) => ({ model: 'Ahmed?', vin: 'V' + i })) }, 'ahmed');
+    check('search: hits are grouped, capped and counted, with a hint to look up', sr.total === 11 && sr.groups.leads.rows[0].customer_id === 1 && sr.groups.stock.total === 9 && sr.groups.stock.rows.length === 5 && sr.groups.deals.total === 0 && /lookup/.test(sr.hint), JSON.stringify(Object.keys(sr.groups)));
+  }
 }
 
 // ── The page, in both portals ─────────────────────────────────────────────────
@@ -123,6 +174,7 @@ const SECTIONS = { ai: false, act: true, pages: { customers: 'leads', leads: 'le
   { key: 'leads', label: 'Leads', chips: { en: ['Which hot leads have gone quiet?', 'Who should I call first today?'], ar: ['بمن أتصل أولاً اليوم؟'] }, actions: ['create_followup'] } ] };
 const PROPOSAL = { action: { type: 'create_followup', customer_id: 1, due_at: '2026-10-01', note: '', assigned_to: null }, label: 'Schedule a follow-up', description: 'Follow-up for lead #1 on 2026-10-01' };
 const posted = [];
+const chatBodies = [];
 function api(pathname, body) {
   if (/auth\/check$/.test(pathname)) return { ok: true };
   if (/employee\/check$/.test(pathname)) return { ok: true, id: 2, name: 'Sara', username: 'sara', permissions: PERMS };
@@ -133,8 +185,8 @@ function api(pathname, body) {
   if (/\/ai\/status$/.test(pathname)) return { ai: false };
   if (/\/ai\/insights$/.test(pathname)) return { ai: true, ok: true, model: 'stub-model', generated_at: '2026-09-29T10:00:00Z', section: 'leads', label: 'Leads',
     insights: { highlights: ['3 hot leads, 1 silent for 24 days'], risks: ['1 follow-up overdue'], suggestions: ['Call Ahmed first'] }, extra: { call_list: [{ customer_id: 1, name: 'Ahmed', why: 'follow-up overdue since 20 Sep' }] } };
-  if (/\/ai\/chat$/.test(pathname)) return { ai: true, ok: true, section: 'leads', label: 'Leads', answer: 'Ahmed has been silent 24 days. I have proposed a follow-up for 1 October.', model: 'stub-model',
-    tool_calls: [{ name: 'calculate', args: { expression: '24 - 14' }, result: { expression: '24 - 14', result: 10 } }, { name: 'propose_action', args: { type: 'create_followup' }, result: { proposed: true, ...PROPOSAL } }], proposals: [PROPOSAL] };
+  if (/\/ai\/chat$/.test(pathname)) { try { chatBodies.push(JSON.parse(body || '{}')); } catch (_) { chatBodies.push({}); } return { ai: true, ok: true, section: 'leads', label: 'Leads', answer: 'Ahmed has been silent 24 days. I have proposed a follow-up for 1 October.', model: 'stub-model',
+    tool_calls: [{ name: 'calculate', args: { expression: '24 - 14' }, result: { expression: '24 - 14', result: 10 } }, { name: 'propose_action', args: { type: 'create_followup' }, result: { proposed: true, ...PROPOSAL } }], proposals: [PROPOSAL] }; }
   if (/\/ai\/actions\/run$/.test(pathname)) { posted.push(body || ''); return { ok: true, type: 'create_followup', message: 'Follow-up scheduled for Ahmed on 2026-10-01.' }; }
   return [];
 }
@@ -159,7 +211,7 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
     }
     req.respond({ status: 404, body: '' });
   });
-  await page.evaluateOnNewDocument(k => { localStorage.setItem(k, 'test-token'); Object.keys(localStorage).filter(x => x.startsWith('ml_ai_card_')).forEach(x => localStorage.removeItem(x)); }, tokenKey);
+  await page.evaluateOnNewDocument(k => { localStorage.setItem(k, 'test-token'); Object.keys(localStorage).filter(x => x.startsWith('ml_ai_')).forEach(x => localStorage.removeItem(x)); }, tokenKey);
   await page.goto(`http://127.0.0.1:${port}${route}`, { waitUntil: 'networkidle2' });
   await sleep(700);
   return { page, errs };
@@ -185,6 +237,8 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
       return { exists: !!b, shown: !!b && getComputedStyle(b).display !== 'none', brain: !!(b && b.querySelector('svg.ml-brain')), beforeHelp: !!(b && b.nextElementSibling && b.nextElementSibling.id === 'help-btn') };
     });
     check(`${portal.label}: the brain sits in the header beside Help`, head.exists && head.shown && head.brain && head.beforeHelp, JSON.stringify(head));
+    const pill = await page.evaluate(() => { const b = document.getElementById('ai-btn'); const r = b.getBoundingClientRect(); return { label: b.textContent.replace(/\s+/g, ' ').trim(), expanded: b.getAttribute('aria-expanded'), h: Math.round(r.height), kbd: !!b.querySelector('kbd') }; });
+    check(`${portal.label}: it is an "Ask AI" pill with its shortcut`, /Ask AI/.test(pill.label) && pill.kbd && pill.expanded === 'false' && pill.h >= 32, JSON.stringify(pill));
 
     const card = await page.evaluate(p => {
       const c = document.getElementById('ai-card-' + p);
@@ -208,6 +262,21 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
       welcome: (document.querySelector('#ai-body .ai-msg.bot') || {}).textContent || '',
     }));
     check(`${portal.label}: the drawer opens on Leads with its chips and the no-key notice`, drawer.open && drawer.section === 'Leads' && drawer.chips.length === 2 && /hot leads/.test(drawer.chips[0]) && /not configured/.test(drawer.status) && /propose things to do/.test(drawer.welcome), JSON.stringify(drawer));
+    const dock = await page.evaluate(() => {
+      const content = document.querySelector('.app-content') || document.querySelector('.content');
+      const cs = getComputedStyle(content);
+      return { docked: document.body.classList.contains('ai-docked'), scrim: getComputedStyle(document.getElementById('ai-overlay')).display, marginRight: parseInt(cs.marginRight, 10),
+        panelW: Math.round(document.getElementById('ai-panel').getBoundingClientRect().width), expanded: document.getElementById('ai-btn').getAttribute('aria-expanded'), stored: localStorage.getItem('ml_ai_open') };
+    });
+    check(`${portal.label}: on a desktop the panel docks — the page moves over, no scrim covers it`, dock.docked && dock.scrim === 'none' && dock.marginRight >= 340 && Math.abs(dock.marginRight - dock.panelW) <= 2 && dock.expanded === 'true' && dock.stored === '1', JSON.stringify(dock));
+    await page.keyboard.down('Control'); await page.keyboard.press('KeyK'); await page.keyboard.up('Control'); await sleep(350);
+    const closedByKey = await page.evaluate(() => ({ open: document.getElementById('ai-panel').classList.contains('open'), docked: document.body.classList.contains('ai-docked'), margin: parseInt(getComputedStyle(document.querySelector('.app-content') || document.querySelector('.content')).marginRight, 10) }));
+    await page.keyboard.down('Control'); await page.keyboard.press('KeyK'); await page.keyboard.up('Control'); await sleep(350);
+    const reopened = await page.evaluate(() => document.getElementById('ai-panel').classList.contains('open'));
+    check(`${portal.label}: Ctrl+K closes and reopens it, and the page gets its width back`, !closedByKey.open && !closedByKey.docked && closedByKey.margin === 0 && reopened, JSON.stringify(closedByKey));
+    // What is on screen: a lead profile registers itself and the panel says so.
+    const chip = await page.evaluate(() => { aiScreenSet({ kind: 'lead', id: '1', title: 'Ahmed', src: 'lead-drawer' }); const el = document.getElementById('ai-screen'); return { on: el.classList.contains('on'), text: el.textContent.replace(/\s+/g, ' ').trim(), placeholder: document.getElementById('ai-input').placeholder }; });
+    check(`${portal.label}: an open lead shows as "Looking at" in the panel`, chip.on && /Looking at/.test(chip.text) && /Lead #1/.test(chip.text) && /Ahmed/.test(chip.text) && /this lead/.test(chip.placeholder), JSON.stringify(chip));
 
     await page.evaluate(() => { document.getElementById('ai-input').value = 'Who has gone quiet?'; aiSend(); });
     await sleep(800);
@@ -220,6 +289,11 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
     });
     check(`${portal.label}: the answer shows its working and a proposed action with a Confirm button`, /silent 24 days/.test(chat.answer) && chat.work && /calculate\(24 - 14\)/.test(chat.workText) && chat.action && /Proposed/.test(chat.actionText) && /lead #1 on 2026-10-01/.test(chat.actionText) && chat.confirm, JSON.stringify(chat));
     check(`${portal.label}: nothing was written before Confirm`, posted.length === 0, String(posted.length));
+    const sent = chatBodies[chatBodies.length - 1] || {};
+    check(`${portal.label}: the message carried what is on screen`, sent.screen && sent.screen.record && sent.screen.record.kind === 'lead' && sent.screen.record.id === '1' && sent.screen.page === portal.leadsPage && sent.section === 'leads', JSON.stringify(sent.screen));
+    const ignored = await page.evaluate(() => { aiScreenIgnore(); const el = document.getElementById('ai-screen'); const snap = aiScreenSnapshot(); return { on: el.classList.contains('on'), record: snap.record || null }; });
+    check(`${portal.label}: × on the chip makes the assistant ignore that record`, !ignored.on && !ignored.record, JSON.stringify(ignored));
+    await page.evaluate(() => aiScreenClear());
 
     await page.evaluate(() => document.querySelector('#ai-body .ai-action button.pri').click());
     await sleep(600);
