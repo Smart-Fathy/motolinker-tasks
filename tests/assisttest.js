@@ -301,6 +301,11 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
     check(`${portal.label}: Confirm runs the action once, and the card reports the result`, posted.length === 1 && /create_followup/.test(posted[0]) && /"customer_id":1/.test(posted[0]) && done.done && /Follow-up scheduled for Ahmed/.test(done.text) && done.buttons === 0, JSON.stringify({ posted: posted[0], done }));
 
     await page.evaluate(() => aiClose());
+    // Chat is a full-height layout that borrows the Home pack for the panel; no card may sit on it.
+    await page.evaluate(() => navigate('chat'));
+    await sleep(500);
+    const chatPage = await page.evaluate(() => ({ card: !!document.getElementById('ai-card-chat'), anyCardInChat: !!document.querySelector('#page-chat .ai-card'), btn: getComputedStyle(document.getElementById('ai-btn')).display !== 'none' }));
+    check(`${portal.label}: no insight card is mounted on the Chat page, the Ask AI button stays`, !chatPage.card && !chatPage.anyCardInChat && chatPage.btn, JSON.stringify(chatPage));
     // Accounting keeps its own cards: no assistant card is mounted there.
     if (portal.label === 'admin') {
       await page.evaluate(() => navigate('accounting'));

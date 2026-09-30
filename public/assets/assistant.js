@@ -60,6 +60,12 @@
     return (_ai.sections && _ai.sections[m]) ? m : 'home';
   }
   const labelOf = s => (_ai.sections && _ai.sections[s] && _ai.sections[s].label) || (s === 'home' ? 'Home' : s);
+  // The insight card belongs on a section's own page. Chat, mail, Drive,
+  // Sheets, the calendar, notifications and the rest borrow the Home pack for
+  // the panel but are full-height layouts of their own — a card there sits on
+  // top of the conversation list and breaks the page.
+  const CARD_ALIASES = { customers: 'leads', leads: 'leads', rfqs: 'rfq', rfq: 'rfq' };
+  const cardAllowed = page => page === 'home' || !!(_ai.sections && _ai.sections[page]) || !!(CARD_ALIASES[page] && _ai.sections && _ai.sections[CARD_ALIASES[page]]);
   const uiLang = () => (_ai.lang === 'en' || _ai.lang === 'ar') ? _ai.lang : ((navigator.language || '').toLowerCase().startsWith('ar') ? 'ar' : 'en');
   async function aiSections() {
     if (_ai.sections) return _ai.sections;
@@ -357,7 +363,8 @@
     aiSections().then(() => {
       _ai.section = sectionFor(_ai.page);
       _ai.label = labelOf(_ai.section);
-      if (_ai.page !== 'accounting') aiMountCard(_ai.page);
+      if (_ai.page !== 'accounting' && cardAllowed(_ai.page)) aiMountCard(_ai.page);
+      else { const stray = document.getElementById('ai-card-' + _ai.page); if (stray) stray.remove(); }
       const title = document.getElementById('ai-title-section');
       if (title) title.textContent = _ai.label;
       const open = document.getElementById('ai-panel') && document.getElementById('ai-panel').classList.contains('open');
@@ -377,7 +384,7 @@
   }
   function aiMountCard(page) {
     const pageEl = document.getElementById('page-' + page);
-    if (!pageEl || document.getElementById('ai-card-' + page)) return;
+    if (!pageEl || document.getElementById('ai-card-' + page) || !cardAllowed(page)) return;
     const section = sectionFor(page);
     const card = document.createElement('div');
     card.className = 'ai-card';
