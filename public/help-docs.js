@@ -290,6 +290,13 @@ containers) or one VIN (stock unit, container and arrival date, purchase-order l
 payments, customer), search everything by name, phone, number or VIN, and read another
 section's figures — always only what you may see.
 
+## @AI in the team chat
+In any conversation in Messages, write **@AI** (or @assistant, @المساعد) followed by your
+question and the assistant answers right there, as a message everyone in the room can read.
+It reads the recent conversation and can look up leads, deals, suppliers and VINs like the
+panel does, with your own permissions. It does not take actions from chat — for those, open
+Ask AI. Typing **@** in the message box offers it.
+
 ## The insights card
 Each section starts with an **AI insights** card: highlights, risks and suggestions for
 that section. **Refresh** asks again; **Hide** folds it and remembers.
@@ -328,6 +335,12 @@ the assistant off for a person under Employees → AI assistant.`,
 أو رقم هيكل VIN (الوحدة في المخزون، الحاوية وموعد الوصول، سطر أمر الشراء، البيع، المدفوعات،
 العميل)، والبحث في كل شيء بالاسم أو الهاتف أو الرقم أو VIN، وقراءة أرقام قسم آخر — دائماً
 فقط ما يحق لك رؤيته.
+
+## @AI في محادثات الفريق
+في أي محادثة في الرسائل، اكتب **@AI** (أو @assistant أو @المساعد) ثم سؤالك، فيجيب المساعد
+هناك برسالة يقرأها كل من في الغرفة. يقرأ آخر ما قيل في المحادثة ويستطيع البحث عن العملاء
+والصفقات والموردين وأرقام الهيكل كما تفعل اللوحة، وبصلاحياتك أنت. لا ينفذ إجراءات من
+المحادثة — لذلك افتح Ask AI. كتابة **@** في مربع الرسالة تقترحه.
 
 ## بطاقة الرؤى
 يبدأ كل قسم ببطاقة **رؤى الذكاء الاصطناعي**: أبرز النقاط والمخاطر والاقتراحات لذلك القسم.

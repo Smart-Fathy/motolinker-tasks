@@ -45,7 +45,11 @@ const autoCreateSaleForWonDeal = (...a) => ctx.autoCreateSaleForWonDeal(...a);
 const requestCtx = (...a) => ctx.requestCtx(...a);
 const normalizePhone = (...a) => ctx.normalizePhone(...a);
 const paymentBuildRow = (...a) => ctx.paymentBuildRow(...a);
+const normEmpPerms = (...a) => ctx.normEmpPerms(...a);
+const chatBroadcast = (...a) => ctx.chatBroadcast(...a);
+const sendPushToOfflineMembers = (...a) => ctx.sendPushToOfflineMembers(...a);
 const { normVin } = require('../lib/vehicles');
+const chatAi = require('../lib/chat-ai');
 
 const { LEADS_ENUM_DEFAULTS, PAYMENT_KIND_KEYS, EXPENSE_CATEGORY_KEYS } = require('../lib/constants');
 const S = require('../lib/sections');
@@ -981,5 +985,71 @@ function mountAssistant(base, guard) {
 }
 mountAssistant('/api/dashboard', requireAuth);
 mountAssistant('/api/employee', requireEmployeeAuth);
+
+// ── @AI inside the team chat ─────────────────────────────────────────────────
+// src/routes/notifications.js calls this after a message that mentions the
+// assistant has been saved and sent. The answer is posted into the room as a
+// message from the assistant, for everyone in the room, and reaches every
+// member the way any message does (SSE, then push for whoever is away).
+//
+// The answer is drawn with the ASKER's permissions and data scope — the same
+// figures they could paste into the room themselves — and the prompt says the
+// whole room will read it. One answer at a time per room, so a burst of
+// mentions cannot stack up requests.
+const _chatBusy = new Map();
+async function employeeForChat(key) {
+  const id = Number(String(key).replace('employee_', ''));
+  if (!(id > 0)) return null;
+  const { data } = await supabase.from('employees').select('id,name,username,job_title,permissions').eq('id', id).maybeSingle();
+  return data ? { id: data.id, name: data.name, username: data.username, job_title: data.job_title || '', permissions: normEmpPerms(data.permissions) } : null;
+}
+ctx.chatAssistantReply = async function chatAssistantReply({ roomId, message, callerKey, callerName } = {}) {
+  const rid = Number(roomId);
+  if (!(rid > 0) || !message) return;
+  if ((_chatBusy.get(rid) || 0) > Date.now()) return;
+  _chatBusy.set(rid, Date.now() + 90 * 1000);
+  const { data: memberRows } = await supabase.from('chat_room_members').select('member_key,member_name').eq('room_id', rid);
+  const keys = (memberRows || []).map(m => m.member_key);
+  const post = async (body) => {
+    const row = { room_id: rid, sender_key: chatAi.ASSISTANT_KEY, sender_name: chatAi.ASSISTANT_NAME, body: String(body || '').slice(0, 6000),
+      reply_to_id: message.id, reply_to_sender: callerName || '', reply_to_body: String(message.body || '').slice(0, 200) };
+    const { data, error } = await supabase.from('chat_messages').insert(row).select().single();
+    if (error) { console.warn('[assistant:chat] post failed:', error.message); return null; }
+    const out = { ...data, sender_avatar: chatAi.ASSISTANT_AVATAR, sender_status: '', sender_status_emoji: '' };
+    try { chatBroadcast(keys, 'message', { roomId: rid, message: out }); } catch (_) {}
+    try { sendPushToOfflineMembers(keys.filter(k => k !== callerKey), { type: 'chat_message', roomId: rid, senderName: chatAi.ASSISTANT_NAME, body: out.body.slice(0, 80) }); } catch (_) {}
+    return out;
+  };
+  try {
+    const lang = langOf(null, message.body);
+    if (!aiConfigured()) { await post(lang === 'ar' ? 'المساعد الذكي غير مضبوط على الخادم بعد.' : 'The AI is not configured on the server yet.'); return; }
+    try { chatBroadcast(keys, 'typing', { roomId: rid, senderKey: chatAi.ASSISTANT_KEY, senderName: chatAi.ASSISTANT_NAME }); } catch (_) {}
+    const emp = callerKey === 'admin' ? null : await employeeForChat(callerKey);
+    if (callerKey !== 'admin' && !emp) { await post('I could not tell who asked, so I cannot answer here.'); return; }
+    if (emp && !empCan(emp, 'assistant', 'chat')) { await post(`${callerName}, the assistant is switched off for your account — ask the admin.`); return; }
+    const req = { employee: emp };
+    const [{ pack, data }, roomRes, recentRes] = await Promise.all([
+      packFor('home', req),
+      supabase.from('chat_rooms').select('id,type,name').eq('id', rid).maybeSingle(),
+      supabase.from('chat_messages').select('id,sender_key,sender_name,body,file_name,file_url,created_at').eq('room_id', rid).order('created_at', { ascending: false }).limit(20),
+    ]);
+    const room = roomRes.data || {};
+    const recent = (recentRes.data || []).reverse().filter(m => String(m.id) !== String(message.id));
+    const transcript = chatAi.transcriptOf(recent, { limit: 20 });
+    const question = chatAi.stripMention(message.body) || (lang === 'ar' ? 'لخّص هذه المحادثة وقل كيف يمكنك المساعدة.' : 'Summarise this conversation and say how you can help.');
+    const where = room.type === 'group' ? `the group "${room.name || 'group'}"` : 'a direct conversation';
+    const names = (memberRows || []).map(m => m.member_name).filter(Boolean).join(', ');
+    const systemText = systemPrompt({ lang, section: 'home', pack: S.capJson(S.trimSectionPack(pack), 14000), who: whoIs(req), act: false, roster: rosterOf(data && data.employees) })
+      + `\n\nCHAT: you were @mentioned inside the team chat — ${where}${names ? ' (members: ' + names + ')' : ''}. ${callerName || 'Someone'} asked. EVERYONE in the room reads your reply. Keep it short — under 120 words unless asked for detail — in plain text: no markdown headings or tables, short dashes are fine. Answer in the language of the question. You cannot take actions from chat; if they want something done, say they can open Ask AI (the header button), where actions come with a Confirm button.`
+      + (transcript ? '\n\nRECENT CONVERSATION (oldest first):\n' + transcript : '');
+    const out = await aiConverse({ systemText, history: [], message: question, tools: toolsFor('home', false, emp), maxRounds: 5,
+      generationConfig: { temperature: 0.2, maxOutputTokens: 900 }, runTool: (name, args) => runTool('home', pack, name, args, req) });
+    if (!out.ok) { await post(out.status === 429 ? BUSY[lang] : `I could not answer just now: ${out.error || 'unknown error'}`); return; }
+    await post(out.text || (lang === 'ar' ? 'ليس لدي ما أضيفه.' : 'I have nothing to add.'));
+  } catch (e) {
+    console.warn('[assistant:chat]', e.message);
+    try { await post(`I hit an error: ${e.message}`); } catch (_) {}
+  } finally { _chatBusy.delete(rid); }
+};
 
 module.exports = { mountAssistant };

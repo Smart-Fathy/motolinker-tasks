@@ -35,12 +35,103 @@ function chatLinkify(text) {
   CHAT_URL_RE.lastIndex = 0;
   let m;
   while ((m = CHAT_URL_RE.exec(s)) !== null) {
-    out += chatEsc(s.slice(last, m.index));
+    out += chatMentionify(chatEsc(s.slice(last, m.index)));
     const url = m[0];
     out += `<a href="${chatEsc(url)}" target="_blank" rel="noopener noreferrer" class="chat-link">${chatEsc(url)}</a>`;
     last = m.index + url.length;
   }
-  return out + chatEsc(s.slice(last));
+  return out + chatMentionify(chatEsc(s.slice(last)));
+}
+
+// ── The assistant in the room ────────────────────────────────────────────────
+// "@AI …" in any room is answered in that room by a sender of its own (the
+// server does the answering; src/lib/chat-ai.js holds the same grammar). Here:
+// the mention is highlighted, the assistant's messages get their own look, and
+// typing "@" in the composer offers the assistant.
+const CHAT_ASSISTANT_KEY = 'assistant';
+const CHAT_MENTION_RE = /(^|[\s(\[،,"'«]|&quot;|&#39;)@(ai|assistant|motolinker|bot|المساعد|الذكاء)(?![\w\u0600-\u06FF.-])/gi;
+function chatMentionify(escaped) {
+  return String(escaped || '').replace(CHAT_MENTION_RE, (_, pre, name) => `${pre}<span class="chat-mention">@${name}</span>`);
+}
+function chatIsAssistant(msg) { return !!msg && msg.sender_key === CHAT_ASSISTANT_KEY; }
+
+// Icons are <i data-lucide> tags that lucide fills in; every render and every
+// live append must ask it to, or the reply/forward buttons stay empty pills.
+function chatIcons() { try { if (window.lucide && lucide.createIcons) lucide.createIcons(); } catch (_) {} }
+
+(function chatStyle() {
+  const add = () => {
+    if (document.getElementById('chat-extras-style')) return;
+    const s = document.createElement('style');
+    s.id = 'chat-extras-style';
+    s.textContent = `
+      .chat-msg-bubble{white-space:pre-wrap}
+      .chat-link{color:#7cc4ff;text-decoration:underline;text-underline-offset:2px}
+      .chat-msg.mine .chat-link{color:inherit}
+      .chat-mention{color:#a78bfa;font-weight:800}
+      .chat-msg.mine .chat-mention{color:inherit;text-decoration:underline;text-underline-offset:2px}
+      .chat-msg.assistant .chat-msg-bubble{background:linear-gradient(160deg,rgba(167,139,250,.14),rgba(56,189,248,.08));border:1px solid rgba(167,139,250,.45)}
+      .chat-msg.assistant .chat-msg-sender{color:#a78bfa}
+      .chat-msg.assistant .chat-msg-avatar{border:1px solid rgba(167,139,250,.5)}
+      .chat-mention-box{position:fixed;z-index:9990;background:var(--surface,#141416);border:1px solid rgba(167,139,250,.45);border-radius:10px;padding:4px;box-shadow:0 10px 30px rgba(0,0,0,.45);min-width:220px}
+      .chat-mention-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text,#e8e4da)}
+      .chat-mention-item:hover,.chat-mention-item.on{background:rgba(167,139,250,.14)}
+      .chat-mention-item .av{width:22px;height:22px;border-radius:50%;flex-shrink:0}
+      .chat-mention-item small{color:var(--muted,#9a958a);margin-left:auto;font-size:11px}
+    `;
+    document.head.appendChild(s);
+  };
+  // The tests load this file in Node with a stub document; a real one has these.
+  if (typeof document === 'undefined' || typeof document.getElementById !== 'function' || !document.head || typeof document.addEventListener !== 'function') return;
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', add); else add();
+})();
+
+// The @ hint. Watches both portals' composers by id; Tab or Enter picks the
+// suggestion (in the capture phase, before the composer's own Enter-to-send).
+const CHAT_MENTION_INPUTS = ['admin-chat-input', 'chat-input'];
+const CHAT_ASSISTANT_AVATAR_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f472b6"/><stop offset=".45" stop-color="#a78bfa"/><stop offset="1" stop-color="#38bdf8"/></linearGradient></defs><circle cx="20" cy="20" r="20" fill="#17171b"/><g fill="none" stroke="url(#g)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="translate(8 8)"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/></g></svg>');
+let _chatMentionFor = null;
+function chatMentionMatch(el) {
+  const before = String(el.value || '').slice(0, el.selectionStart == null ? el.value.length : el.selectionStart);
+  const m = before.match(/(^|\s)@([\w\u0600-\u06FF]*)$/);
+  if (!m) return null;
+  const typed = m[2].toLowerCase();
+  const fits = !typed || 'ai'.startsWith(typed) || 'assistant'.startsWith(typed) || 'المساعد'.startsWith(m[2]);
+  return fits ? { start: before.length - m[2].length - 1, typed: m[2] } : null;
+}
+function chatMentionHide() { const box = document.getElementById('chat-mention-box'); if (box) box.remove(); _chatMentionFor = null; }
+function chatMentionShow(el, match) {
+  let box = document.getElementById('chat-mention-box');
+  if (!box) { box = document.createElement('div'); box.id = 'chat-mention-box'; box.className = 'chat-mention-box'; document.body.appendChild(box); }
+  box.innerHTML = `<div class="chat-mention-item on" onmousedown="event.preventDefault(); chatMentionPick()"><img class="av" src="${CHAT_ASSISTANT_AVATAR_SVG}" alt=""><span><b>AI Assistant</b> · answers here for everyone</span><small>Tab</small></div>`;
+  const r = el.getBoundingClientRect();
+  box.style.left = Math.max(8, r.left) + 'px';
+  box.style.bottom = Math.max(8, window.innerHeight - r.top + 6) + 'px';
+  _chatMentionFor = { el, match };
+}
+function chatMentionPick() {
+  const m = _chatMentionFor;
+  if (!m) return;
+  const v = m.el.value;
+  const caret = m.el.selectionStart == null ? v.length : m.el.selectionStart;
+  m.el.value = v.slice(0, m.match.start) + '@AI ' + v.slice(caret);
+  const pos = m.match.start + 4;
+  try { m.el.setSelectionRange(pos, pos); } catch (_) {}
+  chatMentionHide();
+  m.el.focus();
+}
+function chatMentionHint(el) {
+  const match = chatMentionMatch(el);
+  if (match) chatMentionShow(el, match); else chatMentionHide();
+}
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function' && typeof document.getElementById === 'function') {
+  document.addEventListener('input', e => { const t = e.target; if (t && CHAT_MENTION_INPUTS.includes(t.id)) chatMentionHint(t); });
+  document.addEventListener('keydown', e => {
+    if (!_chatMentionFor) return;
+    if (e.key === 'Tab' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); chatMentionPick(); }
+    else if (e.key === 'Escape') { e.stopPropagation(); chatMentionHide(); }
+  }, true);
+  document.addEventListener('focusout', e => { const t = e.target; if (t && CHAT_MENTION_INPUTS.includes(t.id)) setTimeout(chatMentionHide, 120); });
 }
 
 // ── Link previews ─────────────────────────────────────────────────────────────
@@ -89,9 +180,9 @@ async function chatHydratePreviews(root, fetchFn, base) {
       })());
     }
   });
-  if (!jobs.length) return;
+  if (!jobs.length) { chatIcons(); return; }
   await Promise.all(jobs);
-  if (window.lucide) lucide.createIcons();
+  chatIcons();
 }
 
 // The empty slot a message renders so a card has somewhere to land later.

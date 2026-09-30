@@ -4786,7 +4786,7 @@ function adminChatMsgHTML(msg, grouped) {
         ? `<div class="chat-voice-msg"><audio controls src="${esc(msg.file_url)}" preload="none"></audio>${msg.voice_duration ? `<span class="chat-voice-dur">${String(Math.floor(msg.voice_duration/60)).padStart(2,'0')}:${String(msg.voice_duration%60).padStart(2,'0')}</span>` : ''}${dlBtn}</div>`
         : `<div class="chat-file-attach"><i data-lucide="paperclip" style="width:13px;height:13px"></i> <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
   ) : '';
-  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}${grouped ? ' grouped' : ''}" data-msg-id="${msg.id}" onclick="adminChatToggleActions(event)">
+  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}${grouped ? ' grouped' : ''}${chatIsAssistant(msg) ? ' assistant' : ''}" data-msg-id="${msg.id}" onclick="adminChatToggleActions(event)">
     ${actions}
     ${!mine && !grouped ? `<div class="chat-msg-sender">${msg.sender_avatar ? `<img class="chat-msg-avatar" src="${esc(msg.sender_avatar)}" alt="">` : ''}${esc(msg.sender_name)}${statusEmojiOnly(msg.sender_status_emoji, msg.sender_status)}</div>` : ''}
     ${replyHTML}
@@ -4816,6 +4816,7 @@ function adminChatRenderMessages() {
       && (new Date(msg.created_at) - new Date(prev.created_at)) < 5 * 60 * 1000;
     return div + adminChatMsgHTML(msg, grouped);
   }).join('');
+  chatIcons();
   chatHydratePreviews(el, apiFetch, '/api/dashboard');
 }
 
@@ -4824,6 +4825,7 @@ function adminChatAppendMessage(msg) {
   const el = document.getElementById('admin-chat-messages');
   if (!el) return;
   el.insertAdjacentHTML('beforeend', adminChatMsgHTML(msg));
+  chatIcons();
   chatHydratePreviews(el, apiFetch, '/api/dashboard');
 }
 

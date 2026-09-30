@@ -443,6 +443,13 @@ a pack the model is handed; the model narrates and, when it needs a number, call
 back into `section_query` and `calculate`, so an answer traces to code that ran
 here (the working is shown under the reply).
 
+**In the team chat, @AI answers in the room.** Write `@AI` (or `@assistant`, `@المساعد`)
+in any conversation and the assistant replies there, as a sender of its own, for everyone in
+the room to read. It reads the recent conversation and answers with the asker's own
+permissions and data scope — the same figures they could paste in themselves — and it
+never takes actions from chat; it points to the Ask AI panel for those. Typing `@` in the
+composer offers it.
+
 **Actions are proposed, never taken.** Ask for something to be done — "schedule a
 follow-up with Ahmed on Thursday", "make me a task to chase PO-12" — and the model
 proposes it through `propose_action`; it arrives as a card with **Confirm**. Only
