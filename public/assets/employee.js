@@ -3646,7 +3646,7 @@ function chatMsgHTML(msg, myKey) {
         ? `<div class="chat-voice-msg"><audio controls src="${esc(msg.file_url)}" preload="none"></audio>${msg.voice_duration ? `<span class="chat-voice-dur">${String(Math.floor(msg.voice_duration/60)).padStart(2,'0')}:${String(msg.voice_duration%60).padStart(2,'0')}</span>` : ''}${dlBtn}</div>`
         : `<div class="chat-file-attach"><i data-lucide="paperclip" style="width:13px;height:13px"></i> <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
   ) : '';
-  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}" data-msg-id="${msg.id}" onclick="chatToggleActions(event)">
+  return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}${chatIsAssistant(msg) ? ' assistant' : ''}" data-msg-id="${msg.id}" onclick="chatToggleActions(event)">
     ${actions}
     ${!mine ? `<div class="chat-msg-sender">${msg.sender_avatar ? `<img class="chat-msg-avatar" src="${esc(msg.sender_avatar)}" alt="">` : ''}${esc(msg.sender_name)}${statusEmojiOnly(msg.sender_status_emoji, msg.sender_status)}</div>` : ''}
     ${replyHTML}
@@ -3678,6 +3678,7 @@ function chatRenderMessages() {
     if (dateStr !== lastDate) { lastDate = dateStr; div = `<div class="chat-date-divider">${dateStr}</div>`; }
     return div + chatMsgHTML(msg, myKey);
   }).join('');
+  chatIcons();
   chatHydratePreviews(el, ef, '/api/employee');
 }
 
@@ -3686,6 +3687,7 @@ function chatAppendMessage(msg) {
   const el = document.getElementById('chat-messages');
   if (!el) return;
   el.insertAdjacentHTML('beforeend', chatMsgHTML(msg, myChatKey()));
+  chatIcons();
   chatHydratePreviews(el, ef, '/api/employee');
 }
 

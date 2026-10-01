@@ -135,6 +135,7 @@ async function chatCreateOrGetDirect(callerKey, callerName, targetKey, targetNam
 // the employee roster ("employee_<id>" keys; the admin account has none). Cached
 // for a minute — chat is polled/streamed constantly and the roster rarely changes.
 let _chatAvatars = { at: 0, map: {} };
+const chatAi = require('../lib/chat-ai');
 // Avatar + status per member key, so everyone sees everyone's status — not just
 // their own. Cached for a minute; chat polls constantly and this rarely changes.
 async function chatProfileMap() {
@@ -150,6 +151,8 @@ async function chatProfileMap() {
       };
     }
   } catch (e) { console.warn('[chat] profile map failed:', e.message); }
+  // The assistant answers in rooms as a sender of its own; its avatar is the brain.
+  map[chatAi.ASSISTANT_KEY] = { avatar: chatAi.ASSISTANT_AVATAR, statusText: '', statusEmoji: '' };
   _chatAvatars = { at: Date.now(), map };
   return map;
 }
@@ -198,6 +201,10 @@ async function chatSendMessage(req, res, callerKey, callerName) {
     body: (msg.file_url && !msg.body) ? '📎 Attachment' : (msg.body || '').slice(0, 80),
   });
   res.json(msg);
+  // "@AI …" — the assistant answers in the room, after the message is out.
+  if (chatAi.mentionsAssistant(msg.body) && typeof ctx.chatAssistantReply === 'function') {
+    ctx.chatAssistantReply({ roomId, message: msg, callerKey, callerName }).catch(e => console.warn('[chat] assistant reply failed:', e.message));
+  }
 }
 
 async function chatEditMsg(req, res, callerKey) {
