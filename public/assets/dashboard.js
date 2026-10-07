@@ -6605,16 +6605,31 @@ async function saveCustomer() {
       r = await apiFetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...payload, force: true }) });
     }
     if (!r.ok) { const err = await r.json().catch(() => ({})); alert('Error: ' + (err.error || r.status)); return; }
+    // The response IS the saved row, so put it in place instead of downloading
+    // every lead again — that reload was a second multi-second wait per save.
+    upsertLocalLead(await r.json());
     closeCustomerModal();
-    await loadCustomers();
   } catch (e) { alert('Error: ' + e.message); }
+}
+
+// Swap a saved lead into the table (new ones go on top, where the server's
+// newest-first order puts them) and redraw from memory.
+function upsertLocalLead(saved) {
+  if (!saved || saved.id == null) return loadCustomers();
+  const i = _allCustomers.findIndex(x => x.id === saved.id);
+  if (i >= 0) _allCustomers[i] = saved; else _allCustomers.unshift(saved);
+  filterCustomers();
 }
 
 async function deleteCustomer(id) {
   if (!confirm('Delete this lead and all their deals?')) return;
   try {
-    await apiFetch(`/api/dashboard/customers/${id}`, { method:'DELETE' });
-    await loadCustomers();
+    const r = await apiFetch(`/api/dashboard/customers/${id}`, { method:'DELETE' });
+    if (!r.ok) { const err = await r.json().catch(() => ({})); alert('Error: ' + (err.error || r.status)); return; }
+    _allCustomers = _allCustomers.filter(x => x.id !== id);
+    _selectedLeads.delete(id);
+    updateLeadsBulkBar();
+    filterCustomers();
   } catch (e) { alert('Error: ' + e.message); }
 }
 

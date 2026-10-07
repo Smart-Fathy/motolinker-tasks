@@ -25,7 +25,10 @@ const ctx = require('./src/ctx');
 // The shared vocabulary is read by feature modules through the context.
 Object.assign(ctx, { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL });
 
-const supabase    = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+// Pooled keep-alive connections: without them nearly every query paid a fresh
+// TLS handshake (see src/lib/db-fetch.js for the measurements).
+const { dbFetch } = require('./src/lib/db-fetch');
+const supabase    = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { global: { fetch: dbFetch } });
 
 // ─── Website inventory (separate Supabase project) — live vehicle search ────────
 // Read-only client to the marketing site's DB so sales can attach a real vehicle
@@ -37,7 +40,7 @@ function inventoryDb() {
   if (_inventoryClientTried) return _inventoryClient;
   _inventoryClientTried = true;
   const url = process.env.INVENTORY_SUPABASE_URL, key = process.env.INVENTORY_SUPABASE_KEY;
-  if (url && key) { try { _inventoryClient = createClient(url, key); } catch (e) { console.warn('[inventory] client init failed:', e.message); } }
+  if (url && key) { try { _inventoryClient = createClient(url, key, { global: { fetch: dbFetch } }); } catch (e) { console.warn('[inventory] client init failed:', e.message); } }
   return _inventoryClient;
 }
 const INVENTORY_TABLE = process.env.INVENTORY_TABLE || 'vehicles';

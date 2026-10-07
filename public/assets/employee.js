@@ -2234,9 +2234,29 @@ async function saveEmpLead() {
       r = await ef(url, { method, body: JSON.stringify({ ...payload, force: true }) });
     }
     if (!r.ok) { const e = await r.json().catch(() => ({})); return showToast('Error: ' + (e.error || r.status)); }
+    // The response IS the saved row, so put it in place instead of downloading
+    // every lead again — that reload was a second multi-second wait per save.
+    upsertLocalEmpLead(await r.json());
     document.getElementById('emp-lead-modal').style.display = 'none';
-    loadEmpLeads();
   } catch (e) { showToast('Error: ' + e.message); }
+}
+
+// Swap a saved lead into the table (new ones go on top, where the server's
+// newest-first order puts them) and redraw from memory.
+function upsertLocalEmpLead(saved) {
+  if (!saved || saved.id == null) return loadEmpLeads();
+  const i = _empLeads.findIndex(x => x.id === saved.id);
+  if (i >= 0) _empLeads[i] = saved; else _empLeads.unshift(saved);
+  empFilterLeads();
+  // A scoped employee only sees some leads, decided on the server (deal stages
+  // need the deals table). The save may have moved this one out — reassigned,
+  // or a status outside the scope — so reconcile quietly, after the table has
+  // already redrawn.
+  if (empLeadScoped()) loadEmpLeads();
+}
+function empLeadScoped() {
+  const s = (empPerms || {}).scope;
+  return !!(s && (s.assignedOnly || (s.dealStages && s.dealStages.length) || (s.leadStatuses && s.leadStatuses.length)));
 }
 async function empRequestDeleteLead(id) {
   const c = _empLeads.find(x => x.id === id);
