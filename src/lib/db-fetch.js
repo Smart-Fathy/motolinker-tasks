@@ -34,11 +34,13 @@ const dbAgent = new Agent({
 // Which fetch carries the pool. Node's own is preferred: it is what production
 // has always used, and it is the global the test suites replace with their stand-in
 // for Supabase. But it is built on the undici bundled with Node, and the pool comes
-// from our undici 6. Bundled 5–7 (Node 18–24) drive it fine; bundled 8 (Node 26)
+// from our undici 6. Bundled 5–7 (Node 18–25) drive it fine; bundled 8 (Node 26)
 // rejects it before any socket opens, which would fail every query. There, undici's
-// own fetch — the same version as the pool — takes over.
+// own fetch — the same version as the pool — takes over. Node before 18.14 does not
+// report its undici at all, and undici 6's fetch does not run there, so an unknown
+// version stays on Node's.
 const BUNDLED_UNDICI_MAJOR = parseInt(String(process.versions.undici || '0'), 10);
-const USES_NODE_FETCH = BUNDLED_UNDICI_MAJOR >= 5 && BUNDLED_UNDICI_MAJOR <= 7;
+const USES_NODE_FETCH = !(BUNDLED_UNDICI_MAJOR >= 8);
 
 function dbFetch(input, init) {
   const opts = { ...init, dispatcher: dbAgent };
