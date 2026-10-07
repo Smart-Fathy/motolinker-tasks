@@ -9,9 +9,10 @@
 // a quiet half-minute. A lead save is two to four queries in a row, and the table
 // reload after it is more, which is how one edit came to take 5–8 seconds.
 //
-// undici is the library Node's own fetch is built on; using its fetch and Agent
-// together keeps both from one version, whichever Node the deploy runs on.
-const { Agent, fetch: undiciFetch } = require('undici');
+// Only the connection pool is swapped. The request still goes through the global
+// fetch, looked up on every call, so it stays Node's own implementation in
+// production and the stub the test suites install in place of Supabase.
+const { Agent } = require('undici');
 
 // How long an idle connection is kept for the next query. The portals send a
 // presence heartbeat every ~15 s per open tab, so while anyone is online the pool
@@ -28,7 +29,7 @@ const dbAgent = new Agent({
 });
 
 function dbFetch(input, init) {
-  return undiciFetch(input, { ...init, dispatcher: dbAgent });
+  return fetch(input, { ...init, dispatcher: dbAgent });
 }
 
 module.exports = { dbFetch, dbAgent, KEEP_ALIVE_MS };
