@@ -1,5 +1,6 @@
 USE query
 USE expressInit
+USE compression
 USE serveStatic
 GET /sw-employee.js
 GET /sw-dashboard.js

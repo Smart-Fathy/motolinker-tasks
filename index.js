@@ -2,6 +2,7 @@ const { createClient } = require('@supabase/supabase-js');
 const crypto     = require('crypto');
 const path       = require('path');
 const express    = require('express');
+const compression = require('compression');
 const multer     = require('multer');
 const webpush    = require('web-push');
 const nodemailer = require('nodemailer');
@@ -14,6 +15,16 @@ const { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_U
 // an alias so the existing route registrations stay unchanged.
 const expressApp = express();
 const receiver = { router: expressApp, app: expressApp };
+
+// Gzip what goes out. Railway's edge logged ~670 KB sent for every leads list and
+// 250 KB+ for the portal bundle — full size, to phones in Egypt; its docs only
+// describe compression for the CDN, which this service does not use. Never the
+// event streams, though: gzip holds bytes back until it has enough to pack, and a
+// notification, chat message or huddle signal has to leave the moment it is written.
+expressApp.use(compression({
+  filter: (req, res) => !/text\/event-stream/i.test(String(res.getHeader('Content-Type') || ''))
+    && compression.filter(req, res),
+}));
 // Exported so tooling can inspect the app without starting it — the route-inventory
 // check that guards this restructure walks receiver.app's stack.
 module.exports = receiver;
@@ -25,7 +36,10 @@ const ctx = require('./src/ctx');
 // The shared vocabulary is read by feature modules through the context.
 Object.assign(ctx, { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL });
 
-const supabase    = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+// Pooled keep-alive connections: without them nearly every query paid a fresh
+// TLS handshake (see src/lib/db-fetch.js for the measurements).
+const { dbFetch } = require('./src/lib/db-fetch');
+const supabase    = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { global: { fetch: dbFetch } });
 
 // ─── Website inventory (separate Supabase project) — live vehicle search ────────
 // Read-only client to the marketing site's DB so sales can attach a real vehicle
@@ -37,7 +51,7 @@ function inventoryDb() {
   if (_inventoryClientTried) return _inventoryClient;
   _inventoryClientTried = true;
   const url = process.env.INVENTORY_SUPABASE_URL, key = process.env.INVENTORY_SUPABASE_KEY;
-  if (url && key) { try { _inventoryClient = createClient(url, key); } catch (e) { console.warn('[inventory] client init failed:', e.message); } }
+  if (url && key) { try { _inventoryClient = createClient(url, key, { global: { fetch: dbFetch } }); } catch (e) { console.warn('[inventory] client init failed:', e.message); } }
   return _inventoryClient;
 }
 const INVENTORY_TABLE = process.env.INVENTORY_TABLE || 'vehicles';
