@@ -2,6 +2,7 @@ const { createClient } = require('@supabase/supabase-js');
 const crypto     = require('crypto');
 const path       = require('path');
 const express    = require('express');
+const compression = require('compression');
 const multer     = require('multer');
 const webpush    = require('web-push');
 const nodemailer = require('nodemailer');
@@ -14,6 +15,16 @@ const { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_U
 // an alias so the existing route registrations stay unchanged.
 const expressApp = express();
 const receiver = { router: expressApp, app: expressApp };
+
+// Gzip what goes out. Railway's edge logged ~670 KB sent for every leads list and
+// 250 KB+ for the portal bundle — full size, to phones in Egypt; its docs only
+// describe compression for the CDN, which this service does not use. Never the
+// event streams, though: gzip holds bytes back until it has enough to pack, and a
+// notification, chat message or huddle signal has to leave the moment it is written.
+expressApp.use(compression({
+  filter: (req, res) => !/text\/event-stream/i.test(String(res.getHeader('Content-Type') || ''))
+    && compression.filter(req, res),
+}));
 // Exported so tooling can inspect the app without starting it — the route-inventory
 // check that guards this restructure walks receiver.app's stack.
 module.exports = receiver;

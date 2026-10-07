@@ -1220,9 +1220,10 @@ receiver.router.post('/api/dashboard/customers/dedupe', requireAuth, express.jso
 // ── Lead 360° profile: timeline, follow-ups, linked quotations & deals ────────
 receiver.router.get('/api/dashboard/customers/:id/profile', requireAuth, async (req, res) => {
   const id = parseInt(req.params.id);
-  const { data: customer, error } = await supabase.from('customers').select('*').eq('id', id).single();
-  if (error || !customer) return res.status(404).json({ error: 'Lead not found' });
-  const [activities, followups, quotations, deals, contracts, purchaseOrders] = await Promise.all([
+  // Every read here is keyed by the id in the URL, so they all go out at once —
+  // the lead itself used to be a round trip of its own before the rest started.
+  const [{ data: customer, error }, activities, followups, quotations, deals, contracts, purchaseOrders] = await Promise.all([
+    supabase.from('customers').select('*').eq('id', id).single(),
     supabase.from('lead_activities').select('*').eq('customer_id', id).order('created_at', { ascending: false }).limit(200),
     supabase.from('lead_followups').select('*').eq('customer_id', id).order('due_at', { ascending: true }),
     supabase.from('quotations').select('id,quote_id,title,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
@@ -1230,6 +1231,7 @@ receiver.router.get('/api/dashboard/customers/:id/profile', requireAuth, async (
     supabase.from('contracts').select('id,contract_no,title,status,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
     supabase.from('purchase_orders').select('id,po_number,title,supplier,status,items,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
   ]);
+  if (error || !customer) return res.status(404).json({ error: 'Lead not found' });
   res.json({
     customer,
     activities: activities.data || [],

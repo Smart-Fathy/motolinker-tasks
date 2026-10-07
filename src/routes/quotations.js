@@ -204,10 +204,13 @@ receiver.router.get('/api/employee/deletion-requests', requireEmployeeAuth, asyn
 receiver.router.get('/api/employee/customers/:id/profile', requireEmployeeAuth, async (req, res) => {
   if (!empCan(req.employee, 'leads', 'view')) return res.status(403).json({ error: 'Not permitted' });
   const id = parseInt(req.params.id);
-  const { data: customer, error } = await supabase.from('customers').select('*').eq('id', id).single();
-  if (error || !customer) return res.status(404).json({ error: 'Lead not found' });
-  if (empHasScope(req.employee) && !customerInScope(customer, req.employee, await scopedQuotedIds(req.employee))) return res.status(403).json({ error: 'Not permitted' });
-  const [activities, followups, quotations, deals, contracts, purchaseOrders] = await Promise.all([
+  // Every read here is keyed by the id in the URL, so they all go out at once —
+  // the lead itself used to be a round trip of its own before the rest started.
+  // Nothing is sent until the lead is found and in the employee's scope.
+  const scoped = empHasScope(req.employee);
+  const [{ data: customer, error }, stageIdSet, activities, followups, quotations, deals, contracts, purchaseOrders] = await Promise.all([
+    supabase.from('customers').select('*').eq('id', id).single(),
+    scoped ? scopedQuotedIds(req.employee) : null,
     supabase.from('lead_activities').select('*').eq('customer_id', id).order('created_at', { ascending: false }).limit(200),
     supabase.from('lead_followups').select('*').eq('customer_id', id).order('due_at', { ascending: true }),
     supabase.from('quotations').select('id,quote_id,title,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
@@ -215,6 +218,8 @@ receiver.router.get('/api/employee/customers/:id/profile', requireEmployeeAuth, 
     supabase.from('contracts').select('id,contract_no,title,status,created_by,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
     supabase.from('purchase_orders').select('id,po_number,title,supplier,status,items,created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(50),
   ]);
+  if (error || !customer) return res.status(404).json({ error: 'Lead not found' });
+  if (scoped && !customerInScope(customer, req.employee, stageIdSet)) return res.status(403).json({ error: 'Not permitted' });
   res.json({
     customer,
     activities: activities.data || [],

@@ -5634,6 +5634,7 @@ function dismissAdminInstallBanner() {
 // ── Quotation Tabs ────────────────────────────────────────────────────────
 // ── Leads (Customers) ─────────────────────────────────────────────────────
 let _allCustomers = [];
+let _customersLoaded = false; // the full list is in memory (saves can update it in place)
 let _selectedLeads = new Set();
 // Sort state: { key, dir:'asc'|'desc' } — persisted so the choice sticks.
 let _leadSort = (() => { try { return JSON.parse(localStorage.getItem('ml_leads_sort')) || { key: null, dir: 'asc' }; } catch (_) { return { key: null, dir: 'asc' }; } })();
@@ -5869,7 +5870,9 @@ async function loadCustomers() {
       apiFetch('/api/dashboard/followups/pending').then(r => r.json()).catch(() => []),
       preloadEmployeesForTasks(),
     ]);
+    if (!Array.isArray(customers)) throw new Error((customers && customers.error) || 'Could not load leads');
     _allCustomers = customers;
+    _customersLoaded = true;
     _pendingFollowups = {};
     (Array.isArray(followups) ? followups : []).forEach(f => {
       if (!_pendingFollowups[f.customer_id]) _pendingFollowups[f.customer_id] = f.due_at; // sorted asc → first = earliest
@@ -6613,9 +6616,11 @@ async function saveCustomer() {
 }
 
 // Swap a saved lead into the table (new ones go on top, where the server's
-// newest-first order puts them) and redraw from memory.
+// newest-first order puts them) and redraw from memory. Only once the full list
+// is in memory: saved from a lead drawer opened off another page, a one-row list
+// would pass for "all leads" (the deal form's lead picker reads it).
 function upsertLocalLead(saved) {
-  if (!saved || saved.id == null) return loadCustomers();
+  if (!saved || saved.id == null || !_customersLoaded) return loadCustomers();
   const i = _allCustomers.findIndex(x => x.id === saved.id);
   if (i >= 0) _allCustomers[i] = saved; else _allCustomers.unshift(saved);
   filterCustomers();
@@ -6628,6 +6633,9 @@ async function deleteCustomer(id) {
     if (!r.ok) { const err = await r.json().catch(() => ({})); alert('Error: ' + (err.error || r.status)); return; }
     _allCustomers = _allCustomers.filter(x => x.id !== id);
     _selectedLeads.delete(id);
+    // Its follow-ups went with it (ON DELETE CASCADE) — drop it from the due chip.
+    delete _pendingFollowups[id];
+    renderFuChip();
     updateLeadsBulkBar();
     filterCustomers();
   } catch (e) { alert('Error: ' + e.message); }

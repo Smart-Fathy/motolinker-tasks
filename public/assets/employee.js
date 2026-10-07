@@ -1470,6 +1470,7 @@ const EMP_ORIGIN_LABELS      = { fb_ad:'FB Ad.', whatsapp:'Whatsapp', messenger:
 const EMP_NEXT_ACTION_LABELS = { followed_by_sales:'Followed By Sales', need_follow_up:'Need Follow Up', closed:'Closed', no_answer:'No Answer' };
 const EMP_LEAD_STATUS_OPTS   = [['cold','Cold'],['warm','Warm'],['hot','Hot'],['immediate_delivery','Immediate Delivery'],['not_interested','Not Interested'],['blacklist','Blacklist']];
 let _empLeads = [];
+let _empLeadsLoaded = false; // the full list is in memory (saves can update it in place)
 let _empLeadOptions = [];   // slim list for the deal modal's lead picker
 let _empCoworkers = null;
 // Sort state (persisted): { key, dir:'asc'|'desc' }
@@ -1493,8 +1494,9 @@ async function loadEmpLeads() {
       ef('/api/employee/leads').then(r => r.json()),
       ef('/api/employee/followups/pending').then(r => r.json()).catch(() => []),
     ]);
-    if (leads.error) throw new Error(leads.error);
+    if (!Array.isArray(leads)) throw new Error((leads && leads.error) || 'Could not load leads');
     _empLeads = leads;
+    _empLeadsLoaded = true;
     _pendingFollowups = {};
     (Array.isArray(followups) ? followups : []).forEach(f => { if (!_pendingFollowups[f.customer_id]) _pendingFollowups[f.customer_id] = f.due_at; });
     renderFuChip();
@@ -2242,9 +2244,11 @@ async function saveEmpLead() {
 }
 
 // Swap a saved lead into the table (new ones go on top, where the server's
-// newest-first order puts them) and redraw from memory.
+// newest-first order puts them) and redraw from memory. Only once the full list
+// is in memory: saved from a lead drawer opened off another page, a one-row list
+// would pass for "all leads".
 function upsertLocalEmpLead(saved) {
-  if (!saved || saved.id == null) return loadEmpLeads();
+  if (!saved || saved.id == null || !_empLeadsLoaded) return loadEmpLeads();
   const i = _empLeads.findIndex(x => x.id === saved.id);
   if (i >= 0) _empLeads[i] = saved; else _empLeads.unshift(saved);
   empFilterLeads();

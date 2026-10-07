@@ -5,7 +5,7 @@
 // Keep-Alive hint to stretch that, and staff click far less often than every 4 s —
 // so nearly every query paid DNS, TCP and TLS again. A presence upsert Postgres
 // answers in ~1 ms took ~850 ms after a quiet half-minute, and a lead save is
-// several queries in a row. src/lib/db-fetch.js keeps the connections for a minute.
+// several queries in a row. src/lib/db-fetch.js keeps the connections for 5 minutes.
 //
 // The fake Supabase here behaves like that edge: it never closes an idle socket
 // and sends no Keep-Alive hint, so the client's own idle limit is the only one in
@@ -15,7 +15,7 @@
 // problem rather than passing against a server that would have reused anyway.
 const http = require('http');
 const { createClient } = require('@supabase/supabase-js');
-const { dbFetch, dbAgent, KEEP_ALIVE_MS } = require('../src/lib/db-fetch');
+const { dbFetch, dbAgent, KEEP_ALIVE_MS, USES_NODE_FETCH } = require('../src/lib/db-fetch');
 
 const results = [];
 const c = (n, ok, x) => { results.push(!!ok); console.log((ok ? '  ok  ' : ' FAIL ') + n + (x ? '  ' + x : '')); };
@@ -90,8 +90,23 @@ async function round(sb) {
   c('control: after 5 s idle, Node\'s plain fetch connected all over again — the production symptom',
     plain.seen.connections > warm.plain, `${warm.plain} → ${plain.seen.connections} connection(s)`);
   c('after the same 5 s, the pooled fetch opened no new connection',
-    pooled.seen.connections === warm.pooled, `${warm.pooled} → ${pooled.seen.connections} connection(s)`);
-  c('idle connections are kept for a minute', KEEP_ALIVE_MS === 60_000);
+    warm.pooled > 0 && pooled.seen.connections === warm.pooled, `${warm.pooled} → ${pooled.seen.connections} connection(s)`);
+  // Five minutes, under the 400 s at which Cloudflare closes an idle connection.
+  c('idle connections are kept for 5 minutes, under the edge\'s 400 s', KEEP_ALIVE_MS === 300_000);
+
+  // Seven suites stand in for Supabase by replacing the global fetch. That seam
+  // has to keep working wherever Node's own fetch carries the pool (Node 18–24).
+  if (USES_NODE_FETCH) {
+    const real = global.fetch; let stubbed = 0;
+    global.fetch = async () => { stubbed++; return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }); };
+    const before = pooled.seen.requests.length;
+    const r = await sbPooled.from('customers').select('*');
+    global.fetch = real;
+    c('a replaced global fetch still receives the Supabase traffic', stubbed === 1 && !r.error && pooled.seen.requests.length === before,
+      `stub saw ${stubbed}, fake edge saw ${pooled.seen.requests.length - before}`);
+  } else {
+    console.log(`  --  Node bundles undici ${process.versions.undici}; the pool rides undici's own fetch here, so the global-fetch seam is not used`);
+  }
 
   await dbAgent.close().catch(() => {});
   plain.srv.close(); pooled.srv.close();

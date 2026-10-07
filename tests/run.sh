@@ -60,6 +60,8 @@ run envexample  node tests/envexample.js
 run mobiletest  node tests/mobiletest.js
 run homecache   node tests/homecache.js
 run dbfetch     node tests/dbfetch.js
+run profiletest node tests/profiletest.js
+run gziptest    node tests/gziptest.js
 # needs a local coturn on 127.0.0.1:3478 for the success path; skips it otherwise
 run relaytest   node tests/relaytest.js
 
