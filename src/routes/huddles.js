@@ -204,10 +204,21 @@ function mountChatAdminRoutes(base, guard) {
       if (!huddleStarted.has(roomId)) huddleStarted.set(roomId, Date.now());
       const sid = req.body?.data?.sid;
       huddleEnroll(roomId, key, typeof sid === 'string' && sid ? sid.slice(0, 40) : null);
-      huddleEmit(huddleAudience(roomId, members), { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), joined: key });
+      const frame = { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), joined: key };
+      // A client putting itself back after a restart: the roster is only partly rebuilt.
+      // The previous bundle prunes everyone a roster doesn't list, so tabs still on it
+      // would hang up on each other — tell only the current bundle, which knows better.
+      if (req.body?.data?.afterRestart === true) ctx.huddleSignalSend(huddleAudience(roomId, members), frame);
+      else huddleEmit(huddleAudience(roomId, members), frame);
       return res.json({ ok: true, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
     }
     if (type === 'leave') {
+      // From a page that has since been replaced by this person's other tab or
+      // device (its pagehide beacon, say): that page is not in the call any more,
+      // and removing the key would hang up the one that is.
+      const lsid = req.body?.data?.sid;
+      const cur = (huddleSids.get(roomId) || new Map()).get(key);
+      if (typeof lsid === 'string' && lsid && cur && lsid !== cur) return res.json({ ok: true, ignored: 'superseded' });
       huddleRemove(roomId, key);
       huddleEmit(huddleAudience(roomId, members), { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), left: key });
       return res.json({ ok: true });
@@ -215,13 +226,16 @@ function mountChatAdminRoutes(base, guard) {
     const inCall = (huddles.get(roomId) || new Map()).has(key);
     if (inCall) huddleTouch(roomId, key);
     // The client's 15-second "still here". Answering whether we still count it in the
-    // call lets a tab the sweep dropped (asleep, throttled) notice and rejoin.
-    if (type === 'alive') return res.json({ ok: true, inCall, boot: HUDDLE_BOOT });
+    // call lets a tab the sweep dropped (asleep, throttled) notice and rejoin — and the
+    // sid lets a tab that this person's other device took over notice and step aside.
+    if (type === 'alive') return res.json({ ok: true, inCall, boot: HUDDLE_BOOT, sid: (huddleSids.get(roomId) || new Map()).get(key) || null });
     // invite/offer/answer/ice/decline/media/restart are point-to-point
     const to = String(req.body?.to || '');
     // Nobody already in the call needs ringing — it used to push them a "started a
-    // huddle" notification every time anyone joined or rejoined.
-    if (type === 'invite' && (huddles.get(roomId) || new Map()).has(to)) return res.json({ ok: true, skipped: 'already in the huddle' });
+    // huddle" notification every time anyone joined or rejoined. Only someone known to
+    // be there, though: an entry from the previous bundle has no sid, is never swept,
+    // and may be the ghost of a tab closed long ago. Ring those as before.
+    if (type === 'invite' && (huddleSids.get(roomId) || new Map()).has(to)) return res.json({ ok: true, skipped: 'already in the huddle' });
     if (type === 'invite' && !members.includes(to)) {
       // Pulling in someone from the wider workspace: grant them this huddle only
       const people = await chatPeopleKeys();
@@ -384,13 +398,15 @@ function huddleTouch(roomId, key) {
   const seen = huddleSeen.get(roomId);
   if (seen && seen.has(key)) seen.set(key, Date.now());
 }
+// A guest's grant outlives their own leaving and lasts as long as the huddle: a
+// guest who reloads, or is swept while their laptop sleeps, has to be able to come
+// back the way a member can.
 function huddleRemove(roomId, key) {
   const set = huddles.get(roomId);
   if (set) {
     set.delete(key);
     if (!set.size) { huddles.delete(roomId); huddleGuests.delete(roomId); huddleStarted.delete(roomId); huddleSeen.delete(roomId); huddleSids.delete(roomId); }
   }
-  const g = huddleGuests.get(roomId); if (g) g.delete(key);
   const seen = huddleSeen.get(roomId); if (seen) seen.delete(key);
   const sids = huddleSids.get(roomId); if (sids) sids.delete(key);
 }

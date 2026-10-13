@@ -70,6 +70,8 @@ async function checkAuth() {
 }
 
 function showLogin() {
+  // Signed out or expired: hang up, or the microphone stays live under the login screen.
+  if (typeof huddleLeave === 'function') huddleLeave();
   document.getElementById('auth-wrap').style.display = 'flex';
   document.getElementById('layout').style.display = 'none';
 }

@@ -32,7 +32,7 @@ global.fetch = async (input, init) => {
   const accept = String(typeof h.get === 'function' ? (h.get('Accept') || '') : (h.Accept || ''));
   let rows = [];
   if (table === 'chat_room_members') { memberQueries++; rows = MEMBERS; }
-  if (table === 'employees') rows = [{ id: 2, name: 'Sara', avatar_url: null }];
+  if (table === 'employees') rows = [{ id: 2, name: 'Sara', avatar_url: null }, { id: 3, name: 'Omar', avatar_url: null }];
   if (table === 'notifications' && init && init.method === 'POST') rows = [{ id: 1, ...JSON.parse(init.body) }];
   const body = accept.includes('pgrst.object') ? JSON.stringify(rows[0] || {}) : JSON.stringify(rows);
   return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -127,6 +127,17 @@ setTimeout(async () => {
   check('a tab on the previous bundle still gets signalling on its chat stream',
     sara0.ok === true && legacy.frames.some(f => /^event: huddle\n/.test(f) && f.includes('"answer"')), JSON.stringify(sara0));
 
+  // A client rejoining after a restart produces a half-rebuilt roster. The previous
+  // bundle hangs up on anyone a roster leaves out, so it must not see that one.
+  check('the previous bundle sees an ordinary join\'s roster', legacy.frames.some(f => /^event: huddle\n/.test(f) && f.includes('"roster"')));
+  legacy.frames.length = 0;
+  const nBefore = sigFrames(tabA).length;
+  await saraSig({ roomId: 1, type: 'join', data: { sid: 'sara0', afterRestart: true } });
+  await wait(100);
+  check('…but not one from a rejoin after a restart, which only the current bundle gets',
+    !legacy.frames.some(f => f.includes('"roster"')) && sigFrames(tabA).slice(nBefore).some(f => f.json.type === 'roster'),
+    JSON.stringify(legacy.frames.map(f => f.slice(0, 60))));
+
   // ── A reconnect is sent what it missed ──
   const lastId = sigFrames(tabA).slice(-1)[0].id;
   tabA.close(); tabB.close();
@@ -183,10 +194,40 @@ setTimeout(async () => {
   const after = await saraSig({ roomId: 1, type: 'alive' });
   check('the dropped tab learns it on its next ping, so it can rejoin', after.inCall === false, JSON.stringify(after));
 
+  // ── Ringing someone the server can't vouch for ──
+  // The admin's entry came from the previous bundle (no sid): it is never swept, so it
+  // may be the ghost of a tab closed hours ago. Skipping the invite would ring nobody.
+  const ringOld = await saraSig({ roomId: 1, type: 'invite', to: 'admin' });
+  check('an entry from the previous bundle is still rung', ringOld.ok === true && !ringOld.skipped, JSON.stringify(ringOld));
+
+  // ── The same person on a second device ──
+  await saraSig({ roomId: 1, type: 'join', data: { sid: 'sara-laptop' } });
+  await saraSig({ roomId: 1, type: 'join', data: { sid: 'sara-phone' } });   // she moves the call to her phone
+  const laptopPing = await saraSig({ roomId: 1, type: 'alive' });
+  check('the replaced device learns from its ping that another holds the call',
+    laptopPing.inCall === true && laptopPing.sid === 'sara-phone', JSON.stringify(laptopPing));
+  const staleLeave = await saraSig({ roomId: 1, type: 'leave', data: { sid: 'sara-laptop' } });
+  let still = await fetch(base + '/api/dashboard/chat/huddle/1', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json());
+  check("the replaced device's leave does not end the call on the new one",
+    staleLeave.ignored === 'superseded' && still.participants.some(p => p.key === 'employee_2' && p.sid === 'sara-phone'), JSON.stringify(still));
+
+  // ── A guest can come back ──
+  const omar = 'hdsignal-test-guest';
+  ctx.employeeSessions.set(omar, { id: 3, name: 'Omar', username: 'omar', job_title: '', permissions: normEmpPerms({ chat: true }) });
+  const omarSig = body => fetch(base + '/api/employee/chat/huddle/signal', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + omar, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }).then(r => r.json().then(j => ({ status: r.status, ...j })));
+  await adminSig({ roomId: 1, type: 'invite', to: 'employee_3' });            // pulled in from outside the room
+  const g1 = await omarSig({ roomId: 1, type: 'join', data: { sid: 'omar1' } });
+  await omarSig({ roomId: 1, type: 'leave', data: { sid: 'omar1' } });        // his tab reloads (pagehide beacon)
+  const g2 = await omarSig({ roomId: 1, type: 'join', data: { sid: 'omar2' } });
+  check('a guest who reloads can rejoin while the huddle runs', g1.ok === true && g2.status === 200 && g2.ok === true, JSON.stringify([g1.status, g2.status, g2.error]));
+  await omarSig({ roomId: 1, type: 'leave', data: { sid: 'omar2' } });
+
   // ── A closing tab's beacon: no Authorization header, the token in the URL ──
   await saraSig({ roomId: 1, type: 'join', data: { sid: 'sara2' } });
   const beacon = await fetch(base + '/api/employee/chat/huddle/signal?_t=' + emp, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: 1, type: 'leave' }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: 1, type: 'leave', data: { sid: 'sara2' } }),
   });
   const live = await fetch(base + '/api/dashboard/chat/huddle/1', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json());
   check('a pagehide beacon takes the closing tab out of the call',

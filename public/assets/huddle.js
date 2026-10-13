@@ -146,8 +146,12 @@ async function huddleOnStreamOpen() {
   const roomId = _hd.roomId;
   if (!roomId) return;
   try {
-    const r = await hdFetch('/huddle/' + roomId).then(x => x.json());
-    if (_hd.roomId !== roomId || !r || !Array.isArray(r.participants)) return;
+    const res = await hdFetch('/huddle/' + roomId);
+    const r = await res.json();
+    if (_hd.roomId !== roomId) return;
+    if (res.status === 403) return hdLockedOut();
+    if (!r || !Array.isArray(r.participants)) return;
+    if (r.boot === _hd.boot && hdSuperseded(r.participants)) return hdStepAside();
     if (!r.participants.some(p => p.key === hdMe() && p.sid === _hd.sid)) { await hdRejoin(roomId, r.boot === _hd.boot); return; }
     await huddleOnSignal({ type: 'roster', roomId, boot: r.boot, participants: r.participants, started_at: r.started_at });
   } catch (_) { /* the next reconnect, or the 'alive' ping, tries again */ }
@@ -164,8 +168,13 @@ function hdRejoin(roomId, dropped) {
   if (_hdRejoining) return _hdRejoining;
   _hdRejoining = (async () => {
     try {
-      const r = await hdSignal('join', null, { sid: _hd.sid }).then(x => x.json());
-      if (_hd.roomId !== roomId || !r || !Array.isArray(r.participants)) return;
+      // After a restart, say so: the previous bundle, still open in some tabs, would
+      // read the half-empty roster this join produces as "everyone else left".
+      const res = await hdSignal('join', null, { sid: _hd.sid, afterRestart: !dropped });
+      const r = await res.json();
+      if (_hd.roomId !== roomId) return;
+      if (res.status === 403) return hdLockedOut();
+      if (!r || !Array.isArray(r.participants)) return;
       if (r.boot !== _hd.boot) _hd.graceUntil = Date.now() + 20000;
       else if (dropped) [..._hd.peers.keys()].forEach(k => { if (_hd.peers.get(k).pc.connectionState !== 'connected') hdDropPeer(k); });
       _hd.boot = r.boot || _hd.boot;
@@ -183,9 +192,13 @@ async function hdAlive() {
   const roomId = _hd.roomId;
   if (!roomId) return;
   try {
-    const r = await hdSignal('alive').then(x => x.json());
-    if (_hd.roomId !== roomId || !r || r.error) return;
+    const res = await hdSignal('alive');
+    const r = await res.json();
+    if (_hd.roomId !== roomId) return;
+    if (res.status === 403) return hdLockedOut();
+    if (!r || r.error) return;
     const restarted = !!(r.boot && _hd.boot && r.boot !== _hd.boot);
+    if (!restarted && r.inCall && r.sid && _hd.sid && r.sid !== _hd.sid) return hdStepAside();
     if (r.inCall === false || restarted) await hdRejoin(roomId, !restarted);
   } catch (_) {}
 }
@@ -197,12 +210,33 @@ function hdLeaveOnUnload() {
   if (!_hd.roomId) return;
   try {
     const tok = HDCFG.token ? HDCFG.token() : '';
-    const body = new Blob([JSON.stringify({ roomId: _hd.roomId, type: 'leave' })], { type: 'application/json' });
+    const body = new Blob([JSON.stringify({ roomId: _hd.roomId, type: 'leave', data: { sid: _hd.sid } })], { type: 'application/json' });
     if (tok && navigator.sendBeacon) navigator.sendBeacon(HDCFG.base + '/huddle/signal?_t=' + encodeURIComponent(tok), body);
   } catch (_) {}
   hdTeardown();
 }
 if (typeof window !== 'undefined') window.addEventListener('pagehide', hdLeaveOnUnload);
+
+// The same person joined this huddle from another tab or device. The server holds
+// one place per person, and offers to them reach every tab they have open, so two
+// copies would answer each other's calls. The newer one wins; this one hangs up
+// without telling the server, which would end the call for the other copy too.
+function hdSuperseded(participants) {
+  const me = (participants || []).find(p => p.key === hdMe());
+  return !!(me && me.sid && _hd.sid && me.sid !== _hd.sid);
+}
+function hdStepAside() {
+  if (!_hd.roomId) return;
+  hdTeardown();
+  hdToast('You joined this huddle somewhere else, so it has ended in this tab.');
+}
+// The server won't let us back in: a guest after a restart (the grant is gone with
+// it), or someone removed from the conversation. Don't sit in a call nobody can see.
+function hdLockedOut() {
+  if (!_hd.roomId) return;
+  hdTeardown();
+  hdToast('You were disconnected from the huddle. Ask someone in it to invite you again.');
+}
 
 function hdMe() { return HDCFG.me(); }
 function hdFetch(path, opts) { return HDCFG.fetch(HDCFG.base + path, opts); }
@@ -295,7 +329,7 @@ async function huddleRelayTest(opts) {
   }
 }
 
-async function huddleStart(roomId, withVideo) {
+async function huddleStart(roomId, withVideo, joining) {
   if (_hd.roomId === roomId) { hdToast('You are already in this huddle.'); return; }
   if (_hd.roomId) { hdToast('Leave your current huddle first.'); return; }
   try {
@@ -324,16 +358,19 @@ async function huddleStart(roomId, withVideo) {
   // broadcast is slow to arrive. hdCall is idempotent, so doing both is free.
   hdDialRoster();
   hdStartStats();
-  // Ring everyone else in the conversation — only when starting the huddle. Joining
-  // one already running used to ring the whole room again, people already in the
-  // call included, each with a persisted "started a huddle" notification and a push.
-  if (!_hd.roster.some(p => p.key !== hdMe())) {
+  // Ring everyone else in the conversation — when starting the huddle, or when first
+  // into a scheduled one. Joining one already running used to ring the whole room
+  // again, people in the call included, each with a persisted "started a huddle"
+  // notification and a push. (The server also skips anyone it knows is in the call.)
+  // Only an entry with a sid counts as someone there: one from the previous bundle is
+  // never swept, and may be a tab closed hours ago.
+  if (!joining || !_hd.roster.some(p => p.key !== hdMe() && p.sid)) {
     hdRoomMemberKeys(roomId).forEach(k => { if (k !== hdMe()) hdSignal('invite', k).catch(() => {}); });
   }
   hdRenderBar();
 }
 
-function huddleJoinExisting(roomId) { return huddleStart(roomId, false); }
+function huddleJoinExisting(roomId) { return huddleStart(roomId, false, true); }
 
 // How long this has been going. Counted from the server's start time so it is
 // the huddle's duration, not "how long I have been in it".
@@ -358,7 +395,7 @@ function hdPaintClock() {
 }
 
 function huddleLeave() {
-  if (_hd.roomId) hdSignal('leave').catch(() => {});
+  if (_hd.roomId) hdSignal('leave', null, { sid: _hd.sid }).catch(() => {});
   hdTeardown();
 }
 function hdTeardown() {
@@ -535,6 +572,7 @@ async function huddleOnSignal(msg) {
     // forgotten the call, so this roster is missing people who are still in it. It
     // used to be read as "they all left" and hung up on them. Rejoin instead.
     if (msg.boot && _hd.boot && msg.boot !== _hd.boot) { hdRejoin(_hd.roomId); return; }
+    if (hdSuperseded(roster)) { hdStepAside(); return; }
     // The sweep dropped us (an asleep tab) — get back on the roster.
     if (msg.left === hdMe() || (msg.left && !roster.some(p => p.key === hdMe()) && _hd.sid)) hdRejoin(_hd.roomId, true);
     _hd.roster = roster;
@@ -543,8 +581,10 @@ async function huddleOnSignal(msg) {
       const p = _hd.peers.get(k);
       const listed = roster.find(r => r.key === k);
       // Back on a new page (a reload, a crash) while our connection still points at
-      // the old one: drop it and dial fresh.
-      const replaced = listed && listed.sid && p.sid && listed.sid !== p.sid;
+      // the old one: drop it and dial fresh. A peer that was on the previous bundle had
+      // no sid to compare, but that bundle can't join a call it is still in, so a join
+      // from it with a sid is always a new page.
+      const replaced = listed && listed.sid && (p.sid ? listed.sid !== p.sid : msg.joined === k);
       // Left. A swept peer whose connection still works is kept: its tab is only
       // asleep and rejoins on its next ping. An unlisted pair that isn't working
       // goes now, or on the stats tick once it stops (see hdPollStats).
@@ -590,8 +630,8 @@ async function huddleOnSignal(msg) {
     // side — they reloaded, or hung up on this pair and dialled again — and ours
     // can never be renegotiated onto it. Start ours afresh and answer that.
     try { await entry.pc.setRemoteDescription(new RTCSessionDescription(msg.data)); }
-    catch (_) {
-      if (!entry.pc.remoteDescription || !hdMayReplace(from)) return;
+    catch (e) {
+      if ((e && e.name === 'InvalidStateError') || !entry.pc.remoteDescription || !hdMayReplace(from)) return;
       hdDropPeer(from);
       entry = hdPeer(from);
       try { await entry.pc.setRemoteDescription(new RTCSessionDescription(msg.data)); } catch (_) { return; }
@@ -624,7 +664,10 @@ async function huddleOnSignal(msg) {
       // or one from a fresh connection on their side that ours can't renegotiate
       // onto (dial again from a fresh one of ours).
       try { await p.pc.setRemoteDescription(new RTCSessionDescription(msg.data)); }
-      catch (_) {
+      catch (e) {
+        // Two answers handled at once (frames are not awaited one by one): the first
+        // applied, so the second meets a 'stable' connection. A duplicate, not a mismatch.
+        if (p.pc.signalingState === 'stable' || (e && e.name === 'InvalidStateError')) { await hdFlushIce(p); return; }
         if (p.pc.remoteDescription && hdMayReplace(from)) { hdDropPeer(from); hdCall(from).catch(() => {}); }
         return;
       }
@@ -729,9 +772,12 @@ async function hdPollStats() {
         p.orphanTicks = 0;
       }
       // Stuck pair: the descriptions went across but ICE never got anywhere (lost
-      // candidates), or the other side never offered at all. After ~15 s restart
-      // ICE — or, from the answering side, ask the offerer to. hdRestart is bounded.
-      if (pending && !(hdMe() < key && !p.pc.remoteDescription && (p.offerRetries || 0) < 3)) {
+      // candidates), the other side never offered at all, or it dropped and the
+      // restarts so far didn't bring it back. Every ~15 s restart ICE — or, from the
+      // answering side, ask the offerer to. hdRestart allows 3 a minute, so a pair
+      // that was given up on is still retried once the network is back.
+      const down = pending || st === 'failed' || st === 'disconnected';
+      if (down && !(hdMe() < key && !p.pc.remoteDescription && (p.offerRetries || 0) < 3)) {
         p.stuckTicks = (p.stuckTicks || 0) + 1;
         if (p.stuckTicks >= 5) { p.stuckTicks = 0; hdRestart(key); }
       } else {

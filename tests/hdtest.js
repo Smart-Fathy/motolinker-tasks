@@ -89,9 +89,11 @@ function makeFetch(key) {
       return { ok: true, json: async () => ({ ok: true, boot, participants, started_at }) };
     }
     if (body.type === 'alive') {
-      return { ok: true, json: async () => ({ ok: true, inCall: !!(bus.rosters[rid] && bus.rosters[rid].has(key)), boot: bus.boot }) };
+      return { ok: true, json: async () => ({ ok: true, inCall: !!(bus.rosters[rid] && bus.rosters[rid].has(key)), boot: bus.boot, sid: (bus.sids[rid] || {})[key] || null }) };
     }
     if (body.type === 'leave') {
+      const cur = (bus.sids[rid] || {})[key];
+      if (body.data && body.data.sid && cur && body.data.sid !== cur) return { ok: true, json: async () => ({ ok: true, ignored: 'superseded' }) };
       if (bus.rosters[rid]) bus.rosters[rid].delete(key);
       if (bus.sids[rid]) delete bus.sids[rid][key];
       const participants = plist(rid);
@@ -116,6 +118,7 @@ function cfg(key) {
 window.A = makeClient(cfg('A'));
 window.B = makeClient(cfg('B'));
 window.C = makeClient(cfg('C'));
+window.B2 = makeClient(cfg('B'));   // the same person on a second device (scenario 33)
 bus.inbox.A = m => window.A.huddleOnSignal(m);
 bus.inbox.B = m => window.B.huddleOnSignal(m);
 bus.inbox.C = m => window.C.huddleOnSignal(m);
@@ -1209,13 +1212,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   }
 
   // 30. Only starting a huddle rings the room. Joining one already running used to
-  //     ring everyone again, people already in the call included.
+  //     ring everyone again, people already in the call included. (Pressing Start
+  //     still rings; the server skips whoever it knows is already in the call.)
   {
     const r = await page.evaluate(async () => {
       const wait = ms => new Promise(res => setTimeout(res, ms));
       window.__log.length = 0;
       await window.A.huddleStart(1, false); await wait(100);
-      await window.B.huddleStart(1, false); await wait(100);
+      await window.B.huddleJoinExisting(1); await wait(100);   // the chip, the ring's Join, the calendar
       const out = { a: window.__log.filter(l => l.startsWith('A -> invite')), b: window.__log.filter(l => l.startsWith('B -> invite')) };
       window.A.huddleLeave(); window.B.huddleLeave();
       document.getElementById('hd-incoming').style.display = 'none';
@@ -1255,6 +1259,104 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check('closing the tab sends a leave beacon, authorised in the URL',
       r.n === 1 && r.url === '/api/x/chat/huddle/signal?_t=tok-A' && r.body && r.body.type === 'leave' && r.body.roomId === 28, JSON.stringify(r));
     check('…and releases the microphone', r.out && r.micOff, JSON.stringify(r));
+  }
+  await sleep(150);
+
+  // 33. The same person on a second device joins the call they are already in. The
+  //     server keeps one place per person and their offers reach every tab, so two
+  //     copies used to answer each other's calls and fight over the place for good.
+  //     The newer copy takes the call; the older one hangs up quietly.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const conn = async (pairs, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (pairs.every(([c, k]) => { const p = c.peers().get(k); return p && p.pc.connectionState === 'connected'; })) return true; await wait(150); } return false; };
+      const bus = window.__bus, realB = bus.inbox.B;
+      bus.inbox.B = m => { realB(m); window.B2.huddleOnSignal(m); };   // both devices hear B's frames
+      try {
+        await window.A.huddleStart(31, false); await window.B.huddleStart(31, false);
+        const up = await conn([[window.A, 'B'], [window.B, 'A']]);
+        document.getElementById('hd-toast').textContent = '';
+        await window.B2.huddleStart(31, false, true);
+        const moved = await conn([[window.A, 'B'], [window.B2, 'A']]);
+        await wait(300);
+        const out = {
+          up, moved,
+          oldOut: window.B.state().roomId === null,
+          toast: document.getElementById('hd-toast').textContent,
+          stillB2: window.A.peers().get('B') && window.A.peers().get('B').sid === window.B2.state().sid,
+        };
+        // The old device's page closes later: its beacon must not end the new one's call.
+        window.__log.length = 0;
+        await window.B.huddleStart(31, false, true);           // (only to give it a sid to leave with)
+        await wait(200);
+        const tookBack = await conn([[window.A, 'B'], [window.B, 'A']]);
+        out.b2SteppedAside = window.B2.state().roomId === null;
+        window.B.huddleLeave();
+        await wait(200);
+        out.after = [...(bus.rosters[31] || [])];
+        return { ...out, tookBack };
+      } finally {
+        bus.inbox.B = realB;
+        window.A.huddleLeave(); window.B.huddleLeave(); window.B2.huddleLeave();
+      }
+    });
+    check('joining from a second device moves the call there', r.up && r.moved && r.stillB2, JSON.stringify(r));
+    check('…and the first device hangs up, and says why', r.oldOut && /somewhere else/.test(r.toast), JSON.stringify(r));
+    check('…and back again, without the two fighting over it', r.tookBack && r.b2SteppedAside, JSON.stringify(r));
+  }
+  await sleep(250);
+
+  // 34. Two answers to one offer handled at once (frames are not awaited one by one).
+  //     The second meets a connection the first already settled; it must be dropped as
+  //     a duplicate, not taken for a mismatch that tears the working pair down.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const conn = async (pairs, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (pairs.every(([c, k]) => { const p = c.peers().get(k); return p && p.pc.connectionState === 'connected'; })) return true; await wait(150); } return false; };
+      const bus = window.__bus, realA = bus.inbox.A;
+      bus.inbox.A = m => { realA(m); if (m.type === 'answer') realA(m); };   // every answer twice, back to back
+      try {
+        window.__log.length = 0;
+        await window.A.huddleStart(32, false); await window.B.huddleStart(32, false);
+        const up = await conn([[window.A, 'B'], [window.B, 'A']]);
+        const pa = window.A.peers().get('B');
+        await wait(1500);
+        // One offer: the pair was never rebuilt. (It would be within milliseconds of
+        // the first answer, before 'connected' — so count, don't compare objects.)
+        const offers = window.__log.filter(l => l === 'A -> offer @B').length;
+        return { up, offers, same: window.A.peers().get('B') === pa, open: pa.pc.signalingState !== 'closed' };
+      } finally {
+        bus.inbox.A = realA;
+        window.A.huddleLeave(); window.B.huddleLeave();
+      }
+    });
+    check('a duplicate answer does not tear down the pair it belongs to', r.up && r.offers === 1 && r.same && r.open, JSON.stringify(r));
+  }
+  await sleep(250);
+
+  // 35. A pair that dropped and used up its restarts is still retried, so it comes
+  //     back once the network does, instead of sitting failed for the rest of the call.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      await window.A.huddleStart(33, false); await window.B.huddleStart(33, false);
+      const t0 = Date.now();
+      while (Date.now() - t0 < 15000) { const p = window.A.peers().get('B'); if (p && p.pc.connectionState === 'connected') break; await wait(150); }
+      const p = window.A.peers().get('B');
+      // Pretend the network died: the pair reports 'failed' and the budget is spent.
+      Object.defineProperty(p.pc, 'connectionState', { configurable: true, get: () => 'failed' });
+      p.restarts = [Date.now() - 59000, Date.now() - 59000, Date.now() - 59000];
+      window.__log.length = 0;
+      for (let i = 0; i < 4; i++) await window.A.hdPollStats();   // four ticks of a dead pair…
+      await wait(1500);                                            // …the oldest restarts age out…
+      await window.A.hdPollStats();                                // …and the fifth tick retries
+      await wait(1000);
+      const offers = window.__log.filter(l => l === 'A -> offer @B').length;
+      delete p.pc.connectionState;
+      window.A.huddleLeave(); window.B.huddleLeave();
+      return { offers };
+    });
+    check('a failed pair past its restart budget is retried, not abandoned', r.offers >= 1, JSON.stringify(r));
   }
   await sleep(150);
 
