@@ -46,6 +46,8 @@ ${MODULE}
            huddleToggleCam, huddleToggleShare, hdRenderBar, hdIncoming, hdIce, hdOpenInvite,
            hdPollStats, hdQuality, hdCanShareScreen, hdAvatarFor, hdInitialsFor, hdRingOnce,
            hdRenderBar, hdDialRoster, hdAudioBlocked, hdBootLive, hdCheckLive, hdElapsed,
+           hdRestart, hdAlive, hdTeardown, hdLeaveOnUnload, huddleOnStreamOpen, huddleOnStreamFrame,
+           hdStreamQuery,
            state: () => _hd, peers: () => _hd.peers };
 }
 
@@ -53,7 +55,10 @@ const ROOM = { id: 1, type: 'group', name: 'Test', created_by: 'A',
   members: [{ member_key: 'A', member_name: 'Ann' },
              { member_key: 'B', member_name: 'Bob Marley', member_avatar: '/icons/icon-192.png' },
              { member_key: 'C', member_name: 'Cid' }] };
-const bus = { inbox: {}, rosters: {} };
+// Mirrors the server: a boot id per process, a session id per join, and roster
+// frames that say who joined or left.
+const bus = { inbox: {}, rosters: {}, sids: {}, boot: 'b1' };
+const plist = rid => [...(bus.rosters[rid] || [])].map(k => ({ key: k, name: k, sid: (bus.sids[rid] || {})[k] }));
 
 function makeFetch(key) {
   return async (url, opts) => {
@@ -67,25 +72,34 @@ function makeFetch(key) {
       window.__iceCalls = (window.__iceCalls || 0) + 1;
       return { ok: true, json: async () => ({ iceServers: [], hasTurn: false, provider: 'none', ttl: 7200, max: 6 }) };
     }
+    const one = url.split('/huddle/')[1];
+    if (one && /^[0-9]+$/.test(one)) return { ok: true, json: async () => ({ boot: bus.boot, participants: plist(Number(one)), started_at: window.__hdStarted }) };
     const body = JSON.parse(opts.body);
     window.__log.push(key + ' -> ' + body.type + (body.to ? ' @' + body.to : ''));
     const rid = body.roomId;
     if (body.type === 'join') {
       (bus.rosters[rid] = bus.rosters[rid] || new Set()).add(key);
-      const participants = [...bus.rosters[rid]].map(k => ({ key: k, name: k }));
+      (bus.sids[rid] = bus.sids[rid] || {})[key] = body.data && body.data.sid;
+      const participants = plist(rid);
       // The server stamps the huddle's start once; everybody reads the same one.
       window.__hdStarted = window.__hdStarted || Date.now() - 125000;
       const started_at = window.__hdStarted;
-      setTimeout(() => ['A','B','C'].forEach(k => bus.inbox[k] && bus.inbox[k]({ type:'roster', roomId: rid, participants, started_at })), 0);
-      return { ok: true, json: async () => ({ ok: true, participants, started_at }) };
+      const boot = bus.boot;
+      setTimeout(() => ['A','B','C'].forEach(k => bus.inbox[k] && bus.inbox[k]({ type:'roster', roomId: rid, boot, participants, started_at, joined: key })), 0);
+      return { ok: true, json: async () => ({ ok: true, boot, participants, started_at }) };
+    }
+    if (body.type === 'alive') {
+      return { ok: true, json: async () => ({ ok: true, inCall: !!(bus.rosters[rid] && bus.rosters[rid].has(key)), boot: bus.boot }) };
     }
     if (body.type === 'leave') {
       if (bus.rosters[rid]) bus.rosters[rid].delete(key);
-      const participants = [...(bus.rosters[rid] || [])].map(k => ({ key: k, name: k }));
+      if (bus.sids[rid]) delete bus.sids[rid][key];
+      const participants = plist(rid);
       // The server sends the start time on every roster frame, leave included —
       // otherwise the chip a leaver is left looking at loses its clock.
       const startedLeave = participants.length ? window.__hdStarted : (window.__hdStarted = null);
-      setTimeout(() => ['A','B','C'].forEach(k => bus.inbox[k] && bus.inbox[k]({ type:'roster', roomId: rid, participants, started_at: startedLeave })), 0);
+      const boot = bus.boot;
+      setTimeout(() => ['A','B','C'].forEach(k => bus.inbox[k] && bus.inbox[k]({ type:'roster', roomId: rid, boot, participants, started_at: startedLeave, left: key })), 0);
       return { ok: true, json: async () => ({ ok: true }) };
     }
     setTimeout(() => {
@@ -96,7 +110,7 @@ function makeFetch(key) {
   };
 }
 function cfg(key) {
-  return { base: '/api/x/chat', me: () => key, fetch: makeFetch(key),
+  return { base: '/api/x/chat', me: () => key, fetch: makeFetch(key), token: () => 'tok-' + key,
            rooms: () => [ROOM], activeRoom: () => 1, openRoom: () => {}, refreshRooms: async () => {} };
 }
 window.A = makeClient(cfg('A'));
@@ -1036,6 +1050,211 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check('after a reload the still-running huddle is offered back',
       r5.chipShown === true && r5.rejoinable === true && /Huddle in/.test(r5.chipText), JSON.stringify(r5.chipText));
     check('…with how long it has been running', /\d+:\d\d/.test(r5.chipText), r5.chipText);
+  }
+  await sleep(150);
+
+  // ── 25–32. Keeping a call up: the "connectivity issues" report ───────────────
+  // Every one of these used to strand a pair on "connecting" or hang up on people
+  // who were still there. The helpers live inside each evaluate: the page script is
+  // a template literal, where a regex's backslashes would not survive.
+
+  // 25. A pair that drops is restarted, not abandoned. Only the smaller key offers,
+  //     so the other side asks it to.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const conn = async (pairs, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (pairs.every(([c, k]) => { const p = c.peers().get(k); return p && p.pc.connectionState === 'connected'; })) return true; await wait(150); } return false; };
+      const ufrag = pc => (((pc.localDescription && pc.localDescription.sdp) || '').match(/a=ice-ufrag:(\S+)/) || [])[1];
+      await window.A.huddleStart(21, false); await window.B.huddleStart(21, false);
+      const up = await conn([[window.A, 'B'], [window.B, 'A']]);
+      const pa = window.A.peers().get('B'); const before = ufrag(pa.pc);
+      window.__log.length = 0;
+      await window.B.hdRestart('A');
+      let after = before; const t0 = Date.now();
+      while (Date.now() - t0 < 8000) { after = ufrag(pa.pc); if (after !== before && pa.pc.signalingState === 'stable') break; await wait(150); }
+      const asked = window.__log.includes('B -> restart @A');
+      const reoffered = window.__log.includes('A -> offer @B');
+      const same = window.A.peers().get('B') === pa;
+      const still = await conn([[window.A, 'B'], [window.B, 'A']], 8000);
+      // Bounded: a peer that is really gone is not restarted forever, and we say so.
+      document.getElementById('hd-toast').textContent = '';
+      for (let i = 0; i < 4; i++) await window.A.hdRestart('B');
+      const toast = document.getElementById('hd-toast').textContent;
+      window.A.huddleLeave(); window.B.huddleLeave();
+      return { up, asked, reoffered, before, after, same, still, toast };
+    });
+    check('the answering side can ask for an ICE restart', r.up && r.asked && r.reoffered, JSON.stringify(r));
+    check('…which the offerer runs on the same connection', r.same && !!r.before && !!r.after && r.before !== r.after, JSON.stringify(r));
+    check('…and the pair is connected again', r.still, JSON.stringify(r));
+    check('restarts are bounded, and the person is told', /Bob Marley/.test(r.toast), r.toast);
+  }
+  await sleep(250);
+
+  // 26. A page that dies without leaving (crash, killed app) and comes back. Its old
+  //     connection is dead whatever its state says; the session id gives it away.
+  for (const [who, other, room] of [['B', 'A', 22], ['A', 'B', 23]]) {
+    const r = await page.evaluate(async (who, other, room) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const conn = async (pairs, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (pairs.every(([c, k]) => { const p = c.peers().get(k); return p && p.pc.connectionState === 'connected'; })) return true; await wait(150); } return false; };
+      const W = window[who], O = window[other];
+      await O.huddleStart(room, false); await W.huddleStart(room, false);
+      const up = await conn([[O, who], [W, other]]);
+      const old = O.peers().get(who);
+      W.hdTeardown();                       // the page is gone; no leave was sent
+      await wait(100);
+      await W.huddleStart(room, false);     // reloaded, joins again with a new session
+      const back = await conn([[O, who], [W, other]]);
+      const now = O.peers().get(who);
+      const out = { up, back, replaced: !!now && now !== old, oldClosed: old.pc.signalingState === 'closed', sidChanged: !!now && now.sid !== old.sid };
+      O.huddleLeave(); W.huddleLeave();
+      return out;
+    }, who, other, room);
+    check(`${who === 'B' ? 'the answering' : 'the offering'} side reloads mid-call: the other drops the dead connection`,
+      r.up && r.replaced && r.oldClosed && r.sidChanged, JSON.stringify(r));
+    check('…and the two reconnect without anyone leaving', r.back, JSON.stringify(r));
+    await sleep(250);
+  }
+
+  // 27. The server restarts mid-call (a deploy). It forgets every roster while the
+  //     calls, peer to peer, carry on. The first person back used to look like the
+  //     only one left, and everybody else hung up on everybody.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const conn = async (pairs, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (pairs.every(([c, k]) => { const p = c.peers().get(k); return p && p.pc.connectionState === 'connected'; })) return true; await wait(150); } return false; };
+      const bus = window.__bus;
+      await window.A.huddleStart(24, false); await window.B.huddleStart(24, false);
+      const up = await conn([[window.A, 'B'], [window.B, 'A']]);
+      const pa = window.A.peers().get('B'), pb = window.B.peers().get('A');
+      bus.rosters[24] = new Set(); bus.sids[24] = {}; bus.boot = 'b2';
+      await window.B.huddleOnStreamOpen();   // B's stream is back first, and rejoins
+      await wait(600);
+      const out = {
+        up,
+        kept: window.A.peers().get('B') === pa && window.B.peers().get('A') === pb,
+        both: bus.rosters[24].has('A') && bus.rosters[24].has('B'),
+        boots: [window.A.state().boot, window.B.state().boot],
+        still: await conn([[window.A, 'B'], [window.B, 'A']], 5000),
+      };
+      window.A.huddleLeave(); window.B.huddleLeave();
+      return out;
+    });
+    check('after a server restart nobody is hung up on', r.up && r.kept && r.still, JSON.stringify(r));
+    check('…and everyone is back on the new roster', r.both && r.boots.join() === 'b2,b2', JSON.stringify(r));
+  }
+  await sleep(250);
+
+  // 28. The server sweeps a tab it hasn't heard from (asleep, throttled). Its call
+  //     still works, so the others keep it, and it gets itself back on the roster.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const conn = async (pairs, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (pairs.every(([c, k]) => { const p = c.peers().get(k); return p && p.pc.connectionState === 'connected'; })) return true; await wait(150); } return false; };
+      const bus = window.__bus;
+      await window.A.huddleStart(25, false); await window.B.huddleStart(25, false);
+      const up = await conn([[window.A, 'B'], [window.B, 'A']]);
+      const pa = window.A.peers().get('B');
+      bus.rosters[25].delete('B'); delete bus.sids[25].B;
+      const participants = [{ key: 'A', name: 'A', sid: bus.sids[25].A }];
+      ['A', 'B'].forEach(k => bus.inbox[k]({ type: 'roster', roomId: 25, boot: bus.boot, participants, started_at: Date.now(), left: 'B', swept: true }));
+      await wait(600);
+      const out = { up, kept: window.A.peers().get('B') === pa, back: bus.rosters[25].has('B'), still: await conn([[window.A, 'B'], [window.B, 'A']], 3000) };
+      // The 'alive' ping is what catches it when no roster frame does.
+      bus.rosters[25].delete('B');
+      window.__log.length = 0;
+      await window.B.hdAlive();
+      await wait(200);
+      out.pingRejoined = bus.rosters[25].has('B') && window.__log.includes('B -> join');
+      window.A.huddleLeave(); window.B.huddleLeave();
+      return out;
+    });
+    check('a swept tab whose call still works is not hung up on', r.up && r.kept && r.still, JSON.stringify(r));
+    check('…and it rejoins the roster by itself', r.back, JSON.stringify(r));
+    check('…as it does when its own ping says it was dropped', r.pingRejoined, JSON.stringify(r));
+  }
+  await sleep(250);
+
+  // 29. One side hung up on the pair and the other didn't notice. The stale end's
+  //     ICE restart reaches a brand-new connection with a different certificate.
+  //     Chromium renegotiates onto it; Firefox and Safari refuse, and the pair has
+  //     to start afresh at both ends. 'strict' plays the refusing browser.
+  for (const [quitter, keeper, room, strict] of [['B', 'A', 26, false], ['A', 'B', 27, false], ['B', 'A', 29, true], ['A', 'B', 30, true]]) {
+    const r = await page.evaluate(async (quitter, keeper, room, strict) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const conn = async (pairs, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (pairs.every(([c, k]) => { const p = c.peers().get(k); return p && p.pc.connectionState === 'connected'; })) return true; await wait(150); } return false; };
+      const fp = sdp => ((sdp || '').match(/a=fingerprint:\S+ (\S+)/) || [])[1];
+      const orig = RTCPeerConnection.prototype.setRemoteDescription;
+      let refused = 0;
+      if (strict) RTCPeerConnection.prototype.setRemoteDescription = function (d) {
+        const cur = this.remoteDescription && fp(this.remoteDescription.sdp);
+        if (cur && d && d.sdp && fp(d.sdp) !== cur) { refused++; return Promise.reject(new DOMException('remote certificate changed', 'InvalidAccessError')); }
+        return orig.apply(this, arguments);
+      };
+      const Q = window[quitter], K = window[keeper];
+      try {
+        await window.A.huddleStart(room, false); await window.B.huddleStart(room, false);
+        const up = await conn([[window.A, 'B'], [window.B, 'A']]);
+        const gone = Q.peers().get(keeper); gone.pc.close(); Q.peers().delete(keeper);
+        await K.hdRestart(quitter);           // the keeper notices its pair failing
+        const back = await conn([[window.A, 'B'], [window.B, 'A']], 15000);
+        return { up, back, refused };
+      } finally {
+        RTCPeerConnection.prototype.setRemoteDescription = orig;
+        window.A.huddleLeave(); window.B.huddleLeave();
+      }
+    }, quitter, keeper, room, strict);
+    check(`${quitter === 'B' ? 'the answering' : 'the offering'} side dropped the pair alone: it comes back${strict ? ' (strict browser)' : ''}`,
+      r.up && r.back && (!strict || r.refused > 0), JSON.stringify(r));
+    await sleep(250);
+  }
+
+  // 30. Only starting a huddle rings the room. Joining one already running used to
+  //     ring everyone again, people already in the call included.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      window.__log.length = 0;
+      await window.A.huddleStart(1, false); await wait(100);
+      await window.B.huddleStart(1, false); await wait(100);
+      const out = { a: window.__log.filter(l => l.startsWith('A -> invite')), b: window.__log.filter(l => l.startsWith('B -> invite')) };
+      window.A.huddleLeave(); window.B.huddleLeave();
+      document.getElementById('hd-incoming').style.display = 'none';
+      return out;
+    });
+    check('starting a huddle rings the rest of the room', r.a.length === 2, JSON.stringify(r));
+    check('joining a running one rings nobody', r.b.length === 0, JSON.stringify(r));
+  }
+  await sleep(250);
+
+  // 31. The transport: frames remember where they were, for the server's replay.
+  {
+    const r = await page.evaluate(() => {
+      const before = window.A.hdStreamQuery();
+      window.A.huddleOnStreamFrame({ lastEventId: 'k3x.42', data: JSON.stringify({ type: 'media', roomId: 99, from: 'Z' }) });
+      window.A.huddleOnStreamFrame({ data: 'not json' });
+      return { before, after: window.A.hdStreamQuery() };
+    });
+    check('a rebuilt stream asks for what it missed since the last frame',
+      r.before === '' && r.after === '&hs=k3x.42', JSON.stringify(r));
+  }
+
+  // 32. Closing the tab leaves the call at once, by beacon — no Leave click needed.
+  {
+    const r = await page.evaluate(async () => {
+      const sent = [];
+      const real = navigator.sendBeacon;
+      Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: (url, body) => { sent.push({ url, body }); return true; } });
+      await window.A.huddleStart(28, false);
+      const mic = window.A.state().local.getAudioTracks()[0];
+      window.A.hdLeaveOnUnload();
+      Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: real });
+      window.__bus.rosters[28].delete('A');
+      const body = sent[0] ? JSON.parse(await sent[0].body.text()) : null;
+      return { n: sent.length, url: sent[0] && sent[0].url, body, out: window.A.state().roomId === null, micOff: mic.readyState === 'ended' };
+    });
+    check('closing the tab sends a leave beacon, authorised in the URL',
+      r.n === 1 && r.url === '/api/x/chat/huddle/signal?_t=tok-A' && r.body && r.body.type === 'leave' && r.body.roomId === 28, JSON.stringify(r));
+    check('…and releases the microphone', r.out && r.micOff, JSON.stringify(r));
   }
   await sleep(150);
 

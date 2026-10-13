@@ -28,6 +28,7 @@ run widgets     node tests/widgets.js
 run linktest    node tests/linktest.js
 run pastetest   node tests/pastetest.js
 run invitetest  node tests/invitetest.js
+run hdsignal    node tests/hdsignal.js
 run leadstest   node tests/leadstest.js
 run permstest   node tests/permstest.js
 run permlive    node tests/permlive.js

@@ -12,15 +12,17 @@ const chatListRooms = (...a) => ctx.chatListRooms(...a);
 function openNotifStream(key, res, reqObj) {
   res.set(ctx.SSE_HEADERS);
   res.flushHeaders();
-  res.write(':ok\n\n');
-  ctx.notifSseClients.set(key, res);
-  console.log('[notif-sse] connected', key);
+  // Reconnect after a second, not the browser's default three: huddle signalling
+  // rides this stream now, and a dropped frame waits out the gap.
+  res.write('retry: 1000\n:ok\n\n');
+  // Every tab keeps its own stream (see notifAdd), and closing one removes only
+  // that one — a reconnect racing the old socket's close can't evict the new.
+  ctx.notifAdd(key, res);
+  // A reconnect names the last huddle frame it saw; send it whatever it missed.
+  const replayed = ctx.huddleSignalReplay(key, res, reqObj.headers['last-event-id'] || reqObj.query.hs);
+  console.log('[notif-sse] connected', key, replayed ? `(replayed ${replayed} huddle frame(s))` : '');
   const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
-  // Two tabs, or a reconnect racing the old socket's close, share one slot per
-  // key. Deleting unconditionally evicted the LIVE stream when the stale one
-  // finally closed — notifications then stopped silently behind an apparently
-  // open EventSource. Only the current owner may clear the slot.
-  reqObj.on('close', () => { clearInterval(ka); if (ctx.notifSseClients.get(key) === res) ctx.notifSseClients.delete(key); });
+  reqObj.on('close', () => { clearInterval(ka); ctx.notifRemove(key, res); });
 }
 
 async function listNotifications(memberKey, res) {

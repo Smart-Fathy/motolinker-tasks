@@ -272,8 +272,10 @@ app (**Google → Google Chat** in both portals). It is **off by default**.
 Every chat conversation has a huddle button. A huddle is a **mesh** call: each
 participant holds one `RTCPeerConnection` per peer, so it is capped at **6 people**
 (beyond that an SFU would be needed). Media never touches the server — only the
-signalling does, and it rides the chat SSE stream that messages already use, so
-there is no second socket to keep alive.
+signalling does, and it rides the notification SSE stream, which every portal page
+keeps open from login on. Each frame carries an id, and the server keeps the last
+minute per person, so a stream that reconnects (the host cuts every one at 15
+minutes) is sent whatever it missed.
 
 Participants can turn the camera on, mute the mic, share a screen and pull other
 members of the conversation into the call. Turning the camera or a screen share on
@@ -334,10 +336,15 @@ that won't connect.
 
 ### Things to know
 
-- **Roster is in-memory.** A server restart ends any call in progress; nothing about
-  a huddle is persisted.
-- **One SSE connection per user.** Opening the portal in a second tab moves
-  signalling to that tab — start the huddle where you intend to take it.
+- **Roster is in-memory.** Nothing about a huddle is persisted. A server restart
+  forgets the roster but not the calls, which are peer to peer: clients see the new
+  boot id and rejoin by themselves.
+- **Leaving is detected.** A closing tab sends a leave beacon, and every participant
+  pings every 15 s; anyone silent for 90 s is dropped from the roster. Dropped pairs
+  restart ICE (bounded, then the person is told), and a pair whose other end
+  reloaded is rebuilt from scratch.
+- **Every tab gets the signalling.** Two tabs or devices each hold their own stream;
+  take the call in whichever one you like.
 - Group administration lives next to it: the admin can rename any group, add and
   remove members and browse everything shared in the room. An employee gets the
   same controls for groups they created. The server enforces this, not just the UI.

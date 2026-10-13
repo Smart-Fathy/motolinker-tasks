@@ -66,6 +66,8 @@ function bootRetryScreen(message) {
 }
 
 function showAuthScreen() {
+  // Signed out or expired: hang up, or the microphone stays live under the login screen.
+  if (typeof huddleLeave === 'function') huddleLeave();
   localStorage.removeItem('ml_admin_token');
   authToken = '';
   if (typeof closeNotifStream === 'function') closeNotifStream();
@@ -3276,6 +3278,8 @@ function initSidebarState() {
 }
 
 async function logout() {
+  // Before the token is revoked, so the leave still reaches the server.
+  if (typeof huddleLeave === 'function') huddleLeave();
   try { await apiFetch('/api/auth/logout', { method: 'POST' }); } catch (_) {}
   showAuthScreen();
 }
@@ -4334,14 +4338,13 @@ let notifUnread = 0;
 function openNotifStream() {
   if (notifSse) { notifSse.close(); notifSse = null; }
   if (!authToken) return;
-  notifSse = chatStream(() => `/api/dashboard/notifications/stream?_t=${encodeURIComponent(authToken)}`, es => {
-  // Huddle invites also arrive here, because the chat stream only exists while the
-  // chat page is open — off that page an invite used to be dropped server-side with
-  // nothing to show it. Only invites come this way; the signalling itself stays on
-  // the chat stream.
-  es.addEventListener('huddle', e => {
-    try { hdRingOnce(JSON.parse(e.data)); } catch (_) {}
-  });
+  notifSse = chatStream(() => `/api/dashboard/notifications/stream?_t=${encodeURIComponent(authToken)}${hdStreamQuery()}`, es => {
+  // Huddles ride this stream — invites and all the signalling. It is open on every
+  // page from login on; the chat stream only exists while the Chat page is, so a
+  // huddle joined from anywhere else, or carried off the Chat page, used to go deaf.
+  es.addEventListener('huddle-signal', huddleOnStreamFrame);
+  // Back after a gap: the server replays what it kept; this re-reads the roster.
+  es.addEventListener('open', () => { huddleOnStreamOpen(); });
   es.addEventListener('notification', e => {
     try {
       const n = JSON.parse(e.data);
@@ -4573,10 +4576,6 @@ function adminOpenChatSse() {
       clearTimeout(adminChatTypingTimers[roomId]);
       adminChatTypingTimers[roomId] = setTimeout(() => { if (bar) bar.textContent = ''; }, 3500);
     } catch (_) {}
-  });
-  // WebRTC signalling for huddles rides this same stream
-  es.addEventListener('huddle', e => {
-    try { huddleOnSignal(JSON.parse(e.data)); } catch (_) {}
   });
   // Membership or name changed — refresh the list, and the header if it's open
   es.addEventListener('room', e => {
@@ -7428,9 +7427,8 @@ const HDCFG = {
   rooms: () => adminChatRooms,
   activeRoom: () => adminActiveChatRoom,
   openRoom: id => adminChatOpenRoom(id),
-  // Opened on demand when a huddle is accepted from outside the chat page, which is
-  // where the signalling actually travels.
-  ensureStream: () => { if (!adminChatSse) adminOpenChatSse(); },
+  // For the leave beacon a closing tab sends, which can't carry an Authorization header.
+  token: () => authToken,
   refreshRooms: async () => {
     const r = await apiFetch('/api/dashboard/chat/rooms');
     if (!r.ok) return;

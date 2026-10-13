@@ -4,12 +4,84 @@ const ctx = require('../ctx');
 const { chatBroadcast, chatSseClients, receiver, requireAuth, requireEmployeeAuth, sendPushAlways, sendPushToOfflineMembers, supabase } = ctx.need('chatBroadcast', 'chatSseClients', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'sendPushAlways', 'sendPushToOfflineMembers', 'supabase');
 
 // ─── Notification Center ────────────────────────────────────────────────────
-// Persistent notification SSE: one per logged-in member ('admin' | 'employee_<id>'),
-// kept open the whole time the portal is loaded.
+// Persistent notification SSE, kept open the whole time a portal is loaded — on
+// every page, unlike the chat stream, which only the chat page opens.
 // Late-resolved: defined in index.js, which requires this module.
 const requirePerm = (...a) => ctx.requirePerm(...a);
 
+// member key ('admin' | 'employee_<id>') -> Set of open streams. A Set, because a
+// person with two tabs or a phone and a laptop has one stream each, and a single
+// slot meant the newest tab silently took over everything the others should have
+// received — including the huddle signalling that now rides this stream.
 const notifSseClients = new Map();
+function notifAdd(key, res) {
+  if (!notifSseClients.has(key)) notifSseClients.set(key, new Set());
+  notifSseClients.get(key).add(res);
+}
+function notifRemove(key, res) {
+  const set = notifSseClients.get(key);
+  if (set) { set.delete(res); if (!set.size) notifSseClients.delete(key); }
+}
+// Write one SSE chunk to every stream the member has open. True if any was open.
+function notifWrite(key, chunk) {
+  const set = notifSseClients.get(key);
+  if (!set || !set.size) return false;
+  for (const res of set) { try { res.write(chunk); } catch (_) { /* its close handler removes it */ } }
+  return true;
+}
+
+// ── Huddle signalling ────────────────────────────────────────────────────────
+// Offers, answers, ICE candidates and roster changes for huddles travel on this
+// always-open stream as 'huddle-signal' events. They used to ride the chat stream,
+// which the portals close the moment someone leaves the chat page — mid-call, that
+// silently cut the person off from every later signal, and their tiles sat on
+// "connecting" for good.
+//
+// Every stream is also cut and reopened at least every 15 minutes (Railway's edge
+// ends long requests at 900 s), and a frame written during that gap used to be lost.
+// So each frame carries an id, recent frames are kept per member, and a stream that
+// reconnects says the last id it saw (the browser's own Last-Event-ID header, or ?hs=
+// when the portal rebuilds the stream) and is sent whatever it missed.
+const SIGNAL_BOOT = Date.now().toString(36);   // ids from before a restart are not comparable
+const SIGNAL_KEEP_MS = 60_000;
+const SIGNAL_KEEP_MAX = 300;
+let signalSeq = 0;
+const signalBuffers = new Map();   // member key -> [{ seq, at, chunk }]
+function pruneSignals(buf, now) {
+  while (buf.length && (buf.length > SIGNAL_KEEP_MAX || now - buf[0].at > SIGNAL_KEEP_MS)) buf.shift();
+}
+function huddleSignalSend(keys, payload) {
+  const now = Date.now();
+  const data = JSON.stringify(payload);
+  for (const key of new Set(keys)) {
+    const seq = ++signalSeq;
+    const chunk = `id: ${SIGNAL_BOOT}.${seq}\nevent: huddle-signal\ndata: ${data}\n\n`;
+    let buf = signalBuffers.get(key);
+    if (!buf) signalBuffers.set(key, buf = []);
+    buf.push({ seq, at: now, chunk });
+    pruneSignals(buf, now);
+    notifWrite(key, chunk);
+  }
+  // Members who never reconnect would otherwise keep their last minute forever.
+  if (signalSeq % 200 === 0) {
+    for (const [key, buf] of signalBuffers) { pruneSignals(buf, now); if (!buf.length) signalBuffers.delete(key); }
+  }
+}
+// Replay what a reconnecting stream missed. No last id means a fresh page, which
+// learns the live huddles from /huddle/live instead of from replayed offers.
+function huddleSignalReplay(key, res, lastId) {
+  if (!lastId) return 0;
+  const [boot, n] = String(lastId).split('.');
+  const since = boot === SIGNAL_BOOT ? (Number(n) || 0) : 0;   // after a restart, all we hold is new
+  const buf = signalBuffers.get(key);
+  if (!buf) return 0;
+  const now = Date.now();
+  let sent = 0;
+  for (const f of buf) {
+    if (f.seq > since && now - f.at <= SIGNAL_KEEP_MS) { try { res.write(f.chunk); sent++; } catch (_) {} }
+  }
+  return sent;
+}
 
 // Create a notification: persist (best-effort), push it live over SSE, and fire push.
 // pushMode: 'always' (ignore online filter) | 'offline' (skip if connected) | false (none)
@@ -25,10 +97,9 @@ async function createNotification(memberKey, { type = 'general', title, body = '
   } catch (e) { console.warn('[notif] persist failed:', e.message); }
   // If persistence failed, give the live-only row a synthetic id so the client can still mark it read locally
   if (!row.id) row.id = 'tmp-' + Date.now();
-  // Live SSE to an open portal
-  const sseRes = notifSseClients.get(memberKey);
-  console.log('[notif]', memberKey, type, 'sse=' + !!sseRes);
-  if (sseRes) { try { sseRes.write(`event: notification\ndata: ${JSON.stringify(row)}\n\n`); } catch (_) {} }
+  // Live SSE to every open portal tab
+  const live = notifWrite(memberKey, `event: notification\ndata: ${JSON.stringify(row)}\n\n`);
+  console.log('[notif]', memberKey, type, 'sse=' + live);
   // OS push — unique tag per notification so multiple pushes don't collapse in the tray
   const payload = { title, body, url: defaultUrl, tag: 'notif-' + (row.id || Date.now()) };
   if (pushMode === 'always') sendPushAlways([memberKey], payload);
@@ -259,4 +330,4 @@ receiver.router.get('/api/employee/chat/events', requireEmployeeAuth, requirePer
 });
 
 
-module.exports = { chatCreateOrGetDirect, chatDeleteMsg, chatEditMsg, chatGetMessages, chatListRooms, chatSendMessage, createNotification, memberKeyForAssignee, notifSseClients, notifyEmployeeTaskAssigned };
+module.exports = { chatCreateOrGetDirect, chatDeleteMsg, chatEditMsg, chatGetMessages, chatListRooms, chatSendMessage, createNotification, huddleSignalReplay, huddleSignalSend, memberKeyForAssignee, notifAdd, notifRemove, notifSseClients, notifWrite, notifyEmployeeTaskAssigned };

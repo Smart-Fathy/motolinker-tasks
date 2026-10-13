@@ -89,8 +89,7 @@ function get(path, headers) {
         if (!gotOk && buf.includes(':ok')) {
           gotOk = Date.now() - t0;
           sentAt = Date.now();
-          const live = ctx.notifSseClients.get('employee_7');
-          live.write('event: notification\ndata: {"title":"New lead assigned"}\n\n');
+          ctx.notifWrite('employee_7', 'event: notification\ndata: {"title":"New lead assigned"}\n\n');
         }
         if (!gotEvent && buf.includes('New lead assigned')) {
           gotEvent = Date.now() - sentAt;
