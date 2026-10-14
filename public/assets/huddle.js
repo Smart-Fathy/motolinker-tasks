@@ -221,6 +221,7 @@ function hdLeaveOnUnload() {
   hdTeardown();
 }
 if (typeof window !== 'undefined') window.addEventListener('pagehide', hdLeaveOnUnload);
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (!document.hidden && _hd.roomId) hdRenderBar(); });
 
 // The same person joined this huddle from another tab or device. The server holds
 // one place per person, and offers to them reach every tab they have open, so two
@@ -791,7 +792,9 @@ async function hdPollStats() {
     } catch (_) {}
   }
   if (Date.now() - _hd.aliveAt >= 15000) { _hd.aliveAt = Date.now(); hdAlive(); }
-  hdRenderBar();
+  // Nobody sees a hidden tab: its labels and quality bars are brought up to date when
+  // it is shown again (the visibilitychange listener below), not every 3 s meanwhile.
+  if (!document.hidden) hdRenderBar();
 }
 // 0 connecting/failed · 1 poor · 2 fair · 3 good
 function hdQuality(p) {
@@ -1266,6 +1269,7 @@ function hdRenderBar() {
       + '<button class="hd-wbtn" data-act="max" title="Maximise"><i data-lucide="maximize-2" style="width:14px;height:14px"></i></button>'
       + '</div><div class="hd-tiles"></div><div class="hd-controls"></div>';
     hdBindWidget(bar);
+    hdIconsSoon();
   }
   const tiles = bar.querySelector('.hd-tiles');
   bar.style.display = 'flex';
@@ -1289,15 +1293,31 @@ function hdRenderBar() {
   [...tiles.children].forEach(el => { if (!keep.has(el.getAttribute('data-tile'))) el.remove(); });
   hdPruneAudio(new Set(peers.map(([k]) => k)));
 
-  // No media lives in the controls, so replacing those wholesale is safe
-  const ic = n => `<i data-lucide="${n}" style="width:16px;height:16px"></i>`;
-  bar.querySelector('.hd-controls').innerHTML = `
+  // No media lives in the controls, so replacing those wholesale is safe — but only
+  // when what they show has changed. This runs every 3 s for the whole call, and new
+  // buttons are new icons to draw (see hdIconsSoon).
+  const controls = bar.querySelector('.hd-controls');
+  const shows = [_hd.muted, _hd.cam, _hd.sharing].map(Number).join('');
+  if (controls.dataset.shows !== shows) {
+    controls.dataset.shows = shows;
+    const ic = n => `<i data-lucide="${n}" style="width:16px;height:16px"></i>`;
+    controls.innerHTML = `
     <button class="hd-btn ${_hd.muted ? 'off' : 'on'}" onclick="huddleToggleMute()" title="${_hd.muted ? 'Unmute' : 'Mute'}">${ic(_hd.muted ? 'mic-off' : 'mic')}</button>
     <button class="hd-btn ${_hd.cam ? 'on' : ''}" onclick="huddleToggleCam()" title="Camera">${ic(_hd.cam ? 'video' : 'video-off')}</button>
     <button class="hd-btn ${_hd.sharing ? 'on' : ''}" onclick="huddleToggleShare()" title="Share screen">${ic('monitor-up')}</button>
     <button class="hd-btn" onclick="hdOpenInvite()" title="Add someone">${ic('user-plus')}</button>
     <button class="hd-btn leave" onclick="huddleLeave()" title="Leave huddle">${ic('phone-off')}</button>`;
-  if (window.lucide) requestAnimationFrame(() => lucide.createIcons());
+    hdIconsSoon();
+  }
+}
+// Draw new icons on the next frame — one pass, however many renders asked for it. A
+// hidden tab runs no frames and used to keep one queued pass per render, all run at
+// once on its return (see iconsDrawOnlyNew in chat-extras.js).
+let _hdIconsQueued = false;
+function hdIconsSoon() {
+  if (_hdIconsQueued || !window.lucide) return;
+  _hdIconsQueued = true;
+  requestAnimationFrame(() => { _hdIconsQueued = false; if (window.lucide) lucide.createIcons(); });
 }
 
 // Anyone in the workspace can be pulled in, not just people in this conversation.

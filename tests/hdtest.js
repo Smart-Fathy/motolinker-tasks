@@ -1398,6 +1398,60 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check('…while our entry from another current tab hides it', r.otherTab === 'none', JSON.stringify(r));
   }
 
+  // 38. "This page is not responding" on coming back to a tab in a call. The 3-second
+  //     stats tick rebuilt the controls on every render — five new icons to draw —
+  //     and queued an icon pass each time; a hidden tab keeps every queued frame
+  //     callback and ran them all on its return, each one redrawing every icon on
+  //     the page. Now: the controls are rebuilt only when they change, one icon pass
+  //     at most is queued, and a hidden tab isn't rendered at all until it is shown.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      window.__iconCalls = 0;
+      window.lucide = { createIcons() { window.__iconCalls++; } };
+      try {
+        await window.A.huddleStart(40, false); await window.B.huddleStart(40, false);
+        const t0 = Date.now();
+        while (Date.now() - t0 < 15000) { const p = window.A.peers().get('B'); if (p && p.pc.connectionState === 'connected') break; await wait(150); }
+        await wait(100);
+        const micBtn = () => document.querySelectorAll('#hd-bar .hd-controls .hd-btn')[0];
+        const out = {};
+        // Steady state: the tick renders, the controls stay as they are.
+        const btn = micBtn();
+        window.__iconCalls = 0;
+        for (let i = 0; i < 5; i++) await window.A.hdPollStats();
+        await new Promise(res => requestAnimationFrame(() => res()));
+        out.sameButton = micBtn() === btn;
+        out.iconsOnTicks = window.__iconCalls;
+        // A real change rebuilds them; many renders before a frame queue one pass.
+        window.__iconCalls = 0;
+        window.A.huddleToggleMute(); window.A.hdRenderBar(); window.A.hdRenderBar(); window.A.huddleToggleMute(); window.A.hdRenderBar();
+        await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(() => res())));
+        out.rebuilt = micBtn() !== btn;
+        out.iconsOnChange = window.__iconCalls;
+        // Hidden: the tick leaves the bar alone; shown again, it is brought up to date.
+        const title = document.querySelector('#hd-bar .hd-title');
+        title.textContent = 'stale';
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+        await window.A.hdPollStats();
+        out.hiddenTitle = title.textContent;
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+        document.dispatchEvent(new Event('visibilitychange'));
+        out.shownTitle = title.textContent;
+        return out;
+      } finally {
+        delete document.hidden;
+        delete window.lucide;
+        window.A.huddleLeave(); window.B.huddleLeave();
+      }
+    });
+    check('a steady call does not rebuild the controls every 3 s', r.sameButton && r.iconsOnTicks === 0, JSON.stringify(r));
+    check('a real change rebuilds them, with one icon pass for many renders', r.rebuilt && r.iconsOnChange === 1, JSON.stringify(r));
+    check('a hidden tab is not re-rendered by the tick', r.hiddenTitle === 'stale', JSON.stringify(r));
+    check('…and is brought up to date when shown again', r.shownTitle !== 'stale' && /^Huddle\b.*\b2$/.test(r.shownTitle), JSON.stringify(r));
+  }
+  await sleep(150);
+
   check('no page errors', errs.length === 0, errs.slice(0, 4).join(' | '));
 
   await browser.close();
