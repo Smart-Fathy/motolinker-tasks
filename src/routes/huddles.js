@@ -25,6 +25,32 @@ async function chatRoomMemberKeys(roomId) {
   return (data || []).map(m => m.member_key);
 }
 
+// Huddle signalling checks membership on every frame, and one call is dozens of
+// frames — each ICE candidate is its own POST — so a Supabase round trip apiece
+// (300–700 ms in production) held every candidate back. It reads from a short cache
+// instead; every membership change in this module drops the room's entry first.
+const HUDDLE_MEMBERS_TTL = 30_000;
+const huddleMemberCache = new Map();   // roomId -> { keys, at }
+async function huddleRoomMembers(roomId) {
+  const hit = huddleMemberCache.get(roomId);
+  if (hit && Date.now() - hit.at < HUDDLE_MEMBERS_TTL) return hit.keys;
+  const keys = await chatRoomMemberKeys(roomId);
+  if (keys.length) huddleMemberCache.set(roomId, { keys, at: Date.now() });   // never cache "nobody"
+  return keys;
+}
+function huddleMembersChanged(roomId) { huddleMemberCache.delete(roomId); }
+
+// One huddle frame to these members, sent two ways for now. This bundle listens on
+// the notification stream ('huddle-signal'), which is open on every page and replays
+// what a reconnect missed. Tabs still running the previous bundle listen on the chat
+// stream ('huddle') — staff keep tabs open all day, and a call between an old tab and
+// a new one must still connect. Each side hears exactly one of the two. Drop the chat
+// copy once the old bundle is gone.
+function huddleEmit(keys, payload) {
+  ctx.huddleSignalSend(keys, payload);
+  chatBroadcast(keys, 'huddle', payload);
+}
+
 function mountChatAdminRoutes(base, guard) {
   // Rename a group
   receiver.router.put(`${base}/rooms/:id`, guard, express.json(), async (req, res) => {
@@ -98,6 +124,7 @@ function mountChatAdminRoutes(base, guard) {
     if (rows.length) {
       const { error } = await supabase.from('chat_room_members').insert(rows);
       if (error) return res.status(500).json({ error: error.message });
+      huddleMembersChanged(roomId);
     }
     chatBroadcast(await chatRoomMemberKeys(roomId), 'room', { roomId });
     res.json({ ok: true, added: rows.length });
@@ -113,6 +140,7 @@ function mountChatAdminRoutes(base, guard) {
     if (before.length <= 1) return res.status(400).json({ error: 'A group needs at least one member' });
     const { error } = await supabase.from('chat_room_members').delete().eq('room_id', roomId).eq('member_key', target);
     if (error) return res.status(500).json({ error: error.message });
+    huddleMembersChanged(roomId);
     chatBroadcast(before, 'room', { roomId });   // tell the removed member too
     res.json({ ok: true });
   });
@@ -132,8 +160,9 @@ function mountChatAdminRoutes(base, guard) {
   });
 
   // ── Huddles ──────────────────────────────────────────────────────────────
-  // WebRTC signalling rides the existing chat SSE: each payload is relayed to one
-  // peer. Roster is in-memory and ephemeral — a restart simply ends the call.
+  // WebRTC signalling is relayed peer to peer over the notification stream (see
+  // huddleEmit). Roster is in-memory: a restart forgets it, and the clients, whose
+  // calls carry on peer to peer, notice the new HUDDLE_BOOT and rejoin.
   // A refresh drops you out of the call without telling anybody's page. This is
   // how a freshly-loaded portal finds the huddle it was just in and offers it
   // back, instead of leaving people to guess whether one is still running.
@@ -141,9 +170,9 @@ function mountChatAdminRoutes(base, guard) {
     const { key } = chatCallerIdentity(req);
     const live = [];
     for (const roomId of huddles.keys()) {
-      const members = await chatRoomMemberKeys(roomId);
+      const members = await huddleRoomMembers(roomId);
       if (!huddleMaySignal(roomId, key, members)) continue;
-      live.push({ roomId, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
+      live.push({ roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
     }
     res.json(live);
   });
@@ -155,8 +184,8 @@ function mountChatAdminRoutes(base, guard) {
   receiver.router.get(`${base}/huddle/:roomId`, guard, requirePerm('chat', 'huddle'), async (req, res) => {
     const { key } = chatCallerIdentity(req);
     const roomId = parseInt(req.params.roomId);
-    if (!huddleMaySignal(roomId, key, await chatRoomMemberKeys(roomId))) return res.status(403).json({ error: 'Not a member' });
-    res.json({ participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
+    if (!huddleMaySignal(roomId, key, await huddleRoomMembers(roomId))) return res.status(403).json({ error: 'Not a member' });
+    res.json({ boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
   });
 
   receiver.router.post(`${base}/huddle/signal`, guard, requirePerm('chat', 'huddle'), express.json({ limit: '256kb' }), async (req, res) => {
@@ -164,27 +193,73 @@ function mountChatAdminRoutes(base, guard) {
     const roomId = parseInt(req.body?.roomId);
     const type = String(req.body?.type || '');
     if (!roomId || !HUDDLE_TYPES.includes(type)) return res.status(400).json({ error: 'bad signal' });
-    const members = await chatRoomMemberKeys(roomId);
+    const members = await huddleRoomMembers(roomId);
     if (!huddleMaySignal(roomId, key, members)) return res.status(403).json({ error: 'Not a member' });
 
     if (type === 'join') {
       const set = huddles.get(roomId) || new Map();
       if (set.size >= HUDDLE_MAX && !set.has(key)) return res.status(409).json({ error: 'Huddle is full', max: HUDDLE_MAX });
+      const rawSid = req.body?.data?.sid;
+      const sid = typeof rawSid === 'string' && rawSid ? rawSid.slice(0, 40) : null;
+      const tag = ctx.notifTokenTag(req);
+      // The same page putting itself back keeps its place in time. Anything else is
+      // someone new behind the key — another page, device or tab — and starts its
+      // clocks afresh. A join without a sid always is: the previous bundle refuses to
+      // join a call it is already in, so it comes from a different tab.
+      const existed = set.has(key);
+      const same = existed && !!sid && sid === (huddleSids.get(roomId) || new Map()).get(key);
+      // Tabs on the previous bundle keep their connection to whatever was behind this
+      // key before — a reloaded page, a closed tab — and, seeing the key still listed,
+      // never dial it again: whoever replaced it is never reached. Show them a roster
+      // without it first, which makes them drop that connection, then the real one,
+      // from which they dial afresh. (Only they read the chat stream's 'huddle'.)
+      if (existed && !same) {
+        const without = [...set.entries()].filter(([k]) => k !== key).map(([k, n]) => ({ key: k, name: n }));
+        chatBroadcast(huddleAudience(roomId, members), 'huddle', { type: 'roster', roomId, participants: without, started_at: huddleStartedAt(roomId), left: key });
+      }
       set.set(key, name);
       huddles.set(roomId, set);
       if (!huddleStarted.has(roomId)) huddleStarted.set(roomId, Date.now());
-      chatBroadcast(huddleAudience(roomId, members), 'huddle', { type: 'roster', roomId, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), joined: key });
-      return res.json({ ok: true, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
+      huddleEnroll(roomId, key, sid);
+      huddleNoteJoin(roomId, key, sid ? null : tag, same);
+      const frame = { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), joined: key };
+      // A client putting itself back after a restart: the roster is only partly rebuilt.
+      // The previous bundle prunes everyone a roster doesn't list, so tabs still on it
+      // would hang up on each other — tell only the current bundle, which knows better.
+      if (req.body?.data?.afterRestart === true) ctx.huddleSignalSend(huddleAudience(roomId, members), frame);
+      else huddleEmit(huddleAudience(roomId, members), frame);
+      return res.json({ ok: true, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
     }
     if (type === 'leave') {
-      const set = huddles.get(roomId);
-      if (set) { set.delete(key); if (!set.size) { huddles.delete(roomId); huddleGuests.delete(roomId); huddleStarted.delete(roomId); } }
-      const g = huddleGuests.get(roomId); if (g) g.delete(key);
-      chatBroadcast(huddleAudience(roomId, members), 'huddle', { type: 'roster', roomId, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), left: key });
+      // From a page that has since been replaced by this person's other tab or
+      // device (its pagehide beacon, say): that page is not in the call any more,
+      // and removing the key would hang up the one that is.
+      const lsid = req.body?.data?.sid;
+      const cur = (huddleSids.get(roomId) || new Map()).get(key);
+      if (typeof lsid === 'string' && lsid && cur && lsid !== cur) return res.json({ ok: true, ignored: 'superseded' });
+      huddleRemove(roomId, key);
+      huddleEmit(huddleAudience(roomId, members), { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), left: key });
       return res.json({ ok: true });
     }
-    // invite/offer/answer/ice/decline/media are point-to-point
+    const inCall = (huddles.get(roomId) || new Map()).has(key);
+    if (inCall) huddleTouch(roomId, key);
+    // Who this participant has a working connection to. It is how a participant on
+    // the previous bundle, which can't speak for itself, is known to be really there.
+    if (type === 'alive' && inCall && Array.isArray(req.body?.data?.connected)) {
+      const back = huddleVouch(roomId, req.body.data.connected);
+      if (back.length) huddleEmit(huddleAudience(roomId, members), { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
+    }
+    // The client's 15-second "still here". Answering whether we still count it in the
+    // call lets a tab the sweep dropped (asleep, throttled) notice and rejoin — and the
+    // sid lets a tab that this person's other device took over notice and step aside.
+    if (type === 'alive') return res.json({ ok: true, inCall, boot: HUDDLE_BOOT, sid: (huddleSids.get(roomId) || new Map()).get(key) || null });
+    // invite/offer/answer/ice/decline/media/restart are point-to-point
     const to = String(req.body?.to || '');
+    // Nobody already in the call needs ringing — it used to push them a "started a
+    // huddle" notification every time anyone joined or rejoined. Only someone known to
+    // be there, though: an entry from the previous bundle has no sid, is never swept,
+    // and may be the ghost of a tab closed long ago. Ring those as before.
+    if (type === 'invite' && (huddleSids.get(roomId) || new Map()).has(to)) return res.json({ ok: true, skipped: 'already in the huddle' });
     if (type === 'invite' && !members.includes(to)) {
       // Pulling in someone from the wider workspace: grant them this huddle only
       const people = await chatPeopleKeys();
@@ -194,24 +269,13 @@ function mountChatAdminRoutes(base, guard) {
     } else if (!huddleMaySignal(roomId, to, members)) {
       return res.status(400).json({ error: 'target not in this huddle' });
     }
-    chatBroadcast([to], 'huddle', { type, roomId, from: key, fromName: name, data: req.body?.data ?? null });
+    huddleEmit([to], { type, roomId, from: key, fromName: name, data: req.body?.data ?? null });
 
-    // An invite has to reach someone who is not sitting on the chat page. chatBroadcast
-    // writes to chatSseClients, and that stream is opened by the chat page loader and
-    // torn down on navigating away — so anywhere else in the app the invite was simply
-    // dropped, with no ring, no bell and no push. It now also goes out over the
-    // always-on notification stream, and createNotification persists it and pushes to
-    // anyone who is offline entirely.
-    //
-    // Only the invite. offer/answer/ice/media stay on the chat stream: duplicating
-    // signalling across two transports is a correctness hazard, not a feature.
+    // An invite also has to reach someone who is offline: createNotification persists
+    // it and pushes it. The previous bundle rang from a plain 'huddle' event on the
+    // notification stream, so that goes out too until those tabs are gone.
     if (type === 'invite') {
-      const sse = ctx.notifSseClients && ctx.notifSseClients.get(to);
-      if (sse) {
-        try {
-          sse.write(`event: huddle\ndata: ${JSON.stringify({ type, roomId, from: key, fromName: name, data: null })}\n\n`);
-        } catch (_) { /* a dead stream is cleaned up by its own close handler */ }
-      }
+      ctx.notifWrite(to, `event: huddle\ndata: ${JSON.stringify({ type, roomId, from: key, fromName: name, data: null })}\n\n`);
       const portal = to === 'admin' ? '/dashboard' : '/employee';
       ctx.createNotification(to, {
         type: 'huddle',
@@ -290,7 +354,14 @@ async function huddleIceConfig() {
 }
 
 const HUDDLE_MAX = 6;   // mesh topology: every peer connects to every other
-const HUDDLE_TYPES = ['join', 'leave', 'invite', 'decline', 'offer', 'answer', 'ice', 'media'];
+// 'restart': the answering side asks the offering side to restart ICE (only the
+// lexicographically smaller key ever offers — the glare rule in huddle.js).
+// 'alive': a participant's periodic "still here" (see huddleSweep).
+const HUDDLE_TYPES = ['join', 'leave', 'invite', 'decline', 'offer', 'answer', 'ice', 'media', 'restart', 'alive'];
+// Which server process this is. A restart forgets every roster while the calls
+// themselves, peer to peer, carry on. A client that sees a different boot rejoins
+// instead of reading the empty roster as "everyone left" and hanging up on them.
+const HUDDLE_BOOT = Date.now().toString(36);
 const huddles = new Map();   // roomId -> Map<memberKey, name>
 // When each huddle began. The timer must not count from "when I joined" — three
 // people in one call would read three different durations — and a page that
@@ -309,12 +380,200 @@ function huddleMaySignal(roomId, key, members) {
 }
 function huddleRoster(roomId) {
   const set = huddles.get(roomId);
-  return set ? [...set.entries()].map(([key, name]) => ({ key, name })) : [];
+  const sids = huddleSids.get(roomId);
+  return set ? [...set.entries()].map(([key, name]) => {
+    const sid = sids && sids.get(key);
+    return sid ? { key, name, sid } : { key, name };
+  }) : [];
 }
 function huddleStartedAt(roomId) { return huddleStarted.get(roomId) || null; }
 
 mountChatAdminRoutes('/api/dashboard/chat', requireAuth);
 mountChatAdminRoutes('/api/employee/chat', requireEmployeeAuth);
+
+// Leaving used to need the Leave button. A closed tab, a refresh, a laptop lid or a
+// killed phone app left its owner in the roster for good — the room kept advertising
+// a huddle, and the next "new" huddle there dialled the ghost and waited on it.
+// Every participant now says 'alive' every 15 s (any signal counts), and anyone
+// silent for 90 s is dropped and everyone told. 90 s rides out a throttled
+// background tab; a closed tab usually leaves at once through its pagehide beacon.
+//
+// Only a client that joined with a session id is swept: that is the one that
+// pings. The previous bundle, still open in tabs that haven't reloaded, never
+// says 'alive' and would be cut out of a perfectly good call after 90 s.
+const HUDDLE_SILENT_MS = 90_000;
+const huddleSeen = new Map();   // roomId -> Map<memberKey, epoch ms>; swept keys only
+// roomId -> Map<memberKey, epoch ms>: when each pinging participant's current unbroken
+// run of pings began. How long someone has really been watching (see huddleLegacyGone).
+const huddleStreak = new Map();
+const HUDDLE_STREAK_GAP_MS = 40_000;   // pings come every 15 s; a gap this long breaks the run
+// roomId -> Map<memberKey, sid>. A sid is minted per join, so a roster entry whose
+// sid changed is a new page — a reload, a crash — and the connection peers still
+// hold to the old one is dead whatever its state says.
+const huddleSids = new Map();
+function huddleEnroll(roomId, key, sid) {
+  for (const m of [huddleSids, huddleSeen, huddleStreak]) if (!m.has(roomId)) m.set(roomId, new Map());
+  if (sid) {
+    huddleSids.get(roomId).set(key, sid);
+    huddleSeen.get(roomId).set(key, Date.now());
+    if (!huddleStreak.get(roomId).has(key)) huddleStreak.get(roomId).set(key, Date.now());
+  } else {
+    for (const m of [huddleSids, huddleSeen, huddleStreak]) m.get(roomId).delete(key);
+  }
+}
+// When each participant joined; when a participant on this bundle last reported a
+// working connection to each one; which login each previous-bundle tab joined with.
+const huddleJoinedAt = new Map();   // roomId -> Map<memberKey, epoch ms>
+const huddleHeard = new Map();      // roomId -> Map<memberKey, epoch ms>
+const huddleLegacyTag = new Map();  // roomId -> Map<memberKey, login tag> (previous bundle only)
+// Previous-bundle entries the sweep dropped lately, kept so that a peer reporting a
+// working connection to one can put it back (see huddleVouch).
+const huddleDroppedLegacy = new Map();   // roomId -> Map<memberKey, { name, tag, at }>
+const HUDDLE_READMIT_MS = 10 * 60_000;
+function huddleNoteJoin(roomId, key, legacyTag, same) {
+  for (const m of [huddleJoinedAt, huddleHeard, huddleLegacyTag]) if (!m.has(roomId)) m.set(roomId, new Map());
+  if (!same) {
+    huddleJoinedAt.get(roomId).set(key, Date.now());
+    huddleHeard.get(roomId).delete(key);
+    const streak = huddleStreak.get(roomId);
+    if (streak && huddleSids.get(roomId).has(key)) streak.set(key, Date.now());
+  }
+  if (legacyTag !== null) huddleLegacyTag.get(roomId).set(key, legacyTag);
+  else huddleLegacyTag.get(roomId).delete(key);
+  const dropped = huddleDroppedLegacy.get(roomId);
+  if (dropped) dropped.delete(key);
+}
+// A participant's report of who it has a working connection to. Only keys in the call
+// are recorded — and one the sweep dropped lately comes back: it was there after all.
+// Returns the keys put back.
+function huddleVouch(roomId, keys) {
+  const set = huddles.get(roomId);
+  if (!set) return [];
+  if (!huddleHeard.has(roomId)) huddleHeard.set(roomId, new Map());
+  const now = Date.now(), back = [];
+  const dropped = huddleDroppedLegacy.get(roomId) || new Map();
+  for (const k of keys.slice(0, HUDDLE_MAX)) {
+    if (typeof k !== 'string') continue;
+    const d = dropped.get(k);
+    if (!set.has(k) && d && now - d.at <= HUDDLE_READMIT_MS && set.size < HUDDLE_MAX) {
+      set.set(k, d.name);
+      huddleNoteJoin(roomId, k, d.tag, false);
+      back.push(k);
+      console.log('[huddle] put back participant on the previous bundle', k, 'in room', roomId, '- a peer is connected to it');
+    }
+    if (set.has(k)) huddleHeard.get(roomId).set(k, now);
+  }
+  return back;
+}
+function huddleTouch(roomId, key) {
+  const seen = huddleSeen.get(roomId);
+  if (!seen || !seen.has(key)) return;
+  const now = Date.now();
+  const streak = huddleStreak.get(roomId);
+  if (streak && (!streak.has(key) || now - seen.get(key) > HUDDLE_STREAK_GAP_MS)) streak.set(key, now);
+  seen.set(key, now);
+}
+// A guest's grant outlives their own leaving and lasts as long as the huddle: a
+// guest who reloads, or is swept while their laptop sleeps, has to be able to come
+// back the way a member can.
+const HUDDLE_PER_KEY = [huddleSeen, huddleStreak, huddleSids, huddleJoinedAt, huddleHeard, huddleLegacyTag];
+function huddleRemove(roomId, key) {
+  const set = huddles.get(roomId);
+  if (set) {
+    set.delete(key);
+    if (!set.size) {
+      for (const m of [huddles, huddleGuests, huddleStarted, huddleDroppedLegacy, ...HUDDLE_PER_KEY]) m.delete(roomId);
+      return;
+    }
+  }
+  for (const m of HUDDLE_PER_KEY) { const r = m.get(roomId); if (r) r.delete(key); }
+}
+
+// A participant on the previous bundle (no sid) never pings and never leaves: close
+// its tab and it used to stay in the roster until the next restart, advertising a
+// huddle nobody was in. A working connection reported by a peer on this bundle in
+// the last 90 s keeps it, whatever else. Otherwise it is gone when:
+//   • no tab on the previous bundle has been open on the login it joined with for
+//     3 minutes. Closing or reloading the tab closes its stream (a reload comes back
+//     on this bundle, whose streams don't count); 3 minutes outlasts that bundle's own
+//     reconnect backoff, so a live tab riding out an outage is not mistaken for one
+//     closed; or
+//   • nobody has ever reached it since it joined, everyone else in the call is on this
+//     bundle, and one of them has been pinging without a break for 90 s — since it
+//     joined or since it came back — without reporting a working connection to it.
+// Never for having gone quiet once reached: that is a network dropout as often as a
+// closed tab, and the previous bundle can't rejoin a call it was dropped from, while
+// a call that is kept heals when the network returns. A closed tab still goes, by the
+// first rule. Nor because someone can't reach it while another tab on the previous
+// bundle is in the call: the two may well be talking. A lone entry is left alone too
+// — it may be a real person waiting — and the next one to join will see.
+// What is left is a closed tab whose login keeps another old tab open in the same
+// browser (the two can't be told apart): it stays until that tab closes too, or until
+// someone joins the call and can't reach it.
+const HUDDLE_LEGACY_VOUCH_MS = 90_000;
+const HUDDLE_LEGACY_TAB_MS = 180_000;
+const HUDDLE_LEGACY_UNREACHED_MS = 90_000;
+// How long the longest-watching participant still pinging has been at it (0: nobody).
+function huddleWatched(roomId, now) {
+  const seen = huddleSeen.get(roomId) || new Map(), streak = huddleStreak.get(roomId) || new Map();
+  let from = Infinity;
+  for (const [k, at] of seen) if (now - at <= HUDDLE_STREAK_GAP_MS && streak.has(k)) from = Math.min(from, streak.get(k));
+  return from === Infinity ? null : from;
+}
+function huddleLegacyGone(roomId, key, now) {
+  const joined = (huddleJoinedAt.get(roomId) || new Map()).get(key) || now;
+  const heard = (huddleHeard.get(roomId) || new Map()).get(key) || 0;
+  if (now - heard <= HUDDLE_LEGACY_VOUCH_MS) return null;
+  const tabs = ctx.notifLegacyState((huddleLegacyTag.get(roomId) || new Map()).get(key) || '');
+  if (!tabs.open && now - Math.max(joined, tabs.closedAt) > HUDDLE_LEGACY_TAB_MS) return 'its tab is closed';
+  if (heard) return null;
+  const watchFrom = huddleWatched(roomId, now);
+  if (watchFrom === null) return null;
+  const sids = huddleSids.get(roomId) || new Map();
+  const others = [...(huddles.get(roomId) || new Map()).keys()].filter(k => k !== key);
+  if (others.every(k => sids.has(k)) && now - Math.max(joined, watchFrom) > HUDDLE_LEGACY_UNREACHED_MS) return 'nobody has reached it';
+  return null;
+}
+async function huddleSweep(now = Date.now()) {
+  for (const [roomId, set] of huddles) {
+    const sids = huddleSids.get(roomId) || new Map();
+    for (const key of [...set.keys()]) {
+      if (sids.has(key)) continue;
+      const why = huddleLegacyGone(roomId, key, now);
+      if (!why) continue;
+      const members = await huddleRoomMembers(roomId);
+      // It may have been vouched for, rejoined with a sid, or left meanwhile.
+      if (!(huddles.get(roomId) || new Map()).has(key) || (huddleSids.get(roomId) || new Map()).has(key) || !huddleLegacyGone(roomId, key, now)) continue;
+      const name = huddles.get(roomId).get(key), tag = (huddleLegacyTag.get(roomId) || new Map()).get(key) || '';
+      huddleRemove(roomId, key);
+      if (huddles.has(roomId)) {
+        if (!huddleDroppedLegacy.has(roomId)) huddleDroppedLegacy.set(roomId, new Map());
+        huddleDroppedLegacy.get(roomId).set(key, { name, tag, at: now });
+      }
+      console.log('[huddle] dropped participant on the previous bundle', key, 'from room', roomId, '-', why);
+      huddleEmit(huddleAudience(roomId, members), { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), left: key, swept: true });
+    }
+  }
+  for (const [roomId, dropped] of huddleDroppedLegacy) {
+    for (const [key, d] of dropped) if (now - d.at > HUDDLE_READMIT_MS) dropped.delete(key);
+    if (!dropped.size) huddleDroppedLegacy.delete(roomId);
+  }
+  for (const [roomId, seen] of huddleSeen) {
+    for (const [key, at] of seen) {
+      if (now - at <= HUDDLE_SILENT_MS) continue;
+      const members = await huddleRoomMembers(roomId);
+      // It may have pinged, or left, while the member list was being read.
+      if (seen.get(key) !== at || !(huddles.get(roomId) || new Map()).has(key)) continue;
+      huddleRemove(roomId, key);
+      console.log('[huddle] dropped silent participant', key, 'from room', roomId);
+      // 'swept', not left: peers keep a connection that is still working — the tab
+      // is probably only asleep, and rejoins on its next ping.
+      huddleEmit(huddleAudience(roomId, members), { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), left: key, swept: true });
+    }
+  }
+}
+setInterval(() => { huddleSweep().catch(e => console.warn('[huddle] sweep failed:', e.message)); }, 15_000).unref();
+ctx.huddleSweep = huddleSweep;   // tests drive it with a clock of their own
 
 // Rooms — group (admin only)
 // Delete a group for everyone. Direct conversations are never deleted this way —
@@ -327,6 +586,7 @@ receiver.router.delete('/api/dashboard/chat/rooms/:id', requireAuth, async (req,
   const members = await chatRoomMemberKeys(roomId);
   await supabase.from('chat_messages').delete().eq('room_id', roomId);
   await supabase.from('chat_room_members').delete().eq('room_id', roomId);
+  huddleMembersChanged(roomId);
   const { error } = await supabase.from('chat_rooms').delete().eq('id', roomId);
   if (error) return res.status(500).json({ error: error.message });
   chatBroadcast(members, 'room', { roomId, deleted: true });

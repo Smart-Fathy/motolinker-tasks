@@ -3,8 +3,12 @@
 // It used to be delivered only by chatBroadcast, which writes to chatSseClients — a
 // map populated by the chat page loader and emptied again the moment you navigate
 // away. Anywhere else in the app the invite was dropped server-side: no ring, no
-// notification row, no push, no trace. This asserts the new path, and asserts just as
-// hard that the WebRTC signalling did NOT follow it onto the notification stream.
+// notification row, no push, no trace.
+//
+// All huddle signalling now rides the notification stream as 'huddle-signal' frames
+// (tests/hdsignal.js covers the transport). This asserts the invite's extras — the
+// bell, the push — and that the previous bundle's plain 'huddle' event on that
+// stream stays an invite and nothing else, since that bundle hands it to the ringer.
 process.env.SUPABASE_URL = 'https://stub.supabase.co';
 process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'stub';
@@ -72,7 +76,7 @@ setTimeout(async () => {
   // Sara is signed in and her notification stream is open — but she is on Home, so she
   // has no chat stream at all. This is precisely the case that used to lose invites.
   const saraNotif = fakeStream();
-  ctx.notifSseClients.set('employee_2', saraNotif);
+  ctx.notifAdd('employee_2', saraNotif);
   check('the person being invited has no chat stream',
     !ctx.chatSseClients || !ctx.chatSseClients.has('employee_2'));
 
@@ -97,6 +101,9 @@ setTimeout(async () => {
     huddleFrames[0] && huddleFrames[0].data.type === 'invite'
       && huddleFrames[0].data.roomId === 1 && !!huddleFrames[0].data.fromName,
     JSON.stringify(huddleFrames[0] && huddleFrames[0].data));
+  const sigInvites = frames.filter(f => f.ev === 'huddle-signal' && f.data && f.data.type === 'invite');
+  check('the current bundle gets it as a huddle-signal frame', sigInvites.length === 1,
+    JSON.stringify(frames.map(f => f.ev)));
 
   const notifFrames = frames.filter(f => f.ev === 'notification');
   check('a notification is raised so the bell shows it', notifFrames.length === 1,
@@ -107,17 +114,21 @@ setTimeout(async () => {
     notifFrames[0] && /#chat$/.test(notifFrames[0].data.url || ''), JSON.stringify(notifFrames[0] && notifFrames[0].data));
   check('it is persisted, not only pushed live', inserted.length === 1, JSON.stringify(inserted));
 
-  // ── The signalling must NOT follow it ──
-  // Duplicating offer/answer/ice across two transports would be a correctness hazard;
-  // the notification stream carries invites and nothing else.
+  // ── The signalling travels as huddle-signal, never as the legacy event ──
+  // The previous bundle passes every plain 'huddle' event on this stream to the
+  // ringer; an offer or a candidate arriving that way would ring for no one.
   saraNotif.frames.length = 0;
   for (const type of ['offer', 'answer', 'ice', 'media']) {
     await signal({ roomId: 1, type, to: 'employee_2', data: { sdp: 'x' } });
   }
   await new Promise(r => setTimeout(r, 200));
-  const leaked = parseFrames(saraNotif).filter(f => f.ev === 'huddle');
-  check('offer, answer, ice and media do not leak onto the notification stream',
+  const after = parseFrames(saraNotif);
+  const leaked = after.filter(f => f.ev === 'huddle');
+  check('offer, answer, ice and media never go out as the legacy huddle event',
     leaked.length === 0, JSON.stringify(leaked.map(f => f.data && f.data.type)));
+  check('they arrive as huddle-signal frames, off the chat page',
+    after.filter(f => f.ev === 'huddle-signal').map(f => f.data.type).join() === 'offer,answer,ice,media',
+    JSON.stringify(after.map(f => f.ev + ':' + (f.data && f.data.type))));
 
   // ── An invite still works normally for someone who IS on the chat page ──
   const saraChat = fakeStream();

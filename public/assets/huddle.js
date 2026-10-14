@@ -11,8 +11,8 @@
    specific lives in HDCFG, which each portal defines just above this block. */
 
 // Mesh topology: every participant holds one RTCPeerConnection per peer, so the
-// server caps a huddle at HUDDLE_MAX. Signalling rides the chat SSE stream that
-// messages already use, so there is no second socket to keep alive.
+// server caps a huddle at HUDDLE_MAX. Signalling rides the portal's notification
+// stream, which is open on every page (see huddleOnStreamFrame).
 
 // ── The conversation menu ─────────────────────────────────────────────────────
 // The "⋯" on every row in the chat list. Archiving and hiding are YOUR view of
@@ -117,7 +117,131 @@ function chatRoomsSplit(rooms) {
   return { active: all.filter(r => !r.archived), archived: all.filter(r => r.archived) };
 }
 
-let _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: null, iceUntil: 0, roster: [], statsTimer: null, startedAt: null, clockTimer: null };
+let _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: null, iceUntil: 0, roster: [], statsTimer: null, startedAt: null, clockTimer: null, sid: null, boot: null, aliveAt: 0, graceUntil: 0 };
+// Id of the last huddle frame this tab received. Handed back when the portal
+// rebuilds its notification stream, so the server can replay what fell in the gap.
+let _hdSignalLastId = '';
+
+// ── Transport ─────────────────────────────────────────────────────────────────
+// Huddle frames arrive as 'huddle-signal' events on the notification stream. They
+// used to ride the chat stream, which the portals close on leaving the chat page:
+// whoever looked at another page mid-call silently stopped receiving answers and
+// candidates, and their tiles sat on "connecting". The portal wires these in.
+function huddleOnStreamFrame(e) {
+  if (e && e.lastEventId) _hdSignalLastId = e.lastEventId;
+  let msg = null;
+  try { msg = JSON.parse(e.data); } catch (_) { return; }
+  huddleOnSignal(msg).catch(() => {});
+}
+// Appended to the stream URL. hd=2 says this tab is on the current bundle: the
+// server keeps a participant from the previous one in a call only while that person
+// still has a tab on it open. hs asks a rebuilt stream to be sent what it missed (the
+// browser's own reconnect sends the same thing as the Last-Event-ID header).
+function hdStreamQuery() {
+  return '&hd=2' + (_hdSignalLastId ? '&hs=' + encodeURIComponent(_hdSignalLastId) : '');
+}
+// The stream (re)connected — every 15 minutes at least, when the host cuts it.
+// The server replays the last minute; past that, ask for the roster again and let
+// dialling (idempotent) and the watchdog put any broken pair back together. A
+// restarted server has forgotten the huddle entirely, so rejoin it.
+async function huddleOnStreamOpen() {
+  const roomId = _hd.roomId;
+  if (!roomId) return;
+  try {
+    const res = await hdFetch('/huddle/' + roomId);
+    const r = await res.json();
+    if (_hd.roomId !== roomId) return;
+    if (res.status === 403) return hdLockedOut();
+    if (!r || !Array.isArray(r.participants)) return;
+    if (r.boot === _hd.boot && hdSuperseded(r.participants)) return hdStepAside();
+    if (!r.participants.some(p => p.key === hdMe() && p.sid === _hd.sid)) { await hdRejoin(roomId, r.boot === _hd.boot); return; }
+    await huddleOnSignal({ type: 'roster', roomId, boot: r.boot, participants: r.participants, started_at: r.started_at });
+  } catch (_) { /* the next reconnect, or the 'alive' ping, tries again */ }
+}
+
+// Put this tab back on the server's roster without hanging up: it is the server
+// that forgot us — it restarted, or swept us as silent while the tab was asleep.
+// After a restart, rosters in the next few seconds are missing everyone who hasn't
+// rejoined yet either, so they don't prune. After a sweep, the others have hung up
+// on any pair that wasn't working; drop our end of those too, so whichever side
+// dials (the glare rule) starts both ends afresh.
+let _hdRejoining = null;
+function hdRejoin(roomId, dropped) {
+  if (_hdRejoining) return _hdRejoining;
+  _hdRejoining = (async () => {
+    try {
+      // After a restart, say so: the previous bundle, still open in some tabs, would
+      // read the half-empty roster this join produces as "everyone else left".
+      const res = await hdSignal('join', null, { sid: _hd.sid, afterRestart: !dropped });
+      const r = await res.json();
+      if (_hd.roomId !== roomId) return;
+      if (res.status === 403) return hdLockedOut();
+      if (!r || !Array.isArray(r.participants)) return;
+      if (r.boot !== _hd.boot) _hd.graceUntil = Date.now() + 20000;
+      else if (dropped) [..._hd.peers.keys()].forEach(k => { if (_hd.peers.get(k).pc.connectionState !== 'connected') hdDropPeer(k); });
+      _hd.boot = r.boot || _hd.boot;
+      await huddleOnSignal({ type: 'roster', roomId, boot: r.boot, participants: r.participants, started_at: r.started_at });
+    } catch (_) { /* the next 'alive' ping tries again */ }
+    finally { _hdRejoining = null; }
+  })();
+  return _hdRejoining;
+}
+
+// "Still here", every 15 s from the stats tick. The server drops anyone silent for
+// 90 s, which is what finally clears the ghost of a closed tab; the answer tells
+// us when it is us that was dropped (a sleeping laptop) or forgotten (a restart).
+async function hdAlive() {
+  const roomId = _hd.roomId;
+  if (!roomId) return;
+  try {
+    // Who we are really connected to: a peer still on the previous bundle can't say
+    // it is alive, so we say it for it (see huddleLegacyGone on the server).
+    const connected = [..._hd.peers.entries()].filter(([, p]) => p.pc.connectionState === 'connected').map(([k]) => k);
+    const res = await hdSignal('alive', null, { connected });
+    const r = await res.json();
+    if (_hd.roomId !== roomId) return;
+    if (res.status === 403) return hdLockedOut();
+    if (!r || r.error) return;
+    const restarted = !!(r.boot && _hd.boot && r.boot !== _hd.boot);
+    if (!restarted && r.inCall && r.sid && _hd.sid && r.sid !== _hd.sid) return hdStepAside();
+    if (r.inCall === false || restarted) await hdRejoin(roomId, !restarted);
+  } catch (_) {}
+}
+
+// Closing or reloading the tab ends the call for everyone else right away, not
+// 90 s later. A beacon is the one request a closing page is allowed to finish,
+// and it can't carry headers, so the token rides in the URL as on the streams.
+function hdLeaveOnUnload() {
+  if (!_hd.roomId) return;
+  try {
+    const tok = HDCFG.token ? HDCFG.token() : '';
+    const body = new Blob([JSON.stringify({ roomId: _hd.roomId, type: 'leave', data: { sid: _hd.sid } })], { type: 'application/json' });
+    if (tok && navigator.sendBeacon) navigator.sendBeacon(HDCFG.base + '/huddle/signal?_t=' + encodeURIComponent(tok), body);
+  } catch (_) {}
+  hdTeardown();
+}
+if (typeof window !== 'undefined') window.addEventListener('pagehide', hdLeaveOnUnload);
+
+// The same person joined this huddle from another tab or device. The server holds
+// one place per person, and offers to them reach every tab they have open, so two
+// copies would answer each other's calls. The newer one wins; this one hangs up
+// without telling the server, which would end the call for the other copy too.
+function hdSuperseded(participants) {
+  const me = (participants || []).find(p => p.key === hdMe());
+  return !!(me && me.sid && _hd.sid && me.sid !== _hd.sid);
+}
+function hdStepAside() {
+  if (!_hd.roomId) return;
+  hdTeardown();
+  hdToast('You joined this huddle somewhere else, so it has ended in this tab.');
+}
+// The server won't let us back in: a guest after a restart (the grant is gone with
+// it), or someone removed from the conversation. Don't sit in a call nobody can see.
+function hdLockedOut() {
+  if (!_hd.roomId) return;
+  hdTeardown();
+  hdToast('You were disconnected from the huddle. Ask someone in it to invite you again.');
+}
 
 function hdMe() { return HDCFG.me(); }
 function hdFetch(path, opts) { return HDCFG.fetch(HDCFG.base + path, opts); }
@@ -210,7 +334,7 @@ async function huddleRelayTest(opts) {
   }
 }
 
-async function huddleStart(roomId, withVideo) {
+async function huddleStart(roomId, withVideo, joining) {
   if (_hd.roomId === roomId) { hdToast('You are already in this huddle.'); return; }
   if (_hd.roomId) { hdToast('Leave your current huddle first.'); return; }
   try {
@@ -224,27 +348,34 @@ async function huddleStart(roomId, withVideo) {
   // no TURN — host candidates only, which fails on any real network.
   await hdIce();
   _hd.roomId = roomId; _hd.cam = !!withVideo; _hd.muted = false; _hd.sharing = false;
+  _hd.sid = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   hdHideJoinChip();
   hdRenderBar();
   let r = null;
-  try { r = await hdFetch('/huddle/signal', { method: 'POST', body: JSON.stringify({ roomId, type: 'join' }) }).then(x => x.json()); }
+  try { r = await hdFetch('/huddle/signal', { method: 'POST', body: JSON.stringify({ roomId, type: 'join', data: { sid: _hd.sid } }) }).then(x => x.json()); }
   catch (_) {}
   if (!r || r.error) { hdToast((r && r.error) || 'Could not join the huddle.'); huddleLeave(); return; }
   _hd.roster = r.participants || [];
+  _hd.boot = r.boot || null;
   _hd.startedAt = r.started_at || Date.now();
   hdStartClock();
-  // Dial from the join response as well as from the roster frame. Signalling rides the
-  // chat stream, and a joiner whose stream has not finished registering misses its own
-  // roster broadcast — if it also holds the smaller key, nobody calls that pair at all
-  // and the two sit in silence. hdCall is idempotent, so doing both is free.
+  // Dial from the join response as well as from the roster frame, in case the
+  // broadcast is slow to arrive. hdCall is idempotent, so doing both is free.
   hdDialRoster();
   hdStartStats();
-  // Ring everyone else in the conversation; they get an incoming-huddle prompt.
-  hdRoomMemberKeys(roomId).forEach(k => { if (k !== hdMe()) hdSignal('invite', k).catch(() => {}); });
+  // Ring everyone else in the conversation — when starting the huddle, or when first
+  // into a scheduled one. Joining one already running used to ring the whole room
+  // again, people in the call included, each with a persisted "started a huddle"
+  // notification and a push. (The server also skips anyone it knows is in the call.)
+  // Only an entry with a sid counts as someone there: one from the previous bundle is
+  // never swept, and may be a tab closed hours ago.
+  if (!joining || !_hd.roster.some(p => p.key !== hdMe() && p.sid)) {
+    hdRoomMemberKeys(roomId).forEach(k => { if (k !== hdMe()) hdSignal('invite', k).catch(() => {}); });
+  }
   hdRenderBar();
 }
 
-function huddleJoinExisting(roomId) { return huddleStart(roomId, false); }
+function huddleJoinExisting(roomId) { return huddleStart(roomId, false, true); }
 
 // How long this has been going. Counted from the server's start time so it is
 // the huddle's duration, not "how long I have been in it".
@@ -269,13 +400,16 @@ function hdPaintClock() {
 }
 
 function huddleLeave() {
-  if (_hd.roomId) hdSignal('leave').catch(() => {});
+  if (_hd.roomId) hdSignal('leave', null, { sid: _hd.sid }).catch(() => {});
+  hdTeardown();
+}
+function hdTeardown() {
   if (_hd.statsTimer) { clearInterval(_hd.statsTimer); _hd.statsTimer = null; }
   hdStopClock();
-  _hd.peers.forEach(p => { try { p.pc.close(); } catch (_) {} });
+  _hd.peers.forEach(p => { clearTimeout(p.dropTimer); try { p.pc.close(); } catch (_) {} });
   _hd.peers.clear();
   [_hd.local, _hd.screen].forEach(st => st && st.getTracks().forEach(t => t.stop()));
-  _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: _hd.ice, iceUntil: _hd.iceUntil, roster: [], statsTimer: null, startedAt: null, clockTimer: null };
+  _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: _hd.ice, iceUntil: _hd.iceUntil, roster: [], statsTimer: null, startedAt: null, clockTimer: null, sid: null, boot: null, aliveAt: 0, graceUntil: 0 };
   hdPruneAudio(null);
   hdRenderBar();
 }
@@ -283,7 +417,8 @@ function huddleLeave() {
 function hdPeer(key) {
   if (_hd.peers.has(key)) return _hd.peers.get(key);
   const pc = new RTCPeerConnection({ iceServers: (_hd.ice && _hd.ice.iceServers) || [] });
-  const entry = { pc, stream: new MediaStream(), name: hdNameFor(key), state: 'connecting' };
+  const rp = _hd.roster.find(p => p.key === key);
+  const entry = { pc, stream: new MediaStream(), name: hdNameFor(key), state: 'connecting', sid: rp ? rp.sid : undefined };
   _hd.peers.set(key, entry);
   if (_hd.local) _hd.local.getTracks().forEach(t => pc.addTrack(t, _hd.local));
   // Reserve the video slot before the first offer. A mesh has no SFU to renegotiate
@@ -330,15 +465,61 @@ function hdPeer(key) {
   // reserved sendrecv in both directions the remote track reports muted:false and
   // live even when nothing is being sent. Peers announce it instead (see 'media'),
   // and the stats poll below corrects us if that message is ever missed.
+  // A dropped pair used to stay dropped: nothing ever restarted ICE, so a Wi-Fi
+  // hiccup, a switch to mobile data or a laptop lid ended that person's call for
+  // good — and with a TURN relay configured it did so without a word.
   pc.onconnectionstatechange = () => {
     entry.state = pc.connectionState;
-    // 'failed' nearly always means no relay path — say so rather than hanging
-    if (pc.connectionState === 'failed' && !(_hd.ice && _hd.ice.hasTurn)) {
-      hdToast("Couldn't reach " + entry.name + ". This network needs a TURN relay.");
+    if (pc.connectionState === 'connected') {
+      clearTimeout(entry.dropTimer); entry.dropTimer = null;
+      entry.restarts = []; entry.gaveUp = false;
+    } else if (pc.connectionState === 'disconnected') {
+      // Often heals by itself within seconds; restart only if it hasn't.
+      clearTimeout(entry.dropTimer);
+      entry.dropTimer = setTimeout(() => {
+        if (_hd.peers.get(key) === entry && (pc.connectionState === 'disconnected' || pc.connectionState === 'failed')) hdRestart(key);
+      }, 4000);
+    } else if (pc.connectionState === 'failed') {
+      if (_hd.peers.get(key) === entry) hdRestart(key);
     }
     hdRenderBar();
   };
   return entry;
+}
+
+// Restart ICE on one pair: fresh candidates, same call, nobody has to rejoin. Only
+// the offering side (the smaller key, per the glare rule) may offer, so the other
+// side asks it to. Bounded, so a peer that is really gone doesn't loop forever.
+async function hdRestart(key) {
+  const p = _hd.peers.get(key);
+  if (!p || !_hd.roomId) return;
+  const now = Date.now();
+  p.restarts = (p.restarts || []).filter(t => now - t < 60000);
+  if (p.restarts.length >= 3) {
+    if (!p.gaveUp) {
+      p.gaveUp = true;
+      hdToast(_hd.ice && _hd.ice.hasTurn
+        ? `Lost the connection to ${p.name}. If they don't come back, leave the huddle and join again.`
+        : `Couldn't reach ${p.name}. This network needs a TURN relay.`);
+    }
+    return;
+  }
+  p.restarts.push(now);
+  if (hdMe() > key) { hdSignal('restart', key).catch(() => {}); return; }
+  if (p.makingOffer) return;
+  // An offer is already out and its answer never came (lost in a stream gap):
+  // send the same one again rather than stacking a new one on top.
+  if (p.pc.signalingState === 'have-local-offer' && p.pc.localDescription) {
+    hdSignal('offer', key, p.pc.localDescription).catch(() => {});
+    return;
+  }
+  if (p.pc.signalingState !== 'stable') return;
+  try {
+    p.makingOffer = true;
+    await p.pc.setLocalDescription(await p.pc.createOffer({ iceRestart: true }));
+    hdSignal('offer', key, p.pc.localDescription).catch(() => {});
+  } catch (_) { /* the next state change or watchdog tick tries again */ }
+  finally { p.makingOffer = false; }
 }
 
 // Glare rule: only the lexicographically smaller key offers, so two peers never
@@ -347,6 +528,23 @@ function hdDialRoster() {
   _hd.roster.forEach(p => {
     if (p.key !== hdMe() && !_hd.peers.has(p.key) && hdMe() < p.key) hdCall(p.key);
   });
+}
+
+function hdDropPeer(key) {
+  const p = _hd.peers.get(key);
+  if (!p) return;
+  clearTimeout(p.dropTimer);
+  try { p.pc.close(); } catch (_) {}
+  _hd.peers.delete(key);
+}
+// Starting a pair afresh is the cure for a mismatched one, but never twice in a
+// few seconds: two sides each replacing would chase each other.
+const _hdReplacedAt = new Map();
+function hdMayReplace(key) {
+  const last = _hdReplacedAt.get(key) || 0;
+  if (Date.now() - last < 5000) return false;
+  _hdReplacedAt.set(key, Date.now());
+  return true;
 }
 
 // Candidates parked while there was no remote description to hang them on.
@@ -369,19 +567,37 @@ async function hdCall(key) {
   } finally { entry.makingOffer = false; }
 }
 
-// Every 'huddle' SSE frame lands here.
+// Every huddle frame lands here (see huddleOnStreamFrame).
 async function huddleOnSignal(msg) {
   if (!msg || typeof msg !== 'object') return;
   if (msg.type === 'roster') {
     if (msg.roomId !== _hd.roomId) { hdNoteRoster(msg); return; }
-    _hd.roster = msg.participants || [];
-    hdDialRoster();
+    const roster = msg.participants || [];
+    // A different server process than the one we joined: it restarted and has
+    // forgotten the call, so this roster is missing people who are still in it. It
+    // used to be read as "they all left" and hung up on them. Rejoin instead.
+    if (msg.boot && _hd.boot && msg.boot !== _hd.boot) { hdRejoin(_hd.roomId); return; }
+    if (hdSuperseded(roster)) { hdStepAside(); return; }
+    // The sweep dropped us (an asleep tab) — get back on the roster.
+    if (msg.left === hdMe() || (msg.left && !roster.some(p => p.key === hdMe()) && _hd.sid)) hdRejoin(_hd.roomId, true);
+    _hd.roster = roster;
+    const grace = Date.now() < _hd.graceUntil;
     [..._hd.peers.keys()].forEach(k => {
-      if (!_hd.roster.some(p => p.key === k)) {
-        try { _hd.peers.get(k).pc.close(); } catch (_) {}
-        _hd.peers.delete(k);
-      }
+      const p = _hd.peers.get(k);
+      const listed = roster.find(r => r.key === k);
+      // Back on a new page (a reload, a crash) while our connection still points at
+      // the old one: drop it and dial fresh. A peer that was on the previous bundle had
+      // no sid to compare, but that bundle can't join a call it is still in, so a join
+      // from it with a sid is always a new page.
+      const replaced = listed && listed.sid && (p.sid ? listed.sid !== p.sid : msg.joined === k);
+      // Left. A swept peer whose connection still works is kept: its tab is only
+      // asleep and rejoins on its next ping. An unlisted pair that isn't working
+      // goes now, or on the stats tick once it stops (see hdPollStats).
+      const gone = !listed && ((msg.left === k && !msg.swept) || (!grace && p.pc.connectionState !== 'connected'));
+      if (gone || replaced) hdDropPeer(k);
+      else if (listed && listed.sid && !p.sid) p.sid = listed.sid;
     });
+    hdDialRoster();
     hdRenderBar();
     // Someone arriving mid-call has no idea what we are already sending
     if (_hd.cam || _hd.sharing) hdBroadcastMedia();
@@ -405,18 +621,38 @@ async function huddleOnSignal(msg) {
   if (msg.type === 'decline') { hdToast(esc(msg.fromName || 'They') + ' declined the huddle.'); return; }
   if (!_hd.roomId || msg.roomId !== _hd.roomId) return;   // signal for a call we're not in
   const from = msg.from;
+  if (msg.type === 'restart') {
+    // The other side lost us and asked for a restart; as the offering side, we run it.
+    if (hdMe() < from) {
+      if (_hd.peers.has(from)) hdRestart(from);
+      else if (_hd.roster.some(p => p.key === from)) hdCall(from).catch(() => {});
+    }
+    return;
+  }
   if (msg.type === 'offer') {
-    const entry = hdPeer(from);
+    let entry = hdPeer(from);
+    // An offer our connection can't take comes from a fresh connection on their
+    // side — they reloaded, or hung up on this pair and dialled again — and ours
+    // can never be renegotiated onto it. Start ours afresh and answer that.
+    try { await entry.pc.setRemoteDescription(new RTCSessionDescription(msg.data)); }
+    catch (e) {
+      if ((e && e.name === 'InvalidStateError') || !entry.pc.remoteDescription || !hdMayReplace(from)) return;
+      hdDropPeer(from);
+      entry = hdPeer(from);
+      try { await entry.pc.setRemoteDescription(new RTCSessionDescription(msg.data)); } catch (_) { return; }
+    }
     const { pc } = entry;
-    await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
     // We have no camera yet, so the offer's video m-line lands here as recvonly
     // and the answer would close this direction for good. Open it both ways
     // before answering — then starting a screen share later is a track swap on
     // an already-negotiated m-line, with nothing to renegotiate.
     const vt = hdVideoTransceiver(pc);
     if (vt && vt.direction !== 'sendrecv') { try { vt.direction = 'sendrecv'; } catch (_) {} }
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
+    let answer;
+    try {
+      answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+    } catch (_) { return; }
     entry.negotiated = true;
     await hdFlushIce(entry);
     // Same for the answering side, once the offer has built the m-line to swap onto.
@@ -429,7 +665,17 @@ async function huddleOnSignal(msg) {
   } else if (msg.type === 'answer') {
     const p = _hd.peers.get(from);
     if (p && p.pc.signalingState !== 'stable') {
-      await p.pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+      // An answer that doesn't fit: one to an offer we have since replaced (drop it),
+      // or one from a fresh connection on their side that ours can't renegotiate
+      // onto (dial again from a fresh one of ours).
+      try { await p.pc.setRemoteDescription(new RTCSessionDescription(msg.data)); }
+      catch (e) {
+        // Two answers handled at once (frames are not awaited one by one): the first
+        // applied, so the second meets a 'stable' connection. A duplicate, not a mismatch.
+        if (p.pc.signalingState === 'stable' || (e && e.name === 'InvalidStateError')) { await hdFlushIce(p); return; }
+        if (p.pc.remoteDescription && hdMayReplace(from)) { hdDropPeer(from); hdCall(from).catch(() => {}); }
+        return;
+      }
       p.negotiated = true;
       await hdFlushIce(p);
     } else if (p && p.pc.remoteDescription) {
@@ -503,17 +749,15 @@ async function hdPollStats() {
     } catch (_) { /* a closing connection throws; the next tick will settle it */ }
   }
   // Offer watchdog. Dialling is idempotent by design (the glare rule), which
-  // means a LOST offer strands the pair as "connecting" forever — signalling
-  // rides the chat SSE stream, and frames sent while a peer's stream is
-  // reconnecting are simply dropped, with no queue on the server. If we are the
-  // offerer and the peer still has no remote description after two ticks (~6s),
-  // offer again; bounded so a genuinely dead peer doesn't loop.
+  // means a LOST offer strands the pair as "connecting" forever. The server now
+  // replays a reconnecting stream's last minute, but a longer gap still loses
+  // frames. If we are the offerer and the peer still has no remote description
+  // after two ticks (~6s), offer again; bounded so a genuinely dead peer doesn't loop.
   for (const [key, p] of _hd.peers) {
     try {
-      if (hdMe() < key
-          && !p.pc.remoteDescription
-          && (p.pc.connectionState === 'new' || p.pc.connectionState === 'connecting')
-          && !p.makingOffer) {
+      const st = p.pc.connectionState;
+      const pending = st === 'new' || st === 'connecting';
+      if (hdMe() < key && !p.pc.remoteDescription && pending && !p.makingOffer) {
         p.offerTicks = (p.offerTicks || 0) + 1;
         if (p.offerTicks >= 2 && (p.offerRetries || 0) < 3) {
           p.offerTicks = 0;
@@ -523,8 +767,30 @@ async function hdPollStats() {
       } else {
         p.offerTicks = 0;
       }
+      // Off the roster and not working: they left and we missed it (or kept the pair
+      // through a sweep, and it has since died). Two ticks, so an offer that beats
+      // its own roster frame here is never mistaken for one.
+      if (!_hd.roster.some(r => r.key === key) && st !== 'connected' && Date.now() >= _hd.graceUntil) {
+        p.orphanTicks = (p.orphanTicks || 0) + 1;
+        if (p.orphanTicks >= 2) { hdDropPeer(key); continue; }
+      } else {
+        p.orphanTicks = 0;
+      }
+      // Stuck pair: the descriptions went across but ICE never got anywhere (lost
+      // candidates), the other side never offered at all, or it dropped and the
+      // restarts so far didn't bring it back. Every ~15 s restart ICE — or, from the
+      // answering side, ask the offerer to. hdRestart allows 3 a minute, so a pair
+      // that was given up on is still retried once the network is back.
+      const down = pending || st === 'failed' || st === 'disconnected';
+      if (down && !(hdMe() < key && !p.pc.remoteDescription && (p.offerRetries || 0) < 3)) {
+        p.stuckTicks = (p.stuckTicks || 0) + 1;
+        if (p.stuckTicks >= 5) { p.stuckTicks = 0; hdRestart(key); }
+      } else {
+        p.stuckTicks = 0;
+      }
     } catch (_) {}
   }
+  if (Date.now() - _hd.aliveAt >= 15000) { _hd.aliveAt = Date.now(); hdAlive(); }
   hdRenderBar();
 }
 // 0 connecting/failed · 1 poor · 2 fair · 3 good
@@ -553,17 +819,17 @@ async function huddleToggleCam() {
   if (!_hd.roomId) return;
   if (_hd.cam) {
     _hd.local.getVideoTracks().forEach(t => { t.stop(); _hd.local.removeTrack(t); });
-    if (!_hd.sharing) hdSwapVideo(null);
     _hd.cam = false;
+    if (!_hd.sharing) await hdSwapVideo(null);
   } else {
     try {
       const cam = await navigator.mediaDevices.getUserMedia({ video: true });
       const track = cam.getVideoTracks()[0];
       _hd.local.addTrack(track);
+      _hd.cam = true;
       // While sharing a screen the screen track owns the video sender; the camera
       // takes over again when sharing stops.
-      if (!_hd.sharing) hdSwapVideo(track);
-      _hd.cam = true;
+      if (!_hd.sharing) await hdSwapVideo(track);
     } catch (_) { hdToast('Could not access your camera.'); }
   }
   hdAnnounceAndRender();
@@ -575,14 +841,19 @@ function hdVideoTransceiver(pc) {
   return pc.getTransceivers().find(t => t.mid != null && !t.stopped &&
     (((t.receiver || {}).track || {}).kind === 'video' || ((t.sender || {}).track || {}).kind === 'video'));
 }
+// Resolves once every peer's sender carries the track. The callers wait for it before
+// announcing what we send, so a peer is never told "sharing" while the camera frames
+// are still going out (a sender's track only changes when replaceTrack settles).
 function hdSwapVideo(track) {
+  const swaps = [];
   _hd.peers.forEach(p => {
     const t = hdVideoTransceiver(p.pc);
     if (!t) return;
     // A transceiver left recvonly swallows the track without complaint
     if (t.direction !== 'sendrecv') { try { t.direction = 'sendrecv'; } catch (_) {} }
-    t.sender.replaceTrack(track).catch(() => {});
+    swaps.push(t.sender.replaceTrack(track).catch(() => {}));
   });
+  return Promise.all(swaps);
 }
 // iOS does not expose getDisplayMedia to web pages in any browser — not Safari, not
 // Chrome, not Firefox — so the property is simply missing and calling it throws a
@@ -598,7 +869,7 @@ async function huddleToggleShare() {
   if (_hd.sharing) {
     if (_hd.screen) _hd.screen.getTracks().forEach(t => t.stop());
     _hd.screen = null; _hd.sharing = false;
-    hdSwapVideo(_hd.local.getVideoTracks()[0] || null);
+    await hdSwapVideo(_hd.local.getVideoTracks()[0] || null);
   } else {
     if (!hdCanShareScreen()) {
       hdToast('This browser cannot share a screen. On an iPhone or iPad no browser can — '
@@ -609,8 +880,10 @@ async function huddleToggleShare() {
       _hd.screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const track = _hd.screen.getVideoTracks()[0];
       track.onended = () => { if (_hd.sharing) huddleToggleShare(); };   // browser's own "Stop sharing"
-      hdSwapVideo(track);
+      // Sharing before the swap settles, so a peer that joins meanwhile is given the
+      // screen too (hdPeer puts it on a new pair's sender).
       _hd.sharing = true;
+      await hdSwapVideo(track);
     } catch (e) {
       // Cancelling the picker is not a failure and must stay silent. Anything else is
       // a real reason the user cannot otherwise discover.
@@ -633,8 +906,18 @@ function hdToast(msg) {
   clearTimeout(el._t); el._t = setTimeout(() => { el.style.display = 'none'; }, 6000);
 }
 function hdNoteRoster(msg) {
+  const ps = msg.participants || [];
+  // We are in it — from another tab or device. Stop ringing and offering it here.
+  // Not for an entry without a sid: that is a tab on the previous bundle, most often
+  // this very tab before it was reloaded, and joining from here takes its place.
+  if (ps.some(p => p.key === hdMe() && p.sid)) {
+    const el = document.getElementById('hd-incoming');
+    if (el && el.dataset.room === String(msg.roomId)) el.style.display = 'none';
+    hdHideJoinChip();
+    return;
+  }
   // A huddle is running in a room we are not in
-  if ((msg.participants || []).length) hdShowJoinChip(msg.roomId, msg.participants.length, msg.started_at);
+  if (ps.length) hdShowJoinChip(msg.roomId, ps.length, msg.started_at);
   else hdHideJoinChip();
 }
 function hdShowJoinChip(roomId, n, startedAt) {
@@ -702,6 +985,7 @@ function hdIncoming(msg) {
       <button class="hd-chip-btn" onclick="hdAccept(${msg.roomId})">Join</button>
       <button class="hd-chip-x wide" onclick="hdDecline(${JSON.stringify(String(msg.from || '')).replace(/"/g, '&quot;')},${msg.roomId})">Decline</button>
     </div>`;
+  el.dataset.room = String(msg.roomId);
   el.style.display = 'block';
   clearTimeout(el._t); el._t = setTimeout(() => { el.style.display = 'none'; }, 45000);
   try { hdRing(); } catch (_) {}
@@ -721,9 +1005,6 @@ function hdRing() {
 function hdAccept(roomId) {
   const el = document.getElementById('hd-incoming');
   if (el) el.style.display = 'none';
-  // Signalling rides the chat stream, and that is opened by the chat page. Accepting
-  // from Home or anywhere else has to open it first or the offer never arrives.
-  if (HDCFG.ensureStream) HDCFG.ensureStream();
   huddleJoinExisting(roomId);
 }
 function hdDecline(from, roomId) {

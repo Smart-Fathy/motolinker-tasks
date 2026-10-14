@@ -10,17 +10,29 @@ const chatListRooms = (...a) => ctx.chatListRooms(...a);
 
 // ─── Notification Center streams + REST (both portals) ────────────────────────
 function openNotifStream(key, res, reqObj) {
+  // The tab may have gone while its login was being checked (after a restart that is
+  // a Supabase round trip). Its 'close' has already fired and won't fire again, so a
+  // stream registered now would stay registered — and counted as an open tab — for good.
+  if (reqObj.destroyed || res.destroyed || (res.socket && res.socket.destroyed)) return;
   res.set(ctx.SSE_HEADERS);
   res.flushHeaders();
-  res.write(':ok\n\n');
-  ctx.notifSseClients.set(key, res);
-  console.log('[notif-sse] connected', key);
-  const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
-  // Two tabs, or a reconnect racing the old socket's close, share one slot per
-  // key. Deleting unconditionally evicted the LIVE stream when the stale one
-  // finally closed — notifications then stopped silently behind an apparently
-  // open EventSource. Only the current owner may clear the slot.
-  reqObj.on('close', () => { clearInterval(ka); if (ctx.notifSseClients.get(key) === res) ctx.notifSseClients.delete(key); });
+  // Reconnect after a second, not the browser's default three: huddle signalling
+  // rides this stream now, and a dropped frame waits out the gap.
+  res.write('retry: 1000\n:ok\n\n');
+  // Every tab keeps its own stream (see notifAdd), and closing one removes only
+  // that one — a reconnect racing the old socket's close can't evict the new.
+  // A stream without ?hd=2 comes from a tab still on the previous bundle.
+  res.hdLegacy = reqObj.query.hd !== '2';
+  res.hdTag = ctx.notifTokenTag(reqObj);
+  ctx.notifAdd(key, res);
+  // A reconnect names the last huddle frame it saw; send it whatever it missed.
+  const replayed = ctx.huddleSignalReplay(key, res, reqObj.headers['last-event-id'] || reqObj.query.hs);
+  console.log('[notif-sse] connected', key, replayed ? `(replayed ${replayed} huddle frame(s))` : '');
+  let ka = null;
+  const done = () => { clearInterval(ka); ctx.notifRemove(key, res); };
+  // A ping that can't be written is a stream that is gone, 'close' or not.
+  ka = setInterval(() => { try { res.write(':ping\n\n', err => { if (err) done(); }); } catch (_) { done(); } }, 25000);
+  reqObj.on('close', done);
 }
 
 async function listNotifications(memberKey, res) {
