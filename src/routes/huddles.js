@@ -202,18 +202,31 @@ function mountChatAdminRoutes(base, guard) {
       const rawSid = req.body?.data?.sid;
       const sid = typeof rawSid === 'string' && rawSid ? rawSid.slice(0, 40) : null;
       const tag = ctx.notifTokenTag(req);
+      const afterRestart = req.body?.data?.afterRestart === true;
+      // A page this person has since replaced, by joining from another tab or device,
+      // putting itself back — its stream reopened, or it woke up out of the call. The
+      // newer one keeps the place: answer as if it had been taken by someone else, which
+      // makes the page step aside (a tab on the previous bundle holds it without a sid).
+      if (sid && (huddleDisplaced.get(roomId) || new Set()).has(sid)) {
+        const participants = huddleRoster(roomId).filter(p => p.key !== key).concat({ key, name, sid: HUDDLE_ELSEWHERE });
+        return res.json({ ok: true, superseded: true, boot: HUDDLE_BOOT, participants, started_at: huddleStartedAt(roomId) });
+      }
       // The same page putting itself back keeps its place in time. Anything else is
       // someone new behind the key — another page, device or tab — and starts its
       // clocks afresh. A join without a sid always is: the previous bundle refuses to
       // join a call it is already in, so it comes from a different tab.
       const existed = set.has(key);
-      const same = existed && !!sid && sid === (huddleSids.get(roomId) || new Map()).get(key);
+      const prevSid = existed ? (huddleSids.get(roomId) || new Map()).get(key) || null : null;
+      const same = existed && !!sid && sid === prevSid;
+      if (existed && !same && prevSid) huddleDisplace(roomId, prevSid);
       // Tabs on the previous bundle keep their connection to whatever was behind this
       // key before — a reloaded page, a closed tab — and, seeing the key still listed,
       // never dial it again: whoever replaced it is never reached. Show them a roster
       // without it first, which makes them drop that connection, then the real one,
-      // from which they dial afresh. (Only they read the chat stream's 'huddle'.)
-      if (existed && !same) {
+      // from which they dial afresh. (Only they read the chat stream's 'huddle'.) Not
+      // after a restart: they would read that roster, missing everyone not back yet, as
+      // all of them gone — and hang up on the lot, with no full roster to follow.
+      if (existed && !same && !afterRestart) {
         const without = [...set.entries()].filter(([k]) => k !== key).map(([k, n]) => ({ key: k, name: n }));
         chatBroadcast(huddleAudience(roomId, members), 'huddle', { type: 'roster', roomId, participants: without, started_at: huddleStartedAt(roomId), left: key });
       }
@@ -222,11 +235,13 @@ function mountChatAdminRoutes(base, guard) {
       if (!huddleStarted.has(roomId)) huddleStarted.set(roomId, Date.now());
       huddleEnroll(roomId, key, sid);
       huddleNoteJoin(roomId, key, sid ? null : tag, same);
-      const frame = { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), joined: key };
+      // displaced: the page this join took the place of. A tab on the previous bundle
+      // takes it without a sid, which the page's own superseded check can't see.
+      const frame = { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), joined: key, ...(existed && !same && prevSid ? { displaced: prevSid } : {}) };
       // A client putting itself back after a restart: the roster is only partly rebuilt.
       // The previous bundle prunes everyone a roster doesn't list, so tabs still on it
       // would hang up on each other — tell only the current bundle, which knows better.
-      if (req.body?.data?.afterRestart === true) ctx.huddleSignalSend(huddleAudience(roomId, members), frame);
+      if (afterRestart) ctx.huddleSignalSend(huddleAudience(roomId, members), frame);
       else huddleEmit(huddleAudience(roomId, members), frame);
       return res.json({ ok: true, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
     }
@@ -252,7 +267,8 @@ function mountChatAdminRoutes(base, guard) {
     // The client's 15-second "still here". Answering whether we still count it in the
     // call lets a tab the sweep dropped (asleep, throttled) notice and rejoin — and the
     // sid lets a tab that this person's other device took over notice and step aside.
-    if (type === 'alive') return res.json({ ok: true, inCall, boot: HUDDLE_BOOT, sid: (huddleSids.get(roomId) || new Map()).get(key) || null });
+    // A tab on the previous bundle that took over has none: answer one that can't match.
+    if (type === 'alive') return res.json({ ok: true, inCall, boot: HUDDLE_BOOT, sid: (huddleSids.get(roomId) || new Map()).get(key) || (inCall ? HUDDLE_ELSEWHERE : null) });
     // invite/offer/answer/ice/decline/media/restart are point-to-point
     const to = String(req.body?.to || '');
     // Nobody already in the call needs ringing — it used to push them a "started a
@@ -411,6 +427,20 @@ const HUDDLE_STREAK_GAP_MS = 40_000;   // pings come every 15 s; a gap this long
 // sid changed is a new page — a reload, a crash — and the connection peers still
 // hold to the old one is dead whatever its state says.
 const huddleSids = new Map();
+// roomId -> Set<sid>: pages that someone else took the place of — the same person
+// joining from another tab or device. One that tries to put itself back is told to
+// step aside (see the join handler); the newer one keeps the call.
+const huddleDisplaced = new Map();
+const HUDDLE_DISPLACED_MAX = 50;
+// Placeholder sid for "held by a page that isn't you" — a tab on the previous bundle
+// has no sid of its own to show.
+const HUDDLE_ELSEWHERE = 'elsewhere';
+function huddleDisplace(roomId, sid) {
+  if (!huddleDisplaced.has(roomId)) huddleDisplaced.set(roomId, new Set());
+  const set = huddleDisplaced.get(roomId);
+  set.add(sid);
+  if (set.size > HUDDLE_DISPLACED_MAX) set.delete(set.values().next().value);
+}
 function huddleEnroll(roomId, key, sid) {
   for (const m of [huddleSids, huddleSeen, huddleStreak]) if (!m.has(roomId)) m.set(roomId, new Map());
   if (sid) {
@@ -482,7 +512,7 @@ function huddleRemove(roomId, key) {
   if (set) {
     set.delete(key);
     if (!set.size) {
-      for (const m of [huddles, huddleGuests, huddleStarted, huddleDroppedLegacy, ...HUDDLE_PER_KEY]) m.delete(roomId);
+      for (const m of [huddles, huddleGuests, huddleStarted, huddleDroppedLegacy, huddleDisplaced, ...HUDDLE_PER_KEY]) m.delete(roomId);
       return;
     }
   }
@@ -497,22 +527,23 @@ function huddleRemove(roomId, key) {
 //     3 minutes. Closing or reloading the tab closes its stream (a reload comes back
 //     on this bundle, whose streams don't count); 3 minutes outlasts that bundle's own
 //     reconnect backoff, so a live tab riding out an outage is not mistaken for one
-//     closed; or
-//   • nobody has ever reached it since it joined, everyone else in the call is on this
-//     bundle, and one of them has been pinging without a break for 90 s — since it
-//     joined or since it came back — without reporting a working connection to it.
-// Never for having gone quiet once reached: that is a network dropout as often as a
-// closed tab, and the previous bundle can't rejoin a call it was dropped from, while
-// a call that is kept heals when the network returns. A closed tab still goes, by the
-// first rule. Nor because someone can't reach it while another tab on the previous
-// bundle is in the call: the two may well be talking. A lone entry is left alone too
-// — it may be a real person waiting — and the next one to join will see.
-// What is left is a closed tab whose login keeps another old tab open in the same
-// browser (the two can't be told apart): it stays until that tab closes too, or until
-// someone joins the call and can't reach it.
+//     closed. This is how a closed tab normally goes; or
+//   • everyone else in the call is on this bundle, one of them has been pinging
+//     without a break for 10 minutes, and in all that time nobody has reported a
+//     working connection to it (counted from when it joined, or from the last report).
+//     This is for a closed tab whose login keeps another old tab open in the same
+//     browser: the two can't be told apart by their streams. Slow on purpose: the
+//     previous bundle hears signalling only while its Chat page is open, so a live tab
+//     looking at another page can't be reached for a while, and is reached as soon as
+//     it is back. If it comes back later still, peers on this bundle are still offering
+//     (they keep the pair for the readmission window), and its answer puts it back.
+// Never while another tab on the previous bundle is in the call: the two may well be
+// talking, and nothing here can see that. A lone entry is left alone too — it may be
+// a real person waiting. What is left is a closed tab of a login that keeps another old
+// tab open, alone in the call or next to another old tab: it stays until those close.
 const HUDDLE_LEGACY_VOUCH_MS = 90_000;
 const HUDDLE_LEGACY_TAB_MS = 180_000;
-const HUDDLE_LEGACY_UNREACHED_MS = 90_000;
+const HUDDLE_LEGACY_UNREACHED_MS = 10 * 60_000;
 // How long the longest-watching participant still pinging has been at it (0: nobody).
 function huddleWatched(roomId, now) {
   const seen = huddleSeen.get(roomId) || new Map(), streak = huddleStreak.get(roomId) || new Map();
@@ -526,12 +557,11 @@ function huddleLegacyGone(roomId, key, now) {
   if (now - heard <= HUDDLE_LEGACY_VOUCH_MS) return null;
   const tabs = ctx.notifLegacyState((huddleLegacyTag.get(roomId) || new Map()).get(key) || '');
   if (!tabs.open && now - Math.max(joined, tabs.closedAt) > HUDDLE_LEGACY_TAB_MS) return 'its tab is closed';
-  if (heard) return null;
   const watchFrom = huddleWatched(roomId, now);
   if (watchFrom === null) return null;
   const sids = huddleSids.get(roomId) || new Map();
   const others = [...(huddles.get(roomId) || new Map()).keys()].filter(k => k !== key);
-  if (others.every(k => sids.has(k)) && now - Math.max(joined, watchFrom) > HUDDLE_LEGACY_UNREACHED_MS) return 'nobody has reached it';
+  if (others.every(k => sids.has(k)) && now - Math.max(joined, heard, watchFrom) > HUDDLE_LEGACY_UNREACHED_MS) return 'nobody has reached it for 10 minutes';
   return null;
 }
 async function huddleSweep(now = Date.now()) {

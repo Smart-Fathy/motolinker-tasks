@@ -348,13 +348,18 @@ that won't connect.
 - **Tabs still on an older bundle** (open since before a deploy) join without a session
   id, never ping and never leave on their own. The server drops one once its login
   has had no old-bundle tab open for 3 minutes (it sees their notification streams;
-  this bundle's are marked `?hd=2`), or after 90 s if everyone else in the call is on
-  this bundle and none of them has ever reached it — current participants report who
-  they're connected to in their ping, and a working connection always keeps it. Once
-  reached, it is never dropped just for going quiet (a network dropout looks the same,
-  and the old bundle can't rejoin). A call made only of old tabs is left alone. When
-  someone's entry is replaced (a reload, another device), old tabs are shown a roster
-  without them first, so they drop their dead connection and dial the new page.
+  this bundle's are marked `?hd=2`), or once everyone else in the call is on this
+  bundle and none of them has reached it for 10 minutes, counted from its join or the
+  last report — current participants report who they're connected to in their ping,
+  and a working connection always keeps it. The second rule catches a closed tab whose
+  login keeps another old tab open. It is slow because an old tab hears signalling only
+  on its Chat page, so a live one on another page can't be reached for a while.
+  Current pages keep their end of a dropped old tab's connection for another 10
+  minutes, out of sight, and keep offering; if it answers, their ping puts it back. A
+  call made only of old tabs is left alone. When someone's entry is replaced (a
+  reload, another device), old tabs are shown a roster without them first, so they
+  drop their dead connection and dial the new page; a current page whose place an old
+  tab takes is told, and steps aside.
 - Group administration lives next to it: the admin can rename any group, add and
   remove members and browse everything shared in the room. An employee gets the
   same controls for groups they created. The server enforces this, not just the UI.
