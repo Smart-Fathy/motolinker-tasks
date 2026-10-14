@@ -89,6 +89,7 @@ function makeFetch(key) {
       return { ok: true, json: async () => ({ ok: true, boot, participants, started_at }) };
     }
     if (body.type === 'alive') {
+      (window.__alive = window.__alive || []).push({ key, data: body.data });
       return { ok: true, json: async () => ({ ok: true, inCall: !!(bus.rosters[rid] && bus.rosters[rid].has(key)), boot: bus.boot, sid: (bus.sids[rid] || {})[key] || null }) };
     }
     if (body.type === 'leave') {
@@ -1239,7 +1240,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       return { before, after: window.A.hdStreamQuery() };
     });
     check('a rebuilt stream asks for what it missed since the last frame',
-      r.before === '' && r.after === '&hs=k3x.42', JSON.stringify(r));
+      r.before === '&hd=2' && r.after === '&hd=2&hs=k3x.42', JSON.stringify(r));
   }
 
   // 32. Closing the tab leaves the call at once, by beacon — no Leave click needed.
@@ -1359,6 +1360,43 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check('a failed pair past its restart budget is retried, not abandoned', r.offers >= 1, JSON.stringify(r));
   }
   await sleep(150);
+
+  // 36. Speaking for a peer on the previous bundle, which can't ping: the 15-second
+  //     'alive' says who we have a working connection to.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      await window.A.huddleStart(34, false); await window.B.huddleStart(34, false);
+      const t0 = Date.now();
+      while (Date.now() - t0 < 15000) { const p = window.A.peers().get('B'); if (p && p.pc.connectionState === 'connected') break; await wait(150); }
+      window.__alive = [];
+      await window.A.hdAlive();
+      const sent = (window.__alive || []).find(a => a.key === 'A');
+      window.A.huddleLeave(); window.B.huddleLeave();
+      return { sent };
+    });
+    check("the 15-second ping reports who we're connected to",
+      r.sent && r.sent.data && Array.isArray(r.sent.data.connected) && r.sent.data.connected.join() === 'B', JSON.stringify(r));
+  }
+  await sleep(150);
+
+  // 37. Our own entry with no sid is a tab on the previous bundle — usually this very
+  //     tab before its reload. It must not hide the Join chip the way our entry from
+  //     another current tab does.
+  {
+    const r = await page.evaluate(() => {
+      const chip = document.getElementById('hd-join-chip');
+      chip.style.display = 'none';
+      window.C.huddleOnSignal({ type: 'roster', roomId: 1, participants: [{ key: 'A', name: 'A', sid: 'a1' }, { key: 'C', name: 'C' }], started_at: Date.now() });
+      const oldSelf = chip.style.display;
+      window.C.huddleOnSignal({ type: 'roster', roomId: 1, participants: [{ key: 'A', name: 'A', sid: 'a1' }, { key: 'C', name: 'C', sid: 'c9' }], started_at: Date.now() });
+      const otherTab = chip.style.display;
+      chip.style.display = 'none';
+      return { oldSelf, otherTab };
+    });
+    check('our own entry from an old-bundle tab still offers the call here', r.oldSelf === 'flex', JSON.stringify(r));
+    check('…while our entry from another current tab hides it', r.otherTab === 'none', JSON.stringify(r));
+  }
 
   check('no page errors', errs.length === 0, errs.slice(0, 4).join(' | '));
 

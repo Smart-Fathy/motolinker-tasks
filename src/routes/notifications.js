@@ -1,5 +1,6 @@
 // Notification Center ─
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
+const crypto = require('crypto');
 const ctx = require('../ctx');
 const { chatBroadcast, chatSseClients, receiver, requireAuth, requireEmployeeAuth, sendPushAlways, sendPushToOfflineMembers, supabase } = ctx.need('chatBroadcast', 'chatSseClients', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'sendPushAlways', 'sendPushToOfflineMembers', 'supabase');
 
@@ -14,13 +15,43 @@ const requirePerm = (...a) => ctx.requirePerm(...a);
 // slot meant the newest tab silently took over everything the others should have
 // received — including the huddle signalling that now rides this stream.
 const notifSseClients = new Map();
+// Streams opened by the previous bundle, per login: how many are open now, and when
+// the last one closed. That bundle never says it has left a huddle and never pings,
+// so an open stream is the only sign of life one of its tabs gives — closing the tab
+// or reloading it (into this bundle) closes it. The huddle sweep reads this.
+// The current bundle marks its streams (?hd=2) and is not counted.
+//
+// Per login, not per member: every dashboard login is the member 'admin', and one
+// person's phone must not keep alive the ghost of a tab closed on their laptop. Two
+// tabs of one browser share a login, and can't be told apart.
+const legacyOpen = new Map();       // login tag -> open legacy streams
+const legacyClosedAt = new Map();   // login tag -> when the last one closed
+// The login a request is made with — the bearer token, or the ?_t= a stream or a
+// beacon carries — as a short hash, so the token itself is never held twice.
+function notifTokenTag(req) {
+  const auth = String((req.headers && req.headers.authorization) || '');
+  const tok = auth.startsWith('Bearer ') ? auth.slice(7) : String((req.query && req.query._t) || '');
+  return tok ? crypto.createHash('sha256').update(tok).digest('hex').slice(0, 16) : '';
+}
 function notifAdd(key, res) {
   if (!notifSseClients.has(key)) notifSseClients.set(key, new Set());
-  notifSseClients.get(key).add(res);
+  const set = notifSseClients.get(key);
+  if (set.has(res)) return;
+  set.add(res);
+  if (res.hdLegacy && res.hdTag) legacyOpen.set(res.hdTag, (legacyOpen.get(res.hdTag) || 0) + 1);
 }
 function notifRemove(key, res) {
   const set = notifSseClients.get(key);
-  if (set) { set.delete(res); if (!set.size) notifSseClients.delete(key); }
+  if (!set || !set.delete(res)) return;
+  if (!set.size) notifSseClients.delete(key);
+  if (res.hdLegacy && res.hdTag) {
+    const n = (legacyOpen.get(res.hdTag) || 1) - 1;
+    if (n > 0) legacyOpen.set(res.hdTag, n); else legacyOpen.delete(res.hdTag);
+    legacyClosedAt.set(res.hdTag, Date.now());
+  }
+}
+function notifLegacyState(tag) {
+  return { open: legacyOpen.get(tag) || 0, closedAt: legacyClosedAt.get(tag) || 0 };
 }
 // Write one SSE chunk to every stream the member has open. True if any was open.
 function notifWrite(key, chunk) {
@@ -330,4 +361,4 @@ receiver.router.get('/api/employee/chat/events', requireEmployeeAuth, requirePer
 });
 
 
-module.exports = { chatCreateOrGetDirect, chatDeleteMsg, chatEditMsg, chatGetMessages, chatListRooms, chatSendMessage, createNotification, huddleSignalReplay, huddleSignalSend, memberKeyForAssignee, notifAdd, notifRemove, notifSseClients, notifWrite, notifyEmployeeTaskAssigned };
+module.exports = { chatCreateOrGetDirect, chatDeleteMsg, chatEditMsg, chatGetMessages, chatListRooms, chatSendMessage, createNotification, huddleSignalReplay, huddleSignalSend, memberKeyForAssignee, notifAdd, notifLegacyState, notifRemove, notifTokenTag, notifSseClients, notifWrite, notifyEmployeeTaskAssigned };

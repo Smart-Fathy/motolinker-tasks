@@ -345,6 +345,13 @@ that won't connect.
   reloaded is rebuilt from scratch.
 - **Every tab gets the signalling.** Two tabs or devices each hold their own stream;
   take the call in whichever one you like.
+- **Tabs still on an older bundle** (open since before a deploy) join without a session
+  id, never ping and never leave on their own. The server keeps one only while its
+  login still has an old-bundle tab open (it sees their notification streams; this
+  bundle's are marked `?hd=2`), and while anyone on this bundle in the call can reach
+  it — current participants report who they're connected to in their ping. A closed
+  old tab is dropped within about 3 minutes, or 90 s once someone in the call has
+  been unable to reach it. A call made only of old tabs is left alone.
 - Group administration lives next to it: the admin can rename any group, add and
   remove members and browse everything shared in the room. An employee gets the
   same controls for groups they created. The server enforces this, not just the UI.

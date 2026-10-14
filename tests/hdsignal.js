@@ -34,6 +34,12 @@ global.fetch = async (input, init) => {
   if (table === 'chat_room_members') { memberQueries++; rows = MEMBERS; }
   if (table === 'employees') rows = [{ id: 2, name: 'Sara', avatar_url: null }, { id: 3, name: 'Omar', avatar_url: null }];
   if (table === 'notifications' && init && init.method === 'POST') rows = [{ id: 1, ...JSON.parse(init.body) }];
+  // A login the server has not seen since it started: restoring it is a round trip,
+  // slow on purpose here, as Supabase is after a restart.
+  if (table === 'sessions' && (!init || !init.method || init.method === 'GET') && url.includes('slow-admin-tok')) {
+    await new Promise(r => setTimeout(r, 400));
+    rows = [{ kind: 'admin', payload: { username: 'admin', createdAt: Date.now() }, created_at: new Date().toISOString() }];
+  }
   const body = accept.includes('pgrst.object') ? JSON.stringify(rows[0] || {}) : JSON.stringify(rows);
   return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
 };
@@ -90,7 +96,8 @@ setTimeout(async () => {
   const saraSig = body => fetch(base + '/api/employee/chat/huddle/signal', {
     method: 'POST', headers: { Authorization: 'Bearer ' + emp, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }).then(r => r.json());
-  const saraPath = '/api/employee/notifications/stream?_t=' + emp;
+  const saraPath = '/api/employee/notifications/stream?_t=' + emp + '&hd=2';   // Sara is on this bundle
+  const adminOldPath = '/api/dashboard/notifications/stream?_t=' + token;      // the admin's tab is not
 
   // ── Off the Chat page, on two devices ──
   const tabA = await openStream(saraPath);
@@ -180,8 +187,10 @@ setTimeout(async () => {
   await wait(50);
   check('and is not relayed to anyone', !sigFrames(saraNotif).some(f => f.json.type === 'alive'));
 
-  // A legacy participant (no session id) must never be swept: it does not ping.
+  // A participant on the previous bundle (no session id) does not ping. While its
+  // tab is open, silence means nothing.
   ctx.chatSseClients.delete('admin');
+  const adminOld = await openStream(adminOldPath);
   await adminSig({ roomId: 1, type: 'join' });   // the admin's old tab rejoins, no sid
   saraNotif.frames.length = 0;
   await ctx.huddleSweep(Date.now() + 91_000);
@@ -190,7 +199,7 @@ setTimeout(async () => {
   const roster = left.length ? left[0].json.participants.map(p => p.key).join() : '';
   check('90 s of silence drops the participant who stopped pinging, and says so',
     left.length === 1 && left[0].json.left === 'employee_2', JSON.stringify(left.map(f => f.json)));
-  check('but never one on the previous bundle, which never pings', roster === 'admin', roster);
+  check('but not one on the previous bundle whose tab is still open', roster === 'admin', roster);
   const after = await saraSig({ roomId: 1, type: 'alive' });
   check('the dropped tab learns it on its next ping, so it can rejoin', after.inCall === false, JSON.stringify(after));
 
@@ -233,6 +242,155 @@ setTimeout(async () => {
   check('a pagehide beacon takes the closing tab out of the call',
     beacon.status === 200 && !live.participants.some(p => p.key === 'employee_2'), JSON.stringify(live));
   check('the roster read names the server process too', live.boot === j1.boot);
+
+  // ── Tabs on the previous bundle: never ping, never leave on unload ──
+  // Their entries used to stay until the next restart, advertising a huddle nobody
+  // was in. Each case starts from an empty call. The clock is moved by replacing
+  // Date.now for the duration of a request, so the server stamps it as if later.
+  await adminSig({ roomId: 1, type: 'leave' });
+  adminOld.close();
+  const realNow = Date.now;
+  const at = async (offset, fn) => { Date.now = () => realNow() + offset; try { return await fn(); } finally { Date.now = realNow; } };
+  const sweepAt = offset => ctx.huddleSweep(realNow() + offset);
+  const rosterNow = async () => (await fetch(base + '/api/dashboard/chat/huddle/1', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json())).participants.map(p => p.key).sort().join();
+  // Sara on this bundle, pinging every 15 s like a live tab, reporting who she reaches.
+  const pings = async (from, to, connected) => { for (let t = from; t <= to; t += 15_000) await at(t, () => saraSig({ roomId: 1, type: 'alive', data: { connected } })); };
+  const emptyCall = async () => {
+    for (const k of (await rosterNow()).split(',').filter(Boolean)) {
+      if (k === 'admin') await adminSig({ roomId: 1, type: 'leave' });
+      if (k === 'employee_2') await saraSig({ roomId: 1, type: 'leave' });
+      if (k === 'employee_3') await omarSig({ roomId: 1, type: 'leave' });
+    }
+  };
+  const leftFrames = who => sigFrames(saraNotif).filter(f => f.json.type === 'roster' && f.json.left === who);
+  const { token: token2 } = await (await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: process.env.ADMIN_USERNAME || 'admin', password: 'pw' }) })).json();
+  const omarOldPath = '/api/employee/notifications/stream?_t=' + omar;
+
+  // 1. Its tab closes. Three minutes' grace — the previous bundle's own reconnect
+  //    backoff can leave a live tab without a stream for over a minute and a half.
+  //    Another login's old tab, and a tab of its own login on this bundle (the
+  //    reload), don't keep it.
+  {
+    const oldA = await openStream(adminOldPath);
+    const elsewhere = await openStream('/api/dashboard/notifications/stream?_t=' + token2);
+    await at(-600_000, () => adminSig({ roomId: 1, type: 'join' }));   // in the call 10 minutes already
+    oldA.close();
+    const reloaded = await openStream(adminOldPath + '&hd=2');
+    await wait(150);
+    saraNotif.frames.length = 0;
+    await sweepAt(170_000);
+    check('a tab on the previous bundle closes: kept for 3 minutes from the closing, not from its join', (await rosterNow()) === 'admin', await rosterNow());
+    await sweepAt(181_000);
+    await wait(100);
+    check("…then dropped, whatever another login's old tab or its own reloaded one is doing",
+      (await rosterNow()) === '' && leftFrames('admin').length === 1 && leftFrames('admin')[0].json.swept === true, await rosterNow());
+    elsewhere.close(); reloaded.close();
+  }
+
+  // 2. Its tab stays open and a participant on this bundle can't reach it.
+  {
+    const oldC = await openStream(adminOldPath);
+    await adminSig({ roomId: 1, type: 'join' });
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w1' } });
+    await pings(0, 75_000, []);
+    await sweepAt(80_000);
+    check('…a participant who has watched for less than 90 s is not yet a witness', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(90_000, 90_000, []);
+    saraNotif.frames.length = 0;
+    await sweepAt(95_000);
+    await wait(100);
+    check('…after 90 s of pings that never report reaching it, it is dropped', (await rosterNow()) === 'employee_2' && leftFrames('admin').length === 1, await rosterNow());
+    // Somebody who is not in the call has no say.
+    await saraSig({ roomId: 1, type: 'invite', to: 'employee_3' });
+    await at(100_000, () => omarSig({ roomId: 1, type: 'alive', data: { connected: ['admin'] } }));
+    check('…a report from someone not in the call puts nothing back', (await rosterNow()) === 'employee_2', await rosterNow());
+    // It was there after all: a peer reports a working connection to it.
+    saraNotif.frames.length = 0;
+    await at(105_000, () => saraSig({ roomId: 1, type: 'alive', data: { connected: ['admin'] } }));
+    await wait(100);
+    check('…a peer reporting a working connection to it puts it back, and says so',
+      (await rosterNow()) === 'admin,employee_2' && sigFrames(saraNotif).some(f => f.json.type === 'roster' && f.json.participants.some(p => p.key === 'admin')), await rosterNow());
+    // Sara is offline from 105 s to 190 s; her first ping back can't count against it.
+    await pings(190_000, 190_000, []);
+    await sweepAt(195_000);
+    check('…a peer back from a silence is not a witness until it has watched 90 s again', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(205_000, 285_000, []);
+    await sweepAt(290_000);
+    check('…and once it has, it is', (await rosterNow()) === 'employee_2', await rosterNow());
+    await emptyCall();
+    oldC.close();
+  }
+
+  // 3. A long call of old tabs only. Nobody here can see into it: left alone — and a
+  //    participant arriving from this bundle, or one of them reloading onto it, is
+  //    not a witness straight away.
+  {
+    const oldD = await openStream(adminOldPath);
+    const omarOld = await openStream(omarOldPath);
+    const saraOld = await openStream('/api/employee/notifications/stream?_t=' + emp);
+    await adminSig({ roomId: 1, type: 'invite', to: 'employee_3' });
+    await at(-1_200_000, () => adminSig({ roomId: 1, type: 'join' }));
+    await at(-1_200_000, () => omarSig({ roomId: 1, type: 'join' }));
+    await at(-1_200_000, () => saraSig({ roomId: 1, type: 'join' }));   // Sara too, on an old tab
+    await sweepAt(0);
+    check('a call of old tabs only, 20 minutes in, is left alone', (await rosterNow()) === 'admin,employee_2,employee_3', await rosterNow());
+    saraOld.close();                                                   // Sara reloads onto this bundle…
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'reloaded' } });   // …and takes her old place
+    await pings(0, 0, []);
+    await sweepAt(5_000);
+    check('…a reload into it does not make the reloaded page a witness against the others', (await rosterNow()) === 'admin,employee_2,employee_3', await rosterNow());
+    await pings(15_000, 585_000, []);
+    await sweepAt(589_000);
+    check('…nor do 90 s of watching, while another old tab is in the call', (await rosterNow()) === 'admin,employee_2,employee_3', await rosterNow());
+    await pings(600_000, 600_000, []);
+    await sweepAt(601_000);
+    check('…10 minutes of reaching neither, and both are dropped', (await rosterNow()) === 'employee_2', await rosterNow());
+    await emptyCall();
+    oldD.close(); omarOld.close();
+  }
+
+  // 4. Alone in the call with its tab open: may be a real person waiting. Kept.
+  {
+    const oldE = await openStream(adminOldPath);
+    await at(-3_600_000, () => adminSig({ roomId: 1, type: 'join' }));
+    await sweepAt(0);
+    check('an old tab alone in the call, its tab open, is kept however long', (await rosterNow()) === 'admin', await rosterNow());
+    await emptyCall();
+    oldE.close();
+  }
+
+  // 5. The same person joins again from another device on the previous bundle while
+  //    their first entry is still listed: someone new behind the key, so a fresh
+  //    90 s before anyone's silence counts against it.
+  {
+    const oldF = await openStream(adminOldPath);
+    const oldG = await openStream('/api/dashboard/notifications/stream?_t=' + token2);
+    await adminSig({ roomId: 1, type: 'join' });
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w5' } });
+    await pings(0, 75_000, []);
+    await at(80_000, () => fetch(base + '/api/dashboard/chat/huddle/signal', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + token2, 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: 1, type: 'join' }) }));
+    await pings(90_000, 90_000, []);
+    await sweepAt(100_000);
+    check('a rejoin from another old device starts its own 90 s', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await emptyCall();
+    oldF.close(); oldG.close();
+  }
+
+  // ── A stream abandoned while its login was being checked ──
+  // After a restart, checking a login is a Supabase round trip. A tab closed in that
+  // window had its 'close' fire before the stream was registered; registered anyway,
+  // it would count as an open old tab for that login until the next restart.
+  const slowTag = require('crypto').createHash('sha256').update('slow-admin-tok').digest('hex').slice(0, 16);
+  await new Promise(resolve => {
+    const r = http.get({ host: '127.0.0.1', port: PORT, path: '/api/dashboard/notifications/stream?_t=slow-admin-tok' }, () => {});
+    r.on('error', () => {});
+    setTimeout(() => { r.destroy(); resolve(); }, 100);
+  });
+  await wait(700);
+  check('a stream whose tab went during the login check is not left counted as open',
+    ctx.notifLegacyState(slowTag).open === 0, JSON.stringify(ctx.notifLegacyState(slowTag)));
   saraNotif.close();
 
   const pass = results.filter(Boolean).length;

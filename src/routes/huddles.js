@@ -199,11 +199,20 @@ function mountChatAdminRoutes(base, guard) {
     if (type === 'join') {
       const set = huddles.get(roomId) || new Map();
       if (set.size >= HUDDLE_MAX && !set.has(key)) return res.status(409).json({ error: 'Huddle is full', max: HUDDLE_MAX });
+      const rawSid = req.body?.data?.sid;
+      const sid = typeof rawSid === 'string' && rawSid ? rawSid.slice(0, 40) : null;
+      const tag = ctx.notifTokenTag(req);
+      // The same page putting itself back (a rejoin after a sweep or a restart) keeps
+      // its place in time. Anything else — another page, another device, another old
+      // tab — is someone new behind the key, and starts its clocks afresh.
+      const same = set.has(key) && (sid
+        ? sid === (huddleSids.get(roomId) || new Map()).get(key)
+        : !(huddleSids.get(roomId) || new Map()).has(key) && tag === (huddleLegacyTag.get(roomId) || new Map()).get(key));
       set.set(key, name);
       huddles.set(roomId, set);
       if (!huddleStarted.has(roomId)) huddleStarted.set(roomId, Date.now());
-      const sid = req.body?.data?.sid;
-      huddleEnroll(roomId, key, typeof sid === 'string' && sid ? sid.slice(0, 40) : null);
+      huddleEnroll(roomId, key, sid);
+      huddleNoteJoin(roomId, key, sid ? null : tag, same);
       const frame = { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), joined: key };
       // A client putting itself back after a restart: the roster is only partly rebuilt.
       // The previous bundle prunes everyone a roster doesn't list, so tabs still on it
@@ -225,6 +234,12 @@ function mountChatAdminRoutes(base, guard) {
     }
     const inCall = (huddles.get(roomId) || new Map()).has(key);
     if (inCall) huddleTouch(roomId, key);
+    // Who this participant has a working connection to. It is how a participant on
+    // the previous bundle, which can't speak for itself, is known to be really there.
+    if (type === 'alive' && inCall && Array.isArray(req.body?.data?.connected)) {
+      const back = huddleVouch(roomId, req.body.data.connected);
+      if (back.length) huddleEmit(huddleAudience(roomId, members), { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
+    }
     // The client's 15-second "still here". Answering whether we still count it in the
     // call lets a tab the sweep dropped (asleep, throttled) notice and rejoin — and the
     // sid lets a tab that this person's other device took over notice and step aside.
@@ -379,38 +394,159 @@ mountChatAdminRoutes('/api/employee/chat', requireEmployeeAuth);
 // says 'alive' and would be cut out of a perfectly good call after 90 s.
 const HUDDLE_SILENT_MS = 90_000;
 const huddleSeen = new Map();   // roomId -> Map<memberKey, epoch ms>; swept keys only
+// roomId -> Map<memberKey, epoch ms>: when each pinging participant's current unbroken
+// run of pings began. How long someone has really been watching (see huddleLegacyGone).
+const huddleStreak = new Map();
+const HUDDLE_STREAK_GAP_MS = 40_000;   // pings come every 15 s; a gap this long breaks the run
 // roomId -> Map<memberKey, sid>. A sid is minted per join, so a roster entry whose
 // sid changed is a new page — a reload, a crash — and the connection peers still
 // hold to the old one is dead whatever its state says.
 const huddleSids = new Map();
 function huddleEnroll(roomId, key, sid) {
-  if (!huddleSids.has(roomId)) huddleSids.set(roomId, new Map());
-  if (!huddleSeen.has(roomId)) huddleSeen.set(roomId, new Map());
+  for (const m of [huddleSids, huddleSeen, huddleStreak]) if (!m.has(roomId)) m.set(roomId, new Map());
   if (sid) {
     huddleSids.get(roomId).set(key, sid);
     huddleSeen.get(roomId).set(key, Date.now());
+    if (!huddleStreak.get(roomId).has(key)) huddleStreak.get(roomId).set(key, Date.now());
   } else {
-    huddleSids.get(roomId).delete(key);
-    huddleSeen.get(roomId).delete(key);
+    for (const m of [huddleSids, huddleSeen, huddleStreak]) m.get(roomId).delete(key);
   }
+}
+// When each participant joined; when a participant on this bundle last reported a
+// working connection to each one; which login each previous-bundle tab joined with.
+const huddleJoinedAt = new Map();   // roomId -> Map<memberKey, epoch ms>
+const huddleHeard = new Map();      // roomId -> Map<memberKey, epoch ms>
+const huddleLegacyTag = new Map();  // roomId -> Map<memberKey, login tag> (previous bundle only)
+// Previous-bundle entries the sweep dropped lately, kept so that a peer reporting a
+// working connection to one can put it back (see huddleVouch).
+const huddleDroppedLegacy = new Map();   // roomId -> Map<memberKey, { name, tag, at }>
+const HUDDLE_READMIT_MS = 10 * 60_000;
+function huddleNoteJoin(roomId, key, legacyTag, same) {
+  for (const m of [huddleJoinedAt, huddleHeard, huddleLegacyTag]) if (!m.has(roomId)) m.set(roomId, new Map());
+  if (!same) {
+    huddleJoinedAt.get(roomId).set(key, Date.now());
+    huddleHeard.get(roomId).delete(key);
+    const streak = huddleStreak.get(roomId);
+    if (streak && huddleSids.get(roomId).has(key)) streak.set(key, Date.now());
+  }
+  if (legacyTag !== null) huddleLegacyTag.get(roomId).set(key, legacyTag);
+  else huddleLegacyTag.get(roomId).delete(key);
+  const dropped = huddleDroppedLegacy.get(roomId);
+  if (dropped) dropped.delete(key);
+}
+// A participant's report of who it has a working connection to. Only keys in the call
+// are recorded — and one the sweep dropped lately comes back: it was there after all.
+// Returns the keys put back.
+function huddleVouch(roomId, keys) {
+  const set = huddles.get(roomId);
+  if (!set) return [];
+  if (!huddleHeard.has(roomId)) huddleHeard.set(roomId, new Map());
+  const now = Date.now(), back = [];
+  const dropped = huddleDroppedLegacy.get(roomId) || new Map();
+  for (const k of keys.slice(0, HUDDLE_MAX)) {
+    if (typeof k !== 'string') continue;
+    const d = dropped.get(k);
+    if (!set.has(k) && d && now - d.at <= HUDDLE_READMIT_MS && set.size < HUDDLE_MAX) {
+      set.set(k, d.name);
+      huddleNoteJoin(roomId, k, d.tag, false);
+      back.push(k);
+      console.log('[huddle] put back participant on the previous bundle', k, 'in room', roomId, '- a peer is connected to it');
+    }
+    if (set.has(k)) huddleHeard.get(roomId).set(k, now);
+  }
+  return back;
 }
 function huddleTouch(roomId, key) {
   const seen = huddleSeen.get(roomId);
-  if (seen && seen.has(key)) seen.set(key, Date.now());
+  if (!seen || !seen.has(key)) return;
+  const now = Date.now();
+  const streak = huddleStreak.get(roomId);
+  if (streak && (!streak.has(key) || now - seen.get(key) > HUDDLE_STREAK_GAP_MS)) streak.set(key, now);
+  seen.set(key, now);
 }
 // A guest's grant outlives their own leaving and lasts as long as the huddle: a
 // guest who reloads, or is swept while their laptop sleeps, has to be able to come
 // back the way a member can.
+const HUDDLE_PER_KEY = [huddleSeen, huddleStreak, huddleSids, huddleJoinedAt, huddleHeard, huddleLegacyTag];
 function huddleRemove(roomId, key) {
   const set = huddles.get(roomId);
   if (set) {
     set.delete(key);
-    if (!set.size) { huddles.delete(roomId); huddleGuests.delete(roomId); huddleStarted.delete(roomId); huddleSeen.delete(roomId); huddleSids.delete(roomId); }
+    if (!set.size) {
+      for (const m of [huddles, huddleGuests, huddleStarted, huddleDroppedLegacy, ...HUDDLE_PER_KEY]) m.delete(roomId);
+      return;
+    }
   }
-  const seen = huddleSeen.get(roomId); if (seen) seen.delete(key);
-  const sids = huddleSids.get(roomId); if (sids) sids.delete(key);
+  for (const m of HUDDLE_PER_KEY) { const r = m.get(roomId); if (r) r.delete(key); }
+}
+
+// A participant on the previous bundle (no sid) never pings and never leaves: close
+// its tab and it used to stay in the roster until the next restart, advertising a
+// huddle nobody was in. A working connection reported by a peer on this bundle in
+// the last 90 s keeps it, whatever else. Otherwise it is gone when:
+//   • no tab on the previous bundle has been open on the login it joined with for
+//     3 minutes. Closing or reloading the tab closes its stream (a reload comes back
+//     on this bundle, whose streams don't count); 3 minutes outlasts that bundle's own
+//     reconnect backoff, so a live tab riding out an outage is not mistaken for one
+//     closed;
+//   • everyone else in the call is on this bundle, and one of them has been pinging
+//     without a break for 90 s — since it joined or since it came back — without
+//     reporting a working connection to it; or
+//   • anyone on this bundle has, for 10 minutes. That is for a ghost whose login keeps
+//     another old tab open (two tabs of one browser can't be told apart) sitting next
+//     to another entry on the previous bundle. A call made only of old tabs has
+//     nobody to watch it and is left alone, and so is a lone entry: it may be a real
+//     person waiting, and the next one to join will see within 90 s.
+const HUDDLE_LEGACY_VOUCH_MS = 90_000;
+const HUDDLE_LEGACY_TAB_MS = 180_000;
+const HUDDLE_LEGACY_UNREACHED_MS = 90_000;
+const HUDDLE_LEGACY_UNHEARD_MS = 10 * 60_000;
+// How long the longest-watching participant still pinging has been at it (0: nobody).
+function huddleWatched(roomId, now) {
+  const seen = huddleSeen.get(roomId) || new Map(), streak = huddleStreak.get(roomId) || new Map();
+  let from = Infinity;
+  for (const [k, at] of seen) if (now - at <= HUDDLE_STREAK_GAP_MS && streak.has(k)) from = Math.min(from, streak.get(k));
+  return from === Infinity ? null : from;
+}
+function huddleLegacyGone(roomId, key, now) {
+  const joined = (huddleJoinedAt.get(roomId) || new Map()).get(key) || now;
+  const heard = (huddleHeard.get(roomId) || new Map()).get(key) || 0;
+  if (now - heard <= HUDDLE_LEGACY_VOUCH_MS) return null;
+  const tabs = ctx.notifLegacyState((huddleLegacyTag.get(roomId) || new Map()).get(key) || '');
+  if (!tabs.open && now - Math.max(joined, tabs.closedAt) > HUDDLE_LEGACY_TAB_MS) return 'its tab is closed';
+  const watchFrom = huddleWatched(roomId, now);
+  if (watchFrom === null) return null;
+  const unreached = now - Math.max(joined, heard, watchFrom);
+  const sids = huddleSids.get(roomId) || new Map();
+  const others = [...(huddles.get(roomId) || new Map()).keys()].filter(k => k !== key);
+  if (others.every(k => sids.has(k)) && unreached > HUDDLE_LEGACY_UNREACHED_MS) return 'nobody can reach it';
+  if (unreached > HUDDLE_LEGACY_UNHEARD_MS) return 'nobody has reached it for 10 minutes';
+  return null;
 }
 async function huddleSweep(now = Date.now()) {
+  for (const [roomId, set] of huddles) {
+    const sids = huddleSids.get(roomId) || new Map();
+    for (const key of [...set.keys()]) {
+      if (sids.has(key)) continue;
+      const why = huddleLegacyGone(roomId, key, now);
+      if (!why) continue;
+      const members = await huddleRoomMembers(roomId);
+      // It may have been vouched for, rejoined with a sid, or left meanwhile.
+      if (!(huddles.get(roomId) || new Map()).has(key) || (huddleSids.get(roomId) || new Map()).has(key) || !huddleLegacyGone(roomId, key, now)) continue;
+      const name = huddles.get(roomId).get(key), tag = (huddleLegacyTag.get(roomId) || new Map()).get(key) || '';
+      huddleRemove(roomId, key);
+      if (huddles.has(roomId)) {
+        if (!huddleDroppedLegacy.has(roomId)) huddleDroppedLegacy.set(roomId, new Map());
+        huddleDroppedLegacy.get(roomId).set(key, { name, tag, at: now });
+      }
+      console.log('[huddle] dropped participant on the previous bundle', key, 'from room', roomId, '-', why);
+      huddleEmit(huddleAudience(roomId, members), { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), left: key, swept: true });
+    }
+  }
+  for (const [roomId, dropped] of huddleDroppedLegacy) {
+    for (const [key, d] of dropped) if (now - d.at > HUDDLE_READMIT_MS) dropped.delete(key);
+    if (!dropped.size) huddleDroppedLegacy.delete(roomId);
+  }
   for (const [roomId, seen] of huddleSeen) {
     for (const [key, at] of seen) {
       if (now - at <= HUDDLE_SILENT_MS) continue;

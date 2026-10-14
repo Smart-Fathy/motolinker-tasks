@@ -133,10 +133,12 @@ function huddleOnStreamFrame(e) {
   try { msg = JSON.parse(e.data); } catch (_) { return; }
   huddleOnSignal(msg).catch(() => {});
 }
-// Appended to the stream URL so a rebuilt stream is sent what it missed. (The
-// browser's own reconnect sends the same thing as the Last-Event-ID header.)
+// Appended to the stream URL. hd=2 says this tab is on the current bundle: the
+// server keeps a participant from the previous one in a call only while that person
+// still has a tab on it open. hs asks a rebuilt stream to be sent what it missed (the
+// browser's own reconnect sends the same thing as the Last-Event-ID header).
 function hdStreamQuery() {
-  return _hdSignalLastId ? '&hs=' + encodeURIComponent(_hdSignalLastId) : '';
+  return '&hd=2' + (_hdSignalLastId ? '&hs=' + encodeURIComponent(_hdSignalLastId) : '');
 }
 // The stream (re)connected — every 15 minutes at least, when the host cuts it.
 // The server replays the last minute; past that, ask for the roster again and let
@@ -192,7 +194,10 @@ async function hdAlive() {
   const roomId = _hd.roomId;
   if (!roomId) return;
   try {
-    const res = await hdSignal('alive');
+    // Who we are really connected to: a peer still on the previous bundle can't say
+    // it is alive, so we say it for it (see huddleLegacyGone on the server).
+    const connected = [..._hd.peers.entries()].filter(([, p]) => p.pc.connectionState === 'connected').map(([k]) => k);
+    const res = await hdSignal('alive', null, { connected });
     const r = await res.json();
     if (_hd.roomId !== roomId) return;
     if (res.status === 403) return hdLockedOut();
@@ -896,7 +901,9 @@ function hdToast(msg) {
 function hdNoteRoster(msg) {
   const ps = msg.participants || [];
   // We are in it — from another tab or device. Stop ringing and offering it here.
-  if (ps.some(p => p.key === hdMe())) {
+  // Not for an entry without a sid: that is a tab on the previous bundle, most often
+  // this very tab before it was reloaded, and joining from here takes its place.
+  if (ps.some(p => p.key === hdMe() && p.sid)) {
     const el = document.getElementById('hd-incoming');
     if (el && el.dataset.room === String(msg.roomId)) el.style.display = 'none';
     hdHideJoinChip();
