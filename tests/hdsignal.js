@@ -464,6 +464,12 @@ setTimeout(async () => {
     check('a stream is counted once, however often it is added or removed',
       both === 2 && ctx.notifLegacyState(tagX).open === 1, JSON.stringify([both, ctx.notifLegacyState(tagX)]));
     ctx.notifRemove('employee_9', r2);
+    // Its closing time is kept as long as the sweep can need it, then forgotten.
+    ctx.notifLegacyPrune(Date.now() + 9 * 60_000);
+    const kept = ctx.notifLegacyState(tagX).closedAt > 0;
+    ctx.notifLegacyPrune(Date.now() + 11 * 60_000);
+    check("a login's last-closed time is forgotten once no sweep can need it",
+      kept && ctx.notifLegacyState(tagX).closedAt === 0, JSON.stringify(ctx.notifLegacyState(tagX)));
   }
 
   // ── A stream abandoned while its login was being checked ──

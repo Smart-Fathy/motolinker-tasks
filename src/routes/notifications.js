@@ -53,6 +53,13 @@ function notifRemove(key, res) {
 function notifLegacyState(tag) {
   return { open: legacyOpen.get(tag) || 0, closedAt: legacyClosedAt.get(tag) || 0 };
 }
+// A closing time only matters for the 3 minutes after it (the huddle sweep's window);
+// forget it well after, or every login that ever had an old tab stays here for good.
+const LEGACY_CLOSED_KEEP_MS = 10 * 60_000;
+function notifLegacyPrune(now = Date.now()) {
+  for (const [tag, at] of legacyClosedAt) if (!legacyOpen.has(tag) && now - at > LEGACY_CLOSED_KEEP_MS) legacyClosedAt.delete(tag);
+}
+setInterval(() => notifLegacyPrune(), 5 * 60_000).unref();
 // Write one SSE chunk to every stream the member has open. True if any was open.
 function notifWrite(key, chunk) {
   const set = notifSseClients.get(key);
@@ -361,4 +368,4 @@ receiver.router.get('/api/employee/chat/events', requireEmployeeAuth, requirePer
 });
 
 
-module.exports = { chatCreateOrGetDirect, chatDeleteMsg, chatEditMsg, chatGetMessages, chatListRooms, chatSendMessage, createNotification, huddleSignalReplay, huddleSignalSend, memberKeyForAssignee, notifAdd, notifLegacyState, notifRemove, notifTokenTag, notifSseClients, notifWrite, notifyEmployeeTaskAssigned };
+module.exports = { chatCreateOrGetDirect, chatDeleteMsg, chatEditMsg, chatGetMessages, chatListRooms, chatSendMessage, createNotification, huddleSignalReplay, huddleSignalSend, memberKeyForAssignee, notifAdd, notifLegacyPrune, notifLegacyState, notifRemove, notifTokenTag, notifSseClients, notifWrite, notifyEmployeeTaskAssigned };
