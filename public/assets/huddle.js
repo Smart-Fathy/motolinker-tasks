@@ -819,17 +819,17 @@ async function huddleToggleCam() {
   if (!_hd.roomId) return;
   if (_hd.cam) {
     _hd.local.getVideoTracks().forEach(t => { t.stop(); _hd.local.removeTrack(t); });
-    if (!_hd.sharing) hdSwapVideo(null);
     _hd.cam = false;
+    if (!_hd.sharing) await hdSwapVideo(null);
   } else {
     try {
       const cam = await navigator.mediaDevices.getUserMedia({ video: true });
       const track = cam.getVideoTracks()[0];
       _hd.local.addTrack(track);
+      _hd.cam = true;
       // While sharing a screen the screen track owns the video sender; the camera
       // takes over again when sharing stops.
-      if (!_hd.sharing) hdSwapVideo(track);
-      _hd.cam = true;
+      if (!_hd.sharing) await hdSwapVideo(track);
     } catch (_) { hdToast('Could not access your camera.'); }
   }
   hdAnnounceAndRender();
@@ -841,14 +841,19 @@ function hdVideoTransceiver(pc) {
   return pc.getTransceivers().find(t => t.mid != null && !t.stopped &&
     (((t.receiver || {}).track || {}).kind === 'video' || ((t.sender || {}).track || {}).kind === 'video'));
 }
+// Resolves once every peer's sender carries the track. The callers wait for it before
+// announcing what we send, so a peer is never told "sharing" while the camera frames
+// are still going out (a sender's track only changes when replaceTrack settles).
 function hdSwapVideo(track) {
+  const swaps = [];
   _hd.peers.forEach(p => {
     const t = hdVideoTransceiver(p.pc);
     if (!t) return;
     // A transceiver left recvonly swallows the track without complaint
     if (t.direction !== 'sendrecv') { try { t.direction = 'sendrecv'; } catch (_) {} }
-    t.sender.replaceTrack(track).catch(() => {});
+    swaps.push(t.sender.replaceTrack(track).catch(() => {}));
   });
+  return Promise.all(swaps);
 }
 // iOS does not expose getDisplayMedia to web pages in any browser — not Safari, not
 // Chrome, not Firefox — so the property is simply missing and calling it throws a
@@ -864,7 +869,7 @@ async function huddleToggleShare() {
   if (_hd.sharing) {
     if (_hd.screen) _hd.screen.getTracks().forEach(t => t.stop());
     _hd.screen = null; _hd.sharing = false;
-    hdSwapVideo(_hd.local.getVideoTracks()[0] || null);
+    await hdSwapVideo(_hd.local.getVideoTracks()[0] || null);
   } else {
     if (!hdCanShareScreen()) {
       hdToast('This browser cannot share a screen. On an iPhone or iPad no browser can — '
@@ -875,8 +880,10 @@ async function huddleToggleShare() {
       _hd.screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const track = _hd.screen.getVideoTracks()[0];
       track.onended = () => { if (_hd.sharing) huddleToggleShare(); };   // browser's own "Stop sharing"
-      hdSwapVideo(track);
+      // Sharing before the swap settles, so a peer that joins meanwhile is given the
+      // screen too (hdPeer puts it on a new pair's sender).
       _hd.sharing = true;
+      await hdSwapVideo(track);
     } catch (e) {
       // Cancelling the picker is not a failure and must stay silent. Anything else is
       // a real reason the user cannot otherwise discover.

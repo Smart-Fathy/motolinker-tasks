@@ -288,7 +288,7 @@ setTimeout(async () => {
     elsewhere.close(); reloaded.close();
   }
 
-  // 2. Its tab stays open and a participant on this bundle can't reach it.
+  // 2. Its tab stays open, and a participant on this bundle never reaches it.
   {
     const oldC = await openStream(adminOldPath);
     await adminSig({ roomId: 1, type: 'join' });
@@ -311,24 +311,29 @@ setTimeout(async () => {
     await wait(100);
     check('…a peer reporting a working connection to it puts it back, and says so',
       (await rosterNow()) === 'admin,employee_2' && sigFrames(saraNotif).some(f => f.json.type === 'roster' && f.json.participants.some(p => p.key === 'admin')), await rosterNow());
-    // Sara is offline from 105 s to 190 s; her first ping back can't count against it.
-    await pings(190_000, 190_000, []);
-    await sweepAt(195_000);
-    check('…a peer back from a silence is not a witness until it has watched 90 s again', (await rosterNow()) === 'admin,employee_2', await rosterNow());
-    await pings(205_000, 285_000, []);
-    await sweepAt(290_000);
-    check('…and once it has, it is', (await rosterNow()) === 'employee_2', await rosterNow());
+    // Reached once, going quiet is no reason: a network dropout looks just the same,
+    // the previous bundle could never get back in, and a call kept heals by itself.
+    await pings(120_000, 400_000, []);
+    await sweepAt(405_000);
+    check('…once reached, it is not dropped for going quiet while its tab is open', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    // Its tab closes: three minutes later, it goes.
+    await at(410_000, async () => { oldC.close(); await wait(150); });
+    await pings(420_000, 585_000, []);
+    await sweepAt(588_000);
+    check('…its tab closes: still listed 3 minutes on, less a few seconds', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(600_000, 600_000, []);
+    await sweepAt(600_000);
+    check('…and gone once they are up', (await rosterNow()) === 'employee_2', await rosterNow());
     await emptyCall();
-    oldC.close();
   }
 
-  // 3. A long call of old tabs only. Nobody here can see into it: left alone — and a
-  //    participant arriving from this bundle, or one of them reloading onto it, is
-  //    not a witness straight away.
+  // 3. A long call of old tabs only, and one of them reloads onto this bundle.
   {
     const oldD = await openStream(adminOldPath);
     const omarOld = await openStream(omarOldPath);
     const saraOld = await openStream('/api/employee/notifications/stream?_t=' + emp);
+    const adminChat = { frames: [], write(s) { this.frames.push(s); } };   // the admin's old tab, on its Chat page
+    ctx.chatSseClients.set('admin', adminChat);
     await adminSig({ roomId: 1, type: 'invite', to: 'employee_3' });
     await at(-1_200_000, () => adminSig({ roomId: 1, type: 'join' }));
     await at(-1_200_000, () => omarSig({ roomId: 1, type: 'join' }));
@@ -336,16 +341,23 @@ setTimeout(async () => {
     await sweepAt(0);
     check('a call of old tabs only, 20 minutes in, is left alone', (await rosterNow()) === 'admin,employee_2,employee_3', await rosterNow());
     saraOld.close();                                                   // Sara reloads onto this bundle…
+    adminChat.frames.length = 0;
     await saraSig({ roomId: 1, type: 'join', data: { sid: 'reloaded' } });   // …and takes her old place
+    // The admin's old tab still holds its connection to Sara's old page and would never
+    // dial her new one. It is shown a roster without her first, then the real one.
+    const legacyRosters = adminChat.frames.filter(f => /^event: huddle\n/.test(f) && f.includes('"roster"'))
+      .map(f => JSON.parse(f.slice(f.indexOf('data: ') + 6)));
+    check('…the old tabs are shown a roster without the reloaded person, then with them',
+      legacyRosters.length === 2 && legacyRosters[0].left === 'employee_2' && !legacyRosters[0].participants.some(p => p.key === 'employee_2')
+        && legacyRosters[1].participants.some(p => p.key === 'employee_2'), JSON.stringify(legacyRosters.map(r => [r.left, r.joined, r.participants.map(p => p.key)])));
     await pings(0, 0, []);
     await sweepAt(5_000);
-    check('…a reload into it does not make the reloaded page a witness against the others', (await rosterNow()) === 'admin,employee_2,employee_3', await rosterNow());
-    await pings(15_000, 585_000, []);
-    await sweepAt(589_000);
-    check('…nor do 90 s of watching, while another old tab is in the call', (await rosterNow()) === 'admin,employee_2,employee_3', await rosterNow());
-    await pings(600_000, 600_000, []);
-    await sweepAt(601_000);
-    check('…10 minutes of reaching neither, and both are dropped', (await rosterNow()) === 'employee_2', await rosterNow());
+    check('…the reloaded page is not a witness against the others straight away', (await rosterNow()) === 'admin,employee_2,employee_3', await rosterNow());
+    await pings(15_000, 700_000, []);
+    await sweepAt(705_000);
+    check('…nor ever, while two old tabs that may be talking to each other are in the call',
+      (await rosterNow()) === 'admin,employee_2,employee_3', await rosterNow());
+    ctx.chatSseClients.delete('admin');
     await emptyCall();
     oldD.close(); omarOld.close();
   }
@@ -360,9 +372,9 @@ setTimeout(async () => {
     oldE.close();
   }
 
-  // 5. The same person joins again from another device on the previous bundle while
-  //    their first entry is still listed: someone new behind the key, so a fresh
-  //    90 s before anyone's silence counts against it.
+  // 5. The same person joins again from another old tab while their first entry is
+  //    still listed — another device, or another tab of the same browser: someone
+  //    new behind the key, so a fresh 90 s before anyone's silence counts against it.
   {
     const oldF = await openStream(adminOldPath);
     const oldG = await openStream('/api/dashboard/notifications/stream?_t=' + token2);
@@ -376,6 +388,82 @@ setTimeout(async () => {
     check('a rejoin from another old device starts its own 90 s', (await rosterNow()) === 'admin,employee_2', await rosterNow());
     await emptyCall();
     oldF.close(); oldG.close();
+  }
+  {
+    const t1 = await openStream(adminOldPath), t2 = await openStream(adminOldPath);   // two tabs, one browser
+    await adminSig({ roomId: 1, type: 'join' });                                     // from the first
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w5b' } });
+    await pings(0, 30_000, ['admin']);                                              // Sara reaches it
+    await at(35_000, async () => { t1.close(); await wait(150); });                 // the first tab closes
+    await pings(45_000, 105_000, []);
+    await at(110_000, () => adminSig({ roomId: 1, type: 'join' }));                // the second tab joins
+    await pings(120_000, 120_000, []);
+    await sweepAt(122_000);
+    check('…likewise from another old tab of the same login, whose first was reached', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(135_000, 210_000, []);
+    await sweepAt(215_000);
+    check('…and if nobody reaches it in its own 90 s, it goes', (await rosterNow()) === 'employee_2', await rosterNow());
+    await emptyCall();
+    t2.close();
+  }
+
+  // 6. A working connection reported keeps it, even with no old tab on its login — its
+  //    stream may have come back under a new login after the person signed in again.
+  {
+    await adminSig({ roomId: 1, type: 'join' });   // no stream of the previous bundle on this login
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w6' } });
+    await pings(0, 210_000, ['admin']);
+    await sweepAt(215_000);
+    check('a peer reporting a working connection keeps it, whatever its streams', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(225_000, 300_000, []);
+    await sweepAt(305_000);
+    check('…and once nobody has for 90 s, with no tab on its login, it goes', (await rosterNow()) === 'employee_2', await rosterNow());
+    await emptyCall();
+  }
+
+  // 7. The countdown runs from whoever has watched longest: a newcomer doesn't restart it.
+  {
+    const oldH = await openStream(adminOldPath);
+    await adminSig({ roomId: 1, type: 'join' });
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w7' } });
+    await saraSig({ roomId: 1, type: 'invite', to: 'employee_3' });
+    await pings(0, 60_000, []);
+    await at(70_000, () => omarSig({ roomId: 1, type: 'join', data: { sid: 'o7' } }));   // Omar, on this bundle
+    await pings(75_000, 90_000, []);
+    await at(85_000, () => omarSig({ roomId: 1, type: 'alive', data: { connected: [] } }));
+    await sweepAt(95_000);
+    check('a newcomer does not restart the countdown', (await rosterNow()) === 'employee_2,employee_3', await rosterNow());
+    await emptyCall();
+    oldH.close();
+  }
+
+  // 8. A witness back from a silence of its own (its network dropped, its lid shut)
+  //    starts watching afresh: its gap is no evidence against anyone.
+  {
+    const oldK = await openStream(adminOldPath);
+    await adminSig({ roomId: 1, type: 'join' });
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w8' } });
+    await pings(0, 45_000, []);
+    await pings(130_000, 130_000, []);                    // 85 s without a ping, then back
+    await sweepAt(135_000);
+    check('a peer back from a silence is not a witness until it has watched 90 s again', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(145_000, 220_000, []);
+    await sweepAt(225_000);
+    check('…and once it has, it is', (await rosterNow()) === 'employee_2', await rosterNow());
+    await emptyCall();
+    oldK.close();
+  }
+
+  // Each stream is counted once, however often it is added or removed.
+  {
+    const tagX = 'test-idempotence';
+    const r1 = { hdLegacy: true, hdTag: tagX, write() {} }, r2 = { hdLegacy: true, hdTag: tagX, write() {} };
+    ctx.notifAdd('employee_9', r1); ctx.notifAdd('employee_9', r1); ctx.notifAdd('employee_9', r2);
+    const both = ctx.notifLegacyState(tagX).open;
+    ctx.notifRemove('employee_9', r1); ctx.notifRemove('employee_9', r1);
+    check('a stream is counted once, however often it is added or removed',
+      both === 2 && ctx.notifLegacyState(tagX).open === 1, JSON.stringify([both, ctx.notifLegacyState(tagX)]));
+    ctx.notifRemove('employee_9', r2);
   }
 
   // ── A stream abandoned while its login was being checked ──
