@@ -227,6 +227,39 @@ function chatImageFromDrop(e) {
   return files.length ? files[0] : null;
 }
 
+// ── Icons: draw only what is new ──────────────────────────────────────────────
+// lucide.createIcons() redraws every icon on the page, not just new placeholders:
+// the SVG it draws keeps the data-lucide attribute, so the next call matches it and
+// builds it again. The app calls it from ~130 places, several on every render, so a
+// big page (a leads table is thousands of icons) paid a full redraw each time.
+//
+// Worse while a tab is hidden. Most calls are queued with requestAnimationFrame, and
+// a hidden tab runs none of those — it keeps them all and runs them together when
+// it is shown again. A huddle re-renders every 3 s and isn't throttled (the browser
+// spares tabs in a call), so coming back after 20 minutes ran some 400 full redraws
+// in one go: tens of seconds frozen, and Chrome offering to close the page.
+//
+// So: nothing new to draw, nothing to do; otherwise draw within the placeholders'
+// own parents rather than the whole document. Same icons, same API for every caller.
+(function iconsDrawOnlyNew() {
+  const L = window.lucide;
+  if (!L || typeof L.createIcons !== 'function' || L.createIcons.drawsOnlyNew) return;
+  const draw = L.createIcons.bind(L);
+  const createIcons = function (opts) {
+    const o = opts || {};
+    const scope = o.root || document;
+    const pending = scope.querySelectorAll('[data-lucide]:not(svg)');
+    if (!pending.length) return;
+    const parents = new Set();
+    pending.forEach(el => { if (el.parentNode) parents.add(el.parentNode); });
+    // A whole page rendered at once is placeholders everywhere: one pass, as before.
+    if (parents.size > 24) return draw(o);
+    parents.forEach(p => { if (p.querySelector('[data-lucide]:not(svg)')) draw({ ...o, root: p }); });
+  };
+  createIcons.drawsOnlyNew = true;
+  L.createIcons = createIcons;
+})();
+
 // ── Self-healing EventSource ──────────────────────────────────────────────────
 // None of the five live streams in either portal had an error handler, so the
 // app leaned entirely on the browser's built-in retry — which is abandoned

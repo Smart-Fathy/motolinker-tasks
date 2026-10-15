@@ -76,6 +76,8 @@ function makeFetch(key) {
     if (one && /^[0-9]+$/.test(one)) return { ok: true, json: async () => ({ boot: bus.boot, participants: plist(Number(one)), started_at: window.__hdStarted }) };
     const body = JSON.parse(opts.body);
     window.__log.push(key + ' -> ' + body.type + (body.to ? ' @' + body.to : ''));
+    // A test can answer a request itself, or change it on the way in (scenarios 39–41).
+    if (window.__hook) { const reply = window.__hook(key, body); if (reply) return { ok: true, json: async () => reply }; }
     const rid = body.roomId;
     if (body.type === 'join') {
       (bus.rosters[rid] = bus.rosters[rid] || new Set()).add(key);
@@ -1397,6 +1399,218 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check('our own entry from an old-bundle tab still offers the call here', r.oldSelf === 'flex', JSON.stringify(r));
     check('…while our entry from another current tab hides it', r.otherTab === 'none', JSON.stringify(r));
   }
+
+  // 38. "This page is not responding" on coming back to a tab in a call. The 3-second
+  //     stats tick rebuilt the controls on every render — five new icons to draw —
+  //     and queued an icon pass each time; a hidden tab keeps every queued frame
+  //     callback and ran them all on its return, each one redrawing every icon on
+  //     the page. Now: the controls are rebuilt only when they change, one icon pass
+  //     at most is queued, and a hidden tab isn't rendered at all until it is shown.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      window.__iconCalls = 0;
+      window.lucide = { createIcons() { window.__iconCalls++; } };
+      try {
+        await window.A.huddleStart(40, false); await window.B.huddleStart(40, false);
+        const t0 = Date.now();
+        while (Date.now() - t0 < 15000) { const p = window.A.peers().get('B'); if (p && p.pc.connectionState === 'connected') break; await wait(150); }
+        await wait(100);
+        const micBtn = () => document.querySelectorAll('#hd-bar .hd-controls .hd-btn')[0];
+        const out = {};
+        // Steady state: the tick renders, the controls stay as they are.
+        const btn = micBtn();
+        window.__iconCalls = 0;
+        for (let i = 0; i < 5; i++) await window.A.hdPollStats();
+        await new Promise(res => requestAnimationFrame(() => res()));
+        out.sameButton = micBtn() === btn;
+        out.iconsOnTicks = window.__iconCalls;
+        // A real change rebuilds them; many renders before a frame queue one pass.
+        window.__iconCalls = 0;
+        window.A.huddleToggleMute(); window.A.hdRenderBar(); window.A.hdRenderBar(); window.A.huddleToggleMute(); window.A.hdRenderBar();
+        await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(() => res())));
+        out.rebuilt = micBtn() !== btn;
+        out.iconsOnChange = window.__iconCalls;
+        // Hidden: the tick leaves the bar alone; shown again, it is brought up to date.
+        const title = document.querySelector('#hd-bar .hd-title');
+        title.textContent = 'stale';
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+        await window.A.hdPollStats();
+        out.hiddenTitle = title.textContent;
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+        document.dispatchEvent(new Event('visibilitychange'));
+        out.shownTitle = title.textContent;
+        return out;
+      } finally {
+        delete document.hidden;
+        delete window.lucide;
+        window.A.huddleLeave(); window.B.huddleLeave();
+      }
+    });
+    check('a steady call does not rebuild the controls every 3 s', r.sameButton && r.iconsOnTicks === 0, JSON.stringify(r));
+    check('a real change rebuilds them, with one icon pass for many renders', r.rebuilt && r.iconsOnChange === 1, JSON.stringify(r));
+    check('a hidden tab is not re-rendered by the tick', r.hiddenTitle === 'stale', JSON.stringify(r));
+    check('…and is brought up to date when shown again', r.shownTitle !== 'stale' && /^Huddle\b.*\b2$/.test(r.shownTitle), JSON.stringify(r));
+  }
+  await sleep(150);
+
+  // 39. Someone moves their call from this page to a tab still on the previous bundle,
+  //     which takes the place without a sid — invisible to our own superseded check.
+  //     The server names the page the join displaced, answers that page's ping with a
+  //     sid that isn't its own, and answers its rejoin as held by someone else: each
+  //     makes it step aside. A roster merely listing our key without a sid is not
+  //     enough on its own; it may date from before our join.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const bus = window.__bus;
+      const toast = () => document.getElementById('hd-toast').textContent;
+      const reset = () => { window.__hook = null; window.A.huddleLeave(); window.B.huddleLeave(); bus.rosters[41] = new Set(); bus.sids[41] = {}; };
+      const inCall = async () => { reset(); await window.A.huddleStart(41, false); await window.B.huddleStart(41, false); await wait(200); document.getElementById('hd-toast').textContent = ''; };
+      const out = {};
+      try {
+        await inCall();
+        const listedBare = () => [{ key: 'A', name: 'A', sid: window.A.state().sid }, { key: 'B', name: 'B' }];
+        window.B.huddleOnSignal({ type: 'roster', roomId: 41, boot: bus.boot, participants: listedBare() });
+        await wait(50);
+        out.stays = window.B.state().roomId === 41;
+        window.B.huddleOnSignal({ type: 'roster', roomId: 41, boot: bus.boot, participants: listedBare(), joined: 'B', displaced: window.B.state().sid });
+        await wait(50);
+        out.byFrame = window.B.state().roomId === null && /somewhere else/.test(toast());
+
+        await inCall();
+        window.__hook = (key, body) => key === 'B' && body.type === 'alive' ? { ok: true, inCall: true, boot: bus.boot, sid: 'elsewhere' } : null;
+        await window.B.hdAlive();
+        out.byPing = window.B.state().roomId === null && /somewhere else/.test(toast());
+
+        // Its stream reopens and the roster lists it without its sid, so it rejoins;
+        // the server answers with the place held by someone else.
+        await inCall();
+        delete bus.sids[41].B;
+        window.__hook = (key, body) => key === 'B' && body.type === 'join'
+          ? { ok: true, superseded: true, boot: bus.boot, participants: [{ key: 'A', name: 'A' }, { key: 'B', name: 'B', sid: 'elsewhere' }] } : null;
+        window.__log.length = 0;
+        await window.B.huddleOnStreamOpen();
+        out.byRejoin = window.__log.includes('B -> join') && window.B.state().roomId === null && /somewhere else/.test(toast());
+        return out;
+      } finally { reset(); }
+    });
+    check('a roster listing our key without a sid is no reason to leave by itself', r.stays, JSON.stringify(r));
+    check('the frame of a join that took our place makes this page step aside', r.byFrame, JSON.stringify(r));
+    check('…as does a ping answered with a sid that is not ours', r.byPing, JSON.stringify(r));
+    check('…and a rejoin answered with the place held by someone else', r.byRejoin, JSON.stringify(r));
+  }
+  await sleep(150);
+
+  // 40. A peer on the previous bundle that the server dropped as unreachable. That
+  //     bundle hears signalling only on its Chat page and can't rejoin by itself, so
+  //     the drop was final: we hung up on the pair and stopped offering. Now our end is
+  //     kept, out of sight, and offered on; when it answers, it is back on screen and
+  //     in our ping — which is what puts it back in the call on the server.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const bus = window.__bus, realC = bus.inbox.C;
+      const self = () => ({ key: 'A', name: 'A', sid: window.A.state().sid });
+      const out = {};
+      // C stands in for the previous bundle: it joins without a sid.
+      window.__hook = (key, body) => { if (key === 'C' && body.type === 'join' && body.data) delete body.data.sid; return null; };
+      try {
+        await window.A.huddleStart(42, false);
+        bus.inbox.C = () => {};                                   // on another page: deaf
+        await window.C.huddleStart(42, false, true);
+        await wait(300);
+        const p = window.A.peers().get('C');
+        out.dialled = !!p && !p.sid && p.pc.connectionState !== 'connected';
+        bus.rosters[42].delete('C');                              // the server gives up on it
+        await window.A.huddleOnSignal({ type: 'roster', roomId: 42, boot: bus.boot, participants: [self()], left: 'C', swept: true });
+        window.A.hdRenderBar();
+        out.kept = window.A.peers().get('C') === p && !!p.keptAt;
+        out.hidden = !document.querySelector('#hd-bar [data-tile="C"]') && /\b1$/.test(document.querySelector('#hd-bar .hd-title').textContent);
+        window.__log.length = 0; p.restarts = [];
+        for (let i = 0; i < 8; i++) await window.A.hdPollStats();
+        out.stillKept = window.A.peers().get('C') === p;
+        out.reoffered = window.__log.filter(l => l === 'A -> offer @C').length;
+        bus.inbox.C = realC;                                      // back on its Chat page
+        const t0 = Date.now();
+        while (Date.now() - t0 < 15000 && p.pc.connectionState !== 'connected') { p.restarts = []; await window.A.hdPollStats(); await wait(300); }
+        out.connected = p.pc.connectionState === 'connected';
+        window.A.hdRenderBar();
+        out.shown = !!document.querySelector('#hd-bar [data-tile="C"]');
+        window.__alive = [];
+        await window.A.hdAlive();
+        const sent = window.__alive.find(a => a.key === 'A');
+        out.reported = !!sent && sent.data.connected.includes('C');
+        await window.A.huddleOnSignal({ type: 'roster', roomId: 42, boot: bus.boot, participants: [self(), { key: 'C', name: 'C' }] });
+        out.ordinary = window.A.peers().get('C') === p && !p.keptAt;
+        return out;
+      } finally {
+        window.__hook = null; bus.inbox.C = realC;
+        window.A.huddleLeave(); window.C.huddleLeave();
+      }
+    });
+    check('a dropped peer on the previous bundle keeps its pair, out of sight', r.dialled && r.kept && r.hidden, JSON.stringify(r));
+    check('…which is offered to on every tick that would offer', r.stillKept && r.reoffered >= 1, JSON.stringify(r));
+    check('…and once it answers, is back on screen and in our ping', r.connected && r.shown && r.reported, JSON.stringify(r));
+    check('…and an ordinary peer again once the server lists it', r.ordinary, JSON.stringify(r));
+  }
+  await sleep(150);
+
+  // 41. …but only for a while, and only for the previous bundle: a peer on this bundle
+  //     rejoins by itself when it wakes, and one that pressed Leave has left.
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const bus = window.__bus, realB = bus.inbox.B, realC = bus.inbox.C;
+      const listed = () => [...bus.rosters[43]].map(k => ({ key: k, name: k, sid: bus.sids[43][k] }));
+      const out = {};
+      window.__hook = (key, body) => { if (key === 'C' && body.type === 'join' && body.data) delete body.data.sid; return null; };
+      try {
+        await window.A.huddleStart(43, false);
+        bus.inbox.B = () => {}; bus.inbox.C = () => {};
+        await window.B.huddleStart(43, false, true);
+        await window.C.huddleStart(43, false, true);
+        await wait(300);
+        const pc = window.A.peers().get('C');
+        out.dialled = window.A.peers().has('B') && !!pc;
+        bus.rosters[43].delete('B');
+        await window.A.huddleOnSignal({ type: 'roster', roomId: 43, boot: bus.boot, participants: listed(), left: 'B', swept: true });
+        out.sidPeerDropped = !window.A.peers().has('B');
+        bus.rosters[43].delete('C');
+        await window.A.huddleOnSignal({ type: 'roster', roomId: 43, boot: bus.boot, participants: listed(), left: 'C', swept: true });
+        out.kept = window.A.peers().get('C') === pc;
+        // The same person joins again from another old tab: start the pair afresh.
+        window.__log.length = 0;
+        bus.rosters[43].add('C');
+        await window.A.huddleOnSignal({ type: 'roster', roomId: 43, boot: bus.boot, participants: listed(), joined: 'C' });
+        await wait(200);
+        const pc2 = window.A.peers().get('C');
+        out.fresh = !!pc2 && pc2 !== pc && pc.pc.signalingState === 'closed' && window.__log.includes('A -> offer @C');
+        bus.rosters[43].delete('C');
+        await window.A.huddleOnSignal({ type: 'roster', roomId: 43, boot: bus.boot, participants: listed(), left: 'C', swept: true });
+        out.keptAgain = window.A.peers().get('C') === pc2;
+        pc2.keptAt = Date.now() - 10 * 60 * 1000 - 1000;          // the server's window is up
+        await window.A.hdPollStats(); await window.A.hdPollStats();
+        out.expired = !window.A.peers().has('C');
+        window.C.huddleLeave();
+        await window.C.huddleStart(43, false, true);
+        await wait(300);
+        out.redialled = window.A.peers().has('C');
+        window.C.huddleLeave();                                   // its Leave button
+        await wait(100);
+        out.leftDropped = !window.A.peers().has('C');
+        return out;
+      } finally {
+        window.__hook = null; bus.inbox.B = realB; bus.inbox.C = realC;
+        window.A.huddleLeave(); window.B.huddleLeave(); window.C.huddleLeave();
+      }
+    });
+    check('a swept peer on this bundle whose pair is not working is let go, as before', r.dialled && r.sidPeerDropped, JSON.stringify(r));
+    check('…a kept pair is started afresh when the person joins again from another old tab', r.kept && r.fresh, JSON.stringify(r));
+    check('…and goes once the server would no longer put the peer back', r.keptAgain && r.expired, JSON.stringify(r));
+    check('…and a peer on the previous bundle that leaves goes at once', r.redialled && r.leftDropped, JSON.stringify(r));
+  }
+  await sleep(150);
 
   check('no page errors', errs.length === 0, errs.slice(0, 4).join(' | '));
 

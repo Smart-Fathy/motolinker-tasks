@@ -32,7 +32,8 @@ global.fetch = async (input, init) => {
   const accept = String(typeof h.get === 'function' ? (h.get('Accept') || '') : (h.Accept || ''));
   let rows = [];
   if (table === 'chat_room_members') { memberQueries++; rows = MEMBERS; }
-  if (table === 'employees') rows = [{ id: 2, name: 'Sara', avatar_url: null }, { id: 3, name: 'Omar', avatar_url: null }];
+  if (table === 'employees') rows = [{ id: 2, name: 'Sara', avatar_url: null }, { id: 3, name: 'Omar', avatar_url: null },
+    ...[4, 5, 6, 7, 8].map(id => ({ id, name: 'Guest ' + id, avatar_url: null }))];
   if (table === 'notifications' && init && init.method === 'POST') rows = [{ id: 1, ...JSON.parse(init.body) }];
   // A login the server has not seen since it started: restoring it is a round trip,
   // slow on purpose here, as Supabase is after a restart.
@@ -254,7 +255,8 @@ setTimeout(async () => {
   const sweepAt = offset => ctx.huddleSweep(realNow() + offset);
   const rosterNow = async () => (await fetch(base + '/api/dashboard/chat/huddle/1', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json())).participants.map(p => p.key).sort().join();
   // Sara on this bundle, pinging every 15 s like a live tab, reporting who she reaches.
-  const pings = async (from, to, connected) => { for (let t = from; t <= to; t += 15_000) await at(t, () => saraSig({ roomId: 1, type: 'alive', data: { connected } })); };
+  const pingsBy = sig => async (from, to, connected) => { for (let t = from; t <= to; t += 15_000) await at(t, () => sig({ roomId: 1, type: 'alive', data: { connected } })); };
+  const pings = pingsBy(saraSig);
   const emptyCall = async () => {
     for (const k of (await rosterNow()).split(',').filter(Boolean)) {
       if (k === 'admin') await adminSig({ roomId: 1, type: 'leave' });
@@ -288,41 +290,44 @@ setTimeout(async () => {
     elsewhere.close(); reloaded.close();
   }
 
-  // 2. Its tab stays open, and a participant on this bundle never reaches it.
+  // 2. Its tab stays open, and a participant on this bundle never reaches it — a closed
+  //    tab whose login keeps another old tab open, or a live one away from its Chat
+  //    page, which is all that bundle listens on. Ten minutes, so the live one has time
+  //    to come back.
   {
     const oldC = await openStream(adminOldPath);
     await adminSig({ roomId: 1, type: 'join' });
     await saraSig({ roomId: 1, type: 'join', data: { sid: 'w1' } });
-    await pings(0, 75_000, []);
-    await sweepAt(80_000);
-    check('…a participant who has watched for less than 90 s is not yet a witness', (await rosterNow()) === 'admin,employee_2', await rosterNow());
-    await pings(90_000, 90_000, []);
+    await pings(0, 585_000, []);
+    await sweepAt(590_000);
+    check('…a participant who has watched for less than 10 minutes is not yet a witness', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(600_000, 600_000, []);
     saraNotif.frames.length = 0;
-    await sweepAt(95_000);
+    await sweepAt(605_000);
     await wait(100);
-    check('…after 90 s of pings that never report reaching it, it is dropped', (await rosterNow()) === 'employee_2' && leftFrames('admin').length === 1, await rosterNow());
+    check('…after 10 minutes of pings that never report reaching it, it is dropped', (await rosterNow()) === 'employee_2' && leftFrames('admin').length === 1, await rosterNow());
     // Somebody who is not in the call has no say.
     await saraSig({ roomId: 1, type: 'invite', to: 'employee_3' });
-    await at(100_000, () => omarSig({ roomId: 1, type: 'alive', data: { connected: ['admin'] } }));
+    await at(610_000, () => omarSig({ roomId: 1, type: 'alive', data: { connected: ['admin'] } }));
     check('…a report from someone not in the call puts nothing back', (await rosterNow()) === 'employee_2', await rosterNow());
     // It was there after all: a peer reports a working connection to it.
     saraNotif.frames.length = 0;
-    await at(105_000, () => saraSig({ roomId: 1, type: 'alive', data: { connected: ['admin'] } }));
+    await at(615_000, () => saraSig({ roomId: 1, type: 'alive', data: { connected: ['admin'] } }));
     await wait(100);
     check('…a peer reporting a working connection to it puts it back, and says so',
       (await rosterNow()) === 'admin,employee_2' && sigFrames(saraNotif).some(f => f.json.type === 'roster' && f.json.participants.some(p => p.key === 'admin')), await rosterNow());
-    // Reached once, going quiet is no reason: a network dropout looks just the same,
-    // the previous bundle could never get back in, and a call kept heals by itself.
-    await pings(120_000, 400_000, []);
-    await sweepAt(405_000);
-    check('…once reached, it is not dropped for going quiet while its tab is open', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    // Reached, then quiet for a few minutes: a network dropout or a look at another
+    // page looks just the same, and a call that is kept heals when it is back.
+    await pings(630_000, 800_000, []);
+    await sweepAt(805_000);
+    check('…once reached, going quiet for a few minutes is no reason', (await rosterNow()) === 'admin,employee_2', await rosterNow());
     // Its tab closes: three minutes later, it goes.
-    await at(410_000, async () => { oldC.close(); await wait(150); });
-    await pings(420_000, 585_000, []);
-    await sweepAt(588_000);
+    await at(810_000, async () => { oldC.close(); await wait(150); });
+    await pings(820_000, 985_000, []);
+    await sweepAt(988_000);
     check('…its tab closes: still listed 3 minutes on, less a few seconds', (await rosterNow()) === 'admin,employee_2', await rosterNow());
-    await pings(600_000, 600_000, []);
-    await sweepAt(600_000);
+    await pings(1_000_000, 1_000_000, []);
+    await sweepAt(1_000_000);
     check('…and gone once they are up', (await rosterNow()) === 'employee_2', await rosterNow());
     await emptyCall();
   }
@@ -374,18 +379,18 @@ setTimeout(async () => {
 
   // 5. The same person joins again from another old tab while their first entry is
   //    still listed — another device, or another tab of the same browser: someone
-  //    new behind the key, so a fresh 90 s before anyone's silence counts against it.
+  //    new behind the key, so a fresh 10 minutes before anyone's silence counts.
   {
     const oldF = await openStream(adminOldPath);
     const oldG = await openStream('/api/dashboard/notifications/stream?_t=' + token2);
     await adminSig({ roomId: 1, type: 'join' });
     await saraSig({ roomId: 1, type: 'join', data: { sid: 'w5' } });
-    await pings(0, 75_000, []);
-    await at(80_000, () => fetch(base + '/api/dashboard/chat/huddle/signal', { method: 'POST',
+    await pings(0, 585_000, []);
+    await at(590_000, () => fetch(base + '/api/dashboard/chat/huddle/signal', { method: 'POST',
       headers: { Authorization: 'Bearer ' + token2, 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: 1, type: 'join' }) }));
-    await pings(90_000, 90_000, []);
-    await sweepAt(100_000);
-    check('a rejoin from another old device starts its own 90 s', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(600_000, 600_000, []);
+    await sweepAt(610_000);
+    check('a rejoin from another old device starts its own 10 minutes', (await rosterNow()) === 'admin,employee_2', await rosterNow());
     await emptyCall();
     oldF.close(); oldG.close();
   }
@@ -395,14 +400,17 @@ setTimeout(async () => {
     await saraSig({ roomId: 1, type: 'join', data: { sid: 'w5b' } });
     await pings(0, 30_000, ['admin']);                                              // Sara reaches it
     await at(35_000, async () => { t1.close(); await wait(150); });                 // the first tab closes
-    await pings(45_000, 105_000, []);
-    await at(110_000, () => adminSig({ roomId: 1, type: 'join' }));                // the second tab joins
-    await pings(120_000, 120_000, []);
-    await sweepAt(122_000);
+    await pings(45_000, 585_000, []);
+    await at(590_000, () => adminSig({ roomId: 1, type: 'join' }));                // the second tab joins
+    await pings(600_000, 600_000, []);
+    await sweepAt(610_000);
     check('…likewise from another old tab of the same login, whose first was reached', (await rosterNow()) === 'admin,employee_2', await rosterNow());
-    await pings(135_000, 210_000, []);
-    await sweepAt(215_000);
-    check('…and if nobody reaches it in its own 90 s, it goes', (await rosterNow()) === 'employee_2', await rosterNow());
+    await pings(615_000, 1_185_000, []);
+    await sweepAt(1_188_000);
+    check('…which is not a witness against it before its own 10 minutes are up', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(1_200_000, 1_200_000, []);
+    await sweepAt(1_200_000);
+    check('…and if nobody reaches it in them, it goes', (await rosterNow()) === 'employee_2', await rosterNow());
     await emptyCall();
     t2.close();
   }
@@ -421,17 +429,34 @@ setTimeout(async () => {
     await emptyCall();
   }
 
+  // 6b. Its tab open, reached for five minutes and then not: the ten minutes run from
+  //     the last report, not from when it joined.
+  {
+    const oldJ = await openStream(adminOldPath);
+    await adminSig({ roomId: 1, type: 'join' });
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w6b' } });
+    await pings(0, 300_000, ['admin']);
+    await pings(315_000, 885_000, []);
+    await sweepAt(890_000);
+    check('reached for five minutes, then not: kept for 10 minutes from the last report', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(900_000, 915_000, []);
+    await sweepAt(915_000);
+    check('…and gone once they are up', (await rosterNow()) === 'employee_2', await rosterNow());
+    await emptyCall();
+    oldJ.close();
+  }
+
   // 7. The countdown runs from whoever has watched longest: a newcomer doesn't restart it.
   {
     const oldH = await openStream(adminOldPath);
     await adminSig({ roomId: 1, type: 'join' });
     await saraSig({ roomId: 1, type: 'join', data: { sid: 'w7' } });
     await saraSig({ roomId: 1, type: 'invite', to: 'employee_3' });
-    await pings(0, 60_000, []);
-    await at(70_000, () => omarSig({ roomId: 1, type: 'join', data: { sid: 'o7' } }));   // Omar, on this bundle
-    await pings(75_000, 90_000, []);
-    await at(85_000, () => omarSig({ roomId: 1, type: 'alive', data: { connected: [] } }));
-    await sweepAt(95_000);
+    await pings(0, 540_000, []);
+    await at(550_000, () => omarSig({ roomId: 1, type: 'join', data: { sid: 'o7' } }));   // Omar, on this bundle
+    await pings(555_000, 600_000, []);
+    await at(585_000, () => omarSig({ roomId: 1, type: 'alive', data: { connected: [] } }));
+    await sweepAt(605_000);
     check('a newcomer does not restart the countdown', (await rosterNow()) === 'employee_2,employee_3', await rosterNow());
     await emptyCall();
     oldH.close();
@@ -443,15 +468,152 @@ setTimeout(async () => {
     const oldK = await openStream(adminOldPath);
     await adminSig({ roomId: 1, type: 'join' });
     await saraSig({ roomId: 1, type: 'join', data: { sid: 'w8' } });
-    await pings(0, 45_000, []);
-    await pings(130_000, 130_000, []);                    // 85 s without a ping, then back
-    await sweepAt(135_000);
-    check('a peer back from a silence is not a witness until it has watched 90 s again', (await rosterNow()) === 'admin,employee_2', await rosterNow());
-    await pings(145_000, 220_000, []);
-    await sweepAt(225_000);
+    await pings(0, 540_000, []);
+    await pings(625_000, 625_000, []);                    // 85 s without a ping, then back
+    await sweepAt(630_000);
+    check('a peer back from a silence is not a witness until it has watched 10 minutes again', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(640_000, 1_215_000, []);
+    await sweepAt(1_220_000);
+    check('…nor a few seconds before', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(1_230_000, 1_230_000, []);
+    await sweepAt(1_230_000);
     check('…and once it has, it is', (await rosterNow()) === 'employee_2', await rosterNow());
     await emptyCall();
     oldK.close();
+  }
+
+  // 9. Reached once, then its tab closed while another old tab on the same login stays
+  //    open: the streams can't tell the two apart. Someone who joins later and never
+  //    reaches it is a witness all the same — the old report counts for nothing then.
+  {
+    const omarPings = pingsBy(omarSig);
+    const t1 = await openStream(adminOldPath), t2 = await openStream(adminOldPath);
+    await adminSig({ roomId: 1, type: 'join' });                                     // from t1
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w9' } });
+    await pings(0, 60_000, ['admin']);                                              // Sara reaches it
+    await at(65_000, async () => { t1.close(); await wait(150); });                 // t1 closes, t2 stays
+    await pings(75_000, 120_000, []);
+    await at(125_000, () => saraSig({ roomId: 1, type: 'leave', data: { sid: 'w9' } }));
+    await sweepAt(130_000);
+    check('reached, then closed with a twin tab open: alone in the call, it is left alone', (await rosterNow()) === 'admin', await rosterNow());
+    await adminSig({ roomId: 1, type: 'invite', to: 'employee_3' });
+    await at(200_000, () => omarSig({ roomId: 1, type: 'join', data: { sid: 'o9' } }));
+    await omarPings(205_000, 790_000, []);
+    await sweepAt(795_000);
+    check('…a newcomer who never reaches it is a witness after 10 minutes, not before', (await rosterNow()) === 'admin,employee_3', await rosterNow());
+    await omarPings(805_000, 805_000, []);
+    await sweepAt(805_000);
+    check('…and then it goes', (await rosterNow()) === 'employee_3', await rosterNow());
+    await omarSig({ roomId: 1, type: 'leave', data: { sid: 'o9' } });
+    await emptyCall();
+    t2.close();
+  }
+
+  // 10. A participant on this bundle reloads: the new page has watched nothing yet,
+  //     whatever the old one had.
+  {
+    const oldM = await openStream(adminOldPath);
+    await adminSig({ roomId: 1, type: 'join' });
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w10a' } });
+    await pings(0, 540_000, []);
+    await at(545_000, () => saraSig({ roomId: 1, type: 'join', data: { sid: 'w10b' } }));   // her page reloads
+    await pings(555_000, 630_000, []);
+    await sweepAt(635_000);
+    check('a reloaded page is a witness only once it has watched 10 minutes itself', (await rosterNow()) === 'admin,employee_2', await rosterNow());
+    await pings(645_000, 1_150_000, []);
+    await sweepAt(1_150_000);
+    check('…which it then is', (await rosterNow()) === 'employee_2', await rosterNow());
+    await emptyCall();
+    oldM.close();
+  }
+
+  // 11. A report of a working connection puts a dropped old tab back only into a call
+  //     with room for it.
+  {
+    const oldP = await openStream(adminOldPath);
+    await adminSig({ roomId: 1, type: 'join' });
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w11' } });
+    await pings(0, 600_000, []);
+    await sweepAt(605_000);
+    const guests = [4, 5, 6, 7, 8].map(id => {
+      const tok = 'hdsignal-test-guest-' + id;
+      ctx.employeeSessions.set(tok, { id, name: 'Guest ' + id, username: 'g' + id, job_title: '', permissions: normEmpPerms({ chat: true }) });
+      return body => fetch(base + '/api/employee/chat/huddle/signal', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+    });
+    for (const [i, g] of guests.entries()) {
+      await saraSig({ roomId: 1, type: 'invite', to: 'employee_' + (4 + i) });
+      await at(606_000, () => g({ roomId: 1, type: 'join', data: { sid: 'g11-' + i } }));
+    }
+    await at(610_000, () => saraSig({ roomId: 1, type: 'alive', data: { connected: ['admin'] } }));
+    const full = (await rosterNow()).split(',');
+    check('a dropped old tab is not put back into a full call', full.length === 6 && !full.includes('admin'), full.join());
+    await at(612_000, () => guests[4]({ roomId: 1, type: 'leave', data: { sid: 'g11-4' } }));
+    await at(615_000, () => saraSig({ roomId: 1, type: 'alive', data: { connected: ['admin'] } }));
+    check('…and is once there is room', (await rosterNow()).split(',').includes('admin'), await rosterNow());
+    for (const g of guests) await g({ roomId: 1, type: 'leave' });
+    await emptyCall();
+    oldP.close();
+  }
+
+  // 12. Old tabs are shown a roster without someone only when a new page takes their
+  //     place: not when the same page puts itself back, nor on a rejoin after a restart.
+  {
+    const adminChat = { frames: [], write(s) { this.frames.push(s); } };   // the admin's old tab, on its Chat page
+    ctx.chatSseClients.set('admin', adminChat);
+    const oldQ = await openStream(adminOldPath);
+    const legacyRosters = () => adminChat.frames.filter(f => /^event: huddle\n/.test(f) && f.includes('"roster"'))
+      .map(f => JSON.parse(f.slice(f.indexOf('data: ') + 6)));
+    await adminSig({ roomId: 1, type: 'join' });
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w12' } });
+    adminChat.frames.length = 0;
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w12' } });
+    check('the same page putting itself back shows old tabs no roster without it',
+      legacyRosters().length === 1 && !legacyRosters()[0].left, JSON.stringify(legacyRosters().map(r => [r.left, r.joined])));
+    adminChat.frames.length = 0;
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'w12-laptop', afterRestart: true } });
+    check('…nor does another of her pages rejoining after a restart (a partial roster would hang them up)',
+      legacyRosters().length === 0, JSON.stringify(legacyRosters().map(r => [r.left, r.joined])));
+    ctx.chatSseClients.delete('admin');
+    await emptyCall();
+    oldQ.close();
+  }
+
+  // 13. Someone moves their call from a page on this bundle to a tab still on the
+  //     previous one, which takes the place without a sid. The page must step aside —
+  //     and not take the place back when its stream reopens, which would turn the old
+  //     tabs in the call away from where the person now is.
+  {
+    const adminChat = { frames: [], write(s) { this.frames.push(s); } };
+    ctx.chatSseClients.set('admin', adminChat);
+    const oldR = await openStream(adminOldPath);
+    const rosterRead = async () => (await fetch(base + '/api/dashboard/chat/huddle/1', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json())).participants;
+    await adminSig({ roomId: 1, type: 'join' });
+    await saraSig({ roomId: 1, type: 'join', data: { sid: 'phone' } });   // Sara, on her phone
+    saraNotif.frames.length = 0;
+    await saraSig({ roomId: 1, type: 'join' });                            // then from her laptop's old tab
+    await wait(100);
+    const jf = sigFrames(saraNotif).filter(f => f.json.type === 'roster' && f.json.joined === 'employee_2').slice(-1)[0];
+    check('a tab on the previous bundle taking a page\'s place names the page it took it from',
+      !!jf && jf.json.displaced === 'phone', JSON.stringify(jf && jf.json));
+    const ping = await saraSig({ roomId: 1, type: 'alive', data: { connected: [] } });
+    check('…and the page\'s ping is answered with a sid that is not its own',
+      ping.inCall === true && typeof ping.sid === 'string' && ping.sid !== 'phone', JSON.stringify(ping));
+    adminChat.frames.length = 0;
+    saraNotif.frames.length = 0;
+    const back = await saraSig({ roomId: 1, type: 'join', data: { sid: 'phone' } });   // its stream reopened: it tries to rejoin
+    await wait(100);
+    const me = (back.participants || []).find(p => p.key === 'employee_2');
+    const held = (await rosterRead()).find(p => p.key === 'employee_2');
+    check('…its rejoin is told to step aside, and changes nothing',
+      back.superseded === true && !!me && !!me.sid && me.sid !== 'phone' && !!held && !held.sid
+        && adminChat.frames.length === 0 && sigFrames(saraNotif).length === 0, JSON.stringify({ back, held, old: adminChat.frames.length }));
+    const fresh = await saraSig({ roomId: 1, type: 'join', data: { sid: 'phone2' } });   // she joins again on her phone
+    check('…while a fresh page of hers takes it back as usual',
+      fresh.ok === true && !fresh.superseded && (await rosterRead()).some(p => p.key === 'employee_2' && p.sid === 'phone2'), JSON.stringify(fresh));
+    ctx.chatSseClients.delete('admin');
+    await emptyCall();
+    oldR.close();
   }
 
   // Each stream is counted once, however often it is added or removed.

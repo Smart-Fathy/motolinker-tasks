@@ -221,6 +221,7 @@ function hdLeaveOnUnload() {
   hdTeardown();
 }
 if (typeof window !== 'undefined') window.addEventListener('pagehide', hdLeaveOnUnload);
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (!document.hidden && _hd.roomId) hdRenderBar(); });
 
 // The same person joined this huddle from another tab or device. The server holds
 // one place per person, and offers to them reach every tab they have open, so two
@@ -530,6 +531,11 @@ function hdDialRoster() {
   });
 }
 
+// How long a pair to a dropped peer on the previous bundle is kept (see the roster
+// handler): as long as the server would still put that peer back on a report of a
+// working connection (HUDDLE_READMIT_MS).
+const HD_KEEP_MS = 10 * 60 * 1000;
+function hdKept(p) { return !!p.keptAt && Date.now() - p.keptAt < HD_KEEP_MS; }
 function hdDropPeer(key) {
   const p = _hd.peers.get(key);
   if (!p) return;
@@ -577,7 +583,9 @@ async function huddleOnSignal(msg) {
     // forgotten the call, so this roster is missing people who are still in it. It
     // used to be read as "they all left" and hung up on them. Rejoin instead.
     if (msg.boot && _hd.boot && msg.boot !== _hd.boot) { hdRejoin(_hd.roomId); return; }
-    if (hdSuperseded(roster)) { hdStepAside(); return; }
+    // displaced names the page a join took the place of. A tab on the previous bundle
+    // takes it without a sid, so nothing else here would tell.
+    if (hdSuperseded(roster) || (msg.displaced && msg.displaced === _hd.sid)) { hdStepAside(); return; }
     // The sweep dropped us (an asleep tab) — get back on the roster.
     if (msg.left === hdMe() || (msg.left && !roster.some(p => p.key === hdMe()) && _hd.sid)) hdRejoin(_hd.roomId, true);
     _hd.roster = roster;
@@ -588,12 +596,20 @@ async function huddleOnSignal(msg) {
       // Back on a new page (a reload, a crash) while our connection still points at
       // the old one: drop it and dial fresh. A peer that was on the previous bundle had
       // no sid to compare, but that bundle can't join a call it is still in, so a join
-      // from it with a sid is always a new page.
-      const replaced = listed && listed.sid && (p.sid ? listed.sid !== p.sid : msg.joined === k);
+      // from it with a sid is always a new page — and so is any join for a pair we only
+      // kept after the server dropped it (see below): another old tab, which could never
+      // take an offer from our stale end.
+      const replaced = listed && (listed.sid ? (p.sid ? listed.sid !== p.sid : msg.joined === k) : !!p.keptAt && msg.joined === k);
+      // A peer on the previous bundle that the server dropped as unreachable may only
+      // have been deaf for a while — that bundle hears signalling only on its Chat page
+      // — or asleep, and it can't rejoin by itself. Keep our end, out of sight, and keep
+      // offering: if it answers, our 'alive' report puts it back in the call.
+      if (listed) p.keptAt = 0;
+      else if (msg.swept && msg.left === k && !p.sid && !p.keptAt) p.keptAt = Date.now();
       // Left. A swept peer whose connection still works is kept: its tab is only
       // asleep and rejoins on its next ping. An unlisted pair that isn't working
       // goes now, or on the stats tick once it stops (see hdPollStats).
-      const gone = !listed && ((msg.left === k && !msg.swept) || (!grace && p.pc.connectionState !== 'connected'));
+      const gone = !listed && !hdKept(p) && ((msg.left === k && !msg.swept) || (!grace && p.pc.connectionState !== 'connected'));
       if (gone || replaced) hdDropPeer(k);
       else if (listed && listed.sid && !p.sid) p.sid = listed.sid;
     });
@@ -770,7 +786,7 @@ async function hdPollStats() {
       // Off the roster and not working: they left and we missed it (or kept the pair
       // through a sweep, and it has since died). Two ticks, so an offer that beats
       // its own roster frame here is never mistaken for one.
-      if (!_hd.roster.some(r => r.key === key) && st !== 'connected' && Date.now() >= _hd.graceUntil) {
+      if (!_hd.roster.some(r => r.key === key) && st !== 'connected' && !hdKept(p) && Date.now() >= _hd.graceUntil) {
         p.orphanTicks = (p.orphanTicks || 0) + 1;
         if (p.orphanTicks >= 2) { hdDropPeer(key); continue; }
       } else {
@@ -791,7 +807,9 @@ async function hdPollStats() {
     } catch (_) {}
   }
   if (Date.now() - _hd.aliveAt >= 15000) { _hd.aliveAt = Date.now(); hdAlive(); }
-  hdRenderBar();
+  // Nobody sees a hidden tab: its labels and quality bars are brought up to date when
+  // it is shown again (the visibilitychange listener below), not every 3 s meanwhile.
+  if (!document.hidden) hdRenderBar();
 }
 // 0 connecting/failed · 1 poor · 2 fair · 3 good
 function hdQuality(p) {
@@ -1266,18 +1284,21 @@ function hdRenderBar() {
       + '<button class="hd-wbtn" data-act="max" title="Maximise"><i data-lucide="maximize-2" style="width:14px;height:14px"></i></button>'
       + '</div><div class="hd-tiles"></div><div class="hd-controls"></div>';
     hdBindWidget(bar);
+    hdIconsSoon();
   }
   const tiles = bar.querySelector('.hd-tiles');
   bar.style.display = 'flex';
   hdApplyWidget(bar);
-  bar.querySelector('.hd-title').textContent = 'Huddle · ' + (_hd.peers.size + 1);
+  // A pair kept to a dropped peer (see the roster handler) stays out of sight until
+  // it connects.
+  const peers = [..._hd.peers.entries()].filter(([, p]) => !p.keptAt || p.pc.connectionState === 'connected');
+  bar.querySelector('.hd-title').textContent = 'Huddle · ' + (peers.length + 1);
   hdPaintClock();
 
   const selfLabel = 'You' + (_hd.muted ? ' (muted)' : '') + (_hd.sharing ? ' · sharing' : '');
   hdPaintTile(hdTileEl(tiles, '__self'), selfLabel, _hd.sharing ? _hd.screen : _hd.local,
               !!(_hd.cam || _hd.sharing), true, null, hdMe());
 
-  const peers = [..._hd.peers.entries()];
   peers.forEach(([key, p]) => {
     const label = (p.name || key) + (p.state !== 'connected' ? ' · ' + p.state : '')
       + (p.sharing ? ' · sharing' : '');
@@ -1289,15 +1310,31 @@ function hdRenderBar() {
   [...tiles.children].forEach(el => { if (!keep.has(el.getAttribute('data-tile'))) el.remove(); });
   hdPruneAudio(new Set(peers.map(([k]) => k)));
 
-  // No media lives in the controls, so replacing those wholesale is safe
-  const ic = n => `<i data-lucide="${n}" style="width:16px;height:16px"></i>`;
-  bar.querySelector('.hd-controls').innerHTML = `
+  // No media lives in the controls, so replacing those wholesale is safe — but only
+  // when what they show has changed. This runs every 3 s for the whole call, and new
+  // buttons are new icons to draw (see hdIconsSoon).
+  const controls = bar.querySelector('.hd-controls');
+  const shows = [_hd.muted, _hd.cam, _hd.sharing].map(Number).join('');
+  if (controls.dataset.shows !== shows) {
+    controls.dataset.shows = shows;
+    const ic = n => `<i data-lucide="${n}" style="width:16px;height:16px"></i>`;
+    controls.innerHTML = `
     <button class="hd-btn ${_hd.muted ? 'off' : 'on'}" onclick="huddleToggleMute()" title="${_hd.muted ? 'Unmute' : 'Mute'}">${ic(_hd.muted ? 'mic-off' : 'mic')}</button>
     <button class="hd-btn ${_hd.cam ? 'on' : ''}" onclick="huddleToggleCam()" title="Camera">${ic(_hd.cam ? 'video' : 'video-off')}</button>
     <button class="hd-btn ${_hd.sharing ? 'on' : ''}" onclick="huddleToggleShare()" title="Share screen">${ic('monitor-up')}</button>
     <button class="hd-btn" onclick="hdOpenInvite()" title="Add someone">${ic('user-plus')}</button>
     <button class="hd-btn leave" onclick="huddleLeave()" title="Leave huddle">${ic('phone-off')}</button>`;
-  if (window.lucide) requestAnimationFrame(() => lucide.createIcons());
+    hdIconsSoon();
+  }
+}
+// Draw new icons on the next frame — one pass, however many renders asked for it. A
+// hidden tab runs no frames and used to keep one queued pass per render, all run at
+// once on its return (see iconsDrawOnlyNew in chat-extras.js).
+let _hdIconsQueued = false;
+function hdIconsSoon() {
+  if (_hdIconsQueued || !window.lucide) return;
+  _hdIconsQueued = true;
+  requestAnimationFrame(() => { _hdIconsQueued = false; if (window.lucide) lucide.createIcons(); });
 }
 
 // Anyone in the workspace can be pulled in, not just people in this conversation.
