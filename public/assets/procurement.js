@@ -196,6 +196,16 @@
     _ctEditing = { id, contract_no: contractNo, data };
     const cd = data.contractDate || {}, co = data.company || {}, rp = data.rep || {}, by = data.buyer || {}, ve = data.vehicle || {};
     const pays = Array.isArray(data.payments) ? data.payments : [];
+    // The car-sale contract ('sale-v2') has no import country, late fee or delivery deadline,
+    // and its payment lines are the user's to add and remove. A contract saved on the older
+    // wording (no template) keeps its original fields, so it can still be edited.
+    const sale = data.template === 'sale-v2';
+    const payDefault = 'فور التوقيع علي هذا العقد';
+    const payRow = p => `<div class="ct-pay" data-label="${esc(p.label || '')}" style="display:grid;grid-template-columns:150px 1fr 34px;gap:8px;margin-bottom:6px;align-items:center">
+      <input class="form-input" data-pay="amount" value="${esc(p.amount || '')}" placeholder="Amount">
+      <input class="form-input" data-pay="when" dir="auto" value="${esc(p.when || '')}" placeholder="${esc(payDefault)}">
+      <button type="button" class="btn btn-outline ct-pay-del" style="padding:4px 0" title="Remove this payment line">&times;</button>
+    </div>`;
     const g = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px';
     showModal(id ? `Contract ${contractNo}` : 'New contract', `
       <div style="display:grid;gap:16px;max-height:66vh;overflow-y:auto;padding-right:4px">
@@ -246,7 +256,7 @@
             ${ctField('Colour (اللون)', 'vehicle.color', ve.color)}
             ${ctField('Year (سنة الصنع)', 'vehicle.year', ve.year)}
             ${ctField('Notes (ملاحظات)', 'vehicle.notes', ve.notes)}
-            ${ctField('Import country', 'importCountry', data.importCountry)}
+            ${sale ? '' : ctField('Import country', 'importCountry', data.importCountry)}
           </div>
         </div>
         <div>
@@ -254,16 +264,20 @@
           <div style="${g}">
             ${ctField('Total amount', 'total', data.total)}
             ${ctField('Amount in words', 'totalWords', data.totalWords)}
-            ${ctField('Late fee / day', 'lateFee', data.lateFee)}
-            ${ctField('Late fee in words', 'lateFeeWords', data.lateFeeWords)}
-            ${ctField('Delivery deadline (البند الرابع)', 'deliveryDeadline', data.deliveryDeadline)}
+            ${sale ? '' : ctField('Late fee / day', 'lateFee', data.lateFee)}
+            ${sale ? '' : ctField('Late fee in words', 'lateFeeWords', data.lateFeeWords)}
+            ${sale ? '' : ctField('Delivery deadline (البند الرابع)', 'deliveryDeadline', data.deliveryDeadline)}
           </div>
-          <div style="margin-top:10px">
+          ${sale ? `<div style="margin-top:10px">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Payment lines · “مبلغ قدره … يتم سداده …” — printed one by one in البند الثالث</div>
+            <div id="ct-pay-list">${pays.map(payRow).join('')}</div>
+            <button type="button" id="ct-pay-add" class="btn btn-outline" style="padding:4px 10px;font-size:12px">+ Add payment line</button>
+          </div>` : `<div style="margin-top:10px">
             ${pays.map((p, i) => `<div style="display:grid;grid-template-columns:150px 1fr;gap:8px;margin-bottom:6px;align-items:center">
               <input class="form-input ct-f" data-path="payments.${i}.amount" value="${esc(p.amount || '')}" placeholder="Amount">
               <div style="font-size:12px;color:var(--muted)">${esc(p.when || '')}${p.label ? ` (${esc(p.label)})` : ''}</div>
             </div>`).join('')}
-          </div>
+          </div>`}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div>
@@ -281,6 +295,16 @@
       `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
        <button class="btn btn-outline" onclick="saveContract(true)">Save &amp; preview PDF</button>
        <button class="btn btn-primary" onclick="saveContract(false)">Save</button>`);
+    if (sale) {
+      const list = document.getElementById('ct-pay-list');
+      document.getElementById('ct-pay-add').onclick = () => {
+        list.insertAdjacentHTML('beforeend', payRow({ when: payDefault }));
+      };
+      list.onclick = e => {
+        const del = e.target.closest && e.target.closest('.ct-pay-del');
+        if (del) del.closest('.ct-pay').remove();
+      };
+    }
     await ctPopulateLeadPicker(rec ? rec.customer_id : null);
   }
 
@@ -332,6 +356,19 @@
         data.payments[+m[1]][m[2]] = inp.value.trim();
       } else ctSet(data, path, inp.value.trim());
     });
+    // A car-sale contract: the payment lines are exactly the rows on screen (a removed row is gone,
+    // a row keeps the label it came with), and the payload carries the contract's own number so
+    // that a preview of it can print the number too.
+    if (data.template === 'sale-v2') {
+      if (document.getElementById('ct-pay-list')) {
+        data.payments = [...document.querySelectorAll('#ct-pay-list .ct-pay')].map(row => ({
+          amount: row.querySelector('[data-pay="amount"]').value.trim(),
+          when: row.querySelector('[data-pay="when"]').value.trim(),
+          label: row.dataset.label || '',
+        }));
+      }
+      if (_ctEditing.contract_no) data.contractNo = _ctEditing.contract_no;
+    }
     return data;
   }
 

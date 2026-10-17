@@ -97,7 +97,10 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
         // The sheet is the Draft tab now, not a modal over it.
         open: getComputedStyle(document.getElementById('qt-panel-draft')).display !== 'none'
               && document.getElementById('qt-tab-draft').classList.contains('active'),
-        id: v('qt-id'), name: v('qt-name'), exchange: v('qt-exchange'), template: v('qt-template'),
+        id: v('qt-id'), name: v('qt-name'), exchange: v('qt-exchange'),
+        // There is one quotation design now: no "Design" picker on the sheet.
+        designPicker: !!document.getElementById('qt-template')
+          || [...document.querySelectorAll('#qt-panel-draft .qt-field-label')].some(l => /^design$/i.test(l.textContent.trim())),
         rows: document.querySelectorAll('#qt-items .qt-item-row').length,
         freeCell: document.querySelectorAll('#qt-items .qt-item-row')[1]?.querySelector('.qt-egp')?.textContent,
         logi0: v('qt-log-usd-0'),
@@ -107,6 +110,8 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
     check(`${portal.label}: a saved quotation opens in the sheet with every field`,
       sheet.open && sheet.id === 'Q-2026-014' && sheet.name === 'Mona Said' && sheet.rows === 2 && sheet.logi0 === '1200',
       JSON.stringify(sheet));
+    check(`${portal.label}: the sheet has no Design selector (there is one quotation design)`,
+      sheet.designPicker === false, String(sheet.designPicker));
     check(`${portal.label}: the FREE line renders as Free`, sheet.freeCell === 'Free', String(sheet.freeCell));
     // 30000 * 48 + 1200 * 48 = 1,497,600
     check(`${portal.label}: totals recompute from the exchange rate`,
@@ -145,11 +150,14 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       JSON.stringify(generatePosts.map(g => g.path)));
     const body = generatePosts[0] ? generatePosts[0].body : '';
     const fields = ['id', 'date', 'validTo', 'name', 'vehicleModel', 'currency', 'exchange', 'issuer',
-      'items', 'logistics', 'customSpecs', 'customFields', 'template', 'existingImages', 'quotation_pk'];
+      'items', 'logistics', 'customSpecs', 'customFields', 'existingImages', 'quotation_pk'];
     const missing = fields.filter(f => !new RegExp(`name="${f}"`).test(body));
     check(`${portal.label}: the multipart body carries every field the server reads`,
       generatePosts[0] && /multipart\/form-data/.test(generatePosts[0].ct) && missing.length === 0,
       missing.join(',') || generatePosts[0]?.ct);
+    // The server ignores a `template` it is sent; the sheet no longer sends one.
+    check(`${portal.label}: the multipart body carries no template part`,
+      !!generatePosts[0] && !/name="template"/.test(body), /name="template"/.test(body) ? 'a template part is sent' : 'no template part');
     check(`${portal.label}: the chosen document-field value is in the body`,
       /name="customFields"[\s\S]{0,60}cf_bank[\s\S]{0,20}cash/.test(body), body.slice(0, 0) || 'no customFields part');
     check(`${portal.label}: editing carries the record id so Generate UPDATES it`,

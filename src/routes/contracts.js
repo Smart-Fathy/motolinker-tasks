@@ -12,11 +12,13 @@ const requirePerm = (...a) => ctx.requirePerm(...a);
 const callerIdentity = (...a) => ctx.callerIdentity(...a);
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ─── Contracts (Arabic "عقد شراء وإستيراد سيارة لحساب الغير") ──────────────────
+// ─── Contracts (Arabic "عقد بيع سيارة استيراد") ─────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
-// Faithful reproduction of the company's signed paper contract: 6 A4 pages, RTL
-// Arabic, company footer on every page. Every blank in the paper form is a field
-// here — supplied values are printed inline, blanks fall back to dotted leaders.
+// The company's car-sale (import) contract, in Arabic, right to left. Every blank in the
+// paper form is a field here — supplied values are printed in place, blanks fall back to
+// dotted leaders. New contracts carry data.template = 'sale-v2'; a contract saved before
+// that (no template) is the older agency-style wording and still prints exactly as signed.
+// The wording is in src/lib/docs/contract-sale-text.js, the look in src/lib/docs/contract.js.
 
 function generateContractNo() {
   const now = new Date();
@@ -28,8 +30,16 @@ function generateContractNo() {
 
 const AR_WEEKDAYS = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
+// The contract builders live in src/lib/docs: contract.js picks the wording by the
+// contract's own `data.template`, so one saved before the car-sale contract existed
+// still re-exports with the words it was signed on.
+const { buildContractHtml, SALE_TEMPLATE } = require('../lib/docs/contract');
+const { DEFAULT_PAYMENT_WHEN } = require('../lib/docs/contract-sale-text');
+
 // Build the default (prefilled) contract payload from a lead + deal + settings.
-function contractDefaults({ customer, deal, settings, vehicle }) {
+// `contractNo` (when the caller has just minted one) rides along in the payload, so every
+// way of rendering the contract can print it.
+function contractDefaults({ customer, deal, settings, vehicle, contractNo }) {
   const s = settings || {};
   const c = customer || {};
   const d = deal || {};
@@ -41,6 +51,8 @@ function contractDefaults({ customer, deal, settings, vehicle }) {
   const carText = String(vehicle || cf.cf_vehicle_offered || cf.cf_vehicle_requested || c.car_in_question || '').trim();
   const carBits = carText.split(/\s+/).filter(Boolean);
   return {
+    template: SALE_TEMPLATE,
+    ...(contractNo ? { contractNo } : {}),
     contractDate: { day: AR_WEEKDAYS[now.getDay()], d: String(now.getDate()).padStart(2, '0'), m: String(now.getMonth() + 1).padStart(2, '0'), y: String(now.getFullYear()) },
     company: {
       name: s.company_name || 'MotoLinkers',
@@ -58,23 +70,11 @@ function contractDefaults({ customer, deal, settings, vehicle }) {
       make: carBits[0] || '', model: carBits.slice(1).join(' ') || '',
       color: cf.cf_color || '', year: cf.cf_year || '', notes: '',
     },
-    importCountry: 'الصين',
     total: amount ? String(amount) : '', totalWords: '',
-    payments: [
-      { amount: '', when: 'فور التوقيع علي هذا العقد', label: '' },
-      { amount: '', when: 'في موعد أقصاه خمسة عشر يوما من تاريخ توقيع هذا العقد', label: 'دفعة الشحن' },
-      { amount: '', when: 'عند وصول السيارة الي الموانئ المصرية', label: 'دفعة ضريبه القيمة المضافة' },
-      { amount: '', when: 'عند استلام السيارة', label: '' },
-    ],
-    lateFee: '', lateFeeWords: '',
-    deliveryDeadline: '',
+    // One payment line, as in the paper form; more can be added in the editor.
+    payments: [{ amount: '', when: DEFAULT_PAYMENT_WHEN, label: '' }],
   };
 }
-
-// The contract builders live in src/lib/docs: contract.js picks the wording by the
-// contract's own `data.template`, so one saved before the car-sale contract existed
-// still re-exports with the words it was signed on.
-const { buildContractHtml } = require('../lib/docs/contract');
 
 // ── Contract routes ───────────────────────────────────────────────────────────
 // Mounted twice: for the dashboard behind requireAuth and for the team portal
@@ -109,17 +109,21 @@ function mountContractRoutes(base, guard) {
       ]);
       const settings = {};
       for (const row of settingsRows || []) settings[row.key] = row.value;
-      res.json({ contract_no: generateContractNo(), data: contractDefaults({ customer: cust, deal, settings }) });
+      const contract_no = generateContractNo();
+      res.json({ contract_no, data: contractDefaults({ customer: cust, deal, settings, contractNo: contract_no }) });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   receiver.router.post(base, guard, requirePerm('contracts', 'create'), express.json({ limit: '2mb' }), async (req, res) => {
     const b = req.body || {};
     const who = callerIdentity(req);
+    const contract_no = String(b.contract_no || '').trim() || generateContractNo();
+    const payload = b.data && typeof b.data === 'object' ? b.data : {};
     const row = {
-      contract_no: String(b.contract_no || '').trim() || generateContractNo(),
+      contract_no,
       title: String(b.title || '').trim(),
-      data: b.data && typeof b.data === 'object' ? b.data : {},
+      // a car-sale contract prints its number: the one in its payload must be its own
+      data: payload.template === SALE_TEMPLATE ? { ...payload, contractNo: contract_no } : payload,
       customer_id: b.customer_id ? parseInt(b.customer_id) : null,
       deal_id: b.deal_id ? parseInt(b.deal_id) : null,
       status: ['draft', 'signed', 'cancelled'].includes(b.status) ? b.status : 'draft',
@@ -156,11 +160,14 @@ function mountContractRoutes(base, guard) {
     res.json({ ok: true });
   });
 
-  // Render the Arabic contract to PDF (reuses the quotation Puppeteer renderer).
+  // Render the Arabic contract to PDF (reuses the quotation Puppeteer renderer) from a payload that may not be saved yet.
   receiver.router.post(`${base}/pdf`, guard, requirePerm('contracts', 'export'), express.json({ limit: '2mb' }), async (req, res) => {
     try {
-      const payload = (req.body && req.body.data) || {};
-      const html = buildContractHtml(payload);
+      const body = req.body || {};
+      const payload = body.data && typeof body.data === 'object' ? body.data : {};
+      // an unsaved contract has no row yet: the number is the one the editor is holding
+      const contractNo = String(body.contract_no || payload.contractNo || '').trim();
+      const html = buildContractHtml(contractNo ? { ...payload, contractNo } : payload);
       const pdf = await renderQuotationPdf(html);
       res.json({ pdf: Buffer.from(pdf).toString('base64') });
     } catch (e) {
@@ -174,7 +181,7 @@ function mountContractRoutes(base, guard) {
     try {
       const { data: row, error } = await supabase.from('contracts').select('*').eq('id', req.params.id).single();
       if (error || !row) return res.status(404).json({ error: 'Contract not found' });
-      const pdf = await renderQuotationPdf(buildContractHtml(row.data || {}));
+      const pdf = await renderQuotationPdf(buildContractHtml({ ...(row.data || {}), contractNo: row.contract_no }));
       res.json({ pdf: Buffer.from(pdf).toString('base64'), name: row.contract_no || 'contract' });
     } catch (e) {
       console.error('[contract-pdf-id]', e);
@@ -199,10 +206,11 @@ async function autoCreateContractForWonDeal(deal) {
     ]);
     const settings = {};
     for (const row of settingsRows || []) settings[row.key] = row.value;
-    const data = contractDefaults({ customer: cust, deal, settings, vehicle: deal.vehicle || deal.title });
+    const contractNo = generateContractNo();
+    const data = contractDefaults({ customer: cust, deal, settings, vehicle: deal.vehicle || deal.title, contractNo });
     const title = `عقد — ${(cust && cust.name) || deal.title || ''}`.trim();
     const { data: row, error } = await supabase.from('contracts').insert({
-      contract_no: generateContractNo(), title, data,
+      contract_no: contractNo, title, data,
       customer_id: deal.customer_id || null, deal_id: deal.id,
       status: 'draft', created_by: 'auto_won',
     }).select().single();

@@ -12,7 +12,6 @@ const photo = (a, b, label) => 'data:image/svg+xml;utf8,' + encodeURIComponent(
     <text x="400" y="470" text-anchor="middle" font-family="sans-serif" font-size="26" fill="rgba(4,54,39,.6)">${label}</text></svg>`);
 
 const SPECS = [
-  { key: 'Issuer', val: 'Mohamed Yasser' },
   { key: '', val: 'Pure Electric (BEV) 600 km CLTC Driving Range Rear-Wheel Drive (RWD)' },
   { key: '', val: '190 kW (258 hp) Electric Motor 320 Nm Maximum Torque 80 kWh Battery Pack DC Fast Charging 20" Alloy Wheels Panoramic Glass Roof' },
   { key: '', val: 'Frameless Doors Hidden Door Handles 26.45" 23-Speaker Premium Audio System Heated & Ventilated Front Seats Wireless Phone Charging 360° Panoramic Camera Adaptive Cruise Control (ACC) L2 Intelligent Driving Assist Automatic Parking Assist Powered Tailgate' },
@@ -60,6 +59,42 @@ module.exports = {
     ],
     logistics: [...base.logistics, ...Array.from({ length: 8 }, (_, i) => ({ label: `Additional logistics line ${i + 1}`, priceUsd: String(250 + i * 40) }))],
     customSpecs: [...SPECS, ...Array.from({ length: 10 }, (_, i) => ({ key: `Spec ${i + 1}`, val: 'A longer value describing this specification in a sentence or two so the card has real height to lay out.' }))],
+  },
+  // One photo, and three: the strip must look intentional with fewer than four.
+  quotationOnePhoto: { ...base, imageDataUrls: [images[1]] },
+  quotationThreePhotos: { ...base, imageDataUrls: [images[0], images[1], images[2]] },
+  // Neither an issuer nor a spec: the specs card is left out and payment terms take the full width.
+  quotationNoSpecs: { ...base, issuer: '', customSpecs: [], imageDataUrls: images.slice(0, 3) },
+  // The kinds of lines real quotes have: a vehicle with a clear separator (title + grey subtitle),
+  // a unit above 1, a fractional exchange rate, lower-case "free", a blank price, and a price that
+  // is words rather than a number (printed as typed, left out of the total).
+  quotationMixed: {
+    ...base, id: 'MT05W12Y26', date: '2026-10-05', validTo: '2026-10-12', name: 'Mona Said',
+    vehicleModel: 'BYD Seal — Design 700 km AWD', exchange: '50.75',
+    imageDataUrls: images.slice(0, 2),
+    items: [
+      { name: 'BYD Seal Design 700 km AWD', unit: 1, priceUsd: '31900' },
+      { name: 'Wall box 7 kW', unit: 2, priceUsd: '320.5' },
+      { name: 'Floor mats', unit: 1, priceUsd: 'free' },
+      { name: 'Extended warranty (3 years)', unit: 1, priceUsd: 'TBC' },
+      { name: 'Window tint', unit: 1, priceUsd: '' },
+    ],
+    customSpecs: [
+      { key: 'Incoterms', val: 'CIF Alexandria' },
+      { key: '', val: 'Delivery within 60 days of the down payment' },
+      { key: 'Warranty', val: '3 years / 100,000 km' },
+    ],
+    settings: { payment_terms: '100% Advance payment\nBalance on delivery in Cairo', footer_note: 'Prices subject to change without notice' },
+  },
+  // Arabic names and words inside an English document: Cairo carries the Arabic, the order is right.
+  quotationArabic: {
+    ...base, name: 'عمر حسن', vehicleModel: 'مازدا EZ60 — EV 600 Max',
+    items: [
+      { name: 'سيارة مازدا EZ60 كهربائية بالكامل (2026)', unit: 1, priceUsd: '22500' },
+      { name: 'Wall mount شاحن جداري', unit: 1, priceUsd: '200' },
+      { name: 'حقيبة أدوات', unit: 1, priceUsd: 'Free' },
+    ],
+    customSpecs: [{ key: 'الضمان', val: '3 سنوات أو 100,000 كم' }, { key: '', val: 'تسليم خلال 60 يوماً من الدفعة المقدمة (Delivery in 60 days)' }],
   },
   // Sparse: no vehicle, no specs, one line — nothing may break or print "undefined".
   quotationMinimal: {

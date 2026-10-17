@@ -128,7 +128,7 @@ const DOC_TYPES = {
   contract: {
     table: 'contracts', label: 'Contract',
     name: r => `Contract ${r.contract_no || r.id}`,
-    html: async r => ctx.buildContractHtml(r.data || {}),
+    html: async r => ctx.buildContractHtml({ ...(r.data || {}), contractNo: r.contract_no }),
   },
 };
 
