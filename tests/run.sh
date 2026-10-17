@@ -64,6 +64,11 @@ run homecache   node tests/homecache.js
 run dbfetch     node tests/dbfetch.js
 run profiletest node tests/profiletest.js
 run gziptest    node tests/gziptest.js
+run docbrand    node tests/doc-brand.js
+run docquote    node tests/doc-quotation.js
+run doccontract node tests/doc-contract.js
+run docpo       node tests/doc-po.js
+run docrfq      node tests/doc-rfq.js
 # needs a local coturn on 127.0.0.1:3478 for the success path; skips it otherwise
 run relaytest   node tests/relaytest.js
 

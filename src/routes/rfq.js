@@ -1,20 +1,18 @@
 // RFQ — Request for Quotation
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
-const { calcEgp, escHtml, express, fmtNum, generateQuoteId, getIsoWeek, logLeadActivity, quotationImgUpload, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('calcEgp', 'escHtml', 'express', 'fmtNum', 'generateQuoteId', 'getIsoWeek', 'logLeadActivity', 'quotationImgUpload', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
+const { express, generateQuoteId, getIsoWeek, logLeadActivity, quotationImgUpload, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('express', 'generateQuoteId', 'getIsoWeek', 'logLeadActivity', 'quotationImgUpload', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
 const runAutomations = (...a) => ctx.runAutomations(...a);
 const requirePerm = (...a) => ctx.requirePerm(...a);
 const callerIdentity = (...a) => ctx.callerIdentity(...a);
-// The shared document chrome lives in purchase-orders.js and the brand logo in
-// src/lib/constants.js. Both were used here as bare globals, which throws the
-// moment a PDF is rendered — "BRAND_LOGO_URL is not defined" on every quotation.
-const docChromeCss = (...a) => ctx.docChromeCss(...a);
-const docFooterHtml = (...a) => ctx.docFooterHtml(...a);
-const docSupplierBlock = (...a) => ctx.docSupplierBlock(...a);
-const docTermsHtml = (...a) => ctx.docTermsHtml(...a);
-const { BRAND_LOGO_URL } = ctx.need('BRAND_LOGO_URL');
+// What each document looks like lives in src/lib/docs (one shared brand module, one file
+// per document). This file is the routes: it loads the record, hands it to the builder
+// and sends the result back.
+const { buildQuotationHtml } = require('../lib/docs/quotation');
+const { buildRfqXlsx, XLSX_MIME } = require('../lib/docs/rfq-xlsx');
+const { renderPdf } = require('../lib/docs/render');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── RFQ — Request for Quotation (sent to suppliers) ───────────────────────────
@@ -162,342 +160,43 @@ function mountRfqRoutes(base, guard) {
   });
 
 
-  receiver.router.post(`${base}/pdf`, guard, requirePerm('rfq', 'export'), express.json({ limit: '2mb' }), async (req, res) => {
+  // An RFQ goes to the supplier as an Excel workbook — they fill the prices in and send it
+  // back — so there is no PDF. Same {base64, name} reply shape the PDF routes had.
+  receiver.router.post(`${base}/xlsx`, guard, requirePerm('rfq', 'export'), express.json({ limit: '2mb' }), async (req, res) => {
     try {
-      const html = buildRfqHtml({ ...rfqBuildRow(req.body), settings: await rfqSettings() });
-      res.json({ pdf: Buffer.from(await renderQuotationPdf(html)).toString('base64') });
-    } catch (e) { console.error('[rfq-pdf]', e); res.status(500).json({ error: e.message }); }
+      const settings = await rfqSettings();
+      const row = rfqBuildRow(req.body);
+      const buf = await buildRfqXlsx({ ...row, settings });
+      res.json({ xlsx: Buffer.from(buf).toString('base64'), name: row.rfq_no || 'rfq' });
+    } catch (e) { console.error('[rfq-xlsx]', e); res.status(500).json({ error: e.message }); }
   });
 
-  receiver.router.post(`${base}/:id/pdf`, guard, requirePerm('rfq', 'export'), async (req, res) => {
+  receiver.router.post(`${base}/:id/xlsx`, guard, requirePerm('rfq', 'export'), async (req, res) => {
     try {
       const { data: row, error } = await supabase.from('rfqs').select('*').eq('id', req.params.id).single();
       if (error || !row) return res.status(404).json({ error: 'RFQ not found' });
-      const html = buildRfqHtml({ ...row, settings: await rfqSettings() });
-      res.json({ pdf: Buffer.from(await renderQuotationPdf(html)).toString('base64'), name: row.rfq_no || 'rfq' });
-    } catch (e) { console.error('[rfq-pdf-id]', e); res.status(500).json({ error: e.message }); }
+      const buf = await buildRfqXlsx({ ...row, settings: await rfqSettings() });
+      res.json({ xlsx: Buffer.from(buf).toString('base64'), name: row.rfq_no || 'rfq' });
+    } catch (e) { console.error('[rfq-xlsx-id]', e); res.status(500).json({ error: e.message }); }
   });
+
+  // A portal tab opened before the switch still asks for the PDF. Say what changed rather
+  // than let it fail as an unreadable 404.
+  const rfqNoPdf = (_req, res) => res.status(410).json({ error: 'RFQs are exported as Excel now. Refresh the page and use Export Excel.' });
+  receiver.router.post(`${base}/pdf`, guard, requirePerm('rfq', 'export'), rfqNoPdf);
+  receiver.router.post(`${base}/:id/pdf`, guard, requirePerm('rfq', 'export'), rfqNoPdf);
 }
 mountRfqRoutes('/api/dashboard/rfqs', requireAuth);
 mountRfqRoutes('/api/employee/rfqs', requireEmployeeAuth);
 
-// A4 portrait Request for Quotation on company letterhead.
-function buildRfqHtml(r) {
-  const s = r.settings || {};
-  const T = quoteTheme(r.template);
-  const money = n => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  const items = Array.isArray(r.items) ? r.items : [];
-  const padded = items.concat(Array.from({ length: Math.max(0, 8 - items.length) }, () => null));
-  const rows = padded.map(it => {
-    const v = it || {};
-    return `<tr>
-      <td>${escHtml(v.brand || '')}</td>
-      <td>${escHtml(v.model || '')}</td>
-      <td>${escHtml(v.trim || '')}</td>
-      <td>${escHtml(v.colour || '')}</td>
-      <td class="c">${escHtml(v.year || '')}</td>
-      <td class="acc">${escHtml(v.accessories || ctx.DOC_DEFAULT_ACCESSORIES).replace(/\n/g, '<br>')}</td>
-      <td class="c">${escHtml(v.lead_time || '')}</td>
-      <td class="r">${v.fob_price ? money(v.fob_price) : ''}</td>
-      <td class="r">${v.cif_price ? money(v.cif_price) : ''}</td>
-    </tr>`;
-  }).join('');
+// Every PDF in the system is rendered by src/lib/docs/render.js; the name stays here
+// because the other route modules reach it through ctx.renderQuotationPdf.
+const renderQuotationPdf = (html, opts) => renderPdf(html, opts);
 
-  return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">${T.fontLink}
-<style>${docChromeCss(T)}</style></head><body>
-<div class="page">
-  <div class="head">
-    <img src="${BRAND_LOGO_URL}">
-    <div class="title">Request for Quotation</div>
-    <table class="meta">
-      <tr><td class="k">ID</td><td class="v">${escHtml(r.rfq_no || '')}</td></tr>
-      <tr><td class="k">Date</td><td class="v">${escHtml(r.rfq_date || '')}</td></tr>
-      <tr><td class="k">Issuer</td><td class="v">${escHtml(r.issuer || '')}</td></tr>
-    </table>
-  </div>
-
-  ${docSupplierBlock(r)}
-
-  <table class="grid">
-    <colgroup>
-      <col style="width:66px"><col style="width:62px"><col style="width:44px"><col style="width:76px">
-      <col style="width:34px"><col style="width:150px"><col style="width:60px"><col style="width:62px">
-      <col style="width:88px">
-    </colgroup>
-    <thead><tr>
-      <th>BRAND</th><th>MODEL</th><th>TRIM</th><th>COLOR EXT / INT</th><th>YEAR</th>
-      <th>ACCESSORIES / REMARKS</th><th>LEAD TIME</th><th>FOB PRICE</th><th>CIF PRICE (RoRo)</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
-
-  ${docTermsHtml(r, { incoterm: false })}
-
-  ${docFooterHtml(s)}
-</div>
-</body></html>`;
-}
-
-// Render quotation HTML to a PDF buffer via Puppeteer, blocking any resource
-// load that isn't an inline data: URL or https: (prevents file:// LFI and
-// internal http:// SSRF from authored/injected markup).
-async function renderQuotationPdf(html, opts) {
-  const { landscape = false } = opts || {};
-  const puppeteer = require('puppeteer');
-  const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-  try {
-    const page = await browser.newPage();
-    await page.setRequestInterception(true);
-    page.on('request', r => {
-      const u = r.url();
-      if (u.startsWith('data:') || u.startsWith('https:')) r.continue();
-      else r.abort();
-    });
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    return await page.pdf({
-      format: 'A4',
-      landscape,
-      printBackground: true,
-      margin: { top: '0', bottom: '0', left: '0', right: '0' },
-    });
-  } finally {
-    await browser.close();
-  }
-}
-
-// Company logo used on every generated document (quotation + contract).
-
-// Selectable quotation looks. Both render the SAME structure — only the palette
-// and typography differ — so switching a quote between them never moves content.
-const QUOTE_THEMES = {
-  classic: {
-    key: 'classic', label: 'Classic — navy & gold',
-    accent: '#c9922a', ink: '#1B2D6B', soft: '#f5e9c8',
-    zebra: '#fdfaf3', meta: '#cc3300',
-    titleFont: 'Arial, sans-serif', titleSpacing: '2px', fontLink: '',
-  },
-  brand: {
-    key: 'brand', label: 'Brand — charcoal & gold',
-    accent: '#c9a35e', ink: '#1b1b1f', soft: '#f7efdf',
-    zebra: '#faf7f0', meta: '#a07e3f',
-    titleFont: "'Cormorant Garamond', Georgia, serif", titleSpacing: '4px',
-    fontLink: '<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&display=swap" rel="stylesheet">',
-  },
-};
-function quoteTheme(key) { return QUOTE_THEMES[key] || QUOTE_THEMES.classic; }
-
-function buildQuotationHtml(data) {
-  const { id, date, validTo, name, vehicleModel, items, logistics, currency, exchange, issuer, imageDataUrls, customSpecs, settings } = data;
-  const s = settings || {};
-  const exRate = parseFloat(exchange) || 1;
-  const T = quoteTheme(data.template);
-
-  // Calculate totals
-  let grandTotal = 0;
-  const itemRows = (items || []).map(item => {
-    const isFree  = !item.priceUsd || String(item.priceUsd).trim().toLowerCase() === 'free';
-    const egp     = isFree ? null : calcEgp(item.priceUsd, item.unit || 1, exRate);
-    if (egp !== null) grandTotal += egp;
-    return { ...item, egp };
-  });
-
-  const logisticsRows = (logistics || []).map(row => {
-    const egp = calcEgp(row.priceUsd, 1, exRate);
-    if (egp !== null) grandTotal += egp;
-    return { ...row, egp };
-  });
-
-  const GOLD   = T.accent;   // accent / hairlines
-  const NAVY   = T.ink;      // primary ink + header fills
-  const LGOLD  = T.soft;     // soft fill behind labels & totals
-
-  const imgSection = imageDataUrls && imageDataUrls.length
-    ? `<tr><td colspan="4" style="padding:10px 0;border:1px solid ${GOLD};border-top:none">
-        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-          ${imageDataUrls.map(src => `<img src="${escHtml(src)}" style="height:130px;max-width:220px;object-fit:contain;border-radius:4px;border:1px solid ${GOLD}">`).join('')}
-        </div>
-       </td></tr>`
-    : '';
-
-  const vehicleRow = vehicleModel
-    ? `<tr><td colspan="4" style="text-align:center;font-size:17px;font-weight:700;color:${T.meta};padding:10px 8px;border:1px solid ${GOLD};border-bottom:none">${escHtml(vehicleModel)}</td></tr>`
-    : '';
-
-  const itemRowsHtml = itemRows.map((item, i) => {
-    const isFree = item.egp === null;
-    const bg = i % 2 === 1 ? `background:${T.zebra}` : '';
-    return `<tr style="${bg}">
-      <td style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${escHtml(item.name || '')}</td>
-      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${escHtml(item.unit || 1)}</td>
-      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${isFree ? 'Free' : fmtNum(item.priceUsd)}</td>
-      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${isFree ? 'Free' : fmtNum(item.egp)}</td>
-    </tr>`;
-  }).join('');
-
-  const logRowsHtml = logisticsRows.map((row, i) => {
-    const bg = i % 2 === 1 ? `background:${T.zebra}` : '';
-    return `<tr style="${bg}">
-      <td colspan="2" style="padding:7px 10px;border:1px solid ${GOLD};color:${NAVY}">${escHtml(row.label)}</td>
-      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${fmtNum(row.priceUsd)}</td>
-      <td style="padding:7px 10px;border:1px solid ${GOLD};text-align:center;color:${NAVY}">${fmtNum(row.egp)}</td>
-    </tr>`;
-  }).join('');
-
-  return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">${T.fontLink}
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; font-size: 11px; color: ${NAVY}; background: #fff; padding: 0; }
-  .page { width: 794px; min-height: 1123px; padding: 24px 28px 80px; position: relative; }
-
-  .logo-text { font-size: 22px; font-weight: 900; letter-spacing: 1px; color: ${NAVY}; }
-  .logo-link { color: ${GOLD}; }
-
-  .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-  .quotation-title { font-family: ${T.titleFont}; font-size: 24px; font-weight: 900;
-    letter-spacing: ${T.titleSpacing}; color: ${NAVY}; text-align: center; }
-  .section-label, .col-header, .total-row td, .ks-label, .meta-label { font-family: ${T.titleFont}; }
-
-  .meta-table { border-collapse: collapse; width: 100%; }
-  .meta-table td { padding: 3px 8px; border: 1px solid ${GOLD}; font-size: 10px; }
-  .meta-label { font-weight: 700; color: ${NAVY}; background: ${LGOLD}; white-space: nowrap; }
-  .meta-val   { font-weight: 700; color: ${T.meta}; min-width: 120px; }
-
-  .section-label { font-weight: 700; font-size: 11px; color: ${NAVY}; padding: 6px 10px;
-    border: 1px solid ${GOLD}; background: #fff; margin-top: 10px; }
-
-  .main-table { width: 100%; border-collapse: collapse; }
-  .col-header { background: ${NAVY}; color: #fff; font-weight: 700; font-size: 11px;
-    padding: 7px 10px; text-align: center; border: 1px solid ${GOLD}; }
-  .col-header-left { text-align: left; }
-
-  .total-row td { font-weight: 700; color: ${NAVY}; background: ${LGOLD}; padding: 8px 10px;
-    border: 1px solid ${GOLD}; font-size: 12px; }
-
-  .key-specs-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  .ks-label { font-weight: 700; background: ${LGOLD}; padding: 6px 10px; border: 1px solid ${GOLD}; white-space: nowrap; color: ${NAVY}; }
-  .ks-val   { padding: 6px 10px; border: 1px solid ${GOLD}; color: ${NAVY}; }
-
-  .payment-box { border: 1px solid ${GOLD}; padding: 10px 14px; font-size: 10px; line-height: 1.8; color: ${NAVY}; }
-  .payment-title { font-weight: 700; margin-bottom: 4px; }
-
-  .footer { position: absolute; bottom: 16px; left: 28px; right: 28px;
-    border-top: 2px solid ${GOLD}; padding-top: 8px;
-    display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: #888; }
-  .footer-brand { font-weight: 700; color: ${NAVY}; font-size: 10px; }
-</style>
-</head>
-<body>
-<div class="page">
-
-  <!-- HEADER -->
-  <table class="header-table">
-    <tr>
-      <td style="width:35%;vertical-align:middle">
-        <img src="${BRAND_LOGO_URL}" style="max-height:60px;width:auto;display:block">
-      </td>
-      <td style="width:30%;text-align:center;vertical-align:middle">
-        <div class="quotation-title">QUOTATION</div>
-      </td>
-      <td style="width:35%;vertical-align:top">
-        <table class="meta-table">
-          <tr><td class="meta-label">ID</td><td class="meta-val">${escHtml(id || '')}</td></tr>
-          <tr><td class="meta-label">DATE</td><td class="meta-val">${escHtml(date || '')}</td></tr>
-          <tr><td class="meta-label">VALID TO</td><td class="meta-val">${escHtml(validTo || '')}</td></tr>
-          <tr><td class="meta-label">NAME</td><td class="meta-val">${escHtml(name || '')}</td></tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-  <div style="border-top: 2px solid ${GOLD}; margin-bottom: 10px"></div>
-
-  <!-- VEHICLE + IMAGES -->
-  <table class="main-table">
-    ${vehicleRow}
-    ${imgSection}
-  </table>
-
-  <!-- PRICING BREAKDOWN -->
-  <div class="section-label">PRICING BREAKDOWN</div>
-  <table class="main-table">
-    <thead>
-      <tr>
-        <th class="col-header col-header-left" style="width:50%">ITEM</th>
-        <th class="col-header" style="width:10%">UNIT</th>
-        <th class="col-header" style="width:20%">PRICE USD</th>
-        <th class="col-header" style="width:20%">TOTAL EGP</th>
-      </tr>
-    </thead>
-    <tbody>${itemRowsHtml}</tbody>
-  </table>
-
-  <!-- LOGISTICS PRICING BREAKDOWN -->
-  <div class="section-label" style="margin-top:0;border-top:none">LOGISTICS PRICING BREAKDOWN</div>
-  <table class="main-table">
-    <thead>
-      <tr>
-        <th class="col-header col-header-left" colspan="2" style="width:60%">ITEM</th>
-        <th class="col-header" style="width:20%">PRICE USD</th>
-        <th class="col-header" style="width:20%">TOTAL EGP</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${logRowsHtml}
-      <tr class="total-row">
-        <td colspan="3">Total Price Breakdown in EGP</td>
-        <td style="text-align:center">${fmtNum(grandTotal)}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <!-- KEY SPECS (left) + PAYMENT TERMS / CURRENCY / EXCHANGE (right) -->
-  ${(() => {
-    const leftContent = [
-      issuer ? `<div><strong>Issuer:</strong> ${escHtml(issuer)}</div>` : '',
-      ...(customSpecs || []).map(sp => sp.key ? `<div><strong>${escHtml(sp.key)}:</strong> ${escHtml(sp.val || '')}</div>` : `<div>${escHtml(sp.val || '')}</div>`),
-    ].filter(Boolean).join('');
-    const rightBox = `
-      <div style="width:46%;border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY};${leftContent ? '' : 'margin-left:auto'}">
-        <div style="font-weight:700;margin-bottom:4px">Payment terms</div>
-        ${(s.payment_terms || '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances').split('\n').map(l => `<div style="padding-left:14px">${escHtml(l)}</div>`).join('')}
-        <div style="margin-top:8px;border-top:1px solid ${GOLD};padding-top:6px">
-          <div><strong>Currency:</strong> ${escHtml(currency || 'EGP')}</div>
-          <div><strong>Exchange:</strong> ${fmtNum(exchange)}</div>
-        </div>
-      </div>`;
-    return `
-  <div style="margin-top:14px">
-    <div class="section-label" style="margin-top:0">KEY SPECS</div>
-    <div style="display:flex;gap:14px;align-items:stretch">
-      ${leftContent ? `<div style="flex:1;border:1px solid ${GOLD};padding:12px 16px;font-size:10.5px;line-height:2;color:${NAVY}">${leftContent}</div>` : ''}
-      ${rightBox}
-    </div>
-  </div>`;
-  })()}
-
-  <!-- FOOTER -->
-  <div class="footer">
-    <div class="footer-brand">${escHtml(s.company_name || 'MOTOLINKERS')}</div>
-    <div>This quotation is valid until ${escHtml(validTo || '—')} | ${escHtml(s.footer_note || 'Confidential')}</div>
-    <div>${escHtml(id || '')}</div>
-  </div>
-
-  <!-- COMPANY CONTACT FOOTER -->
-  <div style="border:2px solid ${NAVY};border-radius:8px;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:16px">
-    <div style="display:flex;flex-direction:column;gap:3px;font-size:9px;color:#333;line-height:1.5">
-      <div><strong>Address:</strong> ${escHtml(s.company_address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo')}</div>
-      <div><strong>Email:</strong> ${escHtml(s.company_email || 'info@motolinkers.com')} &nbsp;|&nbsp; <strong>Website:</strong> ${escHtml(s.company_website || 'Motolinkers.com')} &nbsp;|&nbsp; <strong>Phone:</strong> ${escHtml(s.company_phone || '+2 010 000 78104')}</div>
-      ${s.company_tax_id ? `<div><strong>TAX ID:</strong> ${escHtml(s.company_tax_id)} &nbsp;|&nbsp; <strong>Registration No:</strong> ${escHtml(s.company_reg_no || '')}</div>` : `<div><strong>TAX ID:</strong> 773934006 &nbsp;|&nbsp; <strong>Registration No:</strong> 282378</div>`}
-    </div>
-    <div style="margin-left:20px;flex-shrink:0">
-      <img src="${BRAND_LOGO_URL}" style="max-height:45px;width:auto;display:block">
-    </div>
-  </div>
-
-</div>
-</body></html>`;
-}
+// There is one quotation design now (src/lib/docs/quotation.js). The `template` a saved
+// quotation carries is kept so nothing that reads it breaks, but every value maps to it.
+const QUOTE_THEMES = { motolinkers: { key: 'motolinkers', label: 'Motolinkers' } };
+function quoteTheme() { return QUOTE_THEMES.motolinkers; }
 
 receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
   quotationImgUpload.array('images', 5), async (req, res) => {
@@ -554,4 +253,4 @@ receiver.router.post('/api/dashboard/quotation/generate', requireAuth,
 );
 
 
-module.exports = { buildQuotationHtml, buildRfqHtml, quoteTheme, renderQuotationPdf, rfqSettings };
+module.exports = { XLSX_MIME, buildQuotationHtml, buildRfqXlsx, quoteTheme, renderQuotationPdf, rfqSettings };

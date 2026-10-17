@@ -51,7 +51,7 @@
     quotation: id => `/api/dashboard/quotations/${id}/pdf`,
     contract:  id => `/api/dashboard/contracts/${id}/pdf`,
     po:        id => `/api/dashboard/purchase-orders/${id}/pdf`,
-    rfq:       id => `/api/dashboard/rfqs/${id}/pdf`,
+    // (no rfq: an RFQ is an Excel workbook — see exportRfqXlsx below)
   };
   let _docName = 'document';
 
@@ -817,7 +817,7 @@
             <td style="padding:8px 10px;color:var(--muted)">${esc(r.rfq_date || (r.created_at ? new Date(r.created_at).toLocaleDateString() : ''))}</td>
             <td style="padding:8px 10px;text-align:right;white-space:nowrap">
               ${procCan('rfq', 'edit') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openRfqForm(${r.id})">Edit</button>` : ''}
-              ${procCan('rfq', 'export') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="viewDocPdf('rfq',${r.id},'${escJs(r.rfq_no)}')">PDF</button>` : ''}
+              ${procCan('rfq', 'export') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="exportRfqXlsx(${r.id})">Excel</button>` : ''}
               ${procCan('rfq', 'delete') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteRfq(${r.id})">Delete</button>` : ''}
             </td>
           </tr>`).join('')}</tbody>
@@ -884,7 +884,7 @@
         <div id="rfq-err" class="error-msg" style="display:none"></div>
       </div>`,
       `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
-       <button class="btn btn-outline" onclick="saveRfq(true)">Save &amp; preview PDF</button>
+       <button class="btn btn-outline" onclick="saveRfq(true)">Save &amp; export Excel</button>
        <button class="btn btn-primary" onclick="saveRfq(false)">Save</button>`,
       { wide: true });
 
@@ -926,7 +926,7 @@
       items: procGridCollect('.rfq-row', '.rfq-f'),
     };
   }
-  async function saveRfq(thenPreview) {
+  async function saveRfq(thenExport) {
     const payload = rfqCollect();
     const err = document.getElementById('rfq-err');
     const filled = payload.items.filter(it => it.brand || it.model || it.trim);
@@ -939,8 +939,33 @@
     const d = await r.json();
     if (!r.ok) { err.textContent = d.error || 'Failed to save.'; err.style.display = 'block'; return; }
     hideModal(); loadRfqs();
-    if (thenPreview) viewDocPdfPayload('/api/dashboard/rfqs/pdf', payload, payload.rfq_no);
+    if (thenExport) exportRfqXlsxPayload(payload);
   }
+
+  // ── RFQ → Excel ──────────────────────────────────────────────────────────────
+  // An RFQ goes to the supplier as a workbook they fill the prices into, so it downloads
+  // as .xlsx and has no PDF preview. The server answers { xlsx: base64, name } both for a
+  // saved record (by id) and for the unsaved form (payload).
+  function downloadRfqXlsx(b64, name) {
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `RFQ_${String(name || 'motolinkers').replace(/[^\w.-]+/g, '_')}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+  async function rfqXlsxFrom(url, opts) {
+    try {
+      const r = await apiFetch(url, opts);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed to build the workbook');
+      downloadRfqXlsx(d.xlsx, d.name);
+    } catch (e) { showAdminToast('Could not export this RFQ: ' + e.message); }
+  }
+  const exportRfqXlsx = id => rfqXlsxFrom(`/api/dashboard/rfqs/${id}/xlsx`, { method: 'POST' });
+  const exportRfqXlsxPayload = payload => rfqXlsxFrom('/api/dashboard/rfqs/xlsx', { method: 'POST', body: JSON.stringify(payload) });
   async function deleteRfq(id) {
     const r = _rfqCache.find(x => x.id === id);
     if (!confirm(`Delete RFQ ${r ? r.rfq_no : ''}?`)) return;
@@ -2226,7 +2251,7 @@
     closeDocPdf, ctCollect, ctField, ctGet,
     ctPopulateLeadPicker, ctSet, ctxPopulateLeadPicker, deleteContract,
     deletePo, deleteRfq, deleteSubmission, deleteSupplier,
-    downloadContractPdf, downloadDocPdf, escJs,
+    downloadContractPdf, downloadDocPdf, escJs, exportRfqXlsx,
     ldGenerateContract, ldGeneratePo, ldGenerateRfq, loadContracts,
     loadPurchaseOrders, loadRfqs, loadSubmissions, loadSuppliers,
     openCataloguePicker, openContractForm, openPoForm, openRfqForm,
