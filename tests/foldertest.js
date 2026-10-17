@@ -31,7 +31,7 @@ function api(pathname, method, body) {
       posted.push(pathname);
       folderState = { exists: true, name: 'Ahmed Kamal — 0101234567', documents: 4, viewers: folderState.viewers,
                       link: 'https://drive.google.com/drive/folders/abc', canOpen: true,
-                      added: ['Quotation Q-2026-014.pdf', 'RFQ MT1.pdf', 'PO PO-1.pdf', 'Contract CT-1.pdf'], failed: [] };
+                      added: ['Quotation Q-2026-014.pdf', 'RFQ MT1.xlsx', 'PO PO-1.pdf', 'Contract CT-1.pdf'], failed: [] };
     }
     return folderState;
   }

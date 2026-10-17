@@ -78,8 +78,8 @@
     const d = _cfState || {};
     if (!d.exists) {
       cfPaint(`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">
-          No folder yet. Creating one files a PDF of every quotation, RFQ, purchase order
-          and contract on this lead into <strong>MotoLinker / Clients</strong>.</div>
+          No folder yet. Creating one files every quotation, purchase order and contract
+          on this lead as a PDF, and every RFQ as an Excel sheet, into <strong>MotoLinker / Clients</strong>.</div>
         <button class="btn btn-sm btn-primary" id="cf-make" onclick="cfSync()">
           <i data-lucide="folder-plus" style="width:13px;height:13px"></i> Create client folder</button>`);
       return;
