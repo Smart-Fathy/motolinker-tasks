@@ -23,6 +23,13 @@
 // source uses to stretch "البنـد" and "الســيد" is left out, a blank's trailing "/" is
 // part of the blank, spaces inside brackets are made regular, and the colon after a
 // label in a label/value table or a signature box is the layout's, not the text's.
+//
+// Also not reproduced, because they are debris of the Word file rather than words: a lone ":"
+// and a lone "." on lines of their own in clause three (after "والنقل" and after the payment
+// line), a "." after the buyer's sub-heading in clause five, and the "مصري" the source types
+// inside the representative's religion blank. The date scaffolding after "صادرة بتاريخ"
+// ("/ … 20 … م") is one blank, {rep.idDate} / {buyer.idDate}. And "( فقط … لا غير )" is put back
+// together around the amount in words: in the source that line is scrambled.
 
 const TITLE = 'عقد بيع سيارة استيراد';
 

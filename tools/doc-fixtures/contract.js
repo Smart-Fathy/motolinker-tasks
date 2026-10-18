@@ -9,7 +9,7 @@
 //   contractHostile     markup in free-text fields
 //   contractMixed       Arabic, Latin and digits in the same fields
 //   contractUnbroken    a single very long word in each long field
-//   contractLegacy      a contract saved before the car-sale wording (no template)
+//   contractLegacy      a contract saved before the car-sale wording (no template), written out in full
 //
 //   node tools/render-docs.js contract contractLong contractBlank --dpi 100 --out /tmp/docs
 
@@ -69,12 +69,23 @@ module.exports = {
     vehicle: { ...filled.vehicle, notes: 'E'.repeat(120) },
     totalWords: 'ألف'.repeat(40),
   },
-  // A contract saved before the car-sale wording: it must still render its ORIGINAL text.
-  contractLegacy: { ...filled, template: undefined, contractNo: undefined, importCountry: 'الصين', lateFee: '500', lateFeeWords: 'خمسمائة', deliveryDeadline: '45 يوما',
+  // A contract saved before the car-sale wording: it must still render its ORIGINAL text. It is written out in
+  // full and shares nothing with the fixtures above: the test pins the hash of its HTML, and a change to a
+  // sale fixture must never move that.
+  contractLegacy: {
+    contractDate: { day: 'الأحد', d: '12', m: '10', y: '2026' },
+    company: { name: 'MotoLinkers', commercialReg: '282378', taxId: '773934006',
+      address: 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo', repIn: 'محمد ياسر' },
+    rep: { name: 'محمد ياسر', nationalId: '29001011234567', idDate: '15/03/2022', nationality: 'مصري', religion: 'مسلم', address: 'مصر الجديدة - القاهرة', role: 'مدير الشركة' },
+    buyer: { name: 'عمر حسن محمود', nationalId: '29504151234567', idDate: '02/08/2021', nationality: 'مصري', religion: 'مسلم', address: '12 شارع النصر - مدينة نصر - القاهرة' },
+    vehicle: { make: 'مازدا', model: 'EZ60 EV 600 Max', color: 'أبيض', year: '2026', notes: 'شاحن حائط وكابل ومجموعة إصلاح الإطارات' },
+    total: '1915050', totalWords: 'مليون وتسعمائة وخمسة عشر ألفا وخمسون جنيها مصريا',
+    importCountry: 'الصين', lateFee: '500', lateFeeWords: 'خمسمائة', deliveryDeadline: '45 يوما',
     payments: [
       { amount: '600000', when: 'فور التوقيع علي هذا العقد', label: '' },
       { amount: '300000', when: 'في موعد أقصاه خمسة عشر يوما من تاريخ توقيع هذا العقد', label: 'دفعة الشحن' },
       { amount: '200000', when: 'عند وصول السيارة الي الموانئ المصرية', label: 'دفعة ضريبه القيمة المضافة' },
       { amount: '815050', when: 'عند استلام السيارة', label: '' },
-    ] },
+    ],
+  },
 };

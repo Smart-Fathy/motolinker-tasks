@@ -42,6 +42,7 @@ const base = {
 };
 
 const images = [photo('#dff0d4', '#9fcb86', 'Front'), photo('#e8f3df', '#b7d9a3', 'Side'), photo('#d4e8c8', '#8fbf74', 'Rear'), photo('#eef6e8', '#a9d28f', 'Interior')];
+const LONG_WORD = 'Supercalifragilisticexpialidocious'.repeat(3);
 
 module.exports = {
   // Exactly the original's content, no photos.
@@ -101,6 +102,23 @@ module.exports = {
     id: 'MT01W01Y26', date: '2026-01-02', validTo: '2026-01-09', name: '',
     vehicleModel: '', items: [{ name: 'Vehicle', unit: 1, priceUsd: '10000' }], logistics: [],
     currency: 'USD', exchange: '1', issuer: '', customSpecs: [], settings: {},
+  },
+  // Words with no break in them, an enormous price, a thousand units and a long footer note:
+  // everything must wrap inside its box, and the page furniture must stay where it is.
+  quotationStress: {
+    ...base, imageDataUrls: images,
+    id: 'MT' + '9'.repeat(30), name: LONG_WORD, vehicleModel: `BYD Seal ${LONG_WORD}`,
+    items: [
+      { name: LONG_WORD + LONG_WORD, unit: 1, priceUsd: '123456789012' },
+      { name: 'Normal item', unit: 1000, priceUsd: '99999.99' },
+    ],
+    logistics: [{ label: LONG_WORD, priceUsd: '5' }],
+    customSpecs: [
+      { key: 'A very long key '.repeat(4), val: `${LONG_WORD} ${LONG_WORD}` },
+      { key: '', val: 'line one\nline two\nline three' },
+    ],
+    exchange: '50.123456789',
+    settings: { payment_terms: `100% ${LONG_WORD}\n${LONG_WORD}`, footer_note: 'A footer note that runs on and on. '.repeat(6) },
   },
   // Markup in every free-text field: it must print as text, never as HTML.
   quotationHostile: {

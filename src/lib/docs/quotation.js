@@ -31,9 +31,18 @@ const DEFAULT_TERMS = '50% Down payment operations start\n30% Upon shipping from
 const MAX_PHOTOS = 5;
 
 // ── Values ────────────────────────────────────────────────────────────────────
-const str = v => (v == null || typeof v === 'object' ? '' : String(v)).trim();
+// What a field holds, as text: a string or a finite number is itself; anything else (null, a
+// boolean, an object, NaN) is nothing, so a stray value never prints as "false" or "[object Object]".
+const str = v => (typeof v === 'string' ? v : typeof v === 'number' && isFinite(v) ? String(v) : '').trim();
 const arr = v => (Array.isArray(v) ? v : []);
 const rec = v => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+
+// About how many lines the specs card needs (roughly 68 characters fit on a line at its size).
+// It only decides how the two cards sit side by side, so it need not be exact.
+function specLines(specs) {
+  return specs.reduce((n, sp) => n + `${sp.key ? `${sp.key}: ` : ''}${sp.val}`.split(/\r?\n/)
+    .reduce((k, line) => k + Math.max(1, Math.ceil(line.length / 68)), 0), 0);
+}
 
 // How one price cell reads. The editor treats an empty price and "free" (any case) as free;
 // anything else is a number, and what is not a number (a note such as "TBC") is left as typed
@@ -131,7 +140,8 @@ const CSS = `
 .q-meta .v{font-size:8.8pt;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
 .q-meta .v.dim{font-weight:500;color:var(--muted)}
 /* a name, a vehicle or a spec may be Arabic or mixed: order each by its own first letter, keep the columns left-aligned */
-.q-veh,.q-veh-sub,.q-meta .v,table.q-tbl td.name,table.q-tbl td.note,.q-lines li,.q-terms li>span:last-child{unicode-bidi:plaintext;text-align:left}
+.q-veh,.q-veh-sub,.q-meta .v,table.q-tbl td.name,.q-lines li,.q-terms li>span:last-child{unicode-bidi:plaintext;text-align:left}
+table.q-tbl td.note{unicode-bidi:plaintext}
 
 /* photo strip: equal ~2:1 cells (a mild crop for the usual 3:2 car photo), centred; five shrink to fit */
 .q-photos{display:flex;justify-content:center;gap:2.4mm;margin-top:4.2mm;break-inside:avoid}
@@ -163,6 +173,7 @@ table.q-tbl tbody tr.keep{break-after:avoid}
 /* cards */
 .q-cards{display:grid;grid-template-columns:minmax(0,1.62fr) minmax(0,1fr);gap:3.6mm;margin-top:4.6mm;align-items:stretch;break-inside:avoid}
 .q-cards.solo{grid-template-columns:minmax(0,1fr)}
+.q-cards.uneven{align-items:start}
 .q-cards .card{display:flex;flex-direction:column;padding:2.8mm 4.2mm 3mm}
 .q-lines{list-style:none}
 .q-lines li{position:relative;padding-left:3.6mm;font-size:7.3pt;line-height:1.4;color:var(--text);overflow-wrap:anywhere}
@@ -259,9 +270,24 @@ ${m.terms.map(t => `        <li>${t.pct ? `<b class="pct">${esc(t.pct)}</b> ` : 
       ${termsHtml}
       <div class="q-fx"><span><span class="k">Currency:</span> <b>${esc(m.currency)}</b></span><span><span class="k">Exchange:</span> <b>${esc(m.exchange)}</b></span></div>
     </div>`;
-  return `<div class="q-cards${specs ? '' : ' solo'}">
+  // Side by side the two cards share one height. When the specs run far longer than the payment
+  // terms that would leave the payment card mostly empty, so it keeps its own height instead.
+  const cls = !specs ? ' solo' : specLines(m.specs) >= Math.max(14, 2 * (m.terms.length + 2)) ? ' uneven' : '';
+  return `<div class="q-cards${cls}">
     ${specs}${specs ? '\n    ' : ''}${pay}
   </div>`;
+}
+
+// The footer is fixed to the foot of every page and grows with its note and its address, while the
+// body reserves a fixed room for it. A long note (a legal disclaimer) or a long address would make
+// it taller than that room and the last rows of a full page would run under it — so the room is
+// worked out here, from the lengths. For the usual footer (one line of note, a two-line address)
+// it is the shell's own 26mm, and nothing moves.
+function footerRoom(settings, note) {
+  const c = company(settings);
+  const noteLines = Math.max(1, Math.ceil(note.length / 130));           // ~150 characters fit on a line
+  const gridLines = Math.max(3, 1 + Math.ceil(c.address.length / 54));   // "Office" + the address (the other columns have three lines)
+  return `${(26 + (noteLines - 1) * 3.4 + (gridLines - 3) * 3.8).toFixed(1)}mm`;
 }
 
 // ── The document ──────────────────────────────────────────────────────────────
@@ -293,6 +319,7 @@ ${cardsHtml(m)}
     settings: d.settings,
     header: { ref: { label: 'QUOTATION', id: m.id } },
     footer: { note: validity, ref: m.id },
+    footH: footerRoom(d.settings, validity),
     extraCss: CSS,
     body,
   });

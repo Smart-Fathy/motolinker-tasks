@@ -29,6 +29,8 @@ const { buildLegacyContractHtml } = require('./contract-legacy');
 const T = require('./contract-sale-text');
 
 const SALE_TEMPLATE = 'sale-v2';
+// A paragraph of up to this many characters runs to about three lines of the page (it takes 4 to split one).
+const SHORT_PARAGRAPH = 260;
 
 // ── Values ────────────────────────────────────────────────────────────────────
 const obj = v => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
@@ -141,7 +143,11 @@ function paymentList(d, fill) {
   return `<ol class="pay">${lines.map(p => {
     const when = str(p.when) || T.DEFAULT_PAYMENT_WHEN;
     const label = str(p.label);
-    const text = fill(T.PAYMENT_LINE, { amount: p.amount, when });
+    // "يتم سداده فور التوقيع علي هذا العقد" is the paper form's own wording and prints as plain text, as it does there:
+    // only a wording that someone chose for the line is a filled value, emphasised like the others
+    const text = when === T.DEFAULT_PAYMENT_WHEN
+      ? fill(T.PAYMENT_LINE.replace('{when}', T.DEFAULT_PAYMENT_WHEN), { amount: p.amount })
+      : fill(T.PAYMENT_LINE, { amount: p.amount, when });
     // the sentence ends with a full stop, unless the wording the person typed already did
     const stop = label || !/[.،:؛]$/.test(when) ? '.' : '';
     return `<li><span class="pay-t">${text}${label ? ` ( ${esc(label)} )` : ''}${stop}</span></li>`;
@@ -151,9 +157,12 @@ function paymentList(d, fill) {
 function clauseBlocks(cl, d, fill) {
   return cl.blocks.map((b, i) => {
     if (b.t === 'p') {
-      // a paragraph that introduces a table or a list ("… على النحو التالي :") stays with it
+      // a paragraph that introduces a table or a list ("… على النحو التالي :") stays with it; when it is short — too
+      // short to be split without leaving one line on either page — it is not split at all
       const next = cl.blocks[i + 1];
-      const classes = ['p', /\{/.test(b.text) || /\{/.test(b.lead || '') ? 'p--fill' : '', next && next.t !== 'p' ? 'p--keep' : ''].filter(Boolean).join(' ');
+      const keep = !!next && next.t !== 'p';
+      const short = ((b.lead || '') + ' ' + b.text).replace(/\{[^}]+\}/g, '').length <= SHORT_PARAGRAPH;
+      const classes = ['p', /\{/.test(b.text) || /\{/.test(b.lead || '') ? 'p--fill' : '', keep ? 'p--keep' : '', keep && short ? 'p--solid' : ''].filter(Boolean).join(' ');
       return `<p class="${classes}">${b.lead ? `<b class="em">${fill(b.lead)}</b> ` : ''}${fill(b.text)}</p>`;
     }
     if (b.t === 'sub') return `<h3 class="sub">${esc(b.text)}</h3>`;
@@ -177,9 +186,13 @@ function signatureBlock(d, fill) {
 
 // ── The document ──────────────────────────────────────────────────────────────
 const CSS = `
-/* The page counter is drawn in the page margin, where only fonts already in use are available:
-   in an Arabic document Poppins is not, so the counter would stay invisible. */
+/* The page counter is drawn in the page margin, where only the faces the page already uses are available.
+   The brand sets it in Poppins 500, which this Arabic page never uses, so it would stay invisible: Cairo has
+   the Arabic and every weight. */
 @page{@bottom-left{font-family:'Cairo','Poppins',sans-serif}}
+/* The letterhead and the footer are English text: keep them in the brand's Latin face, as in the other documents,
+   not in the Arabic stack of this right-to-left page (the Arabic words in them fall through to Cairo). */
+.doc-header,.doc-footer{font-family:'Poppins','Cairo',sans-serif}
 .doc{font-size:10.6pt;line-height:1.95;color:var(--text)}
 .doc p,.doc h1,.doc h2,.doc h3{margin:0}
 .doc bdi{unicode-bidi:isolate}
@@ -220,7 +233,11 @@ const CSS = `
 .cl-t{font-size:11.6pt;font-weight:700;line-height:1.5;color:var(--ink)}
 .p{margin-bottom:1.8mm;text-align:justify;text-wrap:pretty;orphans:2;widows:2}
 .p--fill{text-align:start}
+/* A paragraph that introduces a table or a list stays with it. When it is a short one it is also never split: Chrome
+   would sooner tear a two-line paragraph than part it from the table under it, and leave its heading and one line
+   at a page foot. */
 .p--keep{break-after:avoid;page-break-after:avoid}
+.p--solid{break-inside:avoid;page-break-inside:avoid}
 .em{font-weight:700;color:var(--ink)}
 .sub{margin:2.6mm 0 1.6mm;font-size:10.4pt;font-weight:700;color:var(--green-deep);break-inside:avoid;break-after:avoid;page-break-after:avoid}
 

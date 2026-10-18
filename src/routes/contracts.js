@@ -56,7 +56,8 @@ function contractDefaults({ customer, deal, settings, vehicle, contractNo }) {
     contractDate: { day: AR_WEEKDAYS[now.getDay()], d: String(now.getDate()).padStart(2, '0'), m: String(now.getMonth() + 1).padStart(2, '0'), y: String(now.getFullYear()) },
     company: {
       name: s.company_name || 'MotoLinkers',
-      commercialReg: s.company_commercial_reg || '282378',
+      // the footer of every document reads the registration number from company_reg_no: so does the contract
+      commercialReg: s.company_commercial_reg || s.company_reg_no || '282378',
       taxId: s.company_tax_id || '773934006',
       address: s.company_address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo',
       repIn: s.company_rep || '',

@@ -157,6 +157,8 @@ const F = fx.contract;
     !/\{/.test(partialText)
     && partial.includes('<bdi class="dt" dir="ltr"><bdi class="v v--nw">5</bdi> / <span class="b b-xs"></span> / <span class="b b-s"></span></bdi>')
     && partial.includes('<span class="b b-s"></span> الجنسية ،') && /<bdi class="v v--nw">مسلم<\/bdi> الديانة/.test(partial));
+  check('…and a date that is not complete is not announced in the title block, a complete one is (with its weekday), as one left-to-right unit',
+    !/class="meta-line"/.test(partial) && /بتاريخ الأحد <bdi dir="ltr">12 \/ 10 \/ 2026<\/bdi>/.test(filledHtml));
   check('the representative named once stands in the other blank too',
     plain(partial).includes('السيد / محمد') && plain(partial).includes('ويمثلها في هذا العقد محمد'));
 
@@ -221,6 +223,10 @@ const F = fx.contract;
     longPays.length === 3 && longPays[0] === 'مبلغ قدره 500,000 يتم سداده فور التوقيع علي هذا العقد.'
     && longPays[1] === 'مبلغ قدره 600,000 يتم سداده عند وصول السيارة الي الموانئ المصرية ( دفعة الشحن ).'
     && longPays[2] === 'مبلغ قدره 815,050 يتم سداده عند استلام السيارة.', JSON.stringify(longPays));
+  const rawPays = payItems(longHtml);
+  check('the paper form\'s own wording "فور التوقيع علي هذا العقد" prints as plain text, as it does there; a wording someone chose for the line is a filled value, emphasised',
+    rawPays[0].includes('يتم سداده فور التوقيع علي هذا العقد.') && !/<bdi[^>]*>فور التوقيع علي هذا العقد<\/bdi>/.test(rawPays[0])
+    && /<bdi class="v[^"]*">500,000<\/bdi>/.test(rawPays[0]) && /<bdi class="v[^"]*">عند وصول السيارة الي الموانئ المصرية<\/bdi>/.test(rawPays[1]), rawPays[0].slice(0, 160));
   check('the list is numbered by the page (a counter), and kept together on a page',
     /ol\.pay li::before\{content:counter\(i\)/.test(longHtml) && /ol\.pay\{[^}]*break-inside:avoid/.test(longHtml));
   const none = buildContractHtml({ template: SALE_TEMPLATE });
@@ -252,6 +258,9 @@ const F = fx.contract;
     /\.cl-h\{[^}]*break-after:avoid/.test(filledHtml) && /\.cl-h\{[^}]*break-inside:avoid/.test(filledHtml) && /table\.veh\{[^}]*break-inside:avoid/.test(filledHtml)
     && /\.sign\{[^}]*break-inside:avoid/.test(filledHtml) && /\.closing\{break-inside:avoid/.test(filledHtml)
     && /<div class="closing"><section class="cl"><h2 class="cl-h"><span class="cl-n">9<\/span>[\s\S]*<div class="sign">/.test(filledHtml));
+  check('the paragraph that introduces the vehicle table stays with it and, being short, is never split; the long one that introduces the payments may break across pages, but not away from its list',
+    /<p class="p p--keep p--solid">إتفق طرفي هذا العقد/.test(filledHtml) && /<p class="p p--fill p--keep"><b class="em">إتفق طرفا هذا العقد/.test(filledHtml)
+    && /\.p--keep\{[^}]*break-after:avoid/.test(filledHtml) && /\.p--solid\{[^}]*break-inside:avoid/.test(filledHtml));
   check('no overflow:hidden anywhere: a long value moves the text down, it never cuts it off', !/overflow:\s*hidden/.test(filledHtml.slice(filledHtml.indexOf('.doc{'))) );
 
   // ═══ 7. The server side: defaults, the auto-draft, the PDF routes ═══
@@ -307,6 +316,15 @@ const F = fx.contract;
       d1.data.buyer.name === 'عمر حسن' && d1.data.buyer.nationalId === '29504151234567' && d1.data.buyer.nationality === 'مصري' && d1.data.buyer.religion === 'مسلم'
       && d1.data.vehicle.make === 'Mazda' && d1.data.vehicle.model === 'EZ60 EV Max' && d1.data.rep.name === 'محمد ياسر' && d1.data.company.repIn === 'محمد ياسر' && d1.data.rep.role === 'مدير الشركة');
     check('…and carries its own number: the one the editor is given', /^MC\d{4}-\d{4}$/.test(d1.contract_no) && d1.data.contractNo === d1.contract_no, d1.contract_no);
+    check('the registered number defaults to the registration on the letterhead (282378), unless the settings name another — under either key',
+      d1.data.company.commercialReg === '282378' && d1.data.company.taxId === '773934006');
+    db.quotation_settings.push({ key: 'company_reg_no', value: '99887' });
+    const dReg = (await call(route('GET', `${B}/new/defaults`), { query: {} })).body;
+    db.quotation_settings.push({ key: 'company_commercial_reg', value: '11111' });
+    const dReg2 = (await call(route('GET', `${B}/new/defaults`), { query: {} })).body;
+    db.quotation_settings.length = 1;   // back to the one setting the checks below rely on
+    check('…the setting the footer reads (company_reg_no) is the one the contract follows; the older company_commercial_reg still wins when it is set',
+      dReg.data.company.commercialReg === '99887' && dReg2.data.company.commercialReg === '11111', `${dReg.data.company.commercialReg} / ${dReg2.data.company.commercialReg}`);
     const printed = plain(buildContractHtml(d1.data));
     check('a freshly drafted contract prints on the new wording, with its number and the lead\'s details',
       printed.includes('عقد بيع سيارة استيراد') && printed.includes(d1.contract_no) && printed.includes('عمر حسن') && printed.includes('29504151234567') && printed.includes('مبلغ قدره يتم سداده فور التوقيع علي هذا العقد.'));
@@ -398,6 +416,20 @@ const F = fx.contract;
       check(`${name}: the text column is the page's (${o.width}px of 688) and nothing runs outside it`, o.n === 0 && o.width <= 690, `${o.width}px ${o.bad.join(' | ')}`);
       const head = await page.evaluate(() => { const h = document.querySelector('.doc-header'); const r = h.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), over: h.scrollWidth - h.clientWidth }; });
       check(`${name}: the page header stays inside the page`, head.over <= 1 && head.left >= 0 && head.right <= 795, JSON.stringify(head));
+      if (name === 'contract') {
+        const fonts = await page.evaluate(() => ({ head: getComputedStyle(document.querySelector('.doc-header')).fontFamily, foot: getComputedStyle(document.querySelector('.doc-footer')).fontFamily,
+          body: getComputedStyle(document.querySelector('.doc')).fontFamily, fs: parseFloat(getComputedStyle(document.querySelector('.doc p')).fontSize) * 0.75 }));
+        check('the English letterhead and footer are set in Poppins like the other documents; the Arabic text is Cairo at 10.5–11 pt',
+          /^"?Poppins/.test(fonts.head) && /^"?Poppins/.test(fonts.foot) && /^"?Cairo/.test(fonts.body) && fonts.fs >= 10.5 && fonts.fs <= 11, JSON.stringify(fonts));
+      }
+      if (name === 'contractBlank') {
+        const lead = await page.evaluate(() => ({
+          sig: [...document.querySelectorAll('.sig .val .b')].map(b => getComputedStyle(b).display),
+          veh: [...document.querySelectorAll('table.veh td .b')].map(b => b.getBoundingClientRect().width >= b.closest('td').getBoundingClientRect().width - 40),
+          dotted: [...document.querySelectorAll('.doc .b')].every(b => getComputedStyle(b).borderBottomStyle === 'dotted') }));
+        check('the blank form: a signature row is its own dotted line (no second leader inside it), a blank in the vehicle table runs the width of its cell, every leader is dotted',
+          lead.sig.length === 4 && lead.sig.every(d => d === 'none') && lead.veh.length === 5 && lead.veh.every(Boolean) && lead.dotted, JSON.stringify(lead));
+      }
       if (name === 'contractHostile') {
         const dom = await page.evaluate(() => ({ imgs: document.querySelectorAll('.doc img').length, h1: document.querySelectorAll('h1').length, h: document.querySelectorAll('.doc h1,.doc h2').length,
           scripts: document.querySelectorAll('script').length, text: document.querySelectorAll('.party')[1].textContent }));
@@ -430,7 +462,9 @@ const F = fx.contract;
     { ...fx.contract, payments: [...fx.contract.payments, ...Array.from({ length: i + 1 }, (_, j) => ({ amount: String(50000 * (j + 1)), when: 'عند الدفعة رقم ' + (j + 2) }))] }]));
   // A note so long that the vehicle table cannot fit where it is: it must move whole to the next page, not split.
   const tableStress = { ...fx.contract, vehicle: { ...fx.contract.vehicle, notes: 'ملاحظة '.repeat(200) } };
-  const toRender = { contract: fx.contract, contractLong: fx.contractLong, contractBlank: fx.contractBlank, stress, tableStress, ...sweep };
+  // contractUnbroken: a card pushed whole onto the next page and a heading that falls at a page foot with the
+  // paragraph under it only two lines long. Chrome used to tear that paragraph and leave "heading + one line" there.
+  const toRender = { contract: fx.contract, contractLong: fx.contractLong, contractBlank: fx.contractBlank, contractUnbroken: fx.contractUnbroken, stress, tableStress, ...sweep };
   // Each render starts its own Chrome: a few at a time, so a busy machine does not time one out.
   const pdfs = {};
   const queue = Object.entries(toRender);
@@ -444,15 +478,20 @@ const F = fx.contract;
     try { return Array.from({ length: n }, (_, i) => spawnSync('pdftotext', ['-f', String(i + 1), '-l', String(i + 1), '-layout', f, '-'], { encoding: 'utf8' }).stdout || ''); }
     finally { fs.unlinkSync(f); }
   };
-  check('a contract is a real A4 PDF with the Cairo face embedded', Object.values(pdfs).every(b => b.slice(0, 5).toString() === '%PDF-' && /Cairo/.test(b.toString('latin1')) && /\/MediaBox\s*\[\s*0\s+0\s+595\.\d*\s+841\.\d*\s*\]/.test(b.toString('latin1'))));
+  check('a contract is a real A4 PDF with the Cairo face embedded, and Poppins for its English letterhead and footer',
+    Object.values(pdfs).every(b => b.slice(0, 5).toString() === '%PDF-' && /Cairo/.test(b.toString('latin1')) && /Poppins/.test(b.toString('latin1')) && /\/MediaBox\s*\[\s*0\s+0\s+595\.\d*\s+841\.\d*\s*\]/.test(b.toString('latin1'))));
   const nPages = Object.fromEntries(Object.entries(pdfs).map(([k, b]) => [k, pagesOf(b)]));
   check('it flows onto the pages it needs: the contract and the blank form take 3 to 5, the long ones a few more at most',
     nPages.contract >= 3 && nPages.contract <= 5 && nPages.contractBlank >= 3 && nPages.contractBlank <= 5 && nPages.contractLong >= 3 && nPages.contractLong <= 6 && nPages.stress >= 4 && nPages.stress <= 9 && nPages.tableStress >= 4 && nPages.tableStress <= 6
-    && Object.keys(sweep).every(k => nPages[k] >= 3 && nPages[k] <= 6), JSON.stringify(nPages));
+    && nPages.contractUnbroken >= 4 && nPages.contractUnbroken <= 6 && Object.keys(sweep).every(k => nPages[k] >= 3 && nPages[k] <= 6), JSON.stringify(nPages));
   if (!pdftotext) console.log('  (pdftotext is not installed: the page-by-page checks of the PDFs are skipped)');
   else {
-    const FOOT = /Office|info@motolinkers|www\.motolinkers|Tax ID|Registration|Confidential|صفحة|AUTOMOTIVE|MOBILITY|ELECTRIC|عقد رقم/;
-    const bodyLines = t => t.split('\n').filter(l => l.trim() && !FOOT.test(l));
+    const FOOT = /Office|info@motolinkers|www\.motolinkers|Tax ID|Registration|Confidential|صفحة|AUTOMOTIVE|MOBILITY|ELECTRIC|عقد رقم|B{12}|9{12}/;
+    // pdftotext wraps every Arabic run in direction marks (U+202B…): without taking them off, no line of Arabic
+    // would ever match a pattern anchored at its start, and every check below that looks at a line would pass for nothing.
+    const clean = t => t.replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g, '');
+    const bodyLines = t => clean(t).split('\n').filter(l => l.trim() && !FOOT.test(l));
+    const HEADING = /^\s*(?:\d\s+)?(?:البند\s+\S+|تمهيد)(?:\s+\d)?\s*$/;
     for (const [name, pdf] of Object.entries(pdfs)) {
       const n = nPages[name];
       const pages = pageTexts(pdf, n);
@@ -464,11 +503,14 @@ const F = fx.contract;
         && /تسعة بنود/.test(last) && /البند التاسع/.test(last), `signatures on page(s) ${sigPages.join(',')} of ${n}`);
       if (name === 'contract' || name === 'contractLong') check(`${name}: the signing boxes carry the two national IDs`, /29001011234567/.test(last) && /29504151234567/.test(last));
       const stranded = pages.map((t, i) => {
-        const ls = bodyLines(t); const lastLine = ls[ls.length - 1] || '';
+        const ls = bodyLines(t); const lastLine = ls[ls.length - 1] || '', before = ls[ls.length - 2] || '';
         // a heading is its number and its words; torn apart, the number alone is left at the foot of the page
-        return /^\s*(?:\d\s+)?(?:البند\s+\S+|تمهيد)(?:\s+\d)?\s*$|^\s*\d\s*$/.test(lastLine) ? `${i + 1}: ${lastLine.trim()}` : '';
+        if (HEADING.test(lastLine) || /^\s*\d\s*$/.test(lastLine)) return `${i + 1}: ends on "${lastLine.trim()}"`;
+        // …and a heading with a single line of its clause under it is not much better: the paragraph is torn after one line
+        if (HEADING.test(before)) return `${i + 1}: "${before.trim()}" has one line under it at the foot`;
+        return '';
       }).filter(Boolean);
-      check(`${name}: no page ends on a clause heading`, stranded.length === 0, stranded.join(' | '));
+      check(`${name}: no page ends on a clause heading, or on a heading with a single line under it`, stranded.length === 0, stranded.join(' | '));
       const firstOnPage = pages.slice(1).map((t, i) => (bodyLines(t)[0] || '').trim()).filter(l => /^(?:\d\s+)?(?:اﻷ|األ)?التوقيع|^الاسم/.test(l));
       check(`${name}: no page after the first opens with a stray signature row`, firstOnPage.length === 0, firstOnPage.join(' | '));
       const pageOf = re => pages.findIndex(t => re.test(t)) + 1;
@@ -483,10 +525,14 @@ const F = fx.contract;
         pageOf(/النحو/) === pageOf(/ماركة السيارة/) && pageOf(/أجور الشحن والنقل/) === pageOf(/مبلغ قدره/) && pageOf(/النحو/) > 0 && pageOf(/مبلغ قدره/) > 0,
         `${pageOf(/النحو/)}/${pageOf(/ماركة السيارة/)} ${pageOf(/أجور الشحن والنقل/)}/${pageOf(/مبلغ قدره/)}`);
       check(`${name}: every page carries the letterhead and its page number`, pages.every((t, i) => /info@motolinkers\.com/.test(t) && /صفحة/.test(t) && new RegExp(`\\b${i + 1}\\b`).test(t) && /Confidential/.test(t)));
-      if (name !== 'contractBlank') check(`${name}: the contract number is on every page`, pages.every(t => /MC2610-1234|MC2610-0007/.test(t)));
+      const no = String(toRender[name].contractNo || '');
+      if (no) check(`${name}: the contract number is on every page`, pages.every(t => clean(t).includes(no.slice(0, 14))));
       else check(`${name}: with no number known there is none on any page`, pages.every(t => !/MC2\d{3}/.test(t)));
     }
     const filledPages = pageTexts(pdfs.contract, nPages.contract);
+    // the checks above look for a heading in the extracted text: prove they can see one, or they pass for nothing
+    const seen = filledPages.flatMap(t => bodyLines(t)).filter(l => HEADING.test(l));
+    check('the page-break checks can read the clause headings out of the PDF text: "تمهيد" and the nine clauses', seen.length === 10, `${seen.length} headings seen`);
     check('the filled contract has its vehicle table and its payment line on a page, and the table is whole on one page',
       filledPages.filter(t => /ماركة السيارة/.test(t) && /موديل السيارة/.test(t) && /سنة الصنع/.test(t) && /EZ60 EV 600 Max/.test(t)).length === 1 && filledPages.some(t => /1,340,535/.test(t)));
     const stressPages = pageTexts(pdfs.stress, nPages.stress);
@@ -503,7 +549,9 @@ const F = fx.contract;
 });
 
 async function editorChecks() {
-  const SALE = { template: 'sale-v2', contractNo: 'MC2610-1234', contractDate: { day: 'الأحد', d: '12', m: '10', y: '2026' },
+  // The payload carries no contractNo of its own: the editor must put the contract's number (the one it was given
+  // beside the payload) into what it collects, or a preview of the contract would print no number.
+  const SALE = { template: 'sale-v2', contractDate: { day: 'الأحد', d: '12', m: '10', y: '2026' },
     company: { name: 'MotoLinkers', commercialReg: '282378', taxId: '773934006', address: 'Cairo', repIn: 'محمد ياسر' },
     rep: { name: 'محمد ياسر', nationality: 'مصري', role: 'مدير الشركة' }, buyer: { name: 'عمر', nationality: 'مصري', religion: 'مسلم' },
     vehicle: { make: 'مازدا' }, total: '100', totalWords: '', importCountry: 'الصين', lateFee: '5',

@@ -269,7 +269,7 @@
             ${sale ? '' : ctField('Delivery deadline (البند الرابع)', 'deliveryDeadline', data.deliveryDeadline)}
           </div>
           ${sale ? `<div style="margin-top:10px">
-            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Payment lines · “مبلغ قدره … يتم سداده …” — printed one by one in البند الثالث</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Payment lines · <bdi>“مبلغ قدره … يتم سداده …”</bdi> — printed one by one in <bdi>البند الثالث</bdi></div>
             <div id="ct-pay-list">${pays.map(payRow).join('')}</div>
             <button type="button" id="ct-pay-add" class="btn btn-outline" style="padding:4px 10px;font-size:12px">+ Add payment line</button>
           </div>` : `<div style="margin-top:10px">
