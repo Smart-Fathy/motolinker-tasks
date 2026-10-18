@@ -119,7 +119,7 @@ A deal moves through lead, contacted, quoted, negotiating, and ends won or lost.
 card between columns on the board, or change the stage in the deal itself.
 
 ## Won deals generate a contract
-Moving a deal to **won** creates the Arabic purchase-and-import contract automatically,
+Moving a deal to **won** creates the Arabic car-sale (import) contract automatically,
 prefilled from the lead and the vehicle. Find it under Tools → Contracts, or attached to
 the lead.
 
@@ -131,7 +131,7 @@ colour, payment type and the client's file.`,
 الخسارة. اسحب البطاقة بين الأعمدة أو غيّر المرحلة من داخل الصفقة.
 
 ## الصفقات الرابحة تُنشئ عقداً
-عند نقل الصفقة إلى **رابحة** يُنشأ عقد شراء واستيراد سيارة بالعربية تلقائياً، معبأ
+عند نقل الصفقة إلى **رابحة** يُنشأ عقد بيع سيارة استيراد بالعربية تلقائياً، معبأ
 ببيانات العميل والسيارة. تجده في الأدوات ← العقود أو مرفقاً بالعميل.
 
 ## المبيعات
@@ -144,27 +144,27 @@ colour, payment type and the client's file.`,
     title: { en: 'Quotations and contracts', ar: 'عروض الأسعار والعقود' },
     body: {
       en: `## Quotations
-Build a quotation from the vehicle, price and terms, then export a PDF. Two designs are
-available and you pick per quotation; both carry the same information and the company logo.
+Build a quotation from the vehicle, price and terms, then export a PDF in the company's
+brand design, with the company logo and details.
 
 ## Contracts
-Contracts are the Arabic import-and-purchase agreement. One is generated automatically
+Contracts are the Arabic car-sale (import) agreement. One is generated automatically
 when a deal is won, and you can also create one by hand. Both attach to the lead.
 
 ## Purchase orders and RFQs
-An **RFQ** asks a supplier to quote a list of vehicles. A **purchase order** commits to
-buying them. Both export as PDFs and attach to the lead they belong to.`,
+An **RFQ** asks a supplier to quote a list of vehicles: it exports as an Excel workbook that
+the supplier fills in (prices, lead time, notes) and sends back. A **purchase order** commits
+to buying them and exports as a PDF. Both attach to the lead they belong to.`,
       ar: `## عروض الأسعار
-أنشئ عرض سعر من السيارة والسعر والشروط ثم صدّره PDF. يوجد تصميمان تختار بينهما لكل
-عرض، وكلاهما يحمل نفس البيانات وشعار الشركة.
+أنشئ عرض سعر من السيارة والسعر والشروط ثم صدّره PDF بتصميم الشركة وشعارها وبياناتها.
 
 ## العقود
-العقود هي اتفاقية شراء واستيراد سيارة بالعربية. يُنشأ العقد تلقائياً عند ربح الصفقة،
+العقود هي اتفاقية بيع سيارة استيراد بالعربية. يُنشأ العقد تلقائياً عند ربح الصفقة،
 ويمكنك أيضاً إنشاؤه يدوياً، وكلاهما يُرفق بالعميل.
 
 ## أوامر الشراء وطلبات التسعير
-**طلب التسعير** يطلب من المورد تسعير قائمة سيارات، و**أمر الشراء** يلتزم بشرائها.
-كلاهما يُصدَّر PDF ويُرفق بالعميل التابع له.`,
+**طلب التسعير** يطلب من المورد تسعير قائمة سيارات ويُصدَّر ملف Excel يملؤه المورد (الأسعار ومدة
+التوريد والملاحظات) ويعيده، و**أمر الشراء** يلتزم بشرائها ويُصدَّر PDF. كلاهما يُرفق بالعميل التابع له.`,
     },
   },
   {
