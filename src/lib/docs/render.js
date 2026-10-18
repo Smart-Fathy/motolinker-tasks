@@ -11,8 +11,12 @@
 // The executable comes from puppeteer's own download; set PUPPETEER_EXECUTABLE_PATH to
 // use a different Chrome (the tests and the sample renderer do).
 
+// A photo on a slow or hung host must not sink the whole document: after loadTimeoutMs the page
+// is printed with whatever has arrived (the late picture is simply left blank).
+const LOAD_TIMEOUT_MS = 20000;
+
 async function renderPdf(html, opts) {
-  const { landscape = false } = opts || {};
+  const { landscape = false, loadTimeoutMs = LOAD_TIMEOUT_MS } = opts || {};
   const puppeteer = require('puppeteer');
   const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
   try {
@@ -23,7 +27,8 @@ async function renderPdf(html, opts) {
       if (u.startsWith('data:') || u.startsWith('https:')) r.continue();
       else r.abort();
     });
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+    await page.setContent(html, { waitUntil: 'networkidle0', timeout: loadTimeoutMs })
+      .catch(e => { if (!(e instanceof puppeteer.TimeoutError)) throw e; });
     // Make sure every embedded font is decoded before the page is printed.
     await page.evaluate(() => (document.fonts && document.fonts.ready) || null);
     return await page.pdf({

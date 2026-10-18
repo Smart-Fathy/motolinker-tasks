@@ -21,14 +21,19 @@
 //  * Text is text: every value goes through esc(); nothing typed is interpolated as HTML.
 //  * A blank never prints "undefined"; a section with nothing to say is left out, not drawn
 //    empty (no photos → no strip; no issuer and no specs → no specs card).
-//  * A photo is accepted only as an inline data:image URL, so the document can never reach
-//    out to the network (render.js refuses it as well, but there is nothing to refuse).
+//  * A photo is an inline picture (data:image/…) or an https address. The editor sends the
+//    pictures a person uploads as inline data, but the ones it takes from the vehicle inventory
+//    (the "Generate quote" button on a lead, cf_vehicle_images) are image URLs: the old quotation
+//    printed them and render.js still lets exactly that, https, through. Anything else (http,
+//    file:, javascript:, a data: page, a relative path) is no photo and is dropped, so a typed
+//    address can never point the renderer anywhere new.
 
 const { shell, esc, escBr, num, company } = require('./brand');
 const { calcEgp, fmtNum } = require('./money');
 
 const DEFAULT_TERMS = '50% Down payment operations start\n30% Upon shipping from supplier\n20% Upon Custom clearances';
 const MAX_PHOTOS = 5;
+const isPhoto = u => /^(?:data:image\/|https:\/\/\S)/i.test(u);
 
 // ── Values ────────────────────────────────────────────────────────────────────
 // What a field holds, as text: a string or a finite number is itself; anything else (null, a
@@ -118,7 +123,7 @@ function quotationModel(data) {
     specs, terms,
     currency: str(d.currency) || 'EGP',
     exchange: num(rate, 4),
-    photos: arr(d.imageDataUrls).map(str).filter(u => /^data:image\//i.test(u)).slice(0, MAX_PHOTOS),
+    photos: arr(d.imageDataUrls).map(str).filter(isPhoto).slice(0, MAX_PHOTOS),
     note: company(s).note,
   };
 }
@@ -145,8 +150,10 @@ table.q-tbl td.note{unicode-bidi:plaintext}
 
 /* photo strip: equal ~2:1 cells (a mild crop for the usual 3:2 car photo), centred; five shrink to fit */
 .q-photos{display:flex;justify-content:center;gap:2.4mm;margin-top:4.2mm;break-inside:avoid}
-.q-photos .ph{flex:0 1 43.6mm;min-width:0;height:22mm;border:.25mm solid var(--mint-200);border-radius:2.4mm;overflow:hidden;background:var(--mint-100)}
+.q-photos .ph{position:relative;flex:0 1 43.6mm;min-width:0;height:22mm;border:.25mm solid var(--mint-200);border-radius:2.4mm;overflow:hidden;background:var(--mint-100)}
 .q-photos img{width:100%;height:100%;object-fit:cover;object-position:50% 60%}
+/* a photo address that does not load (a stale link) leaves a plain tile, not the browser's broken-picture icon; a picture that loads has no ::before */
+.q-photos img::before{content:'';position:absolute;inset:0;background:var(--mint-100)}
 
 /* tables: both share one column grid so the money columns line up */
 .q .sec-title{margin:4mm 0 1.8mm}
@@ -278,18 +285,6 @@ ${m.terms.map(t => `        <li>${t.pct ? `<b class="pct">${esc(t.pct)}</b> ` : 
   </div>`;
 }
 
-// The footer is fixed to the foot of every page and grows with its note and its address, while the
-// body reserves a fixed room for it. A long note (a legal disclaimer) or a long address would make
-// it taller than that room and the last rows of a full page would run under it — so the room is
-// worked out here, from the lengths. For the usual footer (one line of note, a two-line address)
-// it is the shell's own 26mm, and nothing moves.
-function footerRoom(settings, note) {
-  const c = company(settings);
-  const noteLines = Math.max(1, Math.ceil(note.length / 130));           // ~150 characters fit on a line
-  const gridLines = Math.max(3, 1 + Math.ceil(c.address.length / 54));   // "Office" + the address (the other columns have three lines)
-  return `${(26 + (noteLines - 1) * 3.4 + (gridLines - 3) * 3.8).toFixed(1)}mm`;
-}
-
 // ── The document ──────────────────────────────────────────────────────────────
 function buildQuotationHtml(data) {
   const m = quotationModel(data);
@@ -319,7 +314,6 @@ ${cardsHtml(m)}
     settings: d.settings,
     header: { ref: { label: 'QUOTATION', id: m.id } },
     footer: { note: validity, ref: m.id },
-    footH: footerRoom(d.settings, validity),
     extraCss: CSS,
     body,
   });

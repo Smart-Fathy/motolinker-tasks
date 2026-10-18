@@ -17,7 +17,8 @@
 // contact, the documents the supplier must send).
 //
 // What the paper form did, and this keeps doing:
-//  * the total is Σ price × quantity, printed with the order's currency; a quantity left blank is 1;
+//  * the total is Σ price × quantity, printed with the order's currency (named in the two money headings
+//    and in the total block rather than in every cell); a quantity left blank is 1;
 //  * a price of 0 prints no price and no line total (the cells stay empty, they are not "0");
 //  * an empty accessories cell prints the company's standard accessories; empty payment terms and an
 //    empty documents list print the standard wording (src/lib/docs/defaults.js);
@@ -31,8 +32,13 @@
 //
 // Rules of this document (see README.md):
 //  * Text is text: every value goes through esc(); nothing typed is interpolated as HTML.
-//  * A blank never prints "undefined"; it prints as a line to fill in.
-//  * The VIN and the client-file link are not part of the order the supplier receives.
+//  * A blank never prints "undefined"; it prints as a line to fill in. A line with nothing in it (a
+//    blank row the editor sent along) is not a vehicle and is left out.
+//  * The VIN, the client-file link, the line's status and payment term, an admin-added column, the order's
+//    title and the `template` an old record carries are not part of the order the supplier receives.
+//  * A telephone number never breaks across two lines and reads left to right inside Arabic text.
+//  * The page is built to flow: the head row repeats, a row never splits, the last two rows travel with
+//    the total block, and the terms move to the next page whole.
 
 const { shell, esc, escBr, company } = require('./brand');
 const { DOC_DEFAULT_ACCESSORIES, DOC_DEFAULT_DOCUMENTS, DOC_DEFAULT_PAYMENT_TERMS } = require('./defaults');
@@ -58,7 +64,7 @@ function money(n) {
   return v.toLocaleString('en-US', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 });
 }
 // A date column can come back as a full timestamp; the order shows the day.
-const day = v => str(v).replace(/^(\d{4}-\d{2}-\d{2})T.*$/, '$1');
+const day = v => (v instanceof Date && !isNaN(v) ? v.toISOString() : str(v)).replace(/^(\d{4}-\d{2}-\d{2})T.*$/, '$1');
 
 // ── The words filled in by hand ───────────────────────────────────────────────
 // "XXXXX" (a place still to be named) and "CIF ONLY …" (to the end of its line), as the paper form
@@ -68,6 +74,14 @@ const FILL_IN = /(\bX{3,}\b(?:\s+Port\b)?|CIF ONLY[^\r\n]*)/gi;
 const redify = text => String(text).split(FILL_IN)
   .map((seg, i) => (i % 2 ? `<span class="red">${esc(seg)}</span>` : esc(seg).replace(/\r?\n/g, '<br>'))).join('');
 
+// A telephone number is read as one piece: it never breaks across two lines, and in a line of Arabic it
+// keeps its own left-to-right order ("+86 755 8888 1234", not "1234 8888 755 86+"). Only the number is
+// wrapped (at most about 20 characters, so it always fits its column); every piece, number or not, is
+// escaped on its own.
+const PHONE = /(\+?\d[\d ().-]{4,16}\d)/g;
+const phones = text => String(text).split(PHONE)
+  .map((seg, i) => (i % 2 ? `<span class="tel">${esc(seg)}</span>` : esc(seg))).join('');
+
 // "70% balance due …" → the share, in green, and the words. A line without a share is kept whole.
 function termLine(line) {
   const m = /^(\d+(?:[.,]\d+)?\s?%)\s*(.*)$/.exec(line);
@@ -75,8 +89,13 @@ function termLine(line) {
 }
 
 // "EXT: Grey INT: Nebula Purple/White" → one line per colour, so an interior colour never wraps away
-// from its label. Text without EXT/INT is left as it is.
-const colourLines = text => str(text).split(/\s+(?=(?:EXT|INT)\b)/i).filter(Boolean);
+// from its label. A line break typed in the box is kept; text without EXT/INT is left as it is.
+const colourLines = text => str(text).split(/\s*\r?\n\s*|\s+(?=(?:EXT|INT)\b)/i).filter(Boolean);
+
+// A line with nothing in it (a blank row the editor sent along) is not a vehicle: it is dropped, and the
+// grid draws its own numbered blanks. Anything the supplier would read — a name, a model, a price — counts.
+const PRINTED = ['client', 'consignee', 'brand', 'model', 'trim', 'color', 'year', 'accessories'];
+const hasContent = it => PRINTED.some(k => str(it[k])) || amount(it.pi_price) !== 0;
 
 // ── The model ─────────────────────────────────────────────────────────────────
 // Everything the page prints, worked out once. Exported so the maths and the fallbacks can be tested
@@ -84,11 +103,11 @@ const colourLines = text => str(text).split(/\s+(?=(?:EXT|INT)\b)/i).filter(Bool
 function purchaseOrderModel(po) {
   const d = rec(po);
   const s = rec(d.settings);
-  const currency = str(d.currency) || 'USD';
+  const currency = str(d.currency).toUpperCase() || 'USD';
   const lead = str(d.client_name);
   let cents = 0, units = 0;
 
-  const lines = arr(d.items).filter(it => it && typeof it === 'object' && !Array.isArray(it)).map(it => {
+  const lines = arr(d.items).filter(it => it && typeof it === 'object' && !Array.isArray(it) && hasContent(it)).map(it => {
     const consignee = str(it.consignee);
     const client = str(it.client) || consignee || lead;
     const q = amount(it.units);
@@ -138,7 +157,7 @@ const CSS = `
 
 /* title block + meta card (the quotation's own) */
 .po-hero{display:grid;grid-template-columns:minmax(0,1fr) 68mm;gap:9mm;align-items:center;break-inside:avoid}
-.po-h1{font-size:25pt;font-weight:700;letter-spacing:.02em;line-height:1;color:var(--ink);white-space:nowrap}
+.po-h1{font-size:26pt;font-weight:700;letter-spacing:.02em;line-height:1;color:var(--ink);white-space:nowrap}
 .po-bar{width:12mm;height:1.2mm;border-radius:1mm;background:var(--green);margin:2.8mm 0 2.6mm}
 .po-to{font-size:14pt;font-weight:700;line-height:1.22;color:var(--green);overflow-wrap:anywhere}
 .po .po-meta{padding:1.1mm 4.4mm}
@@ -147,8 +166,10 @@ const CSS = `
 .po-meta .k{font-size:5.9pt;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
 .po-meta .v{font-size:8.8pt;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
 .po-meta .v.dim{font-weight:500;color:var(--muted)}
+/* a telephone number is one piece: it does not break across lines, and inside Arabic text it reads left to right */
+.tel{white-space:nowrap;direction:ltr;unicode-bidi:isolate}
 /* typed text may be Arabic or mixed: order each value by its own first letter, keep the columns left-aligned */
-.po-to,.po-meta .v,.po-sup .v,.po-tbl td.t,.po-note p,.po-lines li,.po-kv .v{unicode-bidi:plaintext;text-align:left}
+.po-to,.po-meta .v,.po-sup .v,.po-tbl td.t,.po-note p,.po-lines li>span,.po-kv .v{unicode-bidi:plaintext;text-align:left}
 
 /* supplier */
 .po-sup{margin-top:4.6mm;padding:2.6mm 4.4mm 3mm}
@@ -158,27 +179,36 @@ const CSS = `
 .po-sup .wide{grid-column:1/-1}
 .po-sup .v.line,.po-kv .v.line{border-bottom:.3mm dotted var(--mint-300)}
 
-/* the line grid */
+/* the line grid: body text 7.5pt and up; every cell's first line sits on one baseline (see the figures below) */
 .po .sec-title{margin:4mm 0 1.6mm}
-table.po-tbl{table-layout:fixed;font-size:7.5pt;line-height:1.35}
-.po-tbl .c-no{width:6.5mm}.po-tbl .c-cl{width:24mm}.po-tbl .c-veh{width:27mm}.po-tbl .c-col{width:24mm}.po-tbl .c-yr{width:9.5mm}
+table.po-tbl{table-layout:fixed;font-size:7.5pt;line-height:1.36}
+.po-tbl .c-no{width:6.5mm}.po-tbl .c-cl{width:25mm}.po-tbl .c-veh{width:26mm}.po-tbl .c-col{width:21.5mm}.po-tbl .c-yr{width:9.5mm}
 .po-tbl .c-qty{width:7.5mm}.po-tbl .c-pr{width:17mm}.po-tbl .c-tt{width:21mm}
-table.po-tbl thead th{padding:1.8mm 1.5mm;font-size:5.8pt;letter-spacing:.09em;line-height:1.3;white-space:nowrap}
-table.po-tbl tbody td{padding:1.3mm 1.5mm;vertical-align:top;overflow-wrap:anywhere}
+table.po-tbl thead th{padding:1.8mm 1.3mm;font-size:5.8pt;letter-spacing:.09em;line-height:1.3;white-space:nowrap}
+table.po-tbl thead th.num{white-space:normal;overflow-wrap:anywhere}
+table.po-tbl tbody td{padding:1.3mm 1.3mm;vertical-align:top;overflow-wrap:anywhere}
 table.po-tbl .ctr{text-align:center}
-/* numerals: Poppins' figures are not tabular, Cairo's are, so a column of amounts lines up digit under digit */
-table.po-tbl td.fig{font-family:'Cairo','Poppins',sans-serif;font-variant-numeric:tabular-nums;font-size:7.9pt;white-space:nowrap}
+/* numerals: Poppins' figures are not tabular, Cairo's are, so a column of amounts lines up digit under digit.
+   An amount that would crowd its column steps down a size (never wraps); a quantity or a year stays whole.
+   Cairo's first baseline sits lower in its line than Poppins' does, and a PDF ignores vertical-align:baseline in a
+   cell, so the figures' top padding is worked out from their own size to land on the text's baseline. */
+table.po-tbl td.fig{font-family:'Cairo','Poppins',sans-serif;font-variant-numeric:tabular-nums;font-size:7.9pt;white-space:nowrap;padding-top:calc(11.17pt - 1.044em)}
 table.po-tbl td.fig.xl{font-size:6.8pt}
+table.po-tbl td.fig.xxl{font-size:5.6pt}
 table.po-tbl td.no{color:var(--muted);font-weight:500}
 table.po-tbl tr.blank td{height:9.4mm}
 table.po-tbl tr.blank td.no span{opacity:.5}
-table.po-tbl td .sub{display:block;margin-top:.5mm;font-size:6.5pt;font-weight:500;line-height:1.3;color:var(--muted)}
+table.po-tbl td .sub{display:block;margin-top:.5mm;font-size:7.5pt;font-weight:400;line-height:1.3;color:var(--muted)}
 table.po-tbl td.cl{font-weight:600;color:var(--ink)}
 table.po-tbl td.veh .m{font-weight:600;color:var(--ink)}
 table.po-tbl td.veh .tr{display:block;color:var(--text)}
-table.po-tbl td.acc{font-size:7pt;line-height:1.38;color:var(--text)}
+table.po-tbl td.acc{color:var(--text)}
 table.po-tbl td.qty{font-weight:600;color:var(--ink)}
 table.po-tbl td.tot{font-weight:700;color:var(--ink)}
+/* neighbouring cells of a tinted row overlap by a hair, so no light seam shows between them when the page is rasterised */
+table.po-tbl tbody tr:nth-child(even) td{box-shadow:-.3mm 0 0 var(--mint-50),.3mm 0 0 var(--mint-50)}
+table.po-tbl tbody tr:nth-child(even) td:first-child{box-shadow:.3mm 0 0 var(--mint-50)}
+table.po-tbl tbody tr:nth-child(even) td:last-child{box-shadow:-.3mm 0 0 var(--mint-50)}
 
 /* total: the last row of the table, so the final rows and the total always share a page */
 table.po-tbl tbody tr.keep{break-after:avoid}
@@ -188,7 +218,8 @@ table.po-tbl tbody tr.keep{break-after:avoid}
 .po table.po-tbl tbody tr.sum td{padding:2.6mm 0 0;border:0;border-radius:0;background:#fff;box-shadow:none}
 .po-total{padding:2.8mm 5.4mm}
 .po-total .amt{font-size:18pt;line-height:1.1}
-.po-total .cnt{display:block;margin-top:.6mm;font-size:6.8pt;font-weight:500;letter-spacing:.04em;color:#fff;opacity:.78}
+.po-total .amt.xl{font-size:13pt}.po-total .amt.xxl{font-size:9pt}
+.po-total .cnt{display:block;margin-top:.6mm;font-size:6.8pt;font-weight:500;letter-spacing:.04em;color:var(--mint-200)}
 
 /* terms: payment and notes stacked on the left, delivery beside them; a long note gets a full-width card */
 .po-terms{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:3.6mm;margin-top:4mm;break-inside:avoid}
@@ -198,9 +229,11 @@ table.po-tbl tbody tr.keep{break-after:avoid}
 .po-note p{font-size:8.2pt;line-height:1.45;overflow-wrap:anywhere}
 .po-note.wide{margin-top:3.6mm}
 .po-lines{list-style:none}
-.po-lines li{position:relative;padding-left:3.6mm;font-size:8.2pt;line-height:1.42;color:var(--text);overflow-wrap:anywhere}
+.po-lines li{display:flex;font-size:8.2pt;line-height:1.42;color:var(--text)}
+.po-lines li>span{min-width:0;overflow-wrap:anywhere}
 .po-lines li+li{margin-top:1mm}
-.po-lines li::before{content:'';position:absolute;left:.15mm;top:1.5mm;width:1.15mm;height:1.15mm;border-radius:50%;background:var(--green)}
+/* the bullet is a glyph, so it stays a true circle at any zoom (a CSS box is snapped to whole pixels) */
+.po-lines li::before{content:'•';flex:0 0 3.6mm;padding-left:.1mm;font-weight:700;color:var(--green)}
 .po-lines .pct{font-weight:700;color:var(--green-deep)}
 .po-kv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2.2mm 5mm}
 .po-kv .v{display:block;font-size:8.4pt;line-height:1.35;font-weight:600;color:var(--ink);overflow-wrap:anywhere;min-height:4.2mm}
@@ -211,9 +244,9 @@ table.po-tbl tbody tr.keep{break-after:avoid}
 
 // ── Pieces ────────────────────────────────────────────────────────────────────
 // A value, or the line a hand fills in when there is none. `alert` makes that line red: it is a
-// delivery detail the supplier cannot do without.
-const value = (v, { alert } = {}) =>
-  v ? `<span class="v">${esc(v)}</span>` : `<span class="v line${alert ? ' alert' : ''}"></span>`;
+// delivery detail the supplier cannot do without. `tel` keeps telephone numbers in one piece.
+const value = (v, { alert, tel } = {}) =>
+  v ? `<span class="v">${tel ? phones(v) : esc(v)}</span>` : `<span class="v line${alert ? ' alert' : ''}"></span>`;
 
 function heroHtml(m) {
   const meta = (k, v) => `<div class="r"><span class="k">${k}</span><span class="v${v ? '' : ' dim'}">${v ? esc(v) : '—'}</span></div>`;
@@ -230,11 +263,11 @@ function heroHtml(m) {
 }
 
 function supplierHtml(m) {
-  const f = (k, v, cls) => `<div${cls ? ` class="${cls}"` : ''}><span class="k">${k}</span>${value(v)}</div>`;
+  const f = (k, v, cls, o) => `<div${cls ? ` class="${cls}"` : ''}><span class="k">${k}</span>${value(v, o)}</div>`;
   return `<section class="card po-sup">
   <h4>SUPPLIER DETAILS</h4>
   <div class="g">
-    ${f('Name', m.supplier.name)}${f('Contact', m.supplier.contact)}${f('Country of Origin', m.supplier.country)}
+    ${f('Name', m.supplier.name)}${f('Contact', m.supplier.contact, '', { tel: true })}${f('Country of Origin', m.supplier.country)}
     ${f('Address', m.supplier.address, 'wide')}
   </div>
 </section>`;
@@ -242,8 +275,10 @@ function supplierHtml(m) {
 
 // A quantity: 2, or 2.5 for the odd half; never 2.00000001.
 const qtyText = n => String(Math.round(n * 100) / 100);
-// An amount that would crowd its column (seven figures and cents) steps down a size rather than wrap.
-const fig = (cls, text) => `<td class="${cls}${text.length > 9 ? ' xl' : ''}">${esc(text)}</td>`;
+// A figure that would crowd its column (seven figures and cents; a quantity of 1,000 or more) steps down a
+// size, and again, rather than wrap: past `big` characters it is `xl`, past `huge` it is `xxl`. (The quantity
+// column holds up to five digits; an amount, a dozen characters.)
+const fig = (cls, text, big = 9, huge = 12) => `<td class="${cls}${text.length > huge ? ' xxl' : text.length > big ? ' xl' : ''}">${esc(text)}</td>`;
 
 function lineRow(l, i, cls) {
   const veh = [l.brand, l.model].filter(Boolean).join(' ');
@@ -254,7 +289,7 @@ function lineRow(l, i, cls) {
       <td class="t">${l.colour.map(esc).join('<br>')}</td>
       <td class="ctr fig">${esc(l.year)}</td>
       <td class="t acc">${esc(l.accessories).replace(/\r?\n/g, '<br>')}</td>
-      <td class="ctr fig qty">${esc(qtyText(l.qty))}</td>
+      ${fig('ctr fig qty', qtyText(l.qty), 3, 4)}
       ${fig('num fig', l.price)}
       ${fig('num fig tot', l.total)}
     </tr>`;
@@ -275,13 +310,15 @@ function tableHtml(m) {
   m.lines.forEach((l, i) => rows.push(lineRow(l, i, cls(i))));
   for (let i = m.lines.length; i < n; i++) rows.push(blankRow(i, cls(i)));
   const count = m.units > 0 ? `<span class="cnt">${esc(qtyText(m.units))} ${m.units === 1 ? 'vehicle' : 'vehicles'}</span>` : '';
+  const amt = money(m.total);
+  const size = amt.length > 24 ? ' xxl' : amt.length > 16 ? ' xl' : '';   // a sum that would crowd the block steps down a size
   return `<div class="sec-title">ORDER LINES</div>
 <table class="tbl po-tbl">
   <colgroup><col class="c-no"><col class="c-cl"><col class="c-veh"><col class="c-col"><col class="c-yr"><col><col class="c-qty"><col class="c-pr"><col class="c-tt"></colgroup>
   <thead><tr><th class="ctr">NO</th><th>CLIENT</th><th>VEHICLE</th><th>COLOR EXT / INT</th><th class="ctr">YEAR</th><th>ACCESSORIES / REMARKS</th><th class="ctr">QTY</th><th class="num">PRICE ${cur}</th><th class="num">TOTAL ${cur}</th></tr></thead>
   <tbody>
 ${rows.join('\n')}
-    <tr class="sum"><td colspan="9"><div class="total po-total"><span><span class="lbl">TOTAL</span>${count}</span><span class="amt">${esc(money(m.total))}<small>${cur}</small></span></div></td></tr>
+    <tr class="sum"><td colspan="9"><div class="total po-total"><span><span class="lbl">TOTAL</span>${count}</span><span class="amt${size}">${esc(amt)}<small>${cur}</small></span></div></td></tr>
   </tbody>
 </table>`;
 }
@@ -299,7 +336,7 @@ function termsHtml(m) {
   <div class="col">
     <section class="card"><h4>PAYMENT TERMS</h4>
       <ul class="po-lines">
-${m.terms.map(t => `        <li>${termLine(t)}</li>`).join('\n')}
+${m.terms.map(t => `        <li><span>${termLine(t)}</span></li>`).join('\n')}
       </ul>
     </section>
     ${wideNote ? '' : note}
@@ -307,22 +344,11 @@ ${m.terms.map(t => `        <li>${termLine(t)}</li>`).join('\n')}
   <section class="card"><h4>DELIVERY TERMS</h4>
     <div class="po-kv">
       ${k('Incoterm', dv.incoterm)}${k('Delivery Location', dv.location, { alert: true })}
-      ${k('Service Provider', dv.provider, { alert: true })}${k('Contact', dv.contact, { alert: true })}
+      ${k('Service Provider', dv.provider, { alert: true })}${k('Contact', dv.contact, { alert: true, tel: true })}
       <div class="wide"><span class="k">Documents Required</span><span class="v plain">${redify(dv.documents)}</span></div>
     </div>
   </section>
 </div>${wideNote ? `\n${note}` : ''}`;
-}
-
-// The footer is fixed to the foot of every page and grows with its note and its address, while the body
-// reserves a fixed room for it. A long note (a legal disclaimer) or a long address makes it taller than
-// that room, and the last rows of a full page would run under it — so the room is worked out here from
-// the lengths. For the usual footer (one line of note, a two-line address) it is the shell's own 26mm.
-function footerRoom(settings, note) {
-  const c = company(settings);
-  const noteLines = Math.max(1, Math.ceil(note.length / 130));           // ~150 characters fit on a line
-  const gridLines = Math.max(3, 1 + Math.ceil(c.address.length / 54));   // "Office" + the address (the other columns have three lines)
-  return `${(26 + (noteLines - 1) * 3.4 + (gridLines - 3) * 3.8).toFixed(1)}mm`;
 }
 
 // ── The document ──────────────────────────────────────────────────────────────
@@ -340,7 +366,6 @@ ${termsHtml(m)}
     settings: d.settings,
     header: { ref: { label: 'PURCHASE ORDER', id: m.id } },
     footer: { ref: m.id },
-    footH: footerRoom(d.settings, m.note),
     extraCss: CSS,
     body,
   });

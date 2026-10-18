@@ -30,6 +30,10 @@ const isPng = buf => buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47,
   check('settings override a default, a blank setting does not',
     o.email === 'sales@example.com' && o.phone === '+20 1' && o.taxId === '773934006' && o.note === 'Internal', JSON.stringify(o));
 
+  check('a settings value that is not text (an object) falls back, it never prints [object Object]',
+    brand.company({ company_name: { a: 1 }, company_email: ['x'] }).name === 'Motolinkers' && brand.company({ company_email: ['x'] }).email === 'info@motolinkers.com'
+    && brand.company({ company_phone: 123 }).phone === '123');
+
   // ── Helpers ──
   check('esc turns markup into text', brand.esc(`<img src="x" onerror='a'> & b`) === '&lt;img src=&quot;x&quot; onerror=&#39;a&#39;&gt; &amp; b');
   check('esc and escBr survive null and numbers', brand.esc(null) === '' && brand.esc(0) === '0' && brand.escBr('a\nb') === 'a<br>b');
@@ -59,6 +63,17 @@ const isPng = buf => buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47,
   const ar = brand.shell({ dir: 'rtl', body: '' });
   check('an Arabic shell is right-to-left, in Arabic, with an Arabic page counter',
     /<html lang="ar" dir="rtl">/.test(ar) && /صفحة/.test(ar) && /@bottom-left/.test(ar));
+  const footVar = h => (/--foot-h:([\d.]+)mm/.exec(h) || [])[1];
+  check('the footer\'s reserved room is the usual 26mm, and grows with a long note or a long address',
+    brand.footerRoom({}, 'Confidential') === '26.0mm' && parseFloat(footVar(html)) === 26
+    && parseFloat(brand.footerRoom({}, 'x'.repeat(400))) > 26 && parseFloat(brand.footerRoom({ company_address: 'A very long address '.repeat(8) }, 'ok')) > 26,
+    `${brand.footerRoom({}, 'x'.repeat(400))} / ${brand.footerRoom({ company_address: 'A very long address '.repeat(8) }, 'ok')}`);
+  check('…the shell works the room out itself, and an explicit footH wins',
+    parseFloat(footVar(brand.shell({ footer: { note: 'x'.repeat(400) }, body: '' }))) > 26 && footVar(brand.shell({ footH: '40mm', footer: { note: 'x'.repeat(400) }, body: '' })) === '40');
+  check('an Arabic page counts its pages in the page\'s own type (Cairo first); an English page in Poppins first',
+    /@bottom-left\{content:[^;]*;font:500 6\.6pt\/1 'Cairo','Poppins'/.test(ar) && /@bottom-right\{content:[^;]*;font:500 6\.6pt\/1 'Poppins','Cairo'/.test(html));
+  check('the letterhead and the footer are set in Poppins whatever the page\'s direction',
+    /\.doc-header,\.doc-footer\{font-family:'Poppins'/.test(ar) && /\.doc-header,\.doc-footer\{font-family:'Poppins'/.test(html));
   check('no external fetch: nothing but data: URIs in the document', !/(src|href)=["']https?:/.test(html) && !/url\(["']?https?:/.test(html));
 
   // ── Rendering: a long document gets the furniture on every page ──
@@ -68,6 +83,30 @@ const isPng = buf => buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47,
   check('a long document paginates (several A4 pages)', pages >= 3, `${pages} pages`);
   check('the PDF starts as a PDF and embeds Poppins', pdf.slice(0, 5).toString() === '%PDF-' && /Poppins/.test(pdf.toString('latin1')));
   check('the page size is A4', /\/MediaBox\s*\[\s*0\s+0\s+595\.\d*\s+841\.\d*\s*\]/.test(pdf.toString('latin1')));
+
+  // The RTL page counter has to be visible in the PDF itself (it was invisible while it asked for a face the Arabic page never loads).
+  const havePdftotext = require('child_process').spawnSync('which', ['pdftotext']).status === 0;
+  if (havePdftotext) {
+    const arPdf = Buffer.from(await renderPdf(brand.shell({ dir: 'rtl', title: 'ع', body: '<p>نص عربي قصير</p>' })));
+    const tmp = path.join(require('os').tmpdir(), `doc-brand-ar-${process.pid}.pdf`);
+    fs.writeFileSync(tmp, arPdf);
+    const txt = (require('child_process').spawnSync('pdftotext', ['-layout', tmp, '-'], { encoding: 'utf8' }).stdout || '').replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '');
+    fs.unlinkSync(tmp);
+    check('an Arabic document prints its page counter ("صفحة 1 من 1")', /صفحة\s*1\s*من\s*1/.test(txt) || /1\s*من\s*1\s*صفحة/.test(txt), JSON.stringify(txt.trim().slice(-80)));
+  } else console.log('  SKIP  the Arabic page counter in the PDF (pdftotext is not installed)');
+
+  // A photo on a host that accepts the connection and never answers must not fail the whole document.
+  await new Promise(resolve => {
+    const srv = require('net').createServer(() => { /* hold the connection, say nothing */ }).listen(0, '127.0.0.1', async () => {
+      const t0 = Date.now();
+      let pdfOut = null, err = null;
+      try { pdfOut = Buffer.from(await renderPdf(`<!doctype html><body><h1>HELLO</h1><img src="https://127.0.0.1:${srv.address().port}/x.png" width="50" height="50"></body>`, { loadTimeoutMs: 1500 })); }
+      catch (e) { err = e; }
+      check('a photo host that never answers does not fail the PDF: it prints without the photo, soon after the limit',
+        !err && pdfOut && pdfOut.slice(0, 5).toString() === '%PDF-' && Date.now() - t0 < 15000, err ? String(err.message).slice(0, 80) : `${Date.now() - t0} ms`);
+      srv.close(); resolve();
+    });
+  });
 
   const failed = results.filter(r => !r).length;
   console.log(`\n${results.length - failed}/${results.length} passed`);

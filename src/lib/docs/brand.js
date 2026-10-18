@@ -50,7 +50,8 @@ function company(settings) {
   const s = settings || {};
   const pick = (key, def) => {
     const v = s[key];
-    return v != null && String(v).trim() ? String(v).trim() : def;
+    const t = typeof v === 'string' || typeof v === 'number' ? String(v).trim() : '';
+    return t || def;
   };
   return {
     name:    pick('company_name', COMPANY_DEFAULTS.name),
@@ -127,17 +128,19 @@ function baseCss(o) {
   const pageNumbers = opts.pageNumbers !== false;
   const pageLabel = opts.pageLabel || (rtl ? '"صفحة " counter(page) " من " counter(pages)' : '"Page " counter(page) " of " counter(pages)');
   const numBox = rtl ? '@bottom-left' : '@bottom-right';
+  const stack = rtl ? FONT_STACK_AR : FONT_STACK;
   return `
 :root{--ink:${COLORS.ink};--green:${COLORS.green};--green-deep:${COLORS.greenDeep};--lime:${COLORS.lime};
   --mint-50:${COLORS.mint50};--mint-100:${COLORS.mint100};--mint-200:${COLORS.mint200};--mint-300:${COLORS.mint300};
   --text:${COLORS.text};--muted:${COLORS.muted};--line:${COLORS.line};--head-h:${headH};--foot-h:${footH};--gutter:14mm}
-@page{size:A4;margin:0 0 10mm 0;${pageNumbers ? `${numBox}{content:${pageLabel};font:500 6.6pt/1 'Poppins','Cairo',sans-serif;color:${COLORS.muted};padding:0 14mm 4mm;vertical-align:top}` : ''}}
+@page{size:A4;margin:0 0 10mm 0;${pageNumbers ? `${numBox}{content:${pageLabel};font:500 6.6pt/1 ${stack};color:${COLORS.muted};padding:0 14mm 4mm;vertical-align:top}` : ''}}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{font-family:${rtl ? FONT_STACK_AR : FONT_STACK};font-size:9pt;line-height:1.5;color:var(--text);background:#fff;font-variant-numeric:tabular-nums}
 img{display:block}
 
 /* ── Page furniture: repeats on every page ── */
+.doc-header,.doc-footer{font-family:${FONT_STACK}}
 .doc-header{position:fixed;top:0;left:0;right:0;padding:9mm var(--gutter) 0;background:#fff}
 .dh-row{display:flex;align-items:center;justify-content:space-between;gap:8mm}
 .dh-logo{height:11.5mm;width:auto}
@@ -145,6 +148,7 @@ img{display:block}
 .dh-tag{display:block;font-size:6.2pt;font-weight:600;letter-spacing:.24em;color:var(--green);white-space:nowrap}
 .dh-ref{display:block;font-size:6.8pt;font-weight:600;letter-spacing:.06em;color:var(--ink);margin-top:.8mm}
 .dh-ref span{color:var(--muted);font-weight:500}
+${rtl ? '.dh-ref{letter-spacing:0}' : ''}
 .rule{display:flex;height:1.5mm;border-radius:1mm;overflow:hidden}
 .rule i{display:block}.rule i:first-child{flex:0 0 74%;background:var(--ink)}.rule i:last-child{flex:1;background:var(--green)}
 .dh-rule{margin-top:3.6mm}
@@ -212,6 +216,19 @@ ${opts.extra || ''}`;
 }
 
 // ── Page furniture ────────────────────────────────────────────────────────────
+// The footer is fixed to the foot of every page and grows with its note and its address, while
+// the body reserves a fixed room for it. A long note (a legal disclaimer) or a long address makes
+// it taller than that room, and the last rows of a full page would run under it — so the room is
+// worked out from the lengths. For the usual footer (one line of note, a two-line address) it is
+// the default 26mm and nothing moves.
+function footerRoom(settings, note) {
+  const c = company(settings);
+  const text = String(note == null ? c.note : note);
+  const noteLines = Math.max(1, Math.ceil(text.length / 130));           // ~150 characters fit on a line
+  const gridLines = Math.max(3, 1 + Math.ceil(c.address.length / 54));   // "Office" + the address (the other columns have three lines)
+  return `${(26 + (noteLines - 1) * 3.4 + (gridLines - 3) * 3.8).toFixed(1)}mm`;
+}
+
 // opts.ref: { label, id } shows a small "QUOTATION  MT28W88Y26" under the tagline.
 function headerHtml(settings, opts) {
   const c = company(settings);
@@ -249,15 +266,17 @@ function footerHtml(settings, opts) {
 //   header    { ref: {label,id} }       footer  { note, ref }
 //   dir/lang  'rtl'/'ar' for the Arabic contract
 //   extraCss  document-specific rules appended after the base stylesheet
-//   headH/footH  override the reserved heights (mm strings) when a header grows
+//   headH/footH  override the reserved heights (mm strings); the footer's is worked out from
+//                its note and address unless given
 function shell(o) {
   const opts = o || {};
   const rtl = opts.dir === 'rtl';
+  const footH = opts.footH || footerRoom(opts.settings, opts.footer && opts.footer.note);
   return `<!DOCTYPE html>
 <html lang="${esc(opts.lang || (rtl ? 'ar' : 'en'))}" dir="${rtl ? 'rtl' : 'ltr'}"><head><meta charset="UTF-8">
 <title>${esc(opts.title || 'Motolinkers')}</title>
 <style>${fontCss()}</style>
-<style>${baseCss({ dir: opts.dir, headH: opts.headH, footH: opts.footH, pageNumbers: opts.pageNumbers, pageLabel: opts.pageLabel, extra: opts.extraCss })}</style>
+<style>${baseCss({ dir: opts.dir, headH: opts.headH, footH, pageNumbers: opts.pageNumbers, pageLabel: opts.pageLabel, extra: opts.extraCss })}</style>
 </head><body>
 ${headerHtml(opts.settings, opts.header)}
 ${footerHtml(opts.settings, opts.footer)}
@@ -272,5 +291,5 @@ module.exports = {
   COLORS, COMPANY_DEFAULTS, FONT_STACK, FONT_STACK_AR, LOGO_RATIO, MARK_RATIO,
   company, esc, escBr, num,
   logoUri, markUri, logoBuffer, markBuffer,
-  fontCss, baseCss, headerHtml, footerHtml, shell,
+  fontCss, baseCss, headerHtml, footerHtml, footerRoom, shell,
 };

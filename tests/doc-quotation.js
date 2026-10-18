@@ -9,11 +9,18 @@
 // What this guards, in order: the original Mazda quote to the dirham (every line, the total);
 // the money rules (Free in any case, an empty price, rounding with a fractional rate, units,
 // separators, a price that is words); what is left out when there is nothing to say (the
-// vehicle, the specs card, the photo strip); that nothing a person typed is lost and nothing
-// typed is HTML; the page furniture (header, validity note, number); a real browser (markup is
-// text, the page reaches nowhere, nothing overflows); and real PDFs: the normal quotation is
-// exactly one A4 page, a long one flows onto more with the table head repeated, whole rows,
-// whole cards and the total always with the last rows, and the footer on every page.
+// vehicle, the specs card, the photo strip); which pictures count as photos (an inline picture
+// or an https address, at most five); that nothing a person typed is lost and nothing typed is
+// HTML, in any field; the page furniture (header, validity note, number); a real browser (markup
+// is text, the page reaches nowhere but for an https photo, nothing overflows, the figures are
+// flush right and line up, the cards and the photo strip sit where they should); and real PDFs:
+// the normal quotation is exactly one A4 page, a long one flows onto more with the table head
+// repeated, whole rows, whole cards, no title left behind and the total always with the last
+// rows, and the footer on every page (that last part needs pdftotext and is skipped without it).
+//
+// The checks were mutation-tested: each key rule was broken in a scratch copy of the repo and the
+// test had to go red (the money maths, the Free rule, the hidden-card and hidden-vehicle rules, the
+// photo rule, escaping, the page-fit and keep-together rules).
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -151,6 +158,16 @@ const BIG_ADDRESS = 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani S
   eq('empty lines (no name and no price) are dropped; a line with only a name or only a price is kept; a bare string is a name',
     bodyRows({ exchange: '1', items: [{ name: '', unit: 1, priceUsd: '' }, { name: '  ', priceUsd: '  ' }, { name: 'Only name' }, { name: '', priceUsd: '5' }, null, 'Bare string'] }).rows.map(r => r[0]),
     ['Only name', '', 'Bare string']);
+  eq('…the same for logistics: an empty line is dropped, a line with only a price is kept, a bare string is a label (with a dash for its price)',
+    bodyRows({ exchange: '1', logistics: [{ label: '', priceUsd: '' }, { label: '  ', priceUsd: '  ' }, null, 'Bare label', { priceUsd: '5' }] }, 'LOGISTICS PRICING BREAKDOWN').rows,
+    [['Bare label', '—', '—'], ['', '5', '5']]);
+  eq('a unit of a thousand or more prints with its separator: 1,000 × 2 × 1 = 2,000',
+    bodyRows({ exchange: '1', items: [{ name: 'Bulk', unit: 1000, priceUsd: '2' }] }).rows, [['Bulk', '1,000', '2', '2,000']]);
+  eq('a logistics line with a price of words ("TBC") prints it as typed with a dash, and stays out of the total',
+    (t => [t.rows, t.total])(bodyRows({ exchange: '10', logistics: [{ label: 'Insurance', priceUsd: 'TBC' }, { label: 'Freight', priceUsd: '5' }] }, 'LOGISTICS PRICING BREAKDOWN')),
+    [[['Insurance', 'TBC', '—'], ['Freight', '5', '50']], 'TOTAL PRICE BREAKDOWN IN EGP 50 EGP']);
+  eq('the total is the sum of the rounded lines of both tables, to the last unit: 0.5 × 51 → 26 (items) + 0.5 × 51 → 26 (logistics) = 52, not the rounded 51',
+    bodyRows({ exchange: '51', items: [{ name: 'a', priceUsd: '0.5' }], logistics: [{ label: 'b', priceUsd: '0.5' }] }, 'LOGISTICS PRICING BREAKDOWN').total, 'TOTAL PRICE BREAKDOWN IN EGP 52 EGP');
 
   // ═══ 3. What is left out when there is nothing to say ═══
   const noSpecs = html({ issuer: '', customSpecs: [] });
@@ -178,9 +195,13 @@ const BIG_ADDRESS = 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani S
   const seven = withPhotos(7);
   check('the strip is capped at five: the first five, in order, and no more',
     photoCount(seven) === 5 && [0, 1, 2, 3, 4].every(i => seven.includes(`src="${escape(svg(i))}"`)) && [5, 6].every(i => !seven.includes(escape(svg(i)))) && inOrder(seven, [0, 1, 2, 3, 4].map(i => escape(svg(i)))) === -1);
-  const junk = buildQuotationHtml({ ...fx.quotation, imageDataUrls: ['https://example.com/a.png', 'http://intranet/b.jpg', 'file:///etc/passwd', 'javascript:alert(1)', 'data:text/html;base64,PHNjcmlwdD4=', '', null, 7, {}, [], svg(1)] });
-  check('only inline data:image pictures are accepted: links, files, scripts, pages and junk are dropped; the real photo stays',
-    photoCount(junk) === 1 && junk.includes(escape(svg(1))) && !/example\.com|intranet|file:\/\/|javascript:|PHNjcmlwdD4=/.test(junk));
+  const junk = buildQuotationHtml({ ...fx.quotation, imageDataUrls: ['http://intranet/b.jpg', 'https://photos.example.com/a.jpg', 'file:///etc/passwd', 'javascript:alert(1)', 'data:text/html;base64,PHNjcmlwdD4=',
+    '//cdn.example.org/c.png', '/uploads/d.png', 'https://', '', null, 7, {}, [], svg(1)] });
+  check('a photo is an inline picture or an https address: http, file, javascript, a data: page, a path, a bare "https://" and junk are dropped; the two real ones stay, in order',
+    photoCount(junk) === 2 && inOrder(junk, ['src="https://photos.example.com/a.jpg"', `src="${escape(svg(1))}"`]) === -1 && !/intranet|file:\/\/|javascript:|PHNjcmlwdD4=|cdn\.example\.org|uploads/.test(junk));
+  check('an https address is trimmed and kept whole, and counts toward the cap of five like any photo',
+    (h => photoCount(h) === 5 && h.includes('src="https://photos.example.com/c.jpg?w=1&amp;h=2"') && !/photos\.example\.com\/f\.jpg/.test(h))(
+      buildQuotationHtml({ ...fx.quotation, imageDataUrls: ['  https://photos.example.com/a.jpg ', svg(1), 'https://photos.example.com/c.jpg?w=1&h=2', svg(3), svg(4), 'https://photos.example.com/f.jpg'] })));
   const brokenSrc = buildQuotationHtml({ ...fx.quotation, imageDataUrls: ['data:image/png;base64,AAAA" onerror="alert(1)'] });
   check('a picture\'s address cannot break out of its attribute', photoCount(brokenSrc) === 1 && !/" onerror="/.test(brokenSrc) && /&quot; onerror=&quot;/.test(brokenSrc));
   check('a photo list that is not a list is no photos', photoCount(buildQuotationHtml({ ...fx.quotation, imageDataUrls: svg(1) })) === 0 && photoCount(buildQuotationHtml({ ...fx.quotation, imageDataUrls: null })) === 0);
@@ -196,6 +217,13 @@ const BIG_ADDRESS = 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani S
     /class="q-lines q-terms-plain"/.test(plainTerms) && /100%<\/b> Advance payment/.test(plainTerms) && /<li>Balance on delivery in Cairo<\/li>/.test(plainTerms) && !/class="q-terms"/.test(plainTerms));
   const decimalTerms = html({ settings: { payment_terms: '12.5% Deposit\n87.5 % Rest' } });
   check('a share with a decimal, or a space before the %, is still a share', /<span class="pct">12.5%<\/span><span>Deposit<\/span>/.test(decimalTerms) && /<span class="pct">87.5%<\/span><span>Rest<\/span>/.test(decimalTerms));
+  const payCard = h => between(h, 'class="card q-pay"', 'class="q-fx"');
+  const messy = html({ settings: { payment_terms: '40% Deposit\n\n   \n  35% On shipping  \r\n25% On arrival\n' } });
+  check('blank lines are dropped and each line is trimmed: exactly three terms, every one a share (so a schedule, not a plain list)',
+    count(payCard(messy), '<li>') === 3 && /class="q-terms"/.test(messy) && !/q-terms-plain/.test(payCard(messy))
+    && /<span class="pct">35%<\/span><span>On shipping<\/span>/.test(messy) && /<span class="pct">25%<\/span><span>On arrival<\/span>/.test(messy));
+  check('the schedule keeps one row per term in a real order, and a plain list one bullet per term, with no empty bullet',
+    count(payCard(html({})), '<li>') === 3 && count(payCard(plainTerms), '<li>') === 2 && !/<li>\s*<\/li>/.test(payCard(messy) + payCard(plainTerms)));
   check('Currency and Exchange: the typed currency and the rate with its fraction; a blank currency is EGP, a blank rate 1',
     /Currency: USD Exchange: 50.75/.test(terms({}, { currency: 'USD', exchange: '50.75' })) && /Currency: EGP Exchange: 1\b/.test(terms({}, { currency: '', exchange: '' })) && /Exchange: 1,234.5/.test(terms({}, { exchange: '1234.5' })));
 
@@ -242,6 +270,25 @@ const BIG_ADDRESS = 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani S
   const hostileSettings = html({ id: '"><script>1</script>', date: '<i>d</i>', validTo: '<s>v</s>', settings: { payment_terms: '<b>50%</b> <script>x</script>', footer_note: '<u>note</u>', company_name: '<b>Co</b>', company_address: '<img src=x onerror=1>' } });
   check('the settings, the number, the date and "valid to" are text too (letterhead, footer, title, cards)',
     !/<script|<u>note|<b>Co<|<img src=x|<i>d<|<s>v<|<b>50%/.test(hostileSettings) && /&lt;u&gt;note&lt;\/u&gt;/.test(hostileSettings) && /<title>Quotation &quot;&gt;&lt;script&gt;1&lt;\/script&gt;<\/title>/.test(hostileSettings));
+  // Every text field at once carries <u>NAME</u>. None of it may reach the page as a tag, and each one must be there as text.
+  const FIELDS = ['id', 'date', 'validTo', 'name', 'vehicle', 'vehicleSub', 'item', 'itemWords', 'logistics', 'logisticsWords', 'issuer', 'specKey', 'specVal', 'currency', 'note',
+    'company', 'address', 'email', 'website', 'phone', 'taxId', 'regNo', 'tagline'];
+  const u = f => `<u>${f}</u>`;
+  const everywhere = terms => buildQuotationHtml({
+    id: u('id'), date: u('date'), validTo: u('validTo'), name: u('name'), vehicleModel: `${u('vehicle')} — ${u('vehicleSub')}`,
+    items: [{ name: u('item'), unit: 1, priceUsd: u('itemWords') }], logistics: [{ label: u('logistics'), priceUsd: u('logisticsWords') }],
+    currency: u('currency'), exchange: '1', issuer: u('issuer'), customSpecs: [{ key: u('specKey'), val: u('specVal') }], imageDataUrls: [],
+    settings: { payment_terms: terms, footer_note: u('note'), company_name: u('company'), company_address: u('address'), company_email: u('email'), company_website: u('website'),
+      company_phone: u('phone'), company_tax_id: u('taxId'), company_reg_no: u('regNo'), company_tagline: u('tagline') } });
+  const schedule = everywhere(`50% ${u('shareA')}\n50% ${u('shareB')}`), bullets = everywhere(`Plain ${u('plainA')}\n50% ${u('plainB')}`);
+  const unescaped = [[schedule, 'a schedule of shares', [...FIELDS, 'shareA', 'shareB']], [bullets, 'a plain list', [...FIELDS, 'plainA', 'plainB']]]
+    .flatMap(([h, label, fields]) => [...(/<u>/.test(h) ? [`${label}: a raw <u> tag`] : []), ...fields.filter(f => !h.includes(escape(u(f)))).map(f => `${label}: ${f} is not printed as text`)]);
+  check('markup typed into ANY text field (the number, the dates, the name, the vehicle, every line, price words, issuer, spec, term, currency, the note, every company detail) is printed as text, never as a tag',
+    unescaped.length === 0, unescaped.slice(0, 4).join(' | '));
+  check('an ampersand is escaped once, not twice: "Terms & conditions" in the note and in a line reads "&amp;" in the source and "&" on the page',
+    (h => /Terms &amp; conditions apply/.test(h) && !/&amp;amp;/.test(h) && /Wall &amp; Cable/.test(h) && /Terms & conditions apply/.test(footerOf(h)))(html({ items: [{ name: 'Wall & Cable', priceUsd: '1' }], settings: { footer_note: 'Terms & conditions apply' } })));
+  check('with an https photo that address is the only one in the whole document: nothing else (font, style, logo) is fetched',
+    (h => same(h.match(/https?:\/\/[^"'\s)<]+/g), ['https://photos.example.com/a.jpg']))(buildQuotationHtml({ ...fx.quotation, imageDataUrls: ['https://photos.example.com/a.jpg', svg(1)] })));
   check('the document refers to nothing outside itself: no http(s) address in any src, href or url(), no link, import, frame or script',
     ![mz, buildQuotationHtml(fx.quotationImages), hostile, buildQuotationHtml(fx.quotationLong), buildQuotationHtml(fx.quotationStress)].some(h => /(?:src|href)=["']?https?:|url\(["']?https?:|@import|<link|<iframe|<script|<a /i.test(h)));
   check('the fonts and the logo are embedded as data URIs', /font-family:'Poppins'/.test(mz) && /<img class="dh-logo" alt="Motolinkers" src="data:image\/png;base64,/.test(mz) && !/url\((?!['"]?data:)/.test(mz));
@@ -279,6 +326,7 @@ const BIG_ADDRESS = 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani S
       };
       const footer = document.querySelector('.doc-footer');
       const height = sel => { const c = document.querySelector(sel); return c ? Math.round(c.getBoundingClientRect().height) : 0; };
+      const width = sel => { const c = document.querySelector(sel); return c ? Math.round(c.getBoundingClientRect().width) : 0; };
       return {
         scripts: document.querySelectorAll('script').length,
         handlers: [...document.querySelectorAll('*')].filter(e => [...e.attributes].some(a => /^on/i.test(a.name))).length,
@@ -289,6 +337,17 @@ const BIG_ADDRESS = 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani S
         bad: bad.slice(0, 6),
         loaded: [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family),
         cards: [height('.q-specs'), height('.q-pay')],
+        // the payment card's width against the page's content: all of it when it stands alone
+        pay: [width('.q-pay'), width('.q')],
+        // every figure (the last two cells of each row, the total row apart) is set flush right: how many there are, and how many are
+        money: (cells => [cells.length, cells.filter(td => getComputedStyle(td).textAlign === 'right').length])([...document.querySelectorAll('table.q-tbl tbody tr:not(.tot) td:nth-last-child(-n+2)')]),
+        // the photo strip: each tile's width, and the space left of the first tile and right of the last (a centred strip has equal gaps)
+        strip: (tiles => (tiles.length ? { widths: tiles.map(t => Math.round(t.width)), gaps: [Math.round(tiles[0].left - rr.left), Math.round(rr.right - tiles[tiles.length - 1].right)] } : null))(
+          [...document.querySelectorAll('.q-photos .ph')].map(e => e.getBoundingClientRect())),
+        // what a photo tile shows when its address cannot be loaded: a plain mint cover over the browser's broken-picture icon (a picture that loads has no ::before)
+        cover: (img => { const st = img && getComputedStyle(img, '::before'); return st ? [st.content, st.position, st.backgroundColor] : null; })(document.querySelector('.q-photos img')),
+        // where the money columns end in each table: in the same place in both, so the figures line up down the page
+        cols: [...document.querySelectorAll('table.q-tbl')].map(t => [...t.querySelectorAll('thead th.num')].map(th => Math.round(th.getBoundingClientRect().right))),
         // the footer's own height, and the room the body keeps for it (both in mm)
         foot: footer ? [+(footer.getBoundingClientRect().height * 25.4 / 96).toFixed(1), parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--foot-h'))] : [0, 0],
         bidi: [['td.name', 'سيارة', 'EZ60'], ['li', 'تسليم', 'Delivery'], ['td.name', 'Wall', 'شاحن']].map(([sel, a, b]) => [xOf(sel, a), xOf(sel, b)]),
@@ -310,16 +369,18 @@ const BIG_ADDRESS = 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani S
         await page.evaluate(() => document.fonts.ready);
         return { f: await page.evaluate(probe), seen, dialogs };
       } catch (e) {
-        return { f: { scripts: -1, handlers: -1, h1: -1, imgs: [], text: '', wide: true, bad: [`the page failed: ${String(e.message).slice(0, 80)}`], loaded: [], cards: [0, 0], foot: [0, 0], bidi: [] }, seen, dialogs };
+        return { f: { scripts: -1, handlers: -1, h1: -1, imgs: [], text: '', wide: true, bad: [`the page failed: ${String(e.message).slice(0, 80)}`], loaded: [], cards: [0, 0], pay: [0, 0], money: [0, 1], strip: null, cover: null, cols: [], foot: [0, 0], bidi: [] }, seen, dialogs };
       } finally {
         if (page) await page.close().catch(() => {});
       }
     };
     const FIT = [['the Mazda quote with four photos', fx.quotationImages], ['five photos', fx.quotationFivePhotos], ['the long quote', fx.quotationLong],
-      ['words with no break, a 12-digit price and a long note', fx.quotationStress], ['Arabic and Latin mixed', fx.quotationArabic], ['the sparse quote', fx.quotationMinimal]];
-    const evil = buildQuotationHtml({ ...fx.quotation, imageDataUrls: ['https://example.com/a.png', 'data:image/png;base64,AAAA" onerror="alert(1)', svg(2)] });
-    const [hz, ev, control, bigNote, bigAddr, bigBoth, ...fits] = await Promise.all([
-      inspect(hostile), inspect(evil), inspect('<!DOCTYPE html><html><body><img src="https://example.com/x.png"></body></html>'),
+      ['words with no break, a 12-digit price and a long note', fx.quotationStress], ['Arabic and Latin mixed', fx.quotationArabic], ['the sparse quote', fx.quotationMinimal],
+      ['no specs: the payment card alone', fx.quotationNoSpecs], ['a mixed quote with words for a price', fx.quotationMixed], ['one photo', fx.quotationOnePhoto], ['three photos', fx.quotationThreePhotos]];
+    const evil = buildQuotationHtml({ ...fx.quotation, imageDataUrls: ['http://intranet/a.png', 'file:///etc/passwd', 'data:image/png;base64,AAAA" onerror="alert(1)', svg(2)] });
+    const remote = buildQuotationHtml({ ...fx.quotation, imageDataUrls: ['https://photos.example.com/a.jpg', svg(1)] });
+    const [hz, ev, rm, control, bigNote, bigAddr, bigBoth, ...fits] = await Promise.all([
+      inspect(hostile), inspect(evil), inspect(remote), inspect('<!DOCTYPE html><html><body><img src="https://example.com/x.png"></body></html>'),
       inspect(html({ settings: { footer_note: BIG_NOTE } })), inspect(html({ settings: { company_address: BIG_ADDRESS } })), inspect(html({ settings: { footer_note: BIG_NOTE, company_address: BIG_ADDRESS } })),
       ...FIT.map(([, d]) => inspect(buildQuotationHtml(d)))]);
 
@@ -328,8 +389,13 @@ const BIG_ADDRESS = 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani S
     check('…and the typed markup is on the page as literal text',
       ['<script>alert(1)</script> Wall mount', '<b>BYD</b> Seal "Design"', '<img src=x onerror=alert(1)> Omar & "Sons"', '<i>k</i>:', '</div><h1>boom</h1>'].every(t => hz.f.text.includes(t)));
     check('…and the page asked for nothing but inline data', hz.seen.length > 0 && hz.seen.every(u => u.startsWith('data:')), hz.seen.filter(u => !u.startsWith('data:')).join(' '));
-    check('a quotation holding a link and a broken picture address fetches nothing and carries no handler',
+    check('a quotation holding an http address, a file and a broken picture address fetches nothing and carries no handler; the two real pictures are drawn',
       ev.f.handlers === 0 && ev.dialogs.length === 0 && ev.seen.every(u => u.startsWith('data:')) && ev.f.imgs.filter(i => i === 'photo').length === 2, JSON.stringify(ev.seen.filter(u => !u.startsWith('data:'))));
+    check('an https photo is the one thing the page asks the network for: no font, no style, no http — and nothing sticks out when it cannot be loaded',
+      same(rm.seen.filter(u => !u.startsWith('data:')), ['https://photos.example.com/a.jpg']) && rm.f.handlers === 0 && rm.f.bad.length === 0 && !rm.f.wide && rm.f.imgs.filter(i => i === 'photo').length === 2,
+      JSON.stringify(rm.seen.filter(u => !u.startsWith('data:'))));
+    check('a photo address that does not load leaves a plain mint tile: its picture carries a mint cover that hides the browser\'s broken-picture icon (the first picture here is the one that fails)',
+      !!rm.f.cover && rm.f.cover[0] === '""' && rm.f.cover[1] === 'absolute' && rm.f.cover[2] === 'rgb(234, 244, 229)', JSON.stringify(rm.f.cover));
     check('(control) the request recorder does see a link when there is one', control.seen.some(u => u.startsWith('https://example.com/')));
     FIT.forEach(([label], i) => check(`${label}: nothing sticks out of its box or the page, and no text is clipped`, fits[i].f.bad.length === 0 && !fits[i].f.wide, fits[i].f.bad.join(' | ')));
     const feet = [['usual', fits[0]], ['long note', bigNote], ['long address', bigAddr], ['both', bigBoth]];
@@ -342,6 +408,18 @@ const BIG_ADDRESS = 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani S
     check('side by side the two cards share one height; when the specs run far longer, the payment card keeps its own',
       Math.abs(fits[0].f.cards[0] - fits[0].f.cards[1]) <= 1 && fits[0].f.cards[0] > 0 && fits[2].f.cards[1] > 0 && fits[2].f.cards[1] < fits[2].f.cards[0] / 2,
       `Mazda ${fits[0].f.cards.join(' / ')}px, long ${fits[2].f.cards.join(' / ')}px`);
+    const solo = fits[FIT.findIndex(([label]) => /payment card alone/.test(label))].f;
+    check('with no specs the payment card takes the full width of the page; beside the specs it takes about 38% of it',
+      solo.pay[0] > 0 && solo.pay[0] >= solo.pay[1] - 1 && fits[0].f.pay[0] > fits[0].f.pay[1] * 0.3 && fits[0].f.pay[0] < fits[0].f.pay[1] * 0.45,
+      `alone ${solo.pay.join('/')}px, beside the specs ${fits[0].f.pay.join('/')}px`);
+    const mixed = fits[FIT.findIndex(([label]) => /words for a price/.test(label))].f;
+    const strips = [[1, /^one photo$/], [3, /^three photos$/], [4, /four photos/], [5, /^five photos$/]].map(([n, re]) => [n, fits[FIT.findIndex(([label]) => re.test(label))].f.strip]);
+    check('the photo strip is centred and its tiles are one size, for one, three, four and five photos: equal space left and right, equal widths, none wider than 44mm',
+      strips.every(([n, st]) => st && st.widths.length === n && st.widths.every(w => Math.abs(w - st.widths[0]) <= 1) && Math.abs(st.gaps[0] - st.gaps[1]) <= 1 && st.widths[0] <= 44 * 96 / 25.4), JSON.stringify(strips));
+    check('every figure is set flush right — prices, totals, "Free", a price in words and a dash alike',
+      [fits[0].f, mixed].every(f => f.money[0] >= 10 && f.money[0] === f.money[1]), `${fits[0].f.money.join('/')} and ${mixed.money.join('/')} cells`);
+    check('the money columns end in the same place in the pricing and the logistics tables, so the figures line up down the page',
+      fits[0].f.cols.length === 2 && fits[0].f.cols.every(c => c.length === 2) && same(fits[0].f.cols[0], fits[0].f.cols[1]), JSON.stringify(fits[0].f.cols));
   } finally { await browser.close(); }
 
   // ═══ 7. In real PDFs ═══
@@ -350,6 +428,10 @@ const BIG_ADDRESS = 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani S
   const itemsOnly = n => ({ ...fx.quotation, imageDataUrls: [], logistics: [], items: Array.from({ length: n }, (_, i) => ({ name: `Item line ${i + 1}`, unit: 1, priceUsd: String(100 + i) })) });
   // Counts that put a page break in each place the total can land: with it on the page, or moved with the last rows.
   const LOG_SWEEP = [17, 18, 19, 20, 21], ITEM_SWEEP = [26, 27, 28, 29];
+  // n items with four logistics lines after them: for 27 and more the logistics title would fall in the last few lines of page 1 with its table on page 2.
+  const TITLE_SWEEP = [25, 26, 27, 28];
+  const itemsThenLogistics = n => ({ ...fx.quotation, imageDataUrls: [], items: Array.from({ length: n }, (_, i) => ({ name: `Item line ${i + 1}`, unit: 1, priceUsd: String(100 + i) })),
+    logistics: Array.from({ length: 4 }, (_, i) => ({ label: `Logistics line ${i + 1}`, priceUsd: String(100 + i) })) });
   // Twenty-six plain lines, then one of seventeen lines of text: it cannot fit in what is left of page 1, so it must move whole.
   const TALL = `A tall line that cannot share the foot of the page: ${'words that keep it going '.repeat(40).trim()}`;
   const tallQuote = { ...fx.quotation, imageDataUrls: [], logistics: [], items: [
@@ -359,7 +441,8 @@ const BIG_ADDRESS = 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani S
   // Fourteen items instead of six: the cards (about 43mm) no longer fit in what is left of page 1, but a part of them would.
   const nearly = { ...fx.quotation, imageDataUrls: [], items: [...fx.quotation.items, ...Array.from({ length: 8 }, (_, i) => ({ name: `Extra line ${i + 1}`, unit: 1, priceUsd: String(10 + i) }))] };
   const toRender = { nearly, footer: bigFooter, tall: tallQuote, mazda: fx.quotation, images: fx.quotationImages, five: fx.quotationFivePhotos, long: fx.quotationLong, minimal: fx.quotationMinimal, hostile: fx.quotationHostile, arabic: fx.quotationArabic, stress: fx.quotationStress,
-    ...Object.fromEntries(LOG_SWEEP.map(n => [`log${n}`, logistics(n)])), ...Object.fromEntries(ITEM_SWEEP.map(n => [`items${n}`, itemsOnly(n)])) };
+    ...Object.fromEntries(LOG_SWEEP.map(n => [`log${n}`, logistics(n)])), ...Object.fromEntries(ITEM_SWEEP.map(n => [`items${n}`, itemsOnly(n)])),
+    ...Object.fromEntries(TITLE_SWEEP.map(n => [`title${n}`, itemsThenLogistics(n)])) };
   // Each render starts its own Chrome: a few at a time, so a busy machine does not time one out.
   const pdfs = {};
   const queue = Object.entries(toRender);
@@ -481,6 +564,16 @@ const BIG_ADDRESS = 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani S
     check(`pricing sweep (${ITEM_SWEEP.join(', ')} items, no logistics): the total is on one page with the last two items, and every item is printed once`, is.every(r => r.ok), is.filter(r => !r.ok).map(r => r.k).join(','));
     check('…and that sweep crossed a page break too', is.some(r => r.crossed), is.map(r => `${r.k}:${r.crossed ? 'split' : 'one page'}`).join(' '));
     check('no sweep leaves a section title alone at the foot of a page', [...ls, ...is].every(r => !r.stranded), [...ls, ...is].filter(r => r.stranded).map(r => r.k).join(','));
+    // The logistics title can fall where there is room for it but not for its table: it must go to the next page with the table, never stay behind.
+    const ts = TITLE_SWEEP.map(n => {
+      const t = pageTexts(`title${n}`), at = t.map((x, i) => (/LOGISTICSPRICINGBREAKDOWN/.test(nospace(x)) ? i + 1 : 0)).filter(Boolean);
+      const sq = at.length === 1 ? nospace(t[at[0] - 1]) : '';
+      return { n, page: at[0], together: at.length === 1 && /Logisticsline\d/.test(sq.slice(sq.search(/LOGISTICSPRICINGBREAKDOWN/))) };
+    });
+    check(`a section title is never left behind at the foot of a page: with ${TITLE_SWEEP.join(', ')} items above it, the logistics title is on the page of its first line`,
+      ts.every(r => r.together), ts.map(r => `${r.n}:p${r.page}${r.together ? '' : ' ALONE'}`).join(' '));
+    check('…and in that sweep the title stayed on page 1 in one case and moved to page 2 with its table in another (the keep-with-next rule was in play)',
+      ts.some(r => r.page === 1) && ts.some(r => r.page === 2), ts.map(r => `${r.n}:p${r.page}`).join(' '));
   }
 })().catch(e => { console.error(e); results.push(false); }).then(() => {
   const failed = results.filter(r => !r).length;

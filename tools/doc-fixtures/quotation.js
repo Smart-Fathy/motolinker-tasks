@@ -67,8 +67,9 @@ module.exports = {
   // Neither an issuer nor a spec: the specs card is left out and payment terms take the full width.
   quotationNoSpecs: { ...base, issuer: '', customSpecs: [], imageDataUrls: images.slice(0, 3) },
   // The kinds of lines real quotes have: a vehicle with a clear separator (title + grey subtitle),
-  // a unit above 1, a fractional exchange rate, lower-case "free", a blank price, and a price that
-  // is words rather than a number (printed as typed, left out of the total).
+  // a unit above 1, a fractional exchange rate, lower-case "free", a blank price, a price that
+  // is words rather than a number (printed as typed, left out of the total), and a logistics
+  // line with no price yet (a dash in both columns).
   quotationMixed: {
     ...base, id: 'MT05W12Y26', date: '2026-10-05', validTo: '2026-10-12', name: 'Mona Said',
     vehicleModel: 'BYD Seal — Design 700 km AWD', exchange: '50.75',
@@ -80,6 +81,7 @@ module.exports = {
       { name: 'Extended warranty (3 years)', unit: 1, priceUsd: 'TBC' },
       { name: 'Window tint', unit: 1, priceUsd: '' },
     ],
+    logistics: [...base.logistics, { label: 'Marine insurance (to be quoted)', priceUsd: '' }],
     customSpecs: [
       { key: 'Incoterms', val: 'CIF Alexandria' },
       { key: '', val: 'Delivery within 60 days of the down payment' },
