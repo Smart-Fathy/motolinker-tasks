@@ -31,7 +31,7 @@ function api(pathname, method, body) {
       posted.push(pathname);
       folderState = { exists: true, name: 'Ahmed Kamal — 0101234567', documents: 4, viewers: folderState.viewers,
                       link: 'https://drive.google.com/drive/folders/abc', canOpen: true,
-                      added: ['Quotation Q-2026-014.pdf', 'RFQ MT1.pdf', 'PO PO-1.pdf', 'Contract CT-1.pdf'], failed: [] };
+                      added: ['Quotation Q-2026-014.pdf', 'RFQ MT1.xlsx', 'PO PO-1.pdf', 'Contract CT-1.pdf'], failed: [] };
     }
     return folderState;
   }
@@ -233,10 +233,10 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       /if \(folder\.docs\[d\.key\]\) continue;/.test(SRC));
     check('one unrenderable document does not abandon the rest',
       /catch \(e\) \{[\s\S]{0,200}failed\.push/.test(SRC));
-    check('the PDFs come from the same builders the /pdf routes use',
-      /ctx\.buildQuotationHtml/.test(SRC) && /ctx\.buildRfqHtml/.test(SRC)
+    check('the documents come from the same builders the export routes use (the RFQ as Excel)',
+      /ctx\.buildQuotationHtml/.test(SRC) && /ctx\.buildRfqXlsx/.test(SRC) && !/ctx\.buildRfqHtml/.test(SRC)
       && /ctx\.buildPurchaseOrderHtml/.test(SRC) && /ctx\.buildContractHtml/.test(SRC)
-      && /ctx\.renderQuotationPdf/.test(SRC));
+      && /ctx\.renderQuotationPdf/.test(SRC) && /ctx\.XLSX_MIME/.test(SRC));
     check('Drive work reuses the supplier module\'s helpers, not a second copy',
       /ctx\.driveAdminToken/.test(SRC) && /ctx\.driveEnsureFolder/.test(SRC)
       && /ctx\.driveUploadFile/.test(SRC) && !/googleapis\.com/.test(SRC));

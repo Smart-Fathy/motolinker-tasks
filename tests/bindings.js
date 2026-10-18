@@ -52,12 +52,21 @@ const RFQ = fs.readFileSync('src/routes/rfq.js', 'utf8');
 const EMP = fs.readFileSync('src/routes/employee-portal.js', 'utf8');
 const CTR = fs.readFileSync('src/routes/contracts.js', 'utf8');
 const PO  = fs.readFileSync('src/routes/purchase-orders.js', 'utf8');
-check('the quotation/RFQ renderer has the brand logo in scope',
-  /ctx\.need\('BRAND_LOGO_URL'\)/.test(RFQ) && /ctx\.need\('BRAND_LOGO_URL'\)/.test(CTR)
-  && /ctx\.need\('BRAND_LOGO_URL'\)/.test(PO));
-check('the RFQ renderer has the shared document chrome in scope',
-  ['docChromeCss', 'docFooterHtml', 'docSupplierBlock', 'docTermsHtml']
-    .every(n => new RegExp(`const ${n} = \\(\\.\\.\\.a\\) => ctx\\.${n}`).test(RFQ)));
+// The documents used to read BRAND_LOGO_URL as a bare global, which threw the moment a
+// PDF was rendered. They now take the logo (and the fonts, and the colours) from one
+// module that embeds them, so the thing to guard is that every builder goes through it
+// and no route module reaches for the old global.
+const DOCS = ['quotation', 'purchase-order', 'contract', 'rfq-xlsx']
+  .map(n => [n, fs.readFileSync(`src/lib/docs/${n}.js`, 'utf8')]);
+check('every document builder takes its look from the shared brand module',
+  DOCS.every(([, src]) => /require\('\.\/brand'\)/.test(src)), DOCS.filter(([, src]) => !/require\('\.\/brand'\)/.test(src)).map(([n]) => n).join(', '));
+check('the brand module ships the logo it embeds',
+  ['logo-color', 'logo-white', 'logo-reverse', 'mark-color', 'mark-white'].every(n => fs.existsSync(`src/assets/brand/${n}.png`))
+  && ['poppins-latin-400', 'poppins-latin-700', 'cairo-arabic-wght'].every(n => fs.existsSync(`src/assets/fonts/${n}.woff2`)));
+check('no route module reads a bare BRAND_LOGO_URL',
+  [RFQ, CTR, PO].every(src => !/BRAND_LOGO_URL/.test(src)));
+check('the RFQ routes build the Excel workbook',
+  /buildRfqXlsx/.test(RFQ) && /\/xlsx`/.test(RFQ));
 check('the team portal can build its automation payloads',
   ['taskCtx', 'leadCtx', 'dealCtx'].every(n => new RegExp(`const ${n} = \\(\\.\\.\\.a\\) => ctx\\.${n}`).test(EMP))
   && /const autoCreateContractForWonDeal = \(\.\.\.a\) => ctx\.autoCreateContractForWonDeal/.test(EMP));

@@ -352,6 +352,8 @@ GET /api/dashboard/rfqs/:id
 POST /api/dashboard/rfqs
 PUT /api/dashboard/rfqs/:id
 DELETE /api/dashboard/rfqs/:id
+POST /api/dashboard/rfqs/xlsx
+POST /api/dashboard/rfqs/:id/xlsx
 POST /api/dashboard/rfqs/pdf
 POST /api/dashboard/rfqs/:id/pdf
 GET /api/employee/rfqs
@@ -360,6 +362,8 @@ GET /api/employee/rfqs/:id
 POST /api/employee/rfqs
 PUT /api/employee/rfqs/:id
 DELETE /api/employee/rfqs/:id
+POST /api/employee/rfqs/xlsx
+POST /api/employee/rfqs/:id/xlsx
 POST /api/employee/rfqs/pdf
 POST /api/employee/rfqs/:id/pdf
 POST /api/dashboard/quotation/generate

@@ -153,10 +153,6 @@
         ${headField('Vehicle', `<input class="form-control" id="qt-vehicle" value="${esc(d.vehicleModel || '')}" placeholder="e.g. BYD Seal">`)}
         ${headField('Currency', qtSeg('qt-currency', [['EGP', 'EGP'], ['USD', 'USD']], d.currency === 'USD' ? 'USD' : 'EGP'))}
         ${headField('Exchange rate', `<input class="form-control" id="qt-exchange" type="number" min="0" step="0.01" value="${esc(d.exchange || '')}" placeholder="USD → EGP" oninput="qtRecalcAll()">`)}
-        ${headField('Design', `<select class="form-control" id="qt-template">
-          <option value="classic" ${d.template !== 'brand' ? 'selected' : ''}>Classic — navy &amp; gold</option>
-          <option value="brand" ${d.template === 'brand' ? 'selected' : ''}>Brand — charcoal &amp; gold</option>
-        </select>`)}
         ${qCan('quotation', 'attachLead') ? headField('Lead', `<select class="form-control" id="qt-customer-id">
           <option value="">— No lead —</option>
           ${leads.map(l => `<option value="${l.id}" ${saved && String(saved.customer_id) === String(l.id) ? 'selected' : ''}>${esc(l.name)}${l.phone ? ' · ' + esc(l.phone) : ''}</option>`).join('')}
@@ -454,7 +450,6 @@
       formData.append('customFields', JSON.stringify(docCollect('quote_doc')));
       const qtLeadId = (document.getElementById('qt-customer-id') || {}).value || '';
       if (qtLeadId) formData.append('customer_id', qtLeadId);
-      formData.append('template', (document.getElementById('qt-template') || {}).value || 'classic');
       formData.append('existingImages', JSON.stringify(qtExistingImages));
       if (qtEditingPk) formData.append('quotation_pk', String(qtEditingPk));
       qtImages.forEach(f => formData.append('images', f));

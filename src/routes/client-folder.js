@@ -95,7 +95,8 @@ async function saveFolder(customerId, folder) {
 
 // ── What belongs in the folder ────────────────────────────────────────────────
 // One entry per document: how to find it, what to call the file, and how to turn
-// it into a PDF — always through the same builder the /pdf route uses.
+// it into a file — a PDF through the same builder the /pdf route uses, or (for the
+// RFQ) an Excel workbook through the same builder as its /xlsx route.
 async function docSettings() {
   const { data } = await supabase.from('quotation_settings').select('key,value');
   const settings = {};
@@ -114,7 +115,10 @@ const DOC_TYPES = {
   rfq: {
     table: 'rfqs', label: 'RFQ',
     name: r => `RFQ ${r.rfq_no || r.id}`,
-    html: async (r, settings) => ctx.buildRfqHtml({ ...r, settings }),
+    // An RFQ is a spreadsheet the supplier fills in, so it is filed as Excel, not PDF.
+    file: async (r, settings) => ({
+      buffer: await ctx.buildRfqXlsx({ ...r, settings }), ext: 'xlsx', mimeType: ctx.XLSX_MIME,
+    }),
   },
   po: {
     table: 'purchase_orders', label: 'Purchase order',
@@ -124,7 +128,7 @@ const DOC_TYPES = {
   contract: {
     table: 'contracts', label: 'Contract',
     name: r => `Contract ${r.contract_no || r.id}`,
-    html: async r => ctx.buildContractHtml(r.data || {}),
+    html: async r => ctx.buildContractHtml({ ...(r.data || {}), contractNo: r.contract_no }),
   },
 };
 
@@ -160,11 +164,12 @@ async function syncClientFolder(customer) {
   for (const d of docs) {
     if (folder.docs[d.key]) continue;                       // already up there
     try {
-      const html = await d.spec.html(d.row, settings);
-      const pdf = await ctx.renderQuotationPdf(html);
-      const name = `${d.spec.name(d.row)}.pdf`.replace(/[\\/:*?"<>|]/g, '-');
+      const file = d.spec.file
+        ? await d.spec.file(d.row, settings)
+        : { buffer: Buffer.from(await ctx.renderQuotationPdf(await d.spec.html(d.row, settings))), ext: 'pdf', mimeType: 'application/pdf' };
+      const name = `${d.spec.name(d.row)}.${file.ext}`.replace(/[\\/:*?"<>|]/g, '-');
       const f = await ctx.driveUploadFile(token, {
-        buffer: Buffer.from(pdf), name, mimeType: 'application/pdf', folderId: folder.id,
+        buffer: Buffer.from(file.buffer), name, mimeType: file.mimeType, folderId: folder.id,
       });
       folder.docs[d.key] = { fileId: f.id, name, link: f.webViewLink || '', at: new Date().toISOString() };
       added.push(name);

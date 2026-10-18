@@ -51,7 +51,7 @@
     quotation: id => `/api/dashboard/quotations/${id}/pdf`,
     contract:  id => `/api/dashboard/contracts/${id}/pdf`,
     po:        id => `/api/dashboard/purchase-orders/${id}/pdf`,
-    rfq:       id => `/api/dashboard/rfqs/${id}/pdf`,
+    // (no rfq: an RFQ is an Excel workbook — see exportRfqXlsx below)
   };
   let _docName = 'document';
 
@@ -196,6 +196,16 @@
     _ctEditing = { id, contract_no: contractNo, data };
     const cd = data.contractDate || {}, co = data.company || {}, rp = data.rep || {}, by = data.buyer || {}, ve = data.vehicle || {};
     const pays = Array.isArray(data.payments) ? data.payments : [];
+    // The car-sale contract ('sale-v2') has no import country, late fee or delivery deadline,
+    // and its payment lines are the user's to add and remove. A contract saved on the older
+    // wording (no template) keeps its original fields, so it can still be edited.
+    const sale = data.template === 'sale-v2';
+    const payDefault = 'فور التوقيع علي هذا العقد';
+    const payRow = p => `<div class="ct-pay" data-label="${esc(p.label || '')}" style="display:grid;grid-template-columns:150px 1fr 34px;gap:8px;margin-bottom:6px;align-items:center">
+      <input class="form-input" data-pay="amount" value="${esc(p.amount || '')}" placeholder="Amount">
+      <input class="form-input" data-pay="when" dir="auto" value="${esc(p.when || '')}" placeholder="${esc(payDefault)}">
+      <button type="button" class="btn btn-outline ct-pay-del" style="padding:4px 0" title="Remove this payment line">&times;</button>
+    </div>`;
     const g = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px';
     showModal(id ? `Contract ${contractNo}` : 'New contract', `
       <div style="display:grid;gap:16px;max-height:66vh;overflow-y:auto;padding-right:4px">
@@ -246,7 +256,7 @@
             ${ctField('Colour (اللون)', 'vehicle.color', ve.color)}
             ${ctField('Year (سنة الصنع)', 'vehicle.year', ve.year)}
             ${ctField('Notes (ملاحظات)', 'vehicle.notes', ve.notes)}
-            ${ctField('Import country', 'importCountry', data.importCountry)}
+            ${sale ? '' : ctField('Import country', 'importCountry', data.importCountry)}
           </div>
         </div>
         <div>
@@ -254,16 +264,20 @@
           <div style="${g}">
             ${ctField('Total amount', 'total', data.total)}
             ${ctField('Amount in words', 'totalWords', data.totalWords)}
-            ${ctField('Late fee / day', 'lateFee', data.lateFee)}
-            ${ctField('Late fee in words', 'lateFeeWords', data.lateFeeWords)}
-            ${ctField('Delivery deadline (البند الرابع)', 'deliveryDeadline', data.deliveryDeadline)}
+            ${sale ? '' : ctField('Late fee / day', 'lateFee', data.lateFee)}
+            ${sale ? '' : ctField('Late fee in words', 'lateFeeWords', data.lateFeeWords)}
+            ${sale ? '' : ctField('Delivery deadline (البند الرابع)', 'deliveryDeadline', data.deliveryDeadline)}
           </div>
-          <div style="margin-top:10px">
+          ${sale ? `<div style="margin-top:10px">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Payment lines · <bdi>“مبلغ قدره … يتم سداده …”</bdi> — printed one by one in <bdi>البند الثالث</bdi></div>
+            <div id="ct-pay-list">${pays.map(payRow).join('')}</div>
+            <button type="button" id="ct-pay-add" class="btn btn-outline" style="padding:4px 10px;font-size:12px">+ Add payment line</button>
+          </div>` : `<div style="margin-top:10px">
             ${pays.map((p, i) => `<div style="display:grid;grid-template-columns:150px 1fr;gap:8px;margin-bottom:6px;align-items:center">
               <input class="form-input ct-f" data-path="payments.${i}.amount" value="${esc(p.amount || '')}" placeholder="Amount">
               <div style="font-size:12px;color:var(--muted)">${esc(p.when || '')}${p.label ? ` (${esc(p.label)})` : ''}</div>
             </div>`).join('')}
-          </div>
+          </div>`}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div>
@@ -281,6 +295,16 @@
       `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
        <button class="btn btn-outline" onclick="saveContract(true)">Save &amp; preview PDF</button>
        <button class="btn btn-primary" onclick="saveContract(false)">Save</button>`);
+    if (sale) {
+      const list = document.getElementById('ct-pay-list');
+      document.getElementById('ct-pay-add').onclick = () => {
+        list.insertAdjacentHTML('beforeend', payRow({ when: payDefault }));
+      };
+      list.onclick = e => {
+        const del = e.target.closest && e.target.closest('.ct-pay-del');
+        if (del) del.closest('.ct-pay').remove();
+      };
+    }
     await ctPopulateLeadPicker(rec ? rec.customer_id : null);
   }
 
@@ -332,6 +356,19 @@
         data.payments[+m[1]][m[2]] = inp.value.trim();
       } else ctSet(data, path, inp.value.trim());
     });
+    // A car-sale contract: the payment lines are exactly the rows on screen (a removed row is gone,
+    // a row keeps the label it came with), and the payload carries the contract's own number so
+    // that a preview of it can print the number too.
+    if (data.template === 'sale-v2') {
+      if (document.getElementById('ct-pay-list')) {
+        data.payments = [...document.querySelectorAll('#ct-pay-list .ct-pay')].map(row => ({
+          amount: row.querySelector('[data-pay="amount"]').value.trim(),
+          when: row.querySelector('[data-pay="when"]').value.trim(),
+          label: row.dataset.label || '',
+        }));
+      }
+      if (_ctEditing.contract_no) data.contractNo = _ctEditing.contract_no;
+    }
     return data;
   }
 
@@ -817,7 +854,7 @@
             <td style="padding:8px 10px;color:var(--muted)">${esc(r.rfq_date || (r.created_at ? new Date(r.created_at).toLocaleDateString() : ''))}</td>
             <td style="padding:8px 10px;text-align:right;white-space:nowrap">
               ${procCan('rfq', 'edit') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="openRfqForm(${r.id})">Edit</button>` : ''}
-              ${procCan('rfq', 'export') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="viewDocPdf('rfq',${r.id},'${escJs(r.rfq_no)}')">PDF</button>` : ''}
+              ${procCan('rfq', 'export') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="exportRfqXlsx(${r.id})">Excel</button>` : ''}
               ${procCan('rfq', 'delete') ? `<button class="btn btn-outline" style="padding:4px 8px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="deleteRfq(${r.id})">Delete</button>` : ''}
             </td>
           </tr>`).join('')}</tbody>
@@ -884,7 +921,7 @@
         <div id="rfq-err" class="error-msg" style="display:none"></div>
       </div>`,
       `<button class="btn btn-outline" onclick="hideModal()">Cancel</button>
-       <button class="btn btn-outline" onclick="saveRfq(true)">Save &amp; preview PDF</button>
+       <button class="btn btn-outline" onclick="saveRfq(true)">Save &amp; export Excel</button>
        <button class="btn btn-primary" onclick="saveRfq(false)">Save</button>`,
       { wide: true });
 
@@ -926,7 +963,7 @@
       items: procGridCollect('.rfq-row', '.rfq-f'),
     };
   }
-  async function saveRfq(thenPreview) {
+  async function saveRfq(thenExport) {
     const payload = rfqCollect();
     const err = document.getElementById('rfq-err');
     const filled = payload.items.filter(it => it.brand || it.model || it.trim);
@@ -939,8 +976,33 @@
     const d = await r.json();
     if (!r.ok) { err.textContent = d.error || 'Failed to save.'; err.style.display = 'block'; return; }
     hideModal(); loadRfqs();
-    if (thenPreview) viewDocPdfPayload('/api/dashboard/rfqs/pdf', payload, payload.rfq_no);
+    if (thenExport) exportRfqXlsxPayload(payload);
   }
+
+  // ── RFQ → Excel ──────────────────────────────────────────────────────────────
+  // An RFQ goes to the supplier as a workbook they fill the prices into, so it downloads
+  // as .xlsx and has no PDF preview. The server answers { xlsx: base64, name } both for a
+  // saved record (by id) and for the unsaved form (payload).
+  function downloadRfqXlsx(b64, name) {
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `RFQ_${String(name || 'motolinkers').replace(/[^\w.-]+/g, '_')}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+  async function rfqXlsxFrom(url, opts) {
+    try {
+      const r = await apiFetch(url, opts);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed to build the workbook');
+      downloadRfqXlsx(d.xlsx, d.name);
+    } catch (e) { showAdminToast('Could not export this RFQ: ' + e.message); }
+  }
+  const exportRfqXlsx = id => rfqXlsxFrom(`/api/dashboard/rfqs/${id}/xlsx`, { method: 'POST' });
+  const exportRfqXlsxPayload = payload => rfqXlsxFrom('/api/dashboard/rfqs/xlsx', { method: 'POST', body: JSON.stringify(payload) });
   async function deleteRfq(id) {
     const r = _rfqCache.find(x => x.id === id);
     if (!confirm(`Delete RFQ ${r ? r.rfq_no : ''}?`)) return;
@@ -2226,7 +2288,7 @@
     closeDocPdf, ctCollect, ctField, ctGet,
     ctPopulateLeadPicker, ctSet, ctxPopulateLeadPicker, deleteContract,
     deletePo, deleteRfq, deleteSubmission, deleteSupplier,
-    downloadContractPdf, downloadDocPdf, escJs,
+    downloadContractPdf, downloadDocPdf, escJs, exportRfqXlsx,
     ldGenerateContract, ldGeneratePo, ldGenerateRfq, loadContracts,
     loadPurchaseOrders, loadRfqs, loadSubmissions, loadSuppliers,
     openCataloguePicker, openContractForm, openPoForm, openRfqForm,

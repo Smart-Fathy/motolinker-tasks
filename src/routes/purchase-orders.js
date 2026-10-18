@@ -1,16 +1,16 @@
 // Purchase Orders
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
-const { escHtml, express, logLeadActivity, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('escHtml', 'express', 'logLeadActivity', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
+const { express, logLeadActivity, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('express', 'logLeadActivity', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
 // Registered on the context by a module that loads later, so these are looked
 // up when called rather than when required.
-const quoteTheme = (...a) => ctx.quoteTheme(...a);
 const renderQuotationPdf = (...a) => ctx.renderQuotationPdf(...a);
 const requirePerm = (...a) => ctx.requirePerm(...a);
 const callerIdentity = (...a) => ctx.callerIdentity(...a);
-const { BRAND_LOGO_URL } = ctx.need('BRAND_LOGO_URL');
+const { buildPurchaseOrderHtml } = require('../lib/docs/purchase-order');
+const { DOC_DEFAULT_ACCESSORIES, DOC_DEFAULT_DOCUMENTS, DOC_DEFAULT_PAYMENT_TERMS } = require('../lib/docs/defaults');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Purchase Orders ───────────────────────────────────────────────────────────
@@ -229,179 +229,8 @@ function mountPurchaseOrderRoutes(base, guard) {
 mountPurchaseOrderRoutes('/api/dashboard/purchase-orders', requireAuth);
 mountPurchaseOrderRoutes('/api/employee/purchase-orders', requireEmployeeAuth);
 
-// ── Shared letterhead chrome for supplier-facing documents (RFQ + PO) ─────────
-// Both reproduce the company's real forms: logo, title, ID/Date/Issuer box, a
-// Supplier Details block, the item grid, then Payment and Delivery Terms.
-function docChromeCss(T) {
-  const GOLD = T.accent, INK = T.ink, SOFT = T.soft;
-  return `
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:Arial,Helvetica,sans-serif; font-size:9.5px; color:${INK}; background:#fff; }
-  .page { width:794px; min-height:1123px; padding:22px 26px 96px; position:relative; }
-  .head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:10px; }
-  .head img { max-height:44px; width:auto; display:block; }
-  .title { font-family:${T.titleFont}; font-size:20px; font-weight:900; letter-spacing:${T.titleSpacing};
-           color:${INK}; text-align:center; flex:1; padding-top:8px; }
-  table.meta { border-collapse:collapse; }
-  table.meta td { border:1px solid ${GOLD}; padding:3px 9px; font-size:9px; }
-  table.meta .k { background:${SOFT}; font-weight:700; white-space:nowrap; }
-  table.meta .v { font-weight:700; color:#c00; min-width:108px; }
-  .sec { margin-top:12px; border:1px solid ${GOLD}; }
-  .sec-h { background:${SOFT}; font-family:${T.titleFont}; font-weight:800; font-size:11px;
-           padding:5px 10px; border-bottom:1px solid ${GOLD}; }
-  .sec-b { padding:8px 10px; line-height:1.9; }
-  table.kv { width:100%; border-collapse:collapse; }
-  table.kv td { border:1px solid ${GOLD}; padding:4px 9px; font-size:9.5px; }
-  table.kv td:first-child { width:26%; font-weight:700; background:#fafafa; }
-  table.grid { width:100%; border-collapse:collapse; table-layout:fixed; margin-top:12px; }
-  table.grid th { background:${INK}; color:#fff; font-family:${T.titleFont}; font-size:8.5px;
-                  padding:6px 4px; border:1px solid ${GOLD}; text-align:center; }
-  table.grid td { border:1px solid ${GOLD}; padding:6px 5px; vertical-align:middle; word-wrap:break-word; min-height:26px; }
-  td.c { text-align:center; } td.r { text-align:right; }
-  td.acc { font-size:8px; line-height:1.5; text-align:center; font-weight:700; color:${INK}; }
-  td .sub { display:block; font-size:8px; font-weight:600; color:#555; margin-top:2px; }
-  .tot td { background:${SOFT}; font-weight:800; font-size:10.5px; }
-  .red { color:#c00; font-weight:700; }
-  .foot { position:absolute; left:26px; right:26px; bottom:14px; display:flex; align-items:flex-end;
-          justify-content:space-between; gap:12px; font-size:7.6px; color:#333; line-height:1.65;
-          border-top:2px solid ${GOLD}; padding-top:7px; }
-  .foot img { max-height:30px; width:auto; }`;
-}
-function docFooterHtml(s) {
-  return `<div class="foot">
-    <div>
-      <div><b>Address:</b> ${escHtml(s.company_address || 'Office (ACO2), Floor (4), Building No. (100), Al-Mirghani Street - Heliopolis - Cairo')}</div>
-      <div><b>Email:</b> ${escHtml(s.company_email || 'info@motolinkers.com')}</div>
-      <div><b>Website:</b> ${escHtml(s.company_website || 'Motolinkers.com')}</div>
-      <div><b>Phone:</b> ${escHtml(s.company_phone || '+2 010 000 78104')}</div>
-      <div><b>TAX ID:</b> ${escHtml(s.company_tax_id || '773934006')}</div>
-      <div><b>Registration No:</b> ${escHtml(s.company_reg_no || '282378')}</div>
-    </div>
-    <img src="${BRAND_LOGO_URL}">
-  </div>`;
-}
-function docSupplierBlock(d) {
-  return `<div class="sec">
-    <div class="sec-h">Supplier Details</div>
-    <table class="kv">
-      <tr><td>Name</td><td>${escHtml(d.supplier_name || d.supplier || '')}</td></tr>
-      <tr><td>Contact</td><td>${escHtml(d.supplier_contact || '')}</td></tr>
-      <tr><td>Address</td><td>${escHtml(d.supplier_address || '')}</td></tr>
-      <tr><td>Country of Origin</td><td>${escHtml(d.supplier_country || '')}</td></tr>
-    </table>
-  </div>`;
-}
-const DOC_DEFAULT_PAYMENT_TERMS =
-  '30% deposit to confirm the order\n70% balance due after the vehicle arrives in XXXXX (VIN code and PDI vehicle video and document to be provided for confirmation)';
-const DOC_DEFAULT_DOCUMENTS =
-  'MSDS / UN3.8 / Commercial Invoice / Shipping order / Packing List / Temporary Licence and Plate / Sales contract / Export Licence / SGS PDI or Certificate of Conformity (CoC) / CIF ONLY ( B/L / Telex Release / Insurance Policy)';
-const DOC_DEFAULT_ACCESSORIES =
-  'English system , wall mount charging cable , floor mats, tires repairing kit , electric pump';
+// The purchase order's look — and the supplier-document chrome it used to share with
+// the RFQ — lives in src/lib/docs (brand.js for the identity, purchase-order.js for this
+// document). The RFQ is an Excel workbook now (rfq-xlsx.js), so nothing shares it.
 
-// Highlight the placeholder tokens the team fills in by hand, like the paper form.
-function docRedify(text) {
-  return escHtml(text).replace(/\n/g, '<br>')
-    .replace(/(X{3,}\s*(?:Port)?|CIF ONLY[^<]*)/gi, m => `<span class="red">${m}</span>`);
-}
-function docTermsHtml(d, opts) {
-  const o = opts || {};
-  return `
-  <div class="sec">
-    <div class="sec-h">Payment Terms</div>
-    <div class="sec-b">${docRedify(d.payment_terms || DOC_DEFAULT_PAYMENT_TERMS)}</div>
-  </div>
-  <div class="sec">
-    <div class="sec-h">Delivery Terms</div>
-    <table class="kv">
-      ${o.incoterm ? `<tr><td>Incoterm</td><td class="red">${escHtml(d.incoterm || 'FOB')}</td></tr>` : ''}
-      <tr><td>Delivery Location</td><td class="red">${escHtml(d.delivery_location || '')}</td></tr>
-      <tr><td>Service Provider</td><td class="red">${escHtml(d.service_provider || '')}</td></tr>
-      <tr><td>Contact</td><td class="red">${escHtml(d.contact || '')}</td></tr>
-      <tr><td>Documents Required</td><td>${docRedify(d.documents_required || DOC_DEFAULT_DOCUMENTS)}</td></tr>
-    </table>
-  </div>`;
-}
-
-// A4 portrait Purchase Order on company letterhead (matches the printed form).
-function buildPurchaseOrderHtml(po) {
-  const s = po.settings || {};
-  const T = quoteTheme(po.template);
-  const money = n => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  const items = po.items || [];
-  const cur = escHtml(po.currency || 'USD');
-  // Always print at least 5 rows so the form looks like the paper original.
-  const padded = items.concat(Array.from({ length: Math.max(0, 5 - items.length) }, () => null));
-  // The line grid carries both a CLIENT and a CONSIGNEE, and the printed form has
-  // one name column. A sheet filled in with only the consignee — which is what
-  // happens when lines come from the supplier catalogue, since it seeds neither —
-  // printed an empty CLIENT column, so the names the team had typed never reached
-  // the supplier. Fall back through the line's own names to the lead the PO is
-  // attached to, and keep a consignee who is somebody else visible underneath
-  // rather than dropping them.
-  const clientCell = it => {
-    const consignee = String(it.consignee || '').trim();
-    const client = String(it.client || '').trim() || consignee || String(po.client_name || '').trim();
-    return escHtml(client) + (consignee && consignee !== client
-      ? `<span class="sub">Consignee: ${escHtml(consignee)}</span>` : '');
-  };
-  const rows = padded.map((it, i) => {
-    if (!it) return `<tr><td class="c">&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
-    const qty = Number(it.units) || 1;
-    const price = Number(it.pi_price) || 0;
-    return `<tr>
-      <td class="c">${i + 1}</td>
-      <td>${clientCell(it)}</td>
-      <td class="c">${escHtml(it.brand)}</td>
-      <td>${escHtml(it.model)}</td>
-      <td>${escHtml(it.trim)}</td>
-      <td>${escHtml(it.color)}</td>
-      <td class="c">${escHtml(it.year)}</td>
-      <td class="acc">${escHtml(it.accessories || DOC_DEFAULT_ACCESSORIES).replace(/\n/g, '<br>')}</td>
-      <td class="c">${qty}</td>
-      <td class="r">${price ? cur + ' ' + money(price) : ''}</td>
-      <td class="r">${price ? cur + ' ' + money(price * qty) : ''}</td>
-    </tr>`;
-  }).join('');
-
-  return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">${T.fontLink}
-<style>${docChromeCss(T)}</style></head><body>
-<div class="page">
-  <div class="head">
-    <img src="${BRAND_LOGO_URL}">
-    <div class="title">Purchase Order</div>
-    <table class="meta">
-      <tr><td class="k">ID</td><td class="v">${escHtml(po.quote_id || po.po_number || '')}</td></tr>
-      <tr><td class="k">Date</td><td class="v">${escHtml(po.po_date || '')}</td></tr>
-      <tr><td class="k">Issuer</td><td class="v">${escHtml(po.issuer || '')}</td></tr>
-    </table>
-  </div>
-
-  ${docSupplierBlock(po)}
-
-  <table class="grid">
-    <colgroup>
-      <col style="width:26px"><col style="width:86px"><col style="width:52px"><col style="width:62px">
-      <col style="width:52px"><col style="width:86px"><col style="width:34px"><col style="width:132px">
-      <col style="width:30px"><col style="width:72px"><col style="width:78px">
-    </colgroup>
-    <thead><tr>
-      <th>No</th><th>CLIENT</th><th>BRAND</th><th>MODEL</th><th>TRIM</th><th>COLOR EXT / INT</th>
-      <th>YEAR</th><th>ACCESSORIES / REMARKS</th><th>QTY</th><th>PRICE</th><th>TOTAL</th>
-    </tr></thead>
-    <tbody>
-      ${rows}
-      <tr class="tot"><td colspan="10" class="r">TOTAL</td><td class="r">${cur} ${money(poTotal(items))}</td></tr>
-    </tbody>
-  </table>
-
-  ${po.notes ? `<div class="sec"><div class="sec-h">Notes</div><div class="sec-b">${escHtml(po.notes).replace(/\n/g, '<br>')}</div></div>` : ''}
-  ${docTermsHtml(po, { incoterm: true })}
-
-  ${docFooterHtml(s)}
-</div>
-</body></html>`;
-}
-
-
-module.exports = { DOC_DEFAULT_ACCESSORIES, DOC_DEFAULT_DOCUMENTS, DOC_DEFAULT_PAYMENT_TERMS, buildPurchaseOrderHtml, docChromeCss, docFooterHtml, docSupplierBlock, docTermsHtml, poClientName, quoteTheme };
+module.exports = { DOC_DEFAULT_ACCESSORIES, DOC_DEFAULT_DOCUMENTS, DOC_DEFAULT_PAYMENT_TERMS, buildPurchaseOrderHtml, poClientName };

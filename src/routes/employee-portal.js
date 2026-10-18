@@ -325,7 +325,7 @@ const PERM_ACTION_LABELS = {
   'deals.sales': 'Sales tab', 'deals.salesEdit': 'Edit sales records',
   'deals.payments': 'See payments', 'deals.paymentsEdit': 'Record payments',
   'suppliers.docs': 'Supplier documents',
-  'rfq.export': 'Generate the PDF',
+  'rfq.export': 'Export the Excel workbook',
   'purchaseorders.export': 'Generate the PDF',
   'contracts.export': 'Generate the PDF',
   'submissions.delete': 'Delete a submission',

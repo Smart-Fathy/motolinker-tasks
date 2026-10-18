@@ -425,19 +425,8 @@ receiver.router.get('/api/dashboard/quotation/newid', requireAuth, (_req, res) =
   res.json({ id: generateQuoteId() });
 });
 
-function fmtNum(n) {
-  const v = parseFloat(n);
-  if (!isFinite(v)) return '0';
-  return v.toLocaleString('en-US');
-}
-
-function calcEgp(priceUsd, units, exchange) {
-  const p = parseFloat(priceUsd);
-  const u = parseFloat(units) || 1;
-  const e = parseFloat(exchange) || 1;
-  if (!isFinite(p)) return null;
-  return Math.round(p * u * e);
-}
+// The maths lives in src/lib/docs/money.js, where the quotation builder reads it too.
+const { fmtNum, calcEgp } = require('../lib/docs/money');
 
 // HTML-escape any user/DB-derived value before interpolating into the quotation HTML.
 function escHtml(v) {
