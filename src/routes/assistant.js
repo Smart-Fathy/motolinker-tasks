@@ -20,6 +20,7 @@
 //
 // src/ctx.js explains the context object.
 const ctx = require('../ctx');
+const { fetchAll } = require('../lib/fetch-all');
 const { express, receiver, requireAuth, requireEmployeeAuth, supabase } =
   ctx.need('express', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
 // Registered on the context by modules that load before this one (employee
@@ -102,7 +103,7 @@ async function loadSection(section, emp) {
   const out = { employees, warnings };
   switch (section) {
     case 'leads': {
-      const customers = await scopeLeads(await sel(() => supabase.from('customers').select(CUSTOMER_COLS).order('created_at', { ascending: false }).limit(2000), 'leads'), emp);
+      const customers = await scopeLeads(await sel(() => fetchAll(() => supabase.from('customers').select(CUSTOMER_COLS).order('created_at', { ascending: false }), { max: 2000 }), 'leads'), emp);
       const ids = new Set(customers.map(c => String(c.id)));
       const since = dayShift(t, -60) + 'T00:00:00Z';
       const activities = await sel(() => supabase.from('lead_activities').select('customer_id,type,body,created_at').gte('created_at', since).order('created_at', { ascending: false }).limit(3000), 'lead activity');
@@ -158,13 +159,13 @@ async function loadSection(section, emp) {
     case 'employees': return { ...out,
       tasks: await sel(() => supabase.from('tasks').select('id,title,status,priority,due_date,assignee_id,assignee_ids').neq('status', 'done').limit(2000), 'tasks'),
       hours: await sel(() => supabase.from('hours_logs').select('hours,log_date,logged_at,employee_id').gte('log_date', dayShift(t, -7)).limit(2000), 'hours'),
-      customers: await sel(() => supabase.from('customers').select('id,assigned_to,lead_status').limit(2000), 'leads') };
+      customers: await sel(() => fetchAll(() => supabase.from('customers').select('id,assigned_to,lead_status'), { max: 2000 }), 'leads') };
     case 'automations': return { ...out,
       rules: await sel(() => supabase.from('automation_rules').select('*').limit(200), 'automation rules'),
       runs: await sel(() => supabase.from('automation_runs').select('*').gte('created_at', dayShift(t, -7) + 'T00:00:00Z').limit(2000), 'automation runs') };
     case 'home': default: {
       const tasks = emp ? await fetchEmployeeTasks(emp.id).catch(() => []) : await sel(() => supabase.from('tasks').select('id,title,status,priority,due_date,assignee_id,assignee_ids').neq('status', 'done').limit(1000), 'tasks');
-      const customers = (!emp || empCan(emp, 'leads', 'view')) ? await scopeLeads(await sel(() => supabase.from('customers').select('id,name,lead_status,assigned_to,created_at').order('created_at', { ascending: false }).limit(2000), 'leads'), emp) : [];
+      const customers = (!emp || empCan(emp, 'leads', 'view')) ? await scopeLeads(await sel(() => fetchAll(() => supabase.from('customers').select('id,name,lead_status,assigned_to,created_at').order('created_at', { ascending: false }), { max: 2000 }), 'leads'), emp) : [];
       const ids = new Set(customers.map(c => String(c.id)));
       let followups = (!emp || empCan(emp, 'leads', 'view')) ? await sel(() => supabase.from('lead_followups').select('id,customer_id,due_at,note,assigned_to,status').eq('status', 'pending').order('due_at', { ascending: true }).limit(500), 'follow-ups') : [];
       followups = followups.filter(f => ids.has(String(f.customer_id)) && (!emp || !empHasScope(emp) || String(f.assigned_to) === String(emp.id) || f.assigned_to == null));

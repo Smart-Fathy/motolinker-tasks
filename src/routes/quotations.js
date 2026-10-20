@@ -1,6 +1,7 @@
 // Quotation Draft
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
+const { fetchAll } = require('../lib/fetch-all');
 const { autoCreateSaleForWonDeal, customerInScope, dealInScope, empCan, empHasScope, express, importLeadRows, loadLeadsColsConfig, logLeadActivity, multer, multerCsv, normalizePhone, parseLeadsCsv, receiver, requireAuth, requireEmployeeAuth, scopedQuotedIds, supabase } = ctx.need('autoCreateSaleForWonDeal', 'customerInScope', 'dealInScope', 'empCan', 'empHasScope', 'express', 'importLeadRows', 'loadLeadsColsConfig', 'logLeadActivity', 'multer', 'multerCsv', 'normalizePhone', 'parseLeadsCsv', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'scopedQuotedIds', 'supabase');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
@@ -43,7 +44,7 @@ function generateQuoteId() {
 // ── Employee CRM (gated by the leads/deals permission; delete goes via approval) ──
 receiver.router.get('/api/employee/leads', requireEmployeeAuth, async (req, res) => {
   if (!empCan(req.employee, 'leads', 'view')) return res.status(403).json({ error: 'Not permitted' });
-  const { data, error } = await supabase.from('customers').select('*').order('created_at', { ascending: false });
+  const { data, error } = await fetchAll(() => supabase.from('customers').select('*').order('created_at', { ascending: false }));
   if (error) return res.status(500).json({ error: error.message });
   const stageIdSet = await scopedQuotedIds(req.employee);
   res.json((data || []).filter(c => customerInScope(c, req.employee, stageIdSet)));

@@ -1,6 +1,7 @@
 // No-code automation engine
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
+const { fetchAll } = require('../lib/fetch-all');
 const { express, logLeadActivity, normalizePhone, parseBudget, path, receiver, requireAuth, supabase } = ctx.need('express', 'logLeadActivity', 'normalizePhone', 'parseBudget', 'path', 'receiver', 'requireAuth', 'supabase');
 // Registered on the context by a module that loads later, so these are looked
 // up when called rather than when required.
@@ -242,7 +243,7 @@ async function runNoActivitySweep() {
   try {
     const { data: rules } = await supabase.from('automation_rules').select('*').eq('enabled', true).eq('trigger_type', 'no_activity_days');
     if (!rules || !rules.length) return;
-    const { data: leadsAll } = await supabase.from('customers').select('id,name,phone,source,lead_status,assigned_to,car_in_question,budget_lead').limit(1000);
+    const { data: leadsAll } = await fetchAll(() => supabase.from('customers').select('id,name,phone,source,lead_status,assigned_to,car_in_question,budget_lead'));
     const leads = (leadsAll || []).filter(c => !['blacklist', 'not_interested'].includes(c.lead_status));
     for (const rule of rules) {
       const days = Number(rule.trigger_config?.days) || 3;

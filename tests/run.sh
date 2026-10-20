@@ -62,6 +62,7 @@ run envexample  node tests/envexample.js
 run mobiletest  node tests/mobiletest.js
 run homecache   node tests/homecache.js
 run dbfetch     node tests/dbfetch.js
+run fetchall    node tests/fetchall.js
 run profiletest node tests/profiletest.js
 run gziptest    node tests/gziptest.js
 run docbrand    node tests/doc-brand.js

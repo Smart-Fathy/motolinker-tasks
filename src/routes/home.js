@@ -1,6 +1,7 @@
 // Home dashboards
 // src/ctx.js explains the context object.
 const ctx = require('../ctx');
+const { fetchAll } = require('../lib/fetch-all');
 const { express, receiver, requireAuth, requireEmployeeAuth, supabase, taskAssigneeList } = ctx.need('express', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'taskAssigneeList');
 // Registered on the context by modules that load after this one, so these are
 // resolved when called rather than when required.
@@ -82,8 +83,10 @@ const HOME_DEFAULT_IDS = ['my_tasks', 'task_status', 'overdue_tasks', 'pipeline'
 // because a hand-written PUT does not go through the client's resize handle.
 const HOME_W = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 const HOME_H = [1, 2, 3, 4];
-// Ceiling on rows pulled per table for the summary. Well above today's volumes (806
-// customers), low enough that Home cannot become an unbounded table scan later.
+// Ceiling on rows pulled per table for the summary. Well above today's volumes (~1,100
+// customers), low enough that Home cannot become an unbounded table scan later. The
+// server answers at most 1000 rows to one request whatever .limit() says, so a source
+// that can exceed 1000 has to page (fetchAll) for this cap to be the one that applies.
 const HOME_SCAN_CAP = 2000;
 
 // `employee` is null for the admin, who sees every section.
@@ -151,7 +154,7 @@ async function buildHomeSummary({ employee, scope, want }) {
   // rather than whatever the planner happened to return.
   const SOURCES = {
     tasks:       () => supabase.from('tasks').select('id,title,status,priority,due_date,assignee_id,assignee_ids,created_at').order('created_at', { ascending: false }).limit(cap),
-    customers:   () => supabase.from('customers').select('id,name,lead_status,assigned_to,created_at').order('created_at', { ascending: false }).limit(cap),
+    customers:   () => fetchAll(() => supabase.from('customers').select('id,name,lead_status,assigned_to,created_at').order('created_at', { ascending: false }), { max: cap }),
     deals:       () => supabase.from('deals').select('id,stage,budget_egp,assigned_to,closed_at,created_at,customers(assigned_to,lead_status)').order('created_at', { ascending: false }).limit(cap),
     hours:       () => supabase.from('hours_logs').select('employee_id,hours,log_date').gte('log_date', iso(weekAgo).slice(0, 10)).limit(cap),
     stock:       () => supabase.from('stock_vehicles').select('id,make,model,quantity,colors,units').order('id', { ascending: false }).limit(cap),

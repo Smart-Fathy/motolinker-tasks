@@ -2,6 +2,7 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { sanitizeAttachments } = require('../lib/constants');
+const { fetchAll } = require('../lib/fetch-all');
 const { GOOGLE_CLIENT_ID, PUBLIC_DIR, SMTP_FROM, autoCreateSaleForWonDeal, createMailer, crypto, employeeSessions, express, generateToken, hashPassword, inventorySearch, multer, path, pendingDriveAuth, receiver, requireAuth, requireEmployeeAuth, supabase, verifyPassword } = ctx.need('GOOGLE_CLIENT_ID', 'PUBLIC_DIR', 'SMTP_FROM', 'autoCreateSaleForWonDeal', 'createMailer', 'crypto', 'employeeSessions', 'express', 'generateToken', 'hashPassword', 'inventorySearch', 'multer', 'path', 'pendingDriveAuth', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'verifyPassword');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
@@ -728,11 +729,12 @@ receiver.router.get('/api/employee/inventory/search', requireEmployeeAuth, requi
 
 // ── Customers ─────────────────────────────────────────────────────────────────
 receiver.router.get('/api/dashboard/customers', requireAuth, async (req, res) => {
-  let query = supabase.from('customers').select('*').order('created_at', { ascending: false });
   // Strip PostgREST-structural chars ( , ( ) * " \ % ) so terms like "Smith, Jr" or "(010)" don't break the .or() filter
   const q = String(req.query.q || '').replace(/[,()*"\\%]/g, ' ').trim();
-  if (q) query = query.or(`name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`);
-  const { data, error } = await query;
+  const { data, error } = await fetchAll(() => {
+    const query = supabase.from('customers').select('*').order('created_at', { ascending: false });
+    return q ? query.or(`name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`) : query;
+  });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });

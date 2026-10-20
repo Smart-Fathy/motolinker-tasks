@@ -2,6 +2,7 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
 const { sanitizeAttachments } = require('../lib/constants');
+const { fetchAll } = require('../lib/fetch-all');
 const { GOOGLE_CLIENT_ID, crypto, express, getCalendarToken, getDriveToken, getEmployeeCalendarToken, multer, parseCSV, receiver, requireAuth, supabase, syncTaskToCalendar, upload } = ctx.need('GOOGLE_CLIENT_ID', 'crypto', 'express', 'getCalendarToken', 'getDriveToken', 'getEmployeeCalendarToken', 'multer', 'parseCSV', 'receiver', 'requireAuth', 'supabase', 'syncTaskToCalendar', 'upload');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
@@ -181,9 +182,8 @@ async function buildLeadsReport(q) {
   const fromDay = q.from ? String(q.from).slice(0, 10) : null;
   const toDay = q.to ? String(q.to).slice(0, 10) : null;
 
-  const { data: all } = await supabase.from('customers')
-    .select('id,lead_status,source,budget_lead,budget_max,next_action,been_contacted,assigned_to,car_in_question,lead_date,created_at,custom_fields')
-    .limit(50000);
+  const { data: all } = await fetchAll(() => supabase.from('customers')
+    .select('id,lead_status,source,budget_lead,budget_max,next_action,been_contacted,assigned_to,car_in_question,lead_date,created_at,custom_fields'));
   // Employee reports pass a predicate so totals never include leads outside the
   // caller's data scope. Admin reports pass nothing and see everything.
   const scoped = typeof q.scopeLeads === 'function' ? (all || []).filter(q.scopeLeads) : (all || []);

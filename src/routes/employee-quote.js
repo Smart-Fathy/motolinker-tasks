@@ -1,6 +1,7 @@
 // Employee Quotation Draft
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
+const { fetchAll } = require('../lib/fetch-all');
 const { ADMIN_USERNAME, express, quotationImgUpload, receiver, requireAuth, requireEmployeeAuth, supabase, upload } = ctx.need('ADMIN_USERNAME', 'express', 'quotationImgUpload', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'upload');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
@@ -31,7 +32,7 @@ receiver.router.get('/api/employee/quotation/newid', requireEmployeeAuth, (req, 
 receiver.router.get('/api/employee/lead-options', requireEmployeeAuth, async (req, res) => {
   const emp = req.employee;
   if (!(empCan(emp, 'quotation', 'attachLead') || empCan(emp, 'leads', 'view') || empCan(emp, 'deals', 'create'))) return res.status(403).json({ error: 'Not permitted' });
-  const { data, error } = await supabase.from('customers').select('id,name,phone,lead_status,assigned_to').order('created_at', { ascending: false });
+  const { data, error } = await fetchAll(() => supabase.from('customers').select('id,name,phone,lead_status,assigned_to').order('created_at', { ascending: false }));
   if (error) return res.status(500).json({ error: error.message });
   const stageIdSet = await scopedQuotedIds(emp);
   res.json((data || []).filter(c => customerInScope(c, emp, stageIdSet)).map(c => ({ id: c.id, name: c.name, phone: c.phone })));
