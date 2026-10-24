@@ -9,9 +9,12 @@
 //   db.install();                        // replaces global.fetch for stub.supabase.co
 //   db.tables.sessions                   // the live rows
 //   db.missing.add('login_events')       // behave as if the table were never migrated
+//   db.failing.add('account_security')   // answer 500, as a database that is down does
+//   db.latency = 20                      // ms per query, so concurrent requests really interleave
+//   { defaults: { t: () => ({ col: v }) } }  // column defaults applied on insert, like the real table's
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
-function createFakeSupabase(initial = {}, { serial = {} } = {}) {
+function createFakeSupabase(initial = {}, { serial = {}, defaults = {} } = {}) {
   const tables = {};
   const nextId = {};
   for (const [name, rows] of Object.entries(initial)) {
@@ -19,6 +22,7 @@ function createFakeSupabase(initial = {}, { serial = {} } = {}) {
     nextId[name] = serial[name] || (rows.reduce((m, r) => Math.max(m, Number(r.id) || 0), 0) + 1);
   }
   const missing = new Set();
+  const failing = new Set();   // tables that answer 500, as a database that is down or timing out does
   const log = [];   // { method, table, query } for assertions about what the app asked for
 
   const getCol = (row, col) => {
@@ -69,6 +73,10 @@ function createFakeSupabase(initial = {}, { serial = {} } = {}) {
   }
 
   async function handle(url, init = {}) {
+    // A real database takes time to answer, which is what lets two requests that arrive
+    // together both read a row before either has written it. Answering in the same turn
+    // of the event loop hides every race; tests that need one set db.latency.
+    if (db.latency) await new Promise(r => setTimeout(r, db.latency));
     const u = new URL(url);
     const table = (u.pathname.match(/\/rest\/v1\/([^/]+)/) || [])[1];
     const method = String(init.method || 'GET').toUpperCase();
@@ -83,6 +91,9 @@ function createFakeSupabase(initial = {}, { serial = {} } = {}) {
     const sel = u.searchParams.get('select');
     log.push({ method, table, query: u.search });
 
+    if (failing.has(table)) {
+      return new Response(JSON.stringify({ code: 'XX000', message: 'simulated database failure' }), { status: 500, headers: JSON_HEADERS });
+    }
     if (!(table in tables) || missing.has(table)) {
       return new Response(JSON.stringify({ code: 'PGRST205', details: null, hint: null, message: `Could not find the table 'public.${table}' in the schema cache` }), { status: 404, headers: JSON_HEADERS });
     }
@@ -121,7 +132,7 @@ function createFakeSupabase(initial = {}, { serial = {} } = {}) {
         }
         if (row && merge) { Object.assign(row, item); out.push(row); continue; }
         if (row) return new Response(JSON.stringify({ code: '23505', message: 'duplicate key value violates unique constraint' }), { status: 409, headers: JSON_HEADERS });
-        const fresh = { ...item };
+        const fresh = { ...(defaults[table] ? defaults[table]() : {}), ...item };
         if (fresh.id == null && nextId[table] != null && table !== 'sessions') fresh.id = nextId[table]++;
         if (fresh.created_at === undefined && table !== 'sessions') fresh.created_at = new Date().toISOString();
         rows.push(fresh); out.push(fresh);
@@ -153,7 +164,7 @@ function createFakeSupabase(initial = {}, { serial = {} } = {}) {
     };
     return db;
   }
-  const db = { tables, missing, log, install, handle };
+  const db = { tables, missing, failing, log, install, handle, latency: 0 };
   return db;
 }
 

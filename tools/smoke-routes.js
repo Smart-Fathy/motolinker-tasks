@@ -41,9 +41,14 @@ setTimeout(async () => {
   walk((app._router || app.router || {}).stack);
 
   const base = 'http://127.0.0.1:' + process.env.PORT;
-  const { token } = await (await fetch(base + '/api/auth/login', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: process.env.ADMIN_USERNAME || 'admin', password: 'pw' }) })).json();
+  // Signing in asks the database whether the account has a second factor and refuses
+  // when it cannot be reached (it must not be a way around the factor), and the
+  // database here is a stub. So the admin session is minted straight into the Map the
+  // guard reads — the same way the employee one is below.
+  const token = 'smoke-admin-session';
+  require(process.cwd() + '/src/ctx.js').sessions.set(token, {
+    username: process.env.ADMIN_USERNAME || 'admin', pwv: require(process.cwd() + '/src/ctx.js').ADMIN_PW_VERSION, createdAt: Date.now(),
+  });
 
   // The employee portal is a third of the app and none of it is reachable with the
   // admin token — /api/employee/login checks a password hash in the database, and the

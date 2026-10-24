@@ -52,11 +52,75 @@ async function submitLogin() {
     });
     const d = await r.json();
     if (d.error) { err.textContent = d.error; err.style.display = 'block'; return; }
-    empToken = d.token; empInfo = d;
-    localStorage.setItem('ml_emp_token', empToken);
-    showApp();
+    // The password was right and the account has a second step: no session yet.
+    if (d.mfa_required) { document.getElementById('login-pass').value = ''; showMfa(d.mfa_token); return; }
+    startSessionFrom(d);
   } catch (e) { err.textContent = 'Connection error'; err.style.display = 'block'; }
   finally { btn.disabled = false; btn.textContent = 'Sign In'; }
+}
+
+function startSessionFrom(d) {
+  empToken = d.token; empInfo = d;
+  localStorage.setItem('ml_emp_token', empToken);
+  // The sign-in screen is shared by the password form and the code prompt. Put it back
+  // to the password form now, behind the app, so signing out lands on the right one.
+  showLoginForm();
+  showApp();
+}
+
+/* ── Second step (two-factor authentication) ── */
+let _mfaToken = null, _mfaRecovery = false;
+function showMfa(token) {
+  _mfaToken = token; _mfaRecovery = false;
+  for (const id of ['login-form-panel', 'forgot-form-panel', 'reset-form-panel']) { const el = document.getElementById(id); if (el) el.style.display = 'none'; }
+  document.getElementById('mfa-form-panel').style.display = '';
+  document.getElementById('auth-wrap').style.display = 'flex';
+  document.getElementById('auth-err').style.display = 'none';
+  setMfaMode(false);
+  const input = document.getElementById('mfa-code'); input.value = ''; input.focus();
+}
+function setMfaMode(recovery) {
+  _mfaRecovery = recovery;
+  const input = document.getElementById('mfa-code');
+  input.setAttribute('inputmode', recovery ? 'text' : 'numeric');
+  input.placeholder = recovery ? 'xxxxx-xxxxx' : '123456';
+  document.getElementById('mfa-label').textContent = recovery ? 'Recovery code' : 'Authentication code';
+  document.getElementById('mfa-lead').textContent = recovery
+    ? 'Enter one of the recovery codes you saved when you turned on two-step verification. Each works once.'
+    : 'Open your authenticator app and enter the 6-digit code for MotoLinker.';
+  document.getElementById('mfa-toggle').textContent = recovery ? 'Use my authenticator app instead' : 'Use a recovery code instead';
+}
+function toggleMfaRecovery() { setMfaMode(!_mfaRecovery); const i = document.getElementById('mfa-code'); i.value = ''; i.focus(); }
+function cancelMfa() { _mfaToken = null; showLoginForm(); }
+async function submitMfa() {
+  const btn = document.getElementById('mfa-btn');
+  const err = document.getElementById('auth-err');
+  const code = document.getElementById('mfa-code').value.trim();
+  err.style.display = 'none';
+  if (!code) { err.textContent = 'Enter the code.'; err.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Verifying…';
+  try {
+    const r = await fetch('/api/employee/login/2fa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfa_token: _mfaToken, code }) });
+    const d = await r.json();
+    if (d.token) { _mfaToken = null; startSessionFrom(d); return; }
+    // The challenge is gone (expired, or too many wrong codes): back to the password.
+    if (d.expired) { _mfaToken = null; showLoginForm(); }
+    err.textContent = d.error || 'That code did not work.'; err.style.display = 'block';
+    if (!d.expired) { document.getElementById('mfa-code').select(); }
+  } catch (e) { err.textContent = 'Connection error'; err.style.display = 'block'; }
+  finally { btn.disabled = false; btn.textContent = 'Verify'; }
+}
+
+/* ── Security panel (shared with the admin dashboard: assets/security.js) ── */
+function openSecurity() {
+  if (typeof closeProfileMenu === 'function') closeProfileMenu();
+  SecurityPanel.open({
+    call: ef, base: '/api/employee', kind: 'employee',
+    changePassword: openChangePassword,
+    // The server clears this account's push subscriptions when it signs devices out;
+    // this one registers again.
+    afterSignOut: () => { if (typeof _swReg !== 'undefined' && _swReg) chatSubscribePush(_swReg); },
+  });
 }
 
 async function checkAuth() {
@@ -72,6 +136,8 @@ async function checkAuth() {
 function showLogin() {
   // Signed out or expired: hang up, or the microphone stays live under the login screen.
   if (typeof huddleLeave === 'function') huddleLeave();
+  // …and put the Security panel away, or it sits over the form that signs you back in.
+  if (window.SecurityPanel) SecurityPanel.close();
   document.getElementById('auth-wrap').style.display = 'flex';
   document.getElementById('layout').style.display = 'none';
 }
@@ -656,6 +722,7 @@ async function showApp() {
   // offer it back rather than leaving people to guess.
   if (typeof hdBootLive === 'function') hdBootLive();
   navigate(lastPage('home'));
+  if (location.hash === '#security') { history.replaceState(null, '', location.pathname + location.search); openSecurity(); }
   await Promise.all([loadDropdownTasks(), loadMyTasks(), loadMyHours()]);
   requestAnimationFrame(() => lucide.createIcons());
 }
@@ -3124,12 +3191,14 @@ function empDownloadCsv() {
 
 // ── Auth helpers: forgot / reset password, Google login handling ───────────────
 function showForgotPassword() {
+  document.getElementById('mfa-form-panel').style.display = 'none';
   document.getElementById('login-form-panel').style.display = 'none';
   document.getElementById('forgot-form-panel').style.display = '';
   document.getElementById('reset-form-panel').style.display = 'none';
   document.getElementById('auth-err').style.display = 'none';
 }
 function showLoginForm() {
+  document.getElementById('mfa-form-panel').style.display = 'none';
   document.getElementById('login-form-panel').style.display = '';
   document.getElementById('forgot-form-panel').style.display = 'none';
   document.getElementById('reset-form-panel').style.display = 'none';
@@ -3153,6 +3222,7 @@ async function submitForgotPassword() {
 }
 function showResetPasswordForm(token) {
   window._resetToken = token;
+  document.getElementById('mfa-form-panel').style.display = 'none';
   document.getElementById('login-form-panel').style.display = 'none';
   document.getElementById('forgot-form-panel').style.display = 'none';
   document.getElementById('reset-form-panel').style.display = '';
@@ -3227,6 +3297,13 @@ lucide.createIcons();
   const empToken_ = params.get('emp_token');
   const resetToken = params.get('reset');
   const googleErr = params.get('google_login_error');
+  const mfaToken_ = params.get('mfa_token');
+  if (mfaToken_) {
+    // Signed in with Google, and the account has a second step. The token is single-use
+    // and useless without the code, but it has no business staying in the address bar.
+    history.replaceState({}, '', '/employee');
+    showMfa(mfaToken_);
+  }
   if (empToken_) {
     empToken = empToken_;
     localStorage.setItem('ml_emp_token', empToken);
@@ -3385,7 +3462,7 @@ function notifRelTime(ts) {
 }
 
 function notifIcon(type) {
-  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox', issue: 'bug', followup: 'alarm-clock', huddle: 'headphones' };
+  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox', issue: 'bug', followup: 'alarm-clock', huddle: 'headphones', security: 'shield-alert' };
   return m[type] || 'bell';
 }
 // Strip any leading emoji/symbols so legacy notifications render clean text (new ones already clean)
@@ -3438,6 +3515,7 @@ async function markAllNotifsRead() {
 // Route a notification to the right page (hash first, then type fallback for legacy rows)
 function notifRoute(url, type) {
   const hash = (url || '').split('#')[1];
+  if (hash === 'security') { openSecurity(); return; }
   if (hash && pageTitles[hash]) { navigate(hash); return; }
   const map = { hours: 'hours', task: 'tasks', reminder: 'tasks', lead: 'quotation', deal: 'deals', request: 'requests', followup: 'leads' };
   navigate(map[type] || 'hours');

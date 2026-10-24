@@ -63,6 +63,23 @@
       </a>
     </div>
 
+    <!-- Second step: the code from the authenticator app (shown after the password, or after Google, when the account has 2FA on) -->
+    <div id="mfa-form-panel" style="display:none">
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px">Two-step verification</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px" id="mfa-lead">Open your authenticator app and enter the 6-digit code for MotoLinker.</div>
+      <div class="form-group">
+        <label class="form-label" id="mfa-label" for="mfa-code">Authentication code</label>
+        <input class="form-control" id="mfa-code" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="14"
+          onkeydown="if(event.key==='Enter')submitMfa()">
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" id="mfa-btn" onclick="submitMfa()">Verify</button>
+      <div style="text-align:center;margin-top:12px;font-size:12px">
+        <a href="#" id="mfa-toggle" onclick="toggleMfaRecovery();return false;" style="color:var(--muted);text-decoration:none">Use a recovery code instead</a>
+        <span style="color:var(--muted)"> · </span>
+        <a href="#" onclick="cancelMfa();return false;" style="color:var(--muted);text-decoration:none">← Back to login</a>
+      </div>
+    </div>
+
     <!-- Forgot password form -->
     <div id="forgot-form-panel" style="display:none">
       <div style="font-size:15px;font-weight:700;margin-bottom:6px">Reset Password</div>
@@ -429,6 +446,7 @@
             <div class="profile-actions">
               <button class="profile-item" onclick="openIssueModal()"><i data-lucide="bug"></i> Report an issue</button>
               <button class="profile-item" onclick="openChangePassword()"><i data-lucide="key"></i> Change password</button>
+              <button class="profile-item" onclick="openSecurity()"><i data-lucide="shield-check"></i> Security</button>
               <button class="profile-item danger" onclick="logout()"><i data-lucide="log-out"></i> Sign out</button>
             </div>
           </div>
@@ -1358,6 +1376,7 @@
 <script src="/assets/logistics.js?v=128"></script>
 <script src="/assets/accounting.js?v=128"></script>
 <script src="/assets/assistant.js?v=128"></script>
+<script src="/assets/security.js?v=128"></script>
 <script src="/assets/employee.js?v=128"></script>
 
 <!-- ── New DM Modal ── -->

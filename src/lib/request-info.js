@@ -16,7 +16,10 @@ function clientIp(req) {
     || String(h['x-forwarded-for'] || '').split(',')[0].trim()
     || String(h['x-real-ip'] || '').trim()
     || String((req && req.socket && req.socket.remoteAddress) || '').trim();
-  return raw.replace(/^::ffff:/, '').slice(0, 64) || 'unknown';
+  const ip = raw.replace(/^::ffff:/, '');
+  // It ends up in emails and notifications, and a header can say anything: only
+  // something shaped like an address gets through.
+  return /^[0-9a-fA-F:.]{2,45}$/.test(ip) ? ip : 'unknown';
 }
 
 // "Chrome on Windows". A short label a person can match against their own device;

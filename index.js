@@ -250,7 +250,8 @@ function bearerToken(req) {
   const auth = req.headers['authorization'] || '';
   return auth.startsWith('Bearer ') ? auth.slice(7) : req.query._t;
 }
-const tokenTag = token => crypto.createHash('sha256').update(token).digest('hex').slice(0, 16);   // = notifTokenTag
+// The same short hash the live streams are tagged with (notifTokenTag, in notifications.js).
+const tokenTag = token => crypto.createHash('sha256').update(token).digest('hex').slice(0, 16);
 const sessionKeyOf = (kind, id) => (kind === 'admin' ? 'admin' : `employee_${id}`);
 
 // The one place a sign-in becomes a session, whichever way the person got in
@@ -329,6 +330,15 @@ async function revokeSessions(kind, id, { exceptToken = null } = {}) {
   try { await supabase.from('push_subscriptions').delete().eq('member_key', key); } catch (_) {}
   return { revoked: gone.size, persisted };
 }
+// End one login (the Security panel's "sign out" next to a device), by its token.
+async function revokeToken(kind, id, token) {
+  (kind === 'admin' ? sessions : employeeSessions).delete(token);
+  const { error } = await supabase.from('sessions').delete().eq('token', token);
+  if (error && !isMissingRelation(error)) console.error('[sessions] revoke failed for one login:', error.message);
+  closeLiveStreams(sessionKeyOf(kind, id), new Set([tokenTag(token)]));
+}
+const verifyAdminPassword = pw => !!ADMIN_PASSWORD && sameSecret(pw, ADMIN_PASSWORD);
+
 // PostgREST says a table does not exist as PGRST205 (not in the schema cache) or, from
 // Postgres itself, 42P01. Either way there is nothing in it to be stale.
 const isMissingRelation = e => !!e && (e.code === 'PGRST205' || e.code === '42P01' || /does not exist|schema cache/i.test(String(e.message || '')));
@@ -342,7 +352,7 @@ function closeLiveStreams(memberKey, tags) {
   if (chat && tags.has(chat.hdTag)) { try { chat.end(); } catch (_) {} chatSseClients.delete(memberKey); }
   if (ctx.closeNotifStreams) ctx.closeNotifStreams(memberKey, tags);
 }
-Object.assign(ctx, { startSession, revokeSessions, sessions, tokenTag, sessionKeyOf, bearerToken, SESSION_MAX_AGE_MS });
+Object.assign(ctx, { startSession, revokeSessions, revokeToken, verifyAdminPassword, sessions, tokenTag, sessionKeyOf, bearerToken, SESSION_MAX_AGE_MS });
 
 // One header set for every SSE endpoint. Deliberately NO `Connection` header:
 // connection-specific fields are illegal in HTTP/2 (RFC 9113 §8.2.2), and
@@ -467,15 +477,22 @@ receiver.router.get('/', (_req, res) => res.redirect('/dashboard'));
 receiver.router.get('/dashboard', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'dashboard.html')));
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-receiver.router.post('/api/auth/login', express.json(), (req, res) => {
+receiver.router.post('/api/auth/login', express.json(), async (req, res) => {
   if (!ADMIN_PASSWORD) return res.status(500).json({ error: 'ADMIN_PASSWORD environment variable is not set. Add it in your Railway variables.' });
   const { username, password } = req.body || {};
+  const wait = ctx.loginGate('admin', username, req);
+  if (wait) return ctx.tooMany(res, wait);
   const userOk = sameSecret(username, ADMIN_USERNAME), passOk = sameSecret(password, ADMIN_PASSWORD);
-  if (userOk && passOk) {
-    const { token } = startSession('admin', { username }, req);
-    return res.json({ token, username });
+  if (!(userOk && passOk)) {
+    ctx.loginFailed('admin', username, req);
+    return res.status(401).json({ error: 'Invalid username or password' });
   }
-  res.status(401).json({ error: 'Invalid username or password' });
+  ctx.loginSucceeded('admin', username, req);
+  // With a second factor set up this is a challenge, not a session yet.
+  const r = await ctx.beginLogin(req, res, { kind: 'admin', id: 'admin', payload: { username }, method: 'password' });
+  if (r.error) return res.status(r.error.status).json({ error: r.error.message });
+  if (r.mfa_required) return res.json({ mfa_required: true, mfa_token: r.mfa_token });
+  res.json({ token: r.token, username });
 });
 
 receiver.router.post('/api/auth/logout', requireAuth, (req, res) => {
@@ -1124,9 +1141,12 @@ receiver.router.get('/api/email/callback', async (req, res) => {
         const { data: empRows } = await supabase.from('employees').select('id,name,username,permissions,job_title').ilike('email', String(profile.email || '').trim()).limit(1);
         const emp = empRows && empRows[0];
         if (!emp) return res.redirect('/employee?google_login_error=' + encodeURIComponent('No account linked to this Google address. Contact your admin.'));
-        const permissions = ctx.normEmpPerms(emp.permissions);
-        const { token: sessionToken } = startSession('employee', { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions }, req, { method: 'google' });
-        return res.redirect('/employee?emp_token=' + sessionToken);
+        // Google proves the person controls that Google account; it does not replace
+        // the second factor they chose for this one.
+        const r = await ctx.beginLogin(req, res, { kind: 'employee', id: emp.id, payload: ctx.employeeSessionPayload(emp), method: 'google' });
+        if (r.error) return res.redirect('/employee?google_login_error=' + encodeURIComponent(r.error.message));
+        if (r.mfa_required) return res.redirect('/employee?mfa_token=' + r.mfa_token);
+        return res.redirect('/employee?emp_token=' + r.token);
       }
       if (pending.type === 'employee' && pending.employeeId) {
         employeeDriveTokens.set(pending.employeeId, full);
@@ -2017,6 +2037,8 @@ Object.assign(ctx, require('./src/routes/notifications'));
 // Notification Center streams  → src/routes/notif-streams.js
 Object.assign(ctx, { chatCallerIdentity, express, receiver, requireAuth, requireEmployeeAuth, supabase });
 Object.assign(ctx, require('./src/routes/notif-streams'));
+// Two-factor authentication, the sign-in record and security alerts  → src/routes/account-security.js
+Object.assign(ctx, require('./src/routes/account-security'));
 // Group administration + huddles  → src/routes/huddles.js
 Object.assign(ctx, { chatBroadcast, chatCallerIdentity, crypto, express, multer, path, receiver, requireAuth, requireEmployeeAuth, supabase, upload });
 require('./src/routes/huddles');

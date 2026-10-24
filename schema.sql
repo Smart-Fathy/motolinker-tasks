@@ -1078,3 +1078,44 @@ CREATE TABLE IF NOT EXISTS public.accounting_reports (
 );
 CREATE INDEX IF NOT EXISTS accounting_reports_period_idx ON public.accounting_reports (period_from DESC, id DESC);
 ALTER TABLE IF EXISTS public.accounting_reports ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================
+--  Sign-in security: who signed in, and two-factor authentication
+--  (migrations/023_account_security.sql — kept in step with it)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.login_events (
+  id          BIGSERIAL PRIMARY KEY,
+  kind        TEXT NOT NULL,                       -- 'admin' | 'employee'
+  account_id  TEXT NOT NULL,                       -- 'admin' or the employee's id
+  event       TEXT NOT NULL DEFAULT 'login',       -- 'login' | 'mfa_failed' | ...
+  at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ip          TEXT,
+  user_agent  TEXT,
+  device      TEXT,                                -- "Chrome on Windows"
+  device_hash TEXT,                                -- sha256 of the browser's device cookie
+  method      TEXT,                                -- password | google | password+2fa | google+2fa | ...+recovery
+  new_device  BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- "Show me this account's recent sign-ins", newest first.
+CREATE INDEX IF NOT EXISTS idx_login_events_account ON public.login_events (kind, account_id, at DESC);
+-- "Has this browser signed in to this account before?" — a point lookup per sign-in.
+CREATE INDEX IF NOT EXISTS idx_login_events_device  ON public.login_events (kind, account_id, device_hash) WHERE event = 'login';
+
+CREATE TABLE IF NOT EXISTS public.account_security (
+  kind           TEXT NOT NULL,                    -- 'admin' | 'employee'
+  account_id     TEXT NOT NULL,                    -- 'admin' or the employee's id
+  totp_secret    TEXT,                             -- the confirmed secret (sealed)
+  totp_pending   TEXT,                             -- a secret shown at setup, not yet confirmed (sealed)
+  totp_enabled   BOOLEAN NOT NULL DEFAULT FALSE,
+  recovery_codes JSONB   NOT NULL DEFAULT '[]'::jsonb,   -- SHA-256 of each unused code
+  last_step      BIGINT  NOT NULL DEFAULT 0,       -- last 30-second step accepted: a code cannot be replayed
+  enabled_at     TIMESTAMPTZ,
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (kind, account_id)
+);
+
+-- Same posture as every other table: RLS on with no policies, so only the service
+-- role the server uses can read or write them.
+ALTER TABLE IF EXISTS public.login_events     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.account_security ENABLE ROW LEVEL SECURITY;

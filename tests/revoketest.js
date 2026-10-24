@@ -89,7 +89,7 @@ db.install();
 
   // ── A wrong current password changes nothing ─────────────────────────────
   const bad = await call(A.token, '/api/employee/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: 'nope-nope-1', newPassword: 'brandnewpass1' }) });
-  c('a wrong current password is refused', bad.status === 401);
+  c('a wrong current password is refused — as 403, because the portal signs out on any 401', bad.status === 403);
   c('…and signs nobody out', await alive(B.token) && await alive(C.token));
 
   // ── The change itself ────────────────────────────────────────────────────

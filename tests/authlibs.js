@@ -46,6 +46,9 @@ const c = (n, ok, x) => { results.push(ok); console.log((ok ? '  ok  ' : ' FAIL 
   c('the first forwarded address is the client', ri.clientIp(req({ 'x-forwarded-for': '203.0.113.7, 10.1.1.1' })) === '203.0.113.7');
   c('Cloudflare\'s header wins when present', ri.clientIp(req({ 'cf-connecting-ip': '198.51.100.4', 'x-forwarded-for': '203.0.113.7' })) === '198.51.100.4');
   c('with no proxy the socket address is used, IPv4-mapped prefix removed', ri.clientIp(req({})) === '10.0.0.9');
+  c('an IPv6 address is kept', ri.clientIp(req({ 'x-forwarded-for': '2001:db8::1' })) === '2001:db8::1');
+  c('anything that is not an address is dropped — it will be printed in an email',
+    ['<script>alert(1)</script>', '1.2.3.4<b>', 'a b', "'; drop table--", 'x'.repeat(80)].every(h => ri.clientIp(req({ 'x-forwarded-for': h })) === 'unknown'));
   const meta = ri.requestMeta(req({ 'user-agent': CH + 'x'.repeat(600) }));
   c('the user agent is capped so a header cannot bloat a row', meta.ua.length === 300 && meta.device === 'Chrome on Windows');
 

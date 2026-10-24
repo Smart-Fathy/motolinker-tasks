@@ -430,6 +430,90 @@ Apply `migrations/022_accounting.sql` (the `expenses` and `accounting_reports` t
 Until it is applied, reads degrade with a warning and recording an expense answers
 503 with `migration: "022"`.
 
+## 🔐 Signing in — sessions, sign-in alerts and two-factor authentication
+
+Everyone has a **Security** panel (the profile menu in the team portal; the sidebar footer
+in the admin dashboard). It shows where the account is signed in, its recent sign-ins, and
+two-factor authentication.
+
+### A password change ends the other logins
+
+A login is a token, and whoever holds it *is* the account — so the ways a token stops
+working matter as much as the way it starts.
+
+| What happens | What it does |
+| --- | --- |
+| An employee changes their password | every **other** device is signed out; the one making the change stays |
+| A "forgot password" reset | **every** device is signed out, and every emailed reset link is spent |
+| An administrator sets an employee's password, or deletes the employee | all of that employee's devices are signed out |
+| `ADMIN_PASSWORD` is changed and the service redeployed | every admin login ends, including those saved in the `sessions` table (they carry a fingerprint of the password they were opened under) |
+| Two-factor is turned on or off | the other devices are signed out |
+
+"Signed out" means all four places a login lives are cleared: the in-memory map, the
+`sessions` table that survives a restart, the live notification/chat streams opened with
+the token (nothing re-checks an open stream), and the push subscriptions its devices
+registered (so a signed-out phone stops receiving notification text; devices that are still
+signed in register again on their next page load). This needs **no migration**. A session
+in memory is also refused after 30 days; it used to live as long as the process.
+
+The first deploy of this signs the admin out once (admin logins carry the password
+fingerprint from now on).
+
+### Sign-in alerts
+
+Every sign-in is recorded (browser, address, method) and the account's owner is told when
+it comes from a **browser that account has not signed in from before**: in the app (the
+bell), by push to their other devices, and by **email** to the address on the employee
+record (the admin's goes to `ADMIN_EMAIL`). The email is the one that matters — an in-app
+notice is in front of whoever is signed in, which may be the person it is about. Password
+changes and every change to two-factor authentication are announced the same way.
+
+A browser is recognised by an HttpOnly cookie the server sets at sign-in (only its hash is
+stored). `LOGIN_ALERTS=all` alerts on every sign-in; `LOGIN_ALERTS=off` records without
+alerting. Employees with no email on file get the in-app and push alerts only; email needs
+the SMTP settings.
+
+### Two-factor authentication
+
+Opt-in, per person, in both portals. An authenticator app (Google/Microsoft Authenticator,
+Authy, 1Password…) gives a 6-digit code that changes every 30 seconds (TOTP, RFC 6238).
+
+- **Turning it on** asks for the password again, shows a QR code, and only goes live once a
+  code from the app has been entered. It then shows **ten recovery codes, once**.
+- **Signing in** takes the password (or Google) and then the code. A recovery code works in
+  its place, once. Signing in with Google does not skip the code.
+- **Turning it off, or making new recovery codes,** asks for the password *and* a code.
+- A code cannot be used twice, and wrong ones are limited: five tries per sign-in, ten per
+  account per 15 minutes. Five wrong codes after a correct password alert the owner — it means
+  the password has leaked.
+- If the second factor cannot be checked (the database is down), sign-in is refused. It is
+  never read as "no second factor".
+
+**Lost phone and recovery codes:** an administrator opens *Employees* and presses **Reset
+2FA** on the person (they are signed out everywhere and told). For the admin account itself,
+run `node scripts/reset-2fa.js admin` where the app's environment is set (for example
+`railway run node scripts/reset-2fa.js admin`), then restart the service if anyone else may
+have had access — a running server keeps the logins it already holds in memory.
+
+**Setup**
+
+1. Apply `migrations/023_account_security.sql` (`account_security` and `login_events`).
+   Until it is applied nothing breaks: sign-in is exactly as before, the Security panel
+   says two-factor is unavailable, and every sign-in counts as a new browser.
+2. Set `MFA_ENCRYPTION_KEY` (any long random string, `openssl rand -hex 32`) **before**
+   people turn two-factor on. It seals the secrets in the database so a leaked dump or
+   backup does not contain working codes. Without it they are stored readable (and still
+   work); do not change or lose the key afterwards, or those accounts need a reset.
+3. Optionally `ADMIN_EMAIL` and `LOGIN_ALERTS` (see `.env.example`).
+
+**Guessing is limited** at every sign-in: 5 wrong passwords per username *and address* per
+15 minutes, 40 per address, 20 per username from anywhere. The counters are held in memory,
+like the sessions' working set, so a restart forgets them.
+
+**Not built:** requiring two-factor for everyone (it is opt-in), and trusting a device so it
+skips the code for a while. The in-memory limits and challenges assume one running instance,
+as the rest of the app does.
+
 ## 🧠 The assistant on every page
 
 The **Ask AI** button in the header (or Ctrl/⌘+K) opens one panel on every page

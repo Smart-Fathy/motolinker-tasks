@@ -21,6 +21,7 @@ const quote   = read('public/assets/quote.js');
 const meets   = read('public/assets/meetings.js');
 const avail   = read('public/assets/availability.js');
 const logi    = read('public/assets/logistics.js');
+const secpanel = read('public/assets/security.js');
 const bundles = { dashboard: read('public/assets/dashboard.js'), employee: read('public/assets/employee.js') };
 const pages   = { dashboard: read('public/dashboard.html'),      employee: read('public/employee.html') };
 const workers = { dashboard: read('public/sw-dashboard.js'),     employee: read('public/sw-employee.js') };
@@ -39,6 +40,7 @@ const MARKERS = {
   '/assets/meetings.js':     { src: meets,   re: /function openMeetingForm\(/ },
   '/assets/availability.js': { src: avail,   re: /function renderAvailabilityBoard\(/ },
   '/assets/logistics.js':    { src: logi,    re: /function containerCardHtml\(/ },
+  '/assets/security.js':     { src: secpanel, re: /window\.SecurityPanel = \{/ },
 };
 
 for (const [path, { src, re }] of Object.entries(MARKERS)) {
