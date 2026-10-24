@@ -112,7 +112,10 @@ setTimeout(async () => {
     notifFrames[0] && notifFrames[0].data.type === 'huddle', JSON.stringify(notifFrames[0] && notifFrames[0].data));
   check('it deep-links to the chat page so it can be joined',
     notifFrames[0] && /#chat$/.test(notifFrames[0].data.url || ''), JSON.stringify(notifFrames[0] && notifFrames[0].data));
-  check('it is persisted, not only pushed live', inserted.length === 1, JSON.stringify(inserted));
+  // Signing in as the admin to start the huddle raises its own "new sign-in" alert, which
+  // is stored too; the invitation is the huddle-typed row.
+  const huddleRows = inserted.filter(n => n.type === 'huddle');
+  check('it is persisted, not only pushed live', huddleRows.length === 1, JSON.stringify(inserted));
 
   // ── The signalling travels as huddle-signal, never as the legacy event ──
   // The previous bundle passes every plain 'huddle' event on this stream to the

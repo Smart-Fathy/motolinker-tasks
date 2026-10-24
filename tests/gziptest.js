@@ -17,8 +17,10 @@ const fs = require('fs'), http = require('http'), zlib = require('zlib');
 const results = [];
 const c = (n, ok, x) => { results.push(!!ok); console.log((ok ? '  ok  ' : ' FAIL ') + n + (x ? '  ' + x : '')); };
 
-// A leads table the size of production's (1,054 rows, ~650 bytes each).
-const LEADS = Array.from({ length: 1000 }, (_, i) => ({
+// A leads table the size of production's today (1,131 rows, ~650 bytes each) — past the
+// 1,000 rows a single request is allowed to return, so the list only arrives whole if it
+// is read in pages.
+const LEADS = Array.from({ length: 1131 }, (_, i) => ({
   id: i + 1, name: 'Lead ' + (i + 1), phone: '010' + String(10000000 + i), email: '', source: 'fb_ad',
   lead_status: ['cold', 'warm', 'hot'][i % 3], car_in_question: 'BYD Seal', budget_lead: 1700000, budget_max: 2000000,
   notes: 'Asked about delivery dates and the trade-in offer', custom_fields: { cf_vehicle_offered: 'Seal Premium' },
@@ -30,7 +32,13 @@ global.fetch = async (input, init) => {
   if (!url.includes('stub.supabase.co')) return realFetch(input, init);
   const h = (init && init.headers) || {};
   const accept = String(typeof h.get === 'function' ? (h.get('Accept') || '') : (h.Accept || h.accept || ''));
-  const body = accept.includes('pgrst.object') ? '{}' : (url.includes('/rest/v1/customers?') ? JSON.stringify(LEADS) : '[]');
+  // Answers the way the real server does: the rows asked for by offset/limit, and never
+  // more than 1,000 whatever the limit says. A stand-in that returned the whole table for
+  // every request would be an endless first page.
+  const q = new URL(url).searchParams;
+  const off = Number(q.get('offset') || 0), lim = q.get('limit') != null ? Number(q.get('limit')) : Infinity;
+  const rows = url.includes('/rest/v1/customers?') ? LEADS.slice(off, off + Math.min(lim, 1000)) : [];
+  const body = accept.includes('pgrst.object') ? '{}' : JSON.stringify(rows);
   return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
 };
 

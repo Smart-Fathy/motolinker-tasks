@@ -22,10 +22,10 @@
     if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=147">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=148">
   <!-- Shared with the team portal. Last on purpose: several mobile rules were being
        beaten by later same-specificity rules in the sheet above. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=147">
+  <link rel="stylesheet" href="/assets/mobile.css?v=148">
 </head>
 <body>
 <!-- The gradient every colourful brain icon strokes with (the Accounting nav item,
@@ -43,7 +43,19 @@
     <input type="text"     id="login-username" class="auth-input" placeholder="Username" autocomplete="username">
     <input type="password" id="login-password" class="auth-input" placeholder="Password" autocomplete="current-password">
     <p id="auth-error" class="auth-error">Invalid username or password.</p>
-    <button class="btn btn-primary btn-full" onclick="submitLogin()">Sign In</button>
+    <button class="btn btn-primary btn-full" id="login-btn" onclick="submitLogin()">Sign In</button>
+    <!-- Second step: shown after the password when the admin account has two-factor authentication on -->
+    <div id="admin-mfa" style="display:none">
+      <p class="auth-sub" id="admin-mfa-lead">Enter the 6-digit code from your authenticator app</p>
+      <input type="text" id="admin-mfa-code" class="auth-input" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="14">
+      <p id="admin-mfa-error" class="auth-error"></p>
+      <button class="btn btn-primary btn-full" id="admin-mfa-btn" onclick="submitAdminMfa()">Verify</button>
+      <p style="text-align:center;margin-top:12px;font-size:12px">
+        <a href="#" id="admin-mfa-toggle" onclick="toggleAdminMfaRecovery();return false;" style="color:var(--muted);text-decoration:none">Use a recovery code instead</a>
+        <span style="color:var(--muted)"> · </span>
+        <a href="#" onclick="cancelAdminMfa();return false;" style="color:var(--muted);text-decoration:none">← Back</a>
+      </p>
+    </div>
   </div>
 </div>
 
@@ -183,6 +195,9 @@
         <button class="btn btn-primary btn-sm" style="flex:1" onclick="navArrangeSave()">Save</button>
         <button class="btn btn-outline btn-sm" style="flex:1" onclick="navArrangeCancel()">Cancel</button>
         <button class="btn btn-outline btn-sm" title="Restore the default layout" onclick="navArrangeReset()">Reset</button>
+      </div>
+      <div class="logout-btn" onclick="openSecurity()">
+        <span><i data-lucide="shield-check" style="width:16px;height:16px"></i></span> Security
       </div>
       <div class="logout-btn" onclick="logout()">
         <span><i data-lucide="log-out" style="width:16px;height:16px"></i></span> Sign Out
@@ -1525,23 +1540,24 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
-<script src="/assets/mobile.js?v=147"></script>
-<script src="/assets/columns.js?v=147"></script>
-<script src="/assets/client-folder.js?v=147"></script>
-<script src="/assets/lead-filters.js?v=147"></script>
-<script src="/assets/lead-views.js?v=147"></script>
-<script src="/assets/chat-extras.js?v=147"></script>
-<script src="/assets/home.js?v=147"></script>
-<script src="/assets/huddle.js?v=147"></script>
-<script src="/assets/procurement.js?v=147"></script>
-<script src="/assets/quote.js?v=147"></script>
-<script src="/assets/meetings.js?v=147"></script>
-<script src="/assets/calendar.js?v=147"></script>
-<script src="/assets/availability.js?v=147"></script>
-<script src="/assets/logistics.js?v=147"></script>
-<script src="/assets/accounting.js?v=147"></script>
-<script src="/assets/assistant.js?v=147"></script>
-<script src="/assets/dashboard.js?v=147"></script>
+<script src="/assets/mobile.js?v=148"></script>
+<script src="/assets/columns.js?v=148"></script>
+<script src="/assets/client-folder.js?v=148"></script>
+<script src="/assets/lead-filters.js?v=148"></script>
+<script src="/assets/lead-views.js?v=148"></script>
+<script src="/assets/chat-extras.js?v=148"></script>
+<script src="/assets/home.js?v=148"></script>
+<script src="/assets/huddle.js?v=148"></script>
+<script src="/assets/procurement.js?v=148"></script>
+<script src="/assets/quote.js?v=148"></script>
+<script src="/assets/meetings.js?v=148"></script>
+<script src="/assets/calendar.js?v=148"></script>
+<script src="/assets/availability.js?v=148"></script>
+<script src="/assets/logistics.js?v=148"></script>
+<script src="/assets/accounting.js?v=148"></script>
+<script src="/assets/assistant.js?v=148"></script>
+<script src="/assets/security.js?v=148"></script>
+<script src="/assets/dashboard.js?v=148"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
@@ -1574,6 +1590,6 @@
 <div id="hd-incoming"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=147"></script>
+<script src="/help-docs.js?v=148"></script>
 </body>
 </html>

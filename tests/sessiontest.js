@@ -28,6 +28,10 @@ rows.set('expired-employee',  { token: 'expired-employee', kind: 'employee',
 rows.set('wrong-kind', { token: 'wrong-kind', kind: 'employee', payload: { id: 2 }, created_at: new Date().toISOString() });
 
 const writes = { upserts: [], deletes: [] };
+// What the database remembers of the admin password's fingerprint. A normal restart
+// finds the current one there; a first boot after a password change finds none (or
+// another) and ends the admin logins that predate it — see revoketest.js.
+let ADMIN_PWV = null;
 const realFetch = global.fetch;
 global.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : (input && input.url) || '';
@@ -47,11 +51,21 @@ global.fetch = async (input, init) => {
     const body = single ? JSON.stringify(hit || {}) : JSON.stringify(hit ? [hit] : []);
     return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
+  if (table === 'quotation_settings' && (q.get('key') || '') === 'eq.admin_pw_version') {
+    return new Response(JSON.stringify(ADMIN_PWV ? [{ value: ADMIN_PWV }] : []), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
   const body = single ? '{}' : '[]';
   return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
 };
 
 require(process.cwd() + '/index.js');
+// An admin login carries a fingerprint of the password it was opened with and is
+// refused once that is not the current one. The restored fixtures were written
+// "under the current password"; the two below were not.
+ADMIN_PWV = require(process.cwd() + '/src/ctx').ADMIN_PW_VERSION;
+rows.get('restored-admin').payload.pwv = ADMIN_PWV;
+rows.set('legacy-admin', { token: 'legacy-admin', kind: 'admin', payload: { username: 'admin' }, created_at: new Date().toISOString() });
+rows.set('old-password-admin', { token: 'old-password-admin', kind: 'admin', payload: { username: 'admin', pwv: 'opened-under-another-password' }, created_at: new Date().toISOString() });
 const base = 'http://127.0.0.1:' + process.env.PORT;
 const hit = async (p, token) =>
   fetch(base + p, { headers: { Authorization: 'Bearer ' + token } });
@@ -76,6 +90,13 @@ setTimeout(async () => {
   const ex = await hit('/api/employee/tasks', 'expired-employee');
   c('a 30-day-old session is refused', ex.status === 401, String(ex.status));
   c('…and deleted from the table', writes.deletes.includes('expired-employee'), writes.deletes.join(','));
+
+  // 3b. Rotating ADMIN_PASSWORD ends every admin login, persisted ones included.
+  const lg = await hit('/api/auth/check', 'legacy-admin');
+  c('an admin session from before logins carried a password fingerprint is refused', lg.status === 401, String(lg.status));
+  const op = await hit('/api/auth/check', 'old-password-admin');
+  c('an admin session opened under another password is refused', op.status === 401, String(op.status));
+  c('…and its row is deleted', writes.deletes.includes('old-password-admin'));
 
   // 4. Kind mismatch: an employee token is not an admin token.
   const wk = await hit('/api/auth/check', 'wrong-kind');

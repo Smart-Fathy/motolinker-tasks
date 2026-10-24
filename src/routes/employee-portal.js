@@ -3,6 +3,8 @@
 const ctx = require('../ctx');
 const { sanitizeAttachments } = require('../lib/constants');
 const { fetchAll } = require('../lib/fetch-all');
+const { createLimiter } = require('../lib/rate-limit');
+const { requestMeta } = require('../lib/request-info');
 const { GOOGLE_CLIENT_ID, PUBLIC_DIR, SMTP_FROM, autoCreateSaleForWonDeal, createMailer, crypto, employeeSessions, express, generateToken, hashPassword, inventorySearch, multer, path, pendingDriveAuth, receiver, requireAuth, requireEmployeeAuth, supabase, verifyPassword } = ctx.need('GOOGLE_CLIENT_ID', 'PUBLIC_DIR', 'SMTP_FROM', 'autoCreateSaleForWonDeal', 'createMailer', 'crypto', 'employeeSessions', 'express', 'generateToken', 'hashPassword', 'inventorySearch', 'multer', 'path', 'pendingDriveAuth', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'verifyPassword');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
@@ -20,6 +22,9 @@ const taskCtx = (...a) => ctx.taskCtx(...a);
 const leadCtx = (...a) => ctx.leadCtx(...a);
 const dealCtx = (...a) => ctx.dealCtx(...a);
 const autoCreateContractForWonDeal = (...a) => ctx.autoCreateContractForWonDeal(...a);
+
+// Wrong "current password" answers on the change-password form, per employee.
+const changePasswordLimiter = createLimiter({ max: 5, windowMs: 15 * 60_000 });
 
 // ─── Employee Portal ──────────────────────────────────────────────────────────
 // PUBLIC_DIR, not __dirname: this file lives in src/routes, so joining its own
@@ -465,17 +470,36 @@ receiver.router.get('/api/employee/auth/google', (req, res) => {
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
 
+// What a session knows about an employee, and what a sign-in answers with. One
+// definition for the password route, the Google route and the second step, so the
+// three cannot drift apart.
+function employeeSessionPayload(emp) {
+  return { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions: normEmpPerms(emp.permissions) };
+}
+function employeeLoginResponse(emp, token) {
+  return { token, name: emp.name, username: emp.username, id: emp.id, job_title: emp.job_title || '', permissions: normEmpPerms(emp.permissions), avatar_url: emp.avatar_url || '', status_text: emp.status_text || '', status_emoji: emp.status_emoji || '' };
+}
+// Checked against when the username does not exist, so a wrong name costs the same
+// time as a wrong password and the response time cannot be used to list valid names.
+const DUMMY_HASH = hashPassword('motolinker-no-such-employee');
+
 receiver.router.post('/api/employee/login', express.json(), async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
-  const { data: emp } = await supabase.from('employees').select('*').eq('username', username).single();
-  if (!emp || !verifyPassword(password, emp.password_hash)) return res.status(401).json({ error: 'Invalid username or password' });
-  const token = generateToken();
-  const permissions = normEmpPerms(emp.permissions);
-  const sess = { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions };
-  employeeSessions.set(token, sess);
-  ctx.saveSession(token, 'employee', sess);
-  res.json({ token, name: emp.name, username: emp.username, id: emp.id, job_title: emp.job_title || '', permissions, avatar_url: emp.avatar_url || '', status_text: emp.status_text || '', status_emoji: emp.status_emoji || '' });
+  const wait = ctx.loginGate('employee', username, req);
+  if (wait) return ctx.tooMany(res, wait);
+  const { data: emp } = await supabase.from('employees').select('*').eq('username', String(username)).single();
+  const ok = verifyPassword(String(password), emp ? emp.password_hash : DUMMY_HASH);
+  if (!emp || !ok) {
+    ctx.loginFailed('employee', username, req);
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+  ctx.loginSucceeded('employee', username, req);
+  // With a second factor set up this is a challenge, not a session yet.
+  const r = await ctx.beginLogin(req, res, { kind: 'employee', id: emp.id, payload: employeeSessionPayload(emp), method: 'password' });
+  if (r.error) return res.status(r.error.status).json({ error: r.error.message });
+  if (r.mfa_required) return res.json({ mfa_required: true, mfa_token: r.mfa_token, name: emp.name });
+  res.json(employeeLoginResponse(emp, r.token));
 });
 receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res) => {
   let profile = {};
@@ -508,17 +532,39 @@ receiver.router.post('/api/employee/change-password', requireEmployeeAuth, expre
   const { currentPassword, newPassword } = req.body || {};
   if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords required' });
   if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  // The current password is asked for again precisely so a borrowed or stolen session
+  // cannot take the account over — which only holds if that question cannot be
+  // guessed at without limit from inside such a session.
+  const limitKey = `chpw:${req.employee.id}`;
+  const wait = changePasswordLimiter.retryAfter(limitKey);
+  if (wait) { res.set('Retry-After', String(wait)); return res.status(429).json({ error: `Too many wrong attempts. Try again in ${Math.ceil(wait / 60)} minute(s).` }); }
   const { data: emp } = await supabase.from('employees').select('password_hash').eq('id', req.employee.id).single();
-  if (!emp || !verifyPassword(currentPassword, emp.password_hash)) return res.status(401).json({ error: 'Current password is incorrect' });
+  if (!emp || !verifyPassword(currentPassword, emp.password_hash)) {
+    changePasswordLimiter.fail(limitKey);
+    // 403, not 401: the portal reads any 401 as an ended session and signs the person out.
+    return res.status(403).json({ error: 'Current password is incorrect' });
+  }
+  changePasswordLimiter.reset(limitKey);
   const { error } = await supabase.from('employees').update({ password_hash: hashPassword(newPassword) }).eq('id', req.employee.id);
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
+  // The reason people change a password is that someone else might have it. Everyone
+  // signed in with the old one — every other device — is signed out now; this one,
+  // which just proved it knows the old password, stays.
+  const out = await ctx.revokeSessions('employee', req.employee.id, { exceptToken: req.sessionToken });
+  ctx.notifySecurity('employee', req.employee.id, 'password_changed', { meta: requestMeta(req) }).catch(() => {});
+  res.json({ ok: true, sessionsRevoked: out.revoked, ...(out.persisted ? {} : { warning: 'Your password was changed, but we could not sign your other devices out. Use "Sign out other devices" in Security to try again.' }) });
 });
 
 // Forgot password — send reset link via email
 receiver.router.post('/api/employee/forgot-password', express.json(), async (req, res) => {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Email is required' });
+  // Each request sends a real email to a real person: without a limit this is a way to
+  // fill someone's inbox, or to make our mail account look like spam.
+  const ipKey = 'ip:' + requestMeta(req).ip, mailKey = 'mail:' + String(email).toLowerCase().trim();
+  const wait = Math.max(ctx.forgotLimiter.retryAfter(ipKey), ctx.forgotLimiter.retryAfter(mailKey));
+  if (wait) return ctx.tooMany(res, wait);
+  ctx.forgotLimiter.fail(ipKey); ctx.forgotLimiter.fail(mailKey);
   const { data: emp } = await supabase.from('employees').select('id,name,email').eq('email', email.toLowerCase().trim()).single();
   // Always respond OK to avoid email enumeration
   if (!emp) return res.json({ ok: true });
@@ -548,9 +594,17 @@ receiver.router.post('/api/employee/reset-password', express.json(), async (req,
   const { data: row } = await supabase.from('password_reset_tokens')
     .select('id,employee_id,expires_at,used').eq('token', token).single();
   if (!row || row.used || new Date(row.expires_at) < new Date()) return res.status(400).json({ error: 'Invalid or expired reset link' });
-  await supabase.from('employees').update({ password_hash: hashPassword(newPassword) }).eq('id', row.employee_id);
-  await supabase.from('password_reset_tokens').update({ used: true }).eq('id', row.id);
-  res.json({ ok: true });
+  const { error } = await supabase.from('employees').update({ password_hash: hashPassword(newPassword) }).eq('id', row.employee_id);
+  // Failing quietly here used the link up and told the person it worked.
+  if (error) return res.status(500).json({ error: 'Could not update the password. Try the link again.' });
+  // Every link sent for this account is spent, not just the one used: a second email
+  // from an earlier "forgot password" would otherwise still set a new password.
+  await supabase.from('password_reset_tokens').update({ used: true }).eq('employee_id', row.employee_id).eq('used', false);
+  // A reset is how someone recovers an account they think is not only theirs. Nobody
+  // stays signed in through it — not even a device that was never signed out.
+  const out = await ctx.revokeSessions('employee', row.employee_id);
+  ctx.notifySecurity('employee', row.employee_id, 'password_changed', { meta: requestMeta(req) }).catch(() => {});
+  res.json({ ok: true, sessionsRevoked: out.revoked });
 });
 
 // Employee tasks list (for dropdown — only their assigned, non-done tasks)
@@ -650,7 +704,8 @@ receiver.router.post('/api/employee/hours', requireEmployeeAuth, requirePerm('ho
 receiver.router.get('/api/dashboard/employees', requireAuth, async (_req, res) => {
   const { data, error } = await supabase.from('employees').select('id, name, username, email, job_title, slack_user_id, permissions, created_at, avatar_url, status_text, status_emoji').order('name');
   if (error) return res.status(500).json({ error: error.message });
-  res.json((data || []).map(e => ({ ...e, permissions: normEmpPerms(e.permissions) })));
+  const withTwoFactor = await ctx.twoFactorFlags((data || []).map(e => e.id));
+  res.json((data || []).map(e => ({ ...e, permissions: normEmpPerms(e.permissions), twofa: withTwoFactor.has(String(e.id)) })));
 });
 receiver.router.post('/api/dashboard/employees', requireAuth, express.json(), async (req, res) => {
   const { name, username, password, email, job_title, slack_user_id, permissions } = req.body;
@@ -701,11 +756,22 @@ receiver.router.put('/api/dashboard/employees/:id', requireAuth, express.json(),
   const { data, error } = await supabase.from('employees').update(updates).eq('id', req.params.id)
     .select('id, name, username, email, job_title, slack_user_id, permissions, created_at, avatar_url, status_text, status_emoji').single();
   if (error) return res.status(500).json({ error: error.message });
+  // An administrator setting a new password is the other way a login ends: if it was
+  // set because the old one leaked, the person holding it must not stay signed in.
+  if (password) {
+    await ctx.revokeSessions('employee', req.params.id);
+    ctx.notifySecurity('employee', req.params.id, 'password_set_by_admin').catch(() => {});
+  }
   res.json(data);
 });
 receiver.router.delete('/api/dashboard/employees/:id', requireAuth, async (req, res) => {
   const { error } = await supabase.from('employees').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
+  // A deleted employee's open logins used to keep working: the guard trusts the
+  // stored session and never looks the person up again. Someone removed from the
+  // company would have kept the portal for up to 30 days.
+  await ctx.revokeSessions('employee', req.params.id);
+  await ctx.removeFactor('employee', req.params.id).catch(() => {});
   res.json({ ok: true });
 });
 
@@ -1407,4 +1473,4 @@ receiver.router.put('/api/dashboard/deletion-requests/:id', requireAuth, express
 Object.assign(ctx, { express, logLeadActivity, normalizePhone, parseBudget, path, receiver, requireAuth, supabase });
 Object.assign(ctx, require('./automation'));
 
-module.exports = { fetchEmployeeTasks, DEFAULT_PERMISSIONS, PERM_ACTIONS, backfillHotLeadDeals, customerInScope, dealInScope, empCan, empHasScope, importLeadRows, loadLeadsColsConfig, logLeadActivity, multerCsv, normEmpPerms, normalizePhone, parseBudget, parseLeadsCsv, scopedQuotedIds };
+module.exports = { employeeLoginResponse, employeeSessionPayload, fetchEmployeeTasks, DEFAULT_PERMISSIONS, PERM_ACTIONS, backfillHotLeadDeals, customerInScope, dealInScope, empCan, empHasScope, importLeadRows, loadLeadsColsConfig, logLeadActivity, multerCsv, normEmpPerms, normalizePhone, parseBudget, parseLeadsCsv, scopedQuotedIds };

@@ -33,6 +33,8 @@ async function checkAuth() {
     return false;
   }
   document.getElementById('app').style.display = 'block';
+  // A security alert pushed to this device opens /dashboard#security.
+  if (location.hash === '#security') setTimeout(openSecurity, 0);
   return true;
 }
 
@@ -68,6 +70,8 @@ function bootRetryScreen(message) {
 function showAuthScreen() {
   // Signed out or expired: hang up, or the microphone stays live under the login screen.
   if (typeof huddleLeave === 'function') huddleLeave();
+  // …and put the Security panel away, or it sits over the form that signs you back in.
+  if (window.SecurityPanel) SecurityPanel.close();
   localStorage.removeItem('ml_admin_token');
   authToken = '';
   if (typeof closeNotifStream === 'function') closeNotifStream();
@@ -86,15 +90,16 @@ async function submitLogin() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    if (!r.ok) { errEl.style.display = 'block'; return; }
-    const data = await r.json();
-    authToken = data.token;
-    localStorage.setItem('ml_admin_token', authToken);
-    document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    loadNotifs();
-    openNotifStream();
-    loadDashboard();
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      // Too many tries, or the second factor could not be checked, say so; a wrong
+      // password keeps the plain message.
+      errEl.textContent = r.status === 401 ? 'Invalid username or password.' : (data.error || 'Could not sign in.');
+      errEl.style.display = 'block'; return;
+    }
+    // The password was right and the account has a second step: no session yet.
+    if (data.mfa_required) { document.getElementById('login-password').value = ''; showAdminMfa(data.mfa_token); return; }
+    enterDashboard(data);
   } catch (e) {
     errEl.textContent = 'Connection error: ' + e.message;
     errEl.style.display = 'block';
@@ -104,6 +109,74 @@ async function submitLogin() {
 document.getElementById('login-password').addEventListener('keydown', e => {
   if (e.key === 'Enter') submitLogin();
 });
+document.getElementById('admin-mfa-code').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitAdminMfa();
+});
+
+function enterDashboard(data) {
+  authToken = data.token;
+  localStorage.setItem('ml_admin_token', authToken);
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadNotifs();
+  openNotifStream();
+  loadDashboard();
+}
+
+// ── Second step (two-factor authentication) ─────────────────────────────────
+let _adminMfaToken = null, _adminMfaRecovery = false;
+function showAdminMfa(token) {
+  _adminMfaToken = token;
+  for (const id of ['login-username', 'login-password', 'login-btn', 'auth-error']) document.getElementById(id).style.display = 'none';
+  document.getElementById('admin-mfa').style.display = '';
+  document.getElementById('admin-mfa-error').style.display = 'none';
+  setAdminMfaMode(false);
+  const i = document.getElementById('admin-mfa-code'); i.value = ''; i.focus();
+}
+function setAdminMfaMode(recovery) {
+  _adminMfaRecovery = recovery;
+  const i = document.getElementById('admin-mfa-code');
+  i.setAttribute('inputmode', recovery ? 'text' : 'numeric');
+  i.placeholder = recovery ? 'xxxxx-xxxxx' : '123456';
+  document.getElementById('admin-mfa-lead').textContent = recovery ? 'Enter one of your recovery codes (each works once)' : 'Enter the 6-digit code from your authenticator app';
+  document.getElementById('admin-mfa-toggle').textContent = recovery ? 'Use my authenticator app instead' : 'Use a recovery code instead';
+}
+function toggleAdminMfaRecovery() { setAdminMfaMode(!_adminMfaRecovery); const i = document.getElementById('admin-mfa-code'); i.value = ''; i.focus(); }
+function cancelAdminMfa() {
+  _adminMfaToken = null;
+  document.getElementById('admin-mfa').style.display = 'none';
+  for (const id of ['login-username', 'login-password']) document.getElementById(id).style.display = '';
+  document.getElementById('login-btn').style.display = '';
+}
+async function submitAdminMfa() {
+  const btn = document.getElementById('admin-mfa-btn');
+  const errEl = document.getElementById('admin-mfa-error');
+  const code = document.getElementById('admin-mfa-code').value.trim();
+  errEl.style.display = 'none';
+  if (!code) { errEl.textContent = 'Enter the code.'; errEl.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Verifying…';
+  try {
+    const r = await fetch('/api/auth/login/2fa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mfa_token: _adminMfaToken, code }) });
+    const d = await r.json().catch(() => ({}));
+    if (d.token) { _adminMfaToken = null; cancelAdminMfa(); enterDashboard(d); return; }
+    // The challenge is gone (expired, or too many wrong codes): back to the password.
+    if (d.expired) cancelAdminMfa();
+    const shown = d.expired ? document.getElementById('auth-error') : errEl;
+    shown.textContent = d.error || 'That code did not work.'; shown.style.display = 'block';
+  } catch (e) { errEl.textContent = 'Connection error: ' + e.message; errEl.style.display = 'block'; }
+  finally { btn.disabled = false; btn.textContent = 'Verify'; }
+}
+
+// ── Security panel (shared with the team portal: assets/security.js) ────────
+function openSecurity() {
+  if (location.hash === '#security') history.replaceState(null, '', location.pathname + location.search);
+  SecurityPanel.open({
+    call: apiFetch, base: '/api/dashboard', kind: 'admin',
+    // The server clears the admin's push subscriptions when devices are signed out;
+    // this one registers again.
+    afterSignOut: () => { if (_adminSwReg) adminChatSubscribePush(_adminSwReg); },
+  });
+}
 
 // ── Fetch ───────────────────────────────────────────────────────────────────
 async function fetchStats() {
@@ -3316,7 +3389,7 @@ async function loadEmployees() {
       // long ago), so the table said nothing true about the other fourteen.
       await permCatalogue();
       tableC.innerHTML = `<div class="table-scroll"><table>
-        <thead><tr><th style="width:34px"><input type="checkbox" id="emp-select-all" onchange="empToggleSelectAll(this)"></th><th>Name</th><th>Username</th><th>Job Title</th><th>Status</th><th>Email</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr><th style="width:34px"><input type="checkbox" id="emp-select-all" onchange="empToggleSelectAll(this)"></th><th>Name</th><th>Username</th><th>Job Title</th><th>Status</th><th>Email</th><th>Permissions</th><th>2FA</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>${emps.map(e => {
           const p = e.permissions || {};
           const sc = p.scope || {};
@@ -3333,9 +3406,11 @@ async function loadEmployees() {
             <td style="font-size:12px;color:var(--muted)">${statusStr}</td>
             <td style="font-size:12px;color:var(--muted)">${esc(e.email || '—')}</td>
             <td style="max-width:200px">${badges}</td>
+            <td style="font-size:12px">${e.twofa ? '<span style="color:var(--success);font-weight:600">On</span>' : '<span style="color:var(--muted)">Off</span>'}</td>
             <td style="font-size:12px;color:var(--muted)">${new Date(e.created_at).toLocaleDateString()}</td>
             <td style="white-space:nowrap">
               <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openEmpModal(${e.id})">Edit</button>
+              ${e.twofa ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px;margin-left:4px" title="They lost their phone: clear their two-factor setup so they can sign in and set it up again" onclick="resetEmployee2fa(${e.id})">Reset 2FA</button>` : ''}
               <button class="btn btn-danger" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="deleteEmployee(${e.id})">Delete</button>
             </td>
           </tr>`;
@@ -3346,6 +3421,18 @@ async function loadEmployees() {
     tableC.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`;
   }
   requestAnimationFrame(() => lucide.createIcons());
+}
+
+// A lost phone with no recovery codes. Clearing it signs the employee out everywhere,
+// and they are told, so it cannot be done quietly.
+async function resetEmployee2fa(id) {
+  const e = allEmployees.find(x => x.id === id);
+  if (!confirm(`Reset two-factor authentication for ${e ? e.name : 'this employee'}?\n\nThey will be signed out everywhere and told. They can then sign in with their password and set it up again.`)) return;
+  const r = await apiFetch(`/api/dashboard/employees/${id}/2fa/reset`, { method: 'POST', body: '{}' });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { alert(d.error || 'Could not reset it.'); return; }
+  if (d.warning) alert(d.warning);
+  loadEmployees();
 }
 
 // ── Bulk permissions ──────────────────────────────────────────────────────────
@@ -4408,7 +4495,7 @@ function renderNotifs() {
 }
 
 function notifIcon(type) {
-  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox', issue: 'bug', followup: 'alarm-clock', huddle: 'headphones' };
+  const m = { task: 'clipboard-list', reminder: 'alarm-clock', hours: 'clock', lead: 'contact-2', deal: 'kanban-square', request: 'inbox', issue: 'bug', followup: 'alarm-clock', huddle: 'headphones', security: 'shield-alert' };
   return m[type] || 'bell';
 }
 // Strip any leading emoji/symbols so legacy notifications render clean text (new ones already clean)
@@ -4433,6 +4520,7 @@ async function markAllNotifsRead() {
 // Route a notification to the right page (hash first, then type fallback for legacy rows)
 function notifRoute(url, type) {
   const hash = (url || '').split('#')[1];
+  if (hash === 'security') { openSecurity(); return; }
   if (hash && document.getElementById('page-' + hash)) { navigate(hash); return; }
   const map = { request: 'requests', task: 'tasks', hours: 'hours', quotation: 'quotation', lead: 'customers', deal: 'deals', followup: 'customers' };
   if (map[type]) navigate(map[type]);
