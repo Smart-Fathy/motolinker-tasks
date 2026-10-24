@@ -50,6 +50,23 @@ function notifRemove(key, res) {
     legacyClosedAt.set(res.hdTag, Date.now());
   }
 }
+// Hang up every stream a member holds that was opened with one of these logins (the
+// short token hashes notifTokenTag produces). A signed-out token is refused the next
+// time a stream opens, but a stream already open is a live connection that nothing
+// re-checks — it would go on carrying notifications, chat and huddle signalling to
+// whoever holds the token until the browser reconnected.
+function closeNotifStreams(memberKey, tags) {
+  const set = notifSseClients.get(memberKey);
+  if (!set) return 0;
+  let closed = 0;
+  for (const res of [...set]) {
+    if (!tags.has(res.hdTag)) continue;
+    notifRemove(memberKey, res);
+    try { res.end(); } catch (_) {}
+    closed++;
+  }
+  return closed;
+}
 function notifLegacyState(tag) {
   return { open: legacyOpen.get(tag) || 0, closedAt: legacyClosedAt.get(tag) || 0 };
 }
@@ -351,6 +368,7 @@ receiver.router.get('/api/dashboard/chat/events', requireAuth, (req, res) => {
   res.set(ctx.SSE_HEADERS);
   res.flushHeaders();
   res.write(':ok\n\n');
+  res.hdTag = notifTokenTag(req);   // so signing this login out can close the stream
   chatSseClients.set('admin', res);
   const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
   req.on('close', () => { clearInterval(ka); if (chatSseClients.get('admin') === res) chatSseClients.delete('admin'); });
@@ -362,10 +380,11 @@ receiver.router.get('/api/employee/chat/events', requireEmployeeAuth, requirePer
   res.set(ctx.SSE_HEADERS);
   res.flushHeaders();
   res.write(':ok\n\n');
+  res.hdTag = notifTokenTag(req);
   chatSseClients.set(key, res);
   const ka = setInterval(() => { try { res.write(':ping\n\n'); } catch (_) {} }, 25000);
   req.on('close', () => { clearInterval(ka); if (chatSseClients.get(key) === res) chatSseClients.delete(key); });
 });
 
 
-module.exports = { chatCreateOrGetDirect, chatDeleteMsg, chatEditMsg, chatGetMessages, chatListRooms, chatSendMessage, createNotification, huddleSignalReplay, huddleSignalSend, memberKeyForAssignee, notifAdd, notifLegacyPrune, notifLegacyState, notifRemove, notifTokenTag, notifSseClients, notifWrite, notifyEmployeeTaskAssigned };
+module.exports = { chatCreateOrGetDirect, chatDeleteMsg, chatEditMsg, chatGetMessages, chatListRooms, chatSendMessage, closeNotifStreams, createNotification, huddleSignalReplay, huddleSignalSend, memberKeyForAssignee, notifAdd, notifLegacyPrune, notifLegacyState, notifRemove, notifTokenTag, notifSseClients, notifWrite, notifyEmployeeTaskAssigned };

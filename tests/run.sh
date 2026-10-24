@@ -43,6 +43,8 @@ run portalgaps  node tests/portalgaps.js
 run bindings    node tests/bindings.js
 run boottest    node tests/boottest.js
 run sessions    node tests/sessiontest.js
+run authlibs    node tests/authlibs.js
+run revoketest  node tests/revoketest.js
 run ssetest     node tests/ssetest.js
 run navtest     node tests/navtest.js
 run colengine   node tests/colengine.js

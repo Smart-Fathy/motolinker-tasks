@@ -3195,7 +3195,15 @@ async function submitChangePassword() {
     const r = await ef('/api/employee/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
     const d = await r.json();
     if (d.error) { err.textContent = d.error; err.style.display = 'block'; return; }
-    ok.textContent = 'Password updated successfully!'; ok.style.display = 'block';
+    const n = d.sessionsRevoked || 0;
+    ok.textContent = n ? `Password updated. ${n} other device${n === 1 ? ' was' : 's were'} signed out.` : 'Password updated successfully!';
+    ok.style.display = 'block';
+    // The server clears this account's push subscriptions with the sessions (a signed-
+    // out phone must stop receiving notification text); this device registers again.
+    if (typeof chatSubscribePush === 'function' && typeof _swReg !== 'undefined' && _swReg) chatSubscribePush(_swReg);
+    // A failure to sign the others out is not a success: the old password's logins may
+    // still be alive, and the person has to know to try again.
+    if (d.warning) { err.textContent = d.warning; err.style.display = 'block'; }
     document.getElementById('chpass-current').value = '';
     document.getElementById('chpass-new').value = '';
     document.getElementById('chpass-confirm').value = '';

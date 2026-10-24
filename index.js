@@ -9,6 +9,7 @@ const nodemailer = require('nodemailer');
 
 const { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL }
   = require('./src/lib/constants');
+const { requestMeta } = require('./src/lib/request-info');
 
 // ─── App Init ─────────────────────────────────────────────────────────────────
 // Plain Express server (Slack integration removed). `receiver.router` is kept as
@@ -221,11 +222,127 @@ async function restoreSession(token, kind) {
     const { data } = await supabase.from('sessions').select('kind,payload,created_at').eq('token', token).single();
     if (!data || data.kind !== kind || !data.payload) return null;
     if (Date.now() - new Date(data.created_at).getTime() > SESSION_MAX_AGE_MS) { dropSession(token); return null; }
-    return data.payload;
+    // Sessions written before the sign-in record existed carry no start time.
+    return { ...data.payload, createdAt: data.payload.createdAt || new Date(data.created_at).getTime() };
   } catch (_) { return null; }
 }
 ctx.saveSession = saveSession;
 ctx.dropSession = dropSession;
+
+// ── Starting, watching and ending sessions ─────────────────────────────────────
+// A session is a bearer token. Whoever holds it IS the account, so the ways a token
+// stops working matter as much as the way it starts: signing out, expiring, and —
+// the one that was missing — the account's password changing. Changing a password
+// because the old one leaked has to cut off whoever is already signed in with it;
+// before, only the Maps and the table knew a token, and nothing ever went looking.
+
+// The admin password is an environment variable, so there is no "change password"
+// event to hook. Each admin session instead carries a fingerprint of the password it
+// was opened with, and is refused the moment that stops matching the current one:
+// rotate ADMIN_PASSWORD and every admin login — including those persisted in the
+// table, which would otherwise survive the redeploy for 30 days — ends at once.
+// scrypt, not a bare hash: the fingerprint sits in the sessions table, and a fast
+// hash of a password there would be a gift to anyone who read a database backup.
+const ADMIN_PW_VERSION = ctx.ADMIN_PW_VERSION = ADMIN_PASSWORD
+  ? crypto.scryptSync(ADMIN_PASSWORD, 'motolinker.admin-session.v1', 16).toString('hex') : '';
+
+function bearerToken(req) {
+  const auth = req.headers['authorization'] || '';
+  return auth.startsWith('Bearer ') ? auth.slice(7) : req.query._t;
+}
+const tokenTag = token => crypto.createHash('sha256').update(token).digest('hex').slice(0, 16);   // = notifTokenTag
+const sessionKeyOf = (kind, id) => (kind === 'admin' ? 'admin' : `employee_${id}`);
+
+// The one place a sign-in becomes a session, whichever way the person got in
+// (password, Google, second factor). `payload` is who they are; everything about how
+// and where they signed in is added here so the list of active sessions, and the
+// alerts, never depend on which login path ran.
+function startSession(kind, payload, req, { method = 'password' } = {}) {
+  const token = generateToken();
+  const now = Date.now();
+  const sess = {
+    ...payload,
+    ...(kind === 'admin' ? { pwv: ADMIN_PW_VERSION } : {}),
+    sid: crypto.randomBytes(8).toString('hex'),   // a public handle: lists and revokes by this, never by the token
+    createdAt: now, lastSeenAt: now, method,
+    ...requestMeta(req),
+  };
+  (kind === 'admin' ? sessions : employeeSessions).set(token, sess);
+  saveSession(token, kind, sess);
+  return { token, sess };
+}
+
+// "Last active" for the sessions list, without a table write on every request.
+const TOUCH_PERSIST_MS = 10 * 60_000;
+function touchSession(token, sess) {
+  const now = Date.now();
+  sess.lastSeenAt = now;
+  if (now - (sess.persistedAt || sess.createdAt || 0) < TOUCH_PERSIST_MS) return;
+  sess.persistedAt = now;
+  // An update, not saveSession's upsert: that rewrites created_at, which would turn
+  // the 30-day limit into 30 days since last use, and would also bring back a row
+  // that a revoke deleted a moment ago.
+  supabase.from('sessions').update({ payload: sess }).eq('token', token).then(() => {}, () => {});
+}
+const sessionExpired = sess => !!sess.createdAt && Date.now() - sess.createdAt > SESSION_MAX_AGE_MS;
+
+// When each account last had its sessions revoked. A token the table hands back
+// (after a restart, or racing a revoke) is refused if it was issued before that —
+// the revoke deleted its row, but a read already in flight could still return it.
+const revokedBefore = new Map();   // 'admin' | 'employee_<id>' -> ms
+
+// End an account's sessions: every one, or every one but `exceptToken` (the device
+// that is making the change, so it is not thrown out of its own request).
+//
+// Four places hold a login, and all four are cleared: the in-memory Map, the table
+// that survives a restart, the live event streams that were opened with the token
+// (a revoked token would otherwise keep receiving notifications and chat until the
+// browser next reconnected), and the push subscriptions registered by its devices
+// (which would keep delivering notification text to a phone that has been signed
+// out). Devices that are still wanted re-register on their next page load.
+//
+// Resolves to { revoked, persisted }. `persisted: false` means the table could not
+// be cleared — the caller says so, because after a restart those logins would return.
+async function revokeSessions(kind, id, { exceptToken = null } = {}) {
+  const map = kind === 'admin' ? sessions : employeeSessions;
+  const key = sessionKeyOf(kind, id);
+  const gone = new Set();
+  for (const [token, s] of map) {
+    if (token !== exceptToken && (kind === 'admin' || String(s.id) === String(id))) { map.delete(token); gone.add(token); }
+  }
+  revokedBefore.set(key, Date.now());
+
+  const clear = () => {
+    let q = supabase.from('sessions').delete().eq('kind', kind);
+    if (kind === 'employee') q = q.eq('payload->>id', String(id));
+    if (exceptToken) q = q.neq('token', exceptToken);
+    return q.select('token');
+  };
+  let persisted = true;
+  let { data, error } = await clear();
+  if (error && !isMissingRelation(error)) ({ data, error } = await clear());   // once more: a blip should not leave logins behind
+  if (error && !isMissingRelation(error)) { persisted = false; console.error('[sessions] revoke failed for', key, error.message); }
+  for (const r of data || []) gone.add(r.token);
+
+  const tags = new Set([...gone].map(tokenTag));
+  closeLiveStreams(key, tags);
+  try { await supabase.from('push_subscriptions').delete().eq('member_key', key); } catch (_) {}
+  return { revoked: gone.size, persisted };
+}
+// PostgREST says a table does not exist as PGRST205 (not in the schema cache) or, from
+// Postgres itself, 42P01. Either way there is nothing in it to be stale.
+const isMissingRelation = e => !!e && (e.code === 'PGRST205' || e.code === '42P01' || /does not exist|schema cache/i.test(String(e.message || '')));
+ctx.isMissingRelation = isMissingRelation;
+
+// Hang up the event streams opened with these tokens. Both stream families are tagged
+// with the same short hash of the token they were opened with.
+function closeLiveStreams(memberKey, tags) {
+  if (!tags.size) return;
+  const chat = chatSseClients.get(memberKey);
+  if (chat && tags.has(chat.hdTag)) { try { chat.end(); } catch (_) {} chatSseClients.delete(memberKey); }
+  if (ctx.closeNotifStreams) ctx.closeNotifStreams(memberKey, tags);
+}
+Object.assign(ctx, { startSession, revokeSessions, sessions, tokenTag, sessionKeyOf, bearerToken, SESSION_MAX_AGE_MS });
 
 // One header set for every SSE endpoint. Deliberately NO `Connection` header:
 // connection-specific fields are illegal in HTTP/2 (RFC 9113 §8.2.2), and
@@ -234,6 +351,13 @@ ctx.dropSession = dropSession;
 ctx.SSE_HEADERS = { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' };
 
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
+
+// Equality that takes the same time whatever the two strings share, and does not
+// reveal their lengths: both are hashed to a fixed size first.
+function sameSecret(a, b) {
+  const h = s => crypto.createHash('sha256').update(String(s == null ? '' : s)).digest();
+  return crypto.timingSafeEqual(h(a), h(b));
+}
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -251,29 +375,42 @@ function verifyPassword(password, stored) {
 // once per unknown token — that read-through is what makes a server restart
 // invisible to logged-in users instead of a company-wide logout.
 async function requireAuth(req, res, next) {
-  const auth  = req.headers['authorization'] || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query._t;
+  const token = bearerToken(req);
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
-  if (!sessions.has(token)) {
+  let sess = sessions.get(token);
+  if (!sess) {
     const p = await restoreSession(token, 'admin');
-    if (p) sessions.set(token, p);
+    if (p && !(p.createdAt <= (revokedBefore.get('admin') || 0))) { sessions.set(token, p); sess = p; }
   }
-  if (!sessions.has(token)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!sess) return res.status(401).json({ error: 'Unauthorized' });
+  // Opened under an earlier admin password (or before sessions carried one): over.
+  if (sess.pwv !== ADMIN_PW_VERSION || sessionExpired(sess)) {
+    sessions.delete(token); dropSession(token);
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  req.sessionToken = token; req.session = sess;
+  touchSession(token, sess);
   next();
 }
 
 async function requireEmployeeAuth(req, res, next) {
-  const auth  = req.headers['authorization'] || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.query._t;
+  const token = bearerToken(req);
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
-  if (!employeeSessions.has(token)) {
+  let sess = employeeSessions.get(token);
+  if (!sess) {
     const p = await restoreSession(token, 'employee');
     // Permissions in the stored payload may be stale; the /check every portal
     // load makes refreshes them from the employees table (see employee-portal).
-    if (p) employeeSessions.set(token, p);
+    if (p && !(p.createdAt <= (revokedBefore.get(sessionKeyOf('employee', p.id)) || 0))) { employeeSessions.set(token, p); sess = p; }
   }
-  if (!employeeSessions.has(token)) return res.status(401).json({ error: 'Unauthorized' });
-  req.employee = employeeSessions.get(token);
+  if (!sess) return res.status(401).json({ error: 'Unauthorized' });
+  if (sessionExpired(sess)) {
+    employeeSessions.delete(token); dropSession(token);
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  req.employee = sess;
+  req.sessionToken = token; req.session = sess;
+  touchSession(token, sess);
   next();
 }
 
@@ -333,10 +470,9 @@ receiver.router.get('/dashboard', (_req, res) => res.sendFile(path.join(PUBLIC_D
 receiver.router.post('/api/auth/login', express.json(), (req, res) => {
   if (!ADMIN_PASSWORD) return res.status(500).json({ error: 'ADMIN_PASSWORD environment variable is not set. Add it in your Railway variables.' });
   const { username, password } = req.body || {};
-  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-    const token = generateToken();
-    sessions.set(token, { username, createdAt: Date.now() });
-    saveSession(token, 'admin', { username, createdAt: Date.now() });
+  const userOk = sameSecret(username, ADMIN_USERNAME), passOk = sameSecret(password, ADMIN_PASSWORD);
+  if (userOk && passOk) {
+    const { token } = startSession('admin', { username }, req);
     return res.json({ token, username });
   }
   res.status(401).json({ error: 'Invalid username or password' });
@@ -988,11 +1124,8 @@ receiver.router.get('/api/email/callback', async (req, res) => {
         const { data: empRows } = await supabase.from('employees').select('id,name,username,permissions,job_title').ilike('email', String(profile.email || '').trim()).limit(1);
         const emp = empRows && empRows[0];
         if (!emp) return res.redirect('/employee?google_login_error=' + encodeURIComponent('No account linked to this Google address. Contact your admin.'));
-        const sessionToken = generateToken();
         const permissions = ctx.normEmpPerms(emp.permissions);
-        const sess = { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions };
-        employeeSessions.set(sessionToken, sess);
-        saveSession(sessionToken, 'employee', sess);
+        const { token: sessionToken } = startSession('employee', { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions }, req, { method: 'google' });
         return res.redirect('/employee?emp_token=' + sessionToken);
       }
       if (pending.type === 'employee' && pending.employeeId) {
@@ -2025,10 +2158,29 @@ function scheduleFollowupReminders() {
   setInterval(() => sendFollowupReminders().catch(console.error), 5 * 60 * 1000);
 }
 
+// The admin password is rotated by changing ADMIN_PASSWORD and redeploying, so the
+// only moment to notice is boot. Admin sessions already refuse a stale fingerprint
+// (see requireAuth); this also deletes their rows and the admin's push subscriptions,
+// which nothing else would ever clean up. The last fingerprint is remembered in
+// quotation_settings so an ordinary restart changes nothing.
+async function reconcileAdminPassword() {
+  if (!ADMIN_PW_VERSION) return;
+  try {
+    const { data, error } = await supabase.from('quotation_settings').select('value').eq('key', 'admin_pw_version').maybeSingle();
+    if (error) throw error;
+    if (data && data.value === ADMIN_PW_VERSION) return;
+    const out = await revokeSessions('admin');
+    if (!out.persisted) return;   // try again next boot rather than record a purge that did not happen
+    await supabase.from('quotation_settings').upsert({ key: 'admin_pw_version', value: ADMIN_PW_VERSION }, { onConflict: 'key' });
+    console.log(`[sessions] admin password changed since the last boot — ${out.revoked} admin login(s) ended`);
+  } catch (e) { console.warn('[sessions] admin password check skipped:', e.message); }
+}
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 (async () => {
   await loadGoogleTokens();
   await loadOrCreateVapidKeys();
+  await reconcileAdminPassword();
   ctx.scheduleDueDateReminders();
   ctx.scheduleHoursLogReminder();
   scheduleFollowupReminders();

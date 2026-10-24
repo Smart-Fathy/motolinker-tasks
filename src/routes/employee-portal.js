@@ -3,6 +3,7 @@
 const ctx = require('../ctx');
 const { sanitizeAttachments } = require('../lib/constants');
 const { fetchAll } = require('../lib/fetch-all');
+const { createLimiter } = require('../lib/rate-limit');
 const { GOOGLE_CLIENT_ID, PUBLIC_DIR, SMTP_FROM, autoCreateSaleForWonDeal, createMailer, crypto, employeeSessions, express, generateToken, hashPassword, inventorySearch, multer, path, pendingDriveAuth, receiver, requireAuth, requireEmployeeAuth, supabase, verifyPassword } = ctx.need('GOOGLE_CLIENT_ID', 'PUBLIC_DIR', 'SMTP_FROM', 'autoCreateSaleForWonDeal', 'createMailer', 'crypto', 'employeeSessions', 'express', 'generateToken', 'hashPassword', 'inventorySearch', 'multer', 'path', 'pendingDriveAuth', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase', 'verifyPassword');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
@@ -20,6 +21,9 @@ const taskCtx = (...a) => ctx.taskCtx(...a);
 const leadCtx = (...a) => ctx.leadCtx(...a);
 const dealCtx = (...a) => ctx.dealCtx(...a);
 const autoCreateContractForWonDeal = (...a) => ctx.autoCreateContractForWonDeal(...a);
+
+// Wrong "current password" answers on the change-password form, per employee.
+const changePasswordLimiter = createLimiter({ max: 5, windowMs: 15 * 60_000 });
 
 // ─── Employee Portal ──────────────────────────────────────────────────────────
 // PUBLIC_DIR, not __dirname: this file lives in src/routes, so joining its own
@@ -470,11 +474,8 @@ receiver.router.post('/api/employee/login', express.json(), async (req, res) => 
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   const { data: emp } = await supabase.from('employees').select('*').eq('username', username).single();
   if (!emp || !verifyPassword(password, emp.password_hash)) return res.status(401).json({ error: 'Invalid username or password' });
-  const token = generateToken();
   const permissions = normEmpPerms(emp.permissions);
-  const sess = { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions };
-  employeeSessions.set(token, sess);
-  ctx.saveSession(token, 'employee', sess);
+  const { token } = ctx.startSession('employee', { id: emp.id, name: emp.name, username: emp.username, job_title: emp.job_title || '', permissions }, req);
   res.json({ token, name: emp.name, username: emp.username, id: emp.id, job_title: emp.job_title || '', permissions, avatar_url: emp.avatar_url || '', status_text: emp.status_text || '', status_emoji: emp.status_emoji || '' });
 });
 receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res) => {
@@ -508,11 +509,25 @@ receiver.router.post('/api/employee/change-password', requireEmployeeAuth, expre
   const { currentPassword, newPassword } = req.body || {};
   if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords required' });
   if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  // The current password is asked for again precisely so a borrowed or stolen session
+  // cannot take the account over — which only holds if that question cannot be
+  // guessed at without limit from inside such a session.
+  const limitKey = `chpw:${req.employee.id}`;
+  const wait = changePasswordLimiter.retryAfter(limitKey);
+  if (wait) { res.set('Retry-After', String(wait)); return res.status(429).json({ error: `Too many wrong attempts. Try again in ${Math.ceil(wait / 60)} minute(s).` }); }
   const { data: emp } = await supabase.from('employees').select('password_hash').eq('id', req.employee.id).single();
-  if (!emp || !verifyPassword(currentPassword, emp.password_hash)) return res.status(401).json({ error: 'Current password is incorrect' });
+  if (!emp || !verifyPassword(currentPassword, emp.password_hash)) {
+    changePasswordLimiter.fail(limitKey);
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+  changePasswordLimiter.reset(limitKey);
   const { error } = await supabase.from('employees').update({ password_hash: hashPassword(newPassword) }).eq('id', req.employee.id);
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
+  // The reason people change a password is that someone else might have it. Everyone
+  // signed in with the old one — every other device — is signed out now; this one,
+  // which just proved it knows the old password, stays.
+  const out = await ctx.revokeSessions('employee', req.employee.id, { exceptToken: req.sessionToken });
+  res.json({ ok: true, sessionsRevoked: out.revoked, ...(out.persisted ? {} : { warning: 'Your password was changed, but we could not sign your other devices out. Use "Sign out other devices" in Security to try again.' }) });
 });
 
 // Forgot password — send reset link via email
@@ -548,9 +563,16 @@ receiver.router.post('/api/employee/reset-password', express.json(), async (req,
   const { data: row } = await supabase.from('password_reset_tokens')
     .select('id,employee_id,expires_at,used').eq('token', token).single();
   if (!row || row.used || new Date(row.expires_at) < new Date()) return res.status(400).json({ error: 'Invalid or expired reset link' });
-  await supabase.from('employees').update({ password_hash: hashPassword(newPassword) }).eq('id', row.employee_id);
-  await supabase.from('password_reset_tokens').update({ used: true }).eq('id', row.id);
-  res.json({ ok: true });
+  const { error } = await supabase.from('employees').update({ password_hash: hashPassword(newPassword) }).eq('id', row.employee_id);
+  // Failing quietly here used the link up and told the person it worked.
+  if (error) return res.status(500).json({ error: 'Could not update the password. Try the link again.' });
+  // Every link sent for this account is spent, not just the one used: a second email
+  // from an earlier "forgot password" would otherwise still set a new password.
+  await supabase.from('password_reset_tokens').update({ used: true }).eq('employee_id', row.employee_id).eq('used', false);
+  // A reset is how someone recovers an account they think is not only theirs. Nobody
+  // stays signed in through it — not even a device that was never signed out.
+  const out = await ctx.revokeSessions('employee', row.employee_id);
+  res.json({ ok: true, sessionsRevoked: out.revoked });
 });
 
 // Employee tasks list (for dropdown — only their assigned, non-done tasks)
@@ -701,11 +723,18 @@ receiver.router.put('/api/dashboard/employees/:id', requireAuth, express.json(),
   const { data, error } = await supabase.from('employees').update(updates).eq('id', req.params.id)
     .select('id, name, username, email, job_title, slack_user_id, permissions, created_at, avatar_url, status_text, status_emoji').single();
   if (error) return res.status(500).json({ error: error.message });
+  // An administrator setting a new password is the other way a login ends: if it was
+  // set because the old one leaked, the person holding it must not stay signed in.
+  if (password) await ctx.revokeSessions('employee', req.params.id);
   res.json(data);
 });
 receiver.router.delete('/api/dashboard/employees/:id', requireAuth, async (req, res) => {
   const { error } = await supabase.from('employees').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
+  // A deleted employee's open logins used to keep working: the guard trusts the
+  // stored session and never looks the person up again. Someone removed from the
+  // company would have kept the portal for up to 30 days.
+  await ctx.revokeSessions('employee', req.params.id);
   res.json({ ok: true });
 });
 
