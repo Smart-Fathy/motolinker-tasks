@@ -16,6 +16,13 @@ const today = new Date();
 const at = (h, plusDays) => {
   const x = new Date(today); x.setDate(x.getDate() + (plusDays || 0)); x.setHours(h, 0, 0, 0); return x;
 };
+// A month view is the whole Sunday-to-Saturday weeks that cover the month, as
+// calRange() draws it: 28, 35 or 42 days, depending on the month.
+const monthCells = d => {
+  const lead = new Date(d.getFullYear(), d.getMonth(), 1).getDay();   // days shown before the 1st
+  const len = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  return Math.ceil((lead + len) / 7) * 7;
+};
 const FEED = {
   tasks: [
     { id: 11, title: 'Send the Avatr quote', description: 'Full spec sheet', due_date: D(today),
@@ -112,7 +119,8 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       grid.exists === true && grid.iframe === false, JSON.stringify({ e: grid.exists, i: grid.iframe }));
     check(`${portal.label}: it asks its own portal for the feed`,
       feedCalls.length >= 1 && feedCalls.every(p => p.startsWith(portal.apiBase)), JSON.stringify(feedCalls));
-    check(`${portal.label}: a month is six weeks of days`, grid.days === 42, String(grid.days));
+    check(`${portal.label}: a month is the whole weeks that cover it`, grid.days === monthCells(today),
+      JSON.stringify({ days: grid.days, expected: monthCells(today) }));
     check(`${portal.label}: the scheduled meetings are on it`,
       grid.meetings.some(t => /Weekly sales sync/.test(t)) && grid.meetings.some(t => /Procurement huddle/.test(t)),
       JSON.stringify(grid.meetings));
