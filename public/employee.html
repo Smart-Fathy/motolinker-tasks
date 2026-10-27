@@ -14,7 +14,9 @@
 <title>MotoLinker — Team Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lucide@latest"></script>
+<!-- A fixed release, not @latest: that put every new Lucide in front of everyone
+     with no deploy (0.x → 1.x included). Bump it on purpose, in both portals. -->
+<script src="https://unpkg.com/lucide@1.62.0/dist/umd/lucide.min.js"></script>
 <script>
   // CDN failure resilience: never let a blocked/slow CDN blank the whole app.
   if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
