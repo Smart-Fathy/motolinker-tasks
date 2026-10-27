@@ -49,6 +49,7 @@ run mfalibs     node tests/mfalibs.js
 run signintest  node tests/signintest.js
 run securityui  node tests/securityui.js
 run reset2fa    node tests/reset2fa.js
+run submittest  node tests/submittest.js
 run ssetest     node tests/ssetest.js
 run navtest     node tests/navtest.js
 run colengine   node tests/colengine.js
