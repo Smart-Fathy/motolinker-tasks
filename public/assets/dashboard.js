@@ -2431,9 +2431,9 @@ async function cmtFileSelected(input) {
 }
 function cmtRemoveAttach() { _cmtPendingFile = null; const p = document.getElementById('cmt-attach-preview'); if (p) p.style.display = 'none'; }
 function commentAttachHtml(c) {
-  // file_url is whatever the poster sent. Only a real web link is drawn (ceLinkUrl),
+  // file_url is whatever the poster sent. Only a web link or a path here is drawn (chatFileHref),
   // and never inside an onclick: a quote in it closed window.open('…') and ran the rest.
-  const href = ceLinkUrl(c.file_url);
+  const href = chatFileHref(c.file_url);
   if (!href) return '';
   const u = esc(href), t = c.file_type || '';
   if (t.startsWith('image/')) return `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" class="chat-img-thumb" loading="lazy"></a>`;
@@ -4884,7 +4884,7 @@ function adminChatMsgHTML(msg, grouped) {
     <div class="chat-reply-quote-body">${esc(msg.reply_to_body)}</div>
   </div>` : '';
   const dlBtn = msg.file_url ? `<button class="chat-download-btn" onclick="adminChatDownloadFile(${msg.id})" title="Download"><i data-lucide="download" style="width:13px;height:13px"></i></button>` : '';
-  const fileHref = ceLinkUrl(msg.file_url);   // a real web link only, never inside an onclick (see commentAttachHtml)
+  const fileHref = chatFileHref(msg.file_url);   // a web link or a path here, never inside an onclick (see commentAttachHtml)
   const fileHTML = fileHref ? (
     msg.file_type?.startsWith('image/')
       ? `<div><a href="${esc(fileHref)}" target="_blank" rel="noopener"><img src="${esc(fileHref)}" class="chat-img-thumb" loading="lazy"></a><div style="text-align:right">${dlBtn}</div></div>`

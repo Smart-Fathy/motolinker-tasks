@@ -1444,7 +1444,7 @@ async function chatGroupLoadFiles(roomId) {
   try { const r = await HDCFG.fetch(HDCFG.base + '/rooms/' + roomId + '/attachments'); files = r.ok ? await r.json() : []; } catch (_) {}
   if (!files.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px">Nothing shared yet.</div>'; return; }
   box.innerHTML = '<div class="hd-files">' + files.map(f => {
-    const href = ceLinkUrl(f.file_url);   // whatever the poster sent: a real web link, or nothing
+    const href = chatFileHref(f.file_url);   // whatever the poster sent: a web link or a path here, or nothing
     if (!href) return '';
     const img = (f.file_type || '').startsWith('image/');
     const kb = f.file_size ? Math.max(1, Math.round(f.file_size / 1024)) + ' KB' : '';

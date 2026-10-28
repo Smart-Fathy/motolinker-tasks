@@ -367,7 +367,7 @@ async function issLoadComments(id) {
       <div class="iss-msg">
         <div class="iss-msg-head"><strong>${esc(c.author_name || '—')}</strong><span>${esc(issWhen(c.created_at))}</span></div>
         ${c.body ? `<div class="iss-msg-body">${esc(c.body)}</div>` : ''}
-        ${ceLinkUrl(c.file_url) ? `<a class="ce-link" href="${esc(ceLinkUrl(c.file_url))}" target="_blank" rel="noopener noreferrer"><i data-lucide="paperclip"></i>${esc(c.file_name || 'attachment')}</a>` : ''}
+        ${chatFileHref(c.file_url) ? `<a class="ce-link" href="${esc(chatFileHref(c.file_url))}" target="_blank" rel="noopener noreferrer"><i data-lucide="paperclip"></i>${esc(c.file_name || 'attachment')}</a>` : ''}
       </div>`).join('') : '<div class="iss-none">No replies yet.</div>';
     requestAnimationFrame(() => lucide.createIcons());
   } catch (e) { host.innerHTML = `<div class="iss-none">${esc(e.message)}</div>`; }
@@ -622,9 +622,9 @@ async function empcLoad() {
   list.scrollTop = list.scrollHeight;
 }
 function commentAttachHtml(c) {
-  // file_url is whatever the poster sent. Only a real web link is drawn (ceLinkUrl),
+  // file_url is whatever the poster sent. Only a web link or a path here is drawn (chatFileHref),
   // and never inside an onclick: a quote in it closed window.open('…') and ran the rest.
-  const href = ceLinkUrl(c.file_url);
+  const href = chatFileHref(c.file_url);
   if (!href) return '';
   const u = esc(href), t = c.file_type || '';
   if (t.startsWith('image/')) return `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" class="chat-img-thumb" loading="lazy"></a>`;
@@ -3752,7 +3752,7 @@ function chatMsgHTML(msg, myKey) {
     <div class="chat-reply-quote-body">${esc(msg.reply_to_body)}</div>
   </div>` : '';
   const dlBtn = msg.file_url ? `<button class="chat-download-btn" onclick="chatDownloadFile(${msg.id})" title="Download"><i data-lucide="download" style="width:13px;height:13px"></i></button>` : '';
-  const fileHref = ceLinkUrl(msg.file_url);   // a real web link only, never inside an onclick (see commentAttachHtml)
+  const fileHref = chatFileHref(msg.file_url);   // a web link or a path here, never inside an onclick (see commentAttachHtml)
   const fileHTML = fileHref ? (
     msg.file_type?.startsWith('image/')
       ? `<div><a href="${esc(fileHref)}" target="_blank" rel="noopener"><img src="${esc(fileHref)}" class="chat-img-thumb" loading="lazy"></a><div style="text-align:right">${dlBtn}</div></div>`

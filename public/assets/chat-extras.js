@@ -16,6 +16,17 @@ function chatEsc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// An attachment's link — on a chat message, a comment, the group files list — as it
+// may be drawn: an absolute http(s) URL (what the upload routes hand back) or a path
+// on this site. Anything else, javascript: and data: included, is not a link at all.
+// It is never meant for an onclick: those draw it as href/src, escaped.
+function chatFileHref(u) {
+  const s = String(u == null ? '' : u).trim();
+  if (/^\/(?!\/)/.test(s)) return s;
+  if (!/^https?:\/\//i.test(s)) return '';
+  try { return new URL(s).href; } catch (_) { return ''; }
+}
+
 // ── Links ─────────────────────────────────────────────────────────────────────
 // Trailing punctuation is excluded from the match so "see https://x.com/a." does not
 // produce a link with a full stop welded onto the end. Balanced closing brackets are
