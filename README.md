@@ -197,7 +197,7 @@ Channel Members (e.g. #marketing)
 | Modal doesn't open | Check `trigger_id` — commands must be acknowledged within 3 seconds |
 | Bot can't post to channel | Add bot to the channel or enable `chat:write.public` scope |
 | Supabase error | Check `SUPABASE_SERVICE_KEY` — must be service_role, not anon key |
-| The site opens but nothing loads; every save spins, then fails | The Supabase database is down or stalled: its API logs show a run of 504s. Restart the project (**Project Settings → General → Restart project**), then look at the database report — *Disk IO % consumed* at 100% means a small compute size ran out of disk budget, and a larger one is the lasting fix. Push and Google connections come back on their own once it answers. |
+| "Can't reach MotoLinker — the database is not answering", or every save spins, then fails | The Supabase database is down or stalled (sign-ins are kept meanwhile; the page reloads itself once it answers): its API logs show a run of 504s. Restart the project (**Project Settings → General → Restart project**), then look at the database report — *Disk IO % consumed* at 100% means a small compute size ran out of disk budget, and a larger one is the lasting fix. Push and Google connections come back on their own once it answers. |
 | Railway: "Application failed to respond" | The Node process is not running — read the Railway deploy logs. A stalled database no longer causes this: boot opens the port within 5 seconds whatever the database does. |
 | Status buttons don't work | Ensure Interactivity URL is set correctly in Slack App settings |
 

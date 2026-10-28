@@ -504,7 +504,11 @@ receiver.router.post('/api/employee/login', express.json(), async (req, res) => 
 receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res) => {
   let profile = {};
   try {
-    const { data } = await supabase.from('employees').select('permissions,job_title,avatar_url,status_text,status_emoji,username').eq('id', req.employee.id).single();
+    // Bounded like the session read (restoreSession, index.js): the portal waits on this
+    // answer before it shows anything, and a stalled database gave it only when the
+    // gateway gave up, minutes later. The session's own copy answers meanwhile.
+    const { data } = await supabase.from('employees').select('permissions,job_title,avatar_url,status_text,status_emoji,username').eq('id', req.employee.id)
+      .abortSignal(AbortSignal.timeout(ctx.SESSION_READ_TIMEOUT_MS)).single();
     if (data) {
       const permissions = normEmpPerms(data.permissions);
       req.employee.permissions = permissions;

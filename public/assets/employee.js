@@ -127,10 +127,41 @@ async function checkAuth() {
   if (!empToken) return showLogin();
   try {
     const r = await ef('/api/employee/check');
+    // The server is up but could not reach its database, so it cannot say whether this
+    // sign-in is still good. Throwing the token away for that signed everyone out during
+    // an outage, onto a login form that cannot work until the database is back.
+    if (r.status === 503) return empBootRetry();
     if (!r.ok) { localStorage.removeItem('ml_emp_token'); empToken = null; return showLogin(); }
     empInfo = await r.json();
     showApp();
   } catch { showLogin(); }
+}
+
+// The admin dashboard's retry floor (bootRetryScreen), for the case above: the token
+// is kept, and the page reloads once the server answers anything but "database down".
+function empBootRetry() {
+  let el = document.getElementById('boot-retry');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'boot-retry';
+    el.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;background:var(--bg,#0f1117);color:var(--text,#e7e3da);z-index:9998;text-align:center;padding:20px';
+    el.innerHTML = `<div>
+      <div style="font-size:17px;font-weight:700;margin-bottom:8px">Can’t reach ${esc(typeof wsName === 'function' ? wsName() : 'MotoLinker')}</div>
+      <div style="font-size:13px;color:var(--muted,#889);margin-bottom:16px">The database is not answering. Retrying automatically…</div>
+      <button class="btn btn-primary" onclick="location.reload()">Retry now</button>
+    </div>`;
+    document.body.appendChild(el);
+  }
+  document.getElementById('auth-wrap').style.display = 'none';
+  document.getElementById('layout').style.display = 'none';
+  clearTimeout(empBootRetry._t);
+  empBootRetry._t = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/employee/check', { headers: empToken ? { Authorization: 'Bearer ' + empToken } : {} });
+      if (r.status !== 503) return location.reload();
+    } catch (_) {}
+    empBootRetry();
+  }, 5000);
 }
 
 function showLogin() {

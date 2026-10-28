@@ -105,6 +105,29 @@ async function openPage(browser, { route, file, port, tokenKey, token, api }) {
     await page.close();
   }
 
+  // 2c. The server is up and its database is not: the check answers 503. That says
+  //     nothing about whether the login is good, and taking it as a 401 signed
+  //     everyone out during an outage onto a login form that could not work. Both
+  //     portals must wait on the retry floor with the token kept.
+  {
+    const down = req => req.respond({ status: 503, contentType: 'application/json', body: '{"error":"The database is not answering. Try again in a moment."}' });
+    const a = await openPage(browser, { route: '/dashboard', file: 'public/dashboard.html', port,
+      tokenKey: 'ml_admin_token', token: 'good-but-unconfirmed', api: down });
+    const va = await a.page.evaluate(VISIBLE);
+    const keptA = await a.page.evaluate(() => localStorage.getItem('ml_admin_token'));
+    check('admin: a database outage shows the retry floor, not the login form', va.retry && !va.auth && !va.app, JSON.stringify(va));
+    check('admin: …and keeps the token', keptA === 'good-but-unconfirmed', String(keptA));
+    await a.page.close();
+
+    const e = await openPage(browser, { route: '/employee', file: 'public/employee.html', port,
+      tokenKey: 'ml_emp_token', token: 'good-but-unconfirmed', api: down });
+    const ve = await e.page.evaluate(VISIBLE);
+    const keptE = await e.page.evaluate(() => localStorage.getItem('ml_emp_token'));
+    check('team: a database outage shows the retry floor, not the login form', ve.retry && !ve.auth && !ve.app, JSON.stringify(ve));
+    check('team: …and keeps the token', keptE === 'good-but-unconfirmed', String(keptE));
+    await e.page.close();
+  }
+
   // 3. Healthy API but a poisoned last-page hash — navigate() must fall back to
   //    home instead of throwing out of the init IIFE.
   {

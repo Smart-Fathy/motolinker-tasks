@@ -235,14 +235,27 @@ function saveSession(token, kind, payload) {
 function dropSession(token) {
   supabase.from('sessions').delete().eq('token', token).then(() => {}, () => {});
 }
+// null when the table holds no such session. A table that could not be read throws
+// instead: a database that is down says nothing about whether a token is good, and
+// answering that with 401 made both portals throw their token away — everyone who
+// opened the app during an outage was signed out. The read is bounded too; a stalled
+// database answered only when its gateway gave up, minutes later, with the page
+// blank all that time. On the context so a test can shorten it.
+ctx.SESSION_READ_TIMEOUT_MS = 10_000;
 async function restoreSession(token, kind) {
-  try {
-    const { data } = await supabase.from('sessions').select('kind,payload,created_at').eq('token', token).single();
-    if (!data || data.kind !== kind || !data.payload) return null;
-    if (Date.now() - new Date(data.created_at).getTime() > SESSION_MAX_AGE_MS) { dropSession(token); return null; }
-    // Sessions written before the sign-in record existed carry no start time.
-    return { ...data.payload, createdAt: data.payload.createdAt || new Date(data.created_at).getTime() };
-  } catch (_) { return null; }
+  const { data, error } = await supabase.from('sessions').select('kind,payload,created_at').eq('token', token)
+    .abortSignal(AbortSignal.timeout(ctx.SESSION_READ_TIMEOUT_MS)).maybeSingle();
+  if (error && !isMissingRelation(error)) throw new Error('sessions table unreadable: ' + error.message);
+  if (!data || data.kind !== kind || !data.payload) return null;
+  if (Date.now() - new Date(data.created_at).getTime() > SESSION_MAX_AGE_MS) { dropSession(token); return null; }
+  // Sessions written before the sign-in record existed carry no start time.
+  return { ...data.payload, createdAt: data.payload.createdAt || new Date(data.created_at).getTime() };
+}
+// What the guards answer when restoreSession could not tell: both portals wait a 503
+// out on their retry screen and keep the token.
+function sessionStoreDown(res) {
+  res.set('Retry-After', '10');
+  return res.status(503).json({ error: 'The database is not answering. Try again in a moment.' });
 }
 ctx.saveSession = saveSession;
 ctx.dropSession = dropSession;
@@ -407,7 +420,8 @@ async function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
   let sess = sessions.get(token);
   if (!sess) {
-    const p = await restoreSession(token, 'admin');
+    let p;
+    try { p = await restoreSession(token, 'admin'); } catch (_) { return sessionStoreDown(res); }
     if (p && !(p.createdAt <= (revokedBefore.get('admin') || 0))) { sessions.set(token, p); sess = p; }
   }
   if (!sess) return res.status(401).json({ error: 'Unauthorized' });
@@ -426,7 +440,8 @@ async function requireEmployeeAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
   let sess = employeeSessions.get(token);
   if (!sess) {
-    const p = await restoreSession(token, 'employee');
+    let p;
+    try { p = await restoreSession(token, 'employee'); } catch (_) { return sessionStoreDown(res); }
     // Permissions in the stored payload may be stale; the /check every portal
     // load makes refreshes them from the employees table (see employee-portal).
     if (p && !(p.createdAt <= (revokedBefore.get(sessionKeyOf('employee', p.id)) || 0))) { employeeSessions.set(token, p); sess = p; }
