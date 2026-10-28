@@ -209,8 +209,18 @@ db.install();
 
     // — the Employees table shows who has it on, and can reset it (a lost phone) —
     db.tables.account_security.push({ kind: 'employee', account_id: '2', totp_secret: 'plain:JBSWY3DPEHPK3PXP', totp_enabled: true, recovery_codes: [], last_step: 0, updated_at: new Date().toISOString() });
+    // Any employee sets their own status emoji (8 characters). "<style>" fits, and printed
+    // as markup it swallowed every row after it. Omar sorts before Sara, so Sara's checks
+    // below fail too if it does.
+    db.tables.employees.push({ id: 3, name: 'Omar', username: 'omar', email: 'omar@example.com', password_hash: ctx.hashPassword('omar-password-1'), permissions: null, job_title: 'Sales', avatar_url: '', status_text: 'Away', status_emoji: '<style>' });
     await page.evaluate(() => navigate('employees'));
     check('admin: the Employees table has a 2FA column', await waitFor(page, () => [...document.querySelectorAll('#employees-table-container th')].some(th => th.textContent === '2FA')));
+    const omar = await page.evaluate(() => {
+      const heads = document.querySelectorAll('#employees-table-container th').length;
+      const row = [...document.querySelectorAll('#employees-table-container tbody tr')].find(tr => /omar/.test(tr.textContent));
+      return row ? { cells: row.children.length, heads, text: row.textContent, styles: document.querySelectorAll('#employees-table-container style').length } : null;
+    });
+    check('admin: a status emoji is shown as text, not markup', omar && omar.cells === omar.heads && omar.text.includes('<style> Away') && omar.styles === 0, JSON.stringify(omar && { ...omar, text: undefined }));
     const cell = () => page.evaluate(() => {
       const idx = [...document.querySelectorAll('#employees-table-container th')].findIndex(th => th.textContent === '2FA');
       const row = [...document.querySelectorAll('#employees-table-container tbody tr')].find(tr => /sara/.test(tr.textContent));

@@ -270,7 +270,7 @@
     tr.innerHTML = `
       <td class="qt-line-no"></td>
       <td><input class="form-control" placeholder="Item name…" value="${esc(name)}" oninput="recalcItem(this)"></td>
-      <td><input class="form-control" type="number" min="1" step="1" value="${unit}" style="text-align:center" oninput="recalcItem(this)"></td>
+      <td><input class="form-control" type="number" min="1" step="1" value="${esc(unit)}" style="text-align:center" oninput="recalcItem(this)"></td>
       <td><div style="position:relative">
         <input class="form-control" placeholder="e.g. 22500 or Free" value="${esc(priceUsd)}" ${isFree ? 'readonly' : ''} oninput="recalcItem(this)" style="padding-right:50px">
         <span onclick="toggleFreeItem(this)" title="Mark as Free"
@@ -377,6 +377,9 @@
     renderImgPreviews();
   }
   function imgPreviewWrap(src, onRemove) {
+    // src is a saved quotation's image, i.e. whatever its POST carried. Only an image
+    // data URL or an https link is drawn, and escaped, so it cannot add an onerror.
+    src = /^(data:image\/[a-z0-9.+-]+;base64,|https:\/\/)/i.test(String(src || '')) ? esc(src) : '';
     const wrap = document.createElement('div');
     wrap.style.cssText = 'position:relative;display:inline-block';
     wrap.innerHTML = `<img src="${src}" style="height:90px;width:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">

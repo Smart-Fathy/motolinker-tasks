@@ -2,6 +2,7 @@
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const crypto = require('crypto');
 const ctx = require('../ctx');
+const { safeFileUrl } = require('../lib/constants');
 const { chatBroadcast, chatSseClients, receiver, requireAuth, requireEmployeeAuth, sendPushAlways, sendPushToOfflineMembers, supabase } = ctx.need('chatBroadcast', 'chatSseClients', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'sendPushAlways', 'sendPushToOfflineMembers', 'supabase');
 
 // ─── Notification Center ────────────────────────────────────────────────────
@@ -304,7 +305,11 @@ async function chatGetMessages(req, res, callerKey) {
 
 async function chatSendMessage(req, res, callerKey, callerName) {
   const roomId = parseInt(req.params.roomId);
-  const { body, file_url, file_name, file_size, file_type, reply_to_id, reply_to_sender, reply_to_body, voice_duration } = req.body || {};
+  const { body, file_name, file_size, file_type, reply_to_id, reply_to_sender, reply_to_body, voice_duration } = req.body || {};
+  // Drawn as a link and an image for everyone in the room, so only what the upload
+  // route handed back is kept — a hand-typed javascript: URL or a quote is refused.
+  const file_url = safeFileUrl((req.body || {}).file_url);
+  if ((req.body || {}).file_url && !file_url) return res.status(400).json({ error: 'Attachments must be uploaded through the app.' });
   if (!body?.trim() && !file_url) return res.status(400).json({ error: 'Message body or file required' });
   const { data: member } = await supabase.from('chat_room_members').select('room_id').eq('room_id', roomId).eq('member_key', callerKey).single();
   if (!member) return res.status(403).json({ error: 'Not a member of this room' });

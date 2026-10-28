@@ -35,7 +35,10 @@ for (const f of FILES) {
   for (const name of shared) {
     // `ctx.name(...)` is always fine — that is the context, reached explicitly.
     const body = src.replace(new RegExp(`ctx\\.${name}`, 'g'), '');
-    if (!new RegExp(`(?<![\\w.'"\`])${name}\\s*[(,)\\.\\}\\s]`).test(body)) continue;
+    // A dot in front means a property (obj.name), unless it is the last dot of a
+    // spread: `...requestCtx(data)` is a use, and is how one of these slipped past.
+    // So is indexing — `LEADS_ENUM_DEFAULTS[field]` was the other.
+    if (!new RegExp(`(?<![\\w'"\`])(?<![^.]\\.)${name}\\s*[(,)\\.\\}\\s\\[\\];]`).test(body)) continue;
     const declared = new RegExp(
       `(const|let|var|function|class)\\s+${name}\\b`     // its own definition, or a binding
       + `|\\b${name}\\s*[,}][^=]*\\}\\s*=`               // …destructured, mid-list

@@ -7,7 +7,7 @@ const multer     = require('multer');
 const webpush    = require('web-push');
 const nodemailer = require('nodemailer');
 
-const { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL }
+const { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL, safeFileUrl }
   = require('./src/lib/constants');
 const { requestMeta } = require('./src/lib/request-info');
 
@@ -713,10 +713,15 @@ async function listTaskComments(taskId, res) {
   res.json(data || []);
 }
 
+// A comment's attachment link is drawn as a link and an image in everyone's thread,
+// so it must be what the upload route handed back (safeFileUrl), never a hand-typed URL.
+const ATTACH_REFUSED = 'Attachments must be uploaded through the app.';
+
 async function postTaskComment(taskId, authorKey, authorName, payload, res) {
   const p = payload || {};
   const text = String(p.body || '').trim().slice(0, 2000);
-  const file_url = String(p.file_url || '');
+  const file_url = safeFileUrl(p.file_url);
+  if (p.file_url && !file_url) return res.status(400).json({ error: ATTACH_REFUSED });
   if (!text && !file_url) return res.status(400).json({ error: 'Comment is empty' });
   const { data: task } = await supabase.from('tasks').select('id,title').eq('id', taskId).single();
   if (!task) return res.status(404).json({ error: 'Task not found' });
@@ -768,7 +773,8 @@ async function listRequestComments(reqId, res) {
 async function postRequestComment(reqId, authorKey, authorName, payload, res) {
   const p = payload || {};
   const text = String(p.body || '').trim().slice(0, 2000);
-  const file_url = String(p.file_url || '');
+  const file_url = safeFileUrl(p.file_url);
+  if (p.file_url && !file_url) return res.status(400).json({ error: ATTACH_REFUSED });
   if (!text && !file_url) return res.status(400).json({ error: 'Comment is empty' });
   const { data: reqRow } = await supabase.from('requests').select('id,title,created_by,assignee_id').eq('id', reqId).single();
   if (!reqRow) return res.status(404).json({ error: 'Request not found' });
@@ -944,7 +950,8 @@ receiver.router.post('/api/employee/issues/:id/comments', requireEmployeeAuth, e
   if (!issue) return;
   const p = req.body || {};
   const text = String(p.body || '').trim().slice(0, 2000);
-  const file_url = String(p.file_url || '');
+  const file_url = safeFileUrl(p.file_url);
+  if (p.file_url && !file_url) return res.status(400).json({ error: ATTACH_REFUSED });
   if (!text && !file_url) return res.status(400).json({ error: 'Comment is empty' });
   const authorKey = req.employee ? `employee_${req.employee.id}` : 'admin';
   const authorName = req.employee ? req.employee.name : 'Admin';
@@ -1081,7 +1088,7 @@ receiver.router.put('/api/dashboard/requests/:id', requireAuth, express.json(), 
   if (data?.assignee_id && String(data.assignee_id) !== String(existing?.assignee_id || '')) {
     ctx.createNotification(`employee_${data.assignee_id}`, { type: 'request', title: 'A request was assigned to you', body: data.title, url: '/employee#requests' }, 'always');
   }
-  if (existing && data && existing.status !== data.status) ctx.runAutomations('request.status_changed', { ...requestCtx(data), from: existing.status, to: data.status });
+  if (existing && data && existing.status !== data.status) ctx.runAutomations('request.status_changed', { ...ctx.requestCtx(data), from: existing.status, to: data.status });
   res.json(data);
 });
 

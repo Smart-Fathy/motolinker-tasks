@@ -2431,9 +2431,12 @@ async function cmtFileSelected(input) {
 }
 function cmtRemoveAttach() { _cmtPendingFile = null; const p = document.getElementById('cmt-attach-preview'); if (p) p.style.display = 'none'; }
 function commentAttachHtml(c) {
-  if (!c.file_url) return '';
-  const u = esc(c.file_url), t = c.file_type || '';
-  if (t.startsWith('image/')) return `<img src="${u}" class="chat-img-thumb" onclick="window.open('${u}','_blank')" loading="lazy">`;
+  // file_url is whatever the poster sent. Only a web link or a path here is drawn (chatFileHref),
+  // and never inside an onclick: a quote in it closed window.open('…') and ran the rest.
+  const href = chatFileHref(c.file_url);
+  if (!href) return '';
+  const u = esc(href), t = c.file_type || '';
+  if (t.startsWith('image/')) return `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" class="chat-img-thumb" loading="lazy"></a>`;
   if (t.startsWith('audio/')) return `<div class="chat-voice-msg"><audio controls src="${u}" preload="none"></audio></div>`;
   return `<div class="chat-file-attach"><i data-lucide="paperclip" style="width:13px;height:13px"></i> <a href="${u}" target="_blank" rel="noopener">${esc(c.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${c.file_size ? (c.file_size / 1024 / 1024).toFixed(1) + 'MB' : ''}</span></div>`;
 }
@@ -3397,7 +3400,7 @@ async function loadEmployees() {
           const badges = empPermsCell(p, scoped);
           const initials = (e.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
           const avatar = e.avatar_url ? `<img src="${esc(e.avatar_url)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;font-size:10px;font-weight:700;vertical-align:middle;margin-right:8px">${initials}</span>`;
-          const statusStr = (e.status_emoji || e.status_text) ? `${e.status_emoji||''} ${esc(e.status_text||'')}`.trim() : '—';
+          const statusStr = (e.status_emoji || e.status_text) ? `${esc(e.status_emoji||'')} ${esc(e.status_text||'')}`.trim() : '—';
           return `<tr>
             <td><input type="checkbox" class="emp-pick" value="${e.id}" ${_empPicked.has(e.id) ? 'checked' : ''} onchange="empTogglePick(${e.id})"></td>
             <td class="task-title">${avatar}${esc(e.name)}</td>
@@ -4182,18 +4185,33 @@ function emailGoBack() {
   if (split) split.classList.remove('show-detail');
 }
 
+// The message on screen. Everything in it — body, subject, sender — was written by
+// whoever sent the email, so none of it may run. Reply and Forward read it from here
+// instead of carrying the subject and sender inside their onclick text, where a quote
+// in a subject closed the string and ran the rest; and the body is drawn in a
+// sandboxed frame, without which its scripts ran with this page's origin — and with
+// it, the admin's session. Same as the team portal's viewer.
+let _openEmail = null;
+function replyToOpenEmail() {
+  const m = _openEmail;
+  if (m) openReply(m.id, m.threadId, m.fromEmail, m.subject || '', m.messageId || '');
+}
+function forwardOpenEmail() { if (_openEmail) openCompose(_openEmail.fromEmail); }
+
 async function openEmail(id) {
   const panel = document.getElementById('email-view-panel');
   if (!panel) return;
   const split = document.getElementById('email-split');
   if (split) split.classList.add('show-detail');
   panel.innerHTML = '<div class="loading" style="padding:40px"><div class="spinner"></div></div>';
+  _openEmail = null;
   try {
     const msg = await apiFetch(`/api/email/messages/${id}`).then(r => r.json());
     if (msg.error) throw new Error(msg.error);
     const fromEmail = msg.from.match(/<(.+)>/)?.[1] || msg.from;
+    _openEmail = { ...msg, fromEmail };
     const bodyHtml = msg.isHtml
-      ? `<iframe srcdoc="${esc(msg.body)}" style="width:100%;border:none;min-height:400px;background:#fff;border-radius:0 0 var(--radius) var(--radius)" onload="this.style.height=this.contentDocument.body.scrollHeight+40+'px'"></iframe>`
+      ? `<iframe sandbox="allow-same-origin" srcdoc="${esc(msg.body)}" style="width:100%;border:none;min-height:400px;background:#fff;border-radius:0 0 var(--radius) var(--radius)" onload="this.style.height=this.contentDocument.body.scrollHeight+40+'px'"></iframe>`
       : `<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;color:var(--text);line-height:1.6">${esc(msg.body||'(empty)')}</pre>`;
     panel.innerHTML = `
       <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
@@ -4207,8 +4225,8 @@ async function openEmail(id) {
               <div style="color:var(--muted);font-size:12px;margin-top:4px">${new Date(msg.date).toLocaleString()}</div>
             </div>
             <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
-              <button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="openReply('${esc(msg.id)}','${esc(msg.threadId)}','${esc(fromEmail)}','${esc(msg.subject||'')}','${esc(msg.messageId||'')}')">Reply</button>
-              <button class="btn btn-outline" style="font-size:12px;padding:6px 14px" onclick="openCompose('${esc(fromEmail)}')">Forward</button>
+              <button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="replyToOpenEmail()">Reply</button>
+              <button class="btn btn-outline" style="font-size:12px;padding:6px 14px" onclick="forwardOpenEmail()">Forward</button>
             </div>
           </div>
         </div>
@@ -4866,12 +4884,13 @@ function adminChatMsgHTML(msg, grouped) {
     <div class="chat-reply-quote-body">${esc(msg.reply_to_body)}</div>
   </div>` : '';
   const dlBtn = msg.file_url ? `<button class="chat-download-btn" onclick="adminChatDownloadFile(${msg.id})" title="Download"><i data-lucide="download" style="width:13px;height:13px"></i></button>` : '';
-  const fileHTML = msg.file_url ? (
+  const fileHref = chatFileHref(msg.file_url);   // a web link or a path here, never inside an onclick (see commentAttachHtml)
+  const fileHTML = fileHref ? (
     msg.file_type?.startsWith('image/')
-      ? `<div><img src="${esc(msg.file_url)}" class="chat-img-thumb" onclick="window.open('${esc(msg.file_url)}','_blank')" loading="lazy"><div style="text-align:right">${dlBtn}</div></div>`
+      ? `<div><a href="${esc(fileHref)}" target="_blank" rel="noopener"><img src="${esc(fileHref)}" class="chat-img-thumb" loading="lazy"></a><div style="text-align:right">${dlBtn}</div></div>`
       : msg.file_type?.startsWith('audio/')
-        ? `<div class="chat-voice-msg"><audio controls src="${esc(msg.file_url)}" preload="none"></audio>${msg.voice_duration ? `<span class="chat-voice-dur">${String(Math.floor(msg.voice_duration/60)).padStart(2,'0')}:${String(msg.voice_duration%60).padStart(2,'0')}</span>` : ''}${dlBtn}</div>`
-        : `<div class="chat-file-attach"><i data-lucide="paperclip" style="width:13px;height:13px"></i> <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
+        ? `<div class="chat-voice-msg"><audio controls src="${esc(fileHref)}" preload="none"></audio>${msg.voice_duration ? `<span class="chat-voice-dur">${String(Math.floor(msg.voice_duration/60)).padStart(2,'0')}:${String(msg.voice_duration%60).padStart(2,'0')}</span>` : ''}${dlBtn}</div>`
+        : `<div class="chat-file-attach"><i data-lucide="paperclip" style="width:13px;height:13px"></i> <a href="${esc(fileHref)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
   ) : '';
   return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}${grouped ? ' grouped' : ''}${chatIsAssistant(msg) ? ' assistant' : ''}" data-msg-id="${msg.id}" onclick="adminChatToggleActions(event)">
     ${actions}
