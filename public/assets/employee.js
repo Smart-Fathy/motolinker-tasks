@@ -645,7 +645,7 @@ async function empcLoad() {
   const rows = await ef(`/api/employee/${_empcBase()}/${_empcTaskId}/comments`).then(r => r.json()).catch(() => []);
   const list = document.getElementById('empc-list');
   list.innerHTML = (Array.isArray(rows) && rows.length) ? rows.map(c => `
-    <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:8px 12px">
+    <div style="background:rgba(var(--ov,255,255,255),.03);border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));padding:8px 12px">
       <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);margin-bottom:3px"><strong style="color:var(--text)">${esc(c.author_name || '—')}</strong><span>${new Date(c.created_at).toLocaleString()}</span></div>
       ${c.body ? `<div style="font-size:13px;white-space:pre-wrap;word-break:break-word">${empcRenderBody(c.body)}</div>` : ''}
       ${commentAttachHtml(c)}${googleUnfurl(c.body)}
@@ -685,7 +685,7 @@ function gLinkCard(url) {
 function empcRenderBody(b) {
   let h = esc(b || '');
   (_coworkers || []).forEach(e => {
-    if (e.name) h = h.split('@' + esc(e.name)).join(`<span style="color:var(--primary);font-weight:700">@${esc(e.name)}</span>`);
+    if (e.name) h = h.split('@' + esc(e.name)).join(`<span style="color:var(--primary-text,var(--primary));font-weight:700">@${esc(e.name)}</span>`);
   });
   return h;
 }
@@ -696,7 +696,7 @@ function empcMentionHint(ta) {
   const q = m[1].toLowerCase();
   const hits = (_coworkers || []).filter(e => (e.name || '').toLowerCase().startsWith(q)).slice(0, 6);
   if (!hits.length) { box.style.display = 'none'; return; }
-  box.innerHTML = hits.map(e => `<button type="button" onclick="empcInsertMention('${esc(e.name)}')" style="display:block;width:100%;text-align:left;background:none;border:none;color:var(--text);font-size:12.5px;padding:7px 10px;border-radius:6px;cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='none'">@ ${esc(e.name)}</button>`).join('');
+  box.innerHTML = hits.map(e => `<button type="button" onclick="empcInsertMention('${esc(e.name)}')" style="display:block;width:100%;text-align:left;background:none;border:none;color:var(--text);font-size:12.5px;padding:7px 10px;border-radius:calc(6px * var(--r-k,1));cursor:pointer" onmouseover="this.style.background='rgba(var(--ov,255,255,255),.06)'" onmouseout="this.style.background='none'">@ ${esc(e.name)}</button>`).join('');
   box.style.display = 'block';
 }
 function empcInsertMention(name) {
@@ -741,6 +741,7 @@ async function showApp() {
   document.getElementById('auth-wrap').style.display = 'none';
   document.getElementById('layout').style.display = 'flex';
   renderProfile();
+  if (typeof mlSyncPrefs === 'function') mlSyncPrefs();   // the colour mode this person chose on another device
   document.getElementById('h-date').value = new Date().toISOString().split('T')[0];
   initSidebarState();
   applyPermissions(empInfo?.permissions);
@@ -1143,7 +1144,7 @@ async function loadMyHours() {
     const weekAgo = new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0];
     const thisWeek = myHours.filter(h => (h.log_date||'') >= weekAgo).reduce((s,h) => s+parseFloat(h.hours||0), 0);
     document.getElementById('hours-stats').innerHTML = `
-      <div class="stat-box"><div class="stat-val" style="color:var(--primary)">${totalHrs.toFixed(1)}h</div><div class="stat-lbl">Total Logged</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--primary-text,var(--primary))">${totalHrs.toFixed(1)}h</div><div class="stat-lbl">Total Logged</div></div>
       <div class="stat-box"><div class="stat-val" style="color:var(--info)">${myHours.length}</div><div class="stat-lbl">Entries</div></div>
       <div class="stat-box"><div class="stat-val" style="color:var(--success)">${thisWeek.toFixed(1)}h</div><div class="stat-lbl">This Week</div></div>`;
 
@@ -1156,7 +1157,7 @@ async function loadMyHours() {
         return `<tr>
           <td style="white-space:nowrap;color:var(--muted);font-size:12px">${h.log_date || new Date(h.logged_at).toLocaleDateString()}</td>
           <td><div>${taskName}</div>${channel}</td>
-          <td><strong style="color:var(--primary)">${parseFloat(h.hours).toFixed(1)}h</strong></td>
+          <td><strong style="color:var(--primary-text,var(--primary))">${parseFloat(h.hours).toFixed(1)}h</strong></td>
           <td style="font-size:12px;color:var(--muted)">${h.description || '—'}</td>
         </tr>`;
       }).join('')}</tbody>
@@ -1470,7 +1471,7 @@ function driveIcon(m) {
   if (m === 'application/vnd.google-apps.document') return '<i data-lucide="file-text" style="width:16px;height:16px;vertical-align:middle;color:var(--info)"></i>';
   if (m === 'application/vnd.google-apps.presentation') return '<i data-lucide="presentation" style="width:16px;height:16px;vertical-align:middle;color:var(--warning)"></i>';
   if (m === 'application/pdf') return '<i data-lucide="file-type" style="width:16px;height:16px;vertical-align:middle;color:var(--danger)"></i>';
-  if (m.startsWith('image/')) return '<i data-lucide="image" style="width:16px;height:16px;vertical-align:middle;color:var(--primary)"></i>';
+  if (m.startsWith('image/')) return '<i data-lucide="image" style="width:16px;height:16px;vertical-align:middle;color:var(--primary-text,var(--primary))"></i>';
   if (m.startsWith('video/')) return '<i data-lucide="video" style="width:16px;height:16px;vertical-align:middle;color:var(--warning)"></i>';
   return '<i data-lucide="paperclip" style="width:16px;height:16px;vertical-align:middle"></i>';
 }
@@ -1500,7 +1501,7 @@ async function loadDriveSection(statusUrl, filesUrl, connectUrl, disconnectUrl, 
     c.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:34px;height:34px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff">${esc(status.name?.[0]||'?')}</div>
+          <div style="width:34px;height:34px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--on-primary-w,#fff)">${esc(status.name?.[0]||'?')}</div>
           <div><div style="font-weight:600;font-size:14px">${esc(status.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(status.email)}</div></div>
         </div>
         <button class="btn btn-outline" style="font-size:12px" onclick="disconnectDrive('${disconnectUrl}','${contentId}','${title}','${icon}')">Disconnect</button>
@@ -1516,7 +1517,7 @@ async function loadDriveSection(statusUrl, filesUrl, connectUrl, disconnectUrl, 
             <th style="padding:9px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Modified</th>
             <th style="padding:9px 16px;border-bottom:1px solid var(--border)"></th>
           </tr></thead>
-          <tbody>${files.map((f, i) => `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+          <tbody>${files.map((f, i) => `<tr style="border-bottom:1px solid rgba(var(--ov,255,255,255),.04)">
             <td style="padding:11px 16px;font-size:13px">${driveIcon(f.mimeType)} ${esc(f.name)}</td>
             <td style="padding:11px 16px;font-size:12px;color:var(--muted);white-space:nowrap">${f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '—'}</td>
             <td style="padding:11px 16px;text-align:right;white-space:nowrap">
@@ -1663,7 +1664,7 @@ function leadHeaderClick(e, key) {
 }
 function leadSortArrow(key) {
   if (!_leadSort || _leadSort.key !== key) return '';
-  return `<span class="lead-sort-arrow" style="color:var(--primary);margin-left:3px;font-size:10px">${_leadSort.dir === 'desc' ? '▼' : '▲'}</span>`;
+  return `<span class="lead-sort-arrow" style="color:var(--primary-text,var(--primary));margin-left:3px;font-size:10px">${_leadSort.dir === 'desc' ? '▼' : '▲'}</span>`;
 }
 
 // Filter engine shared with the admin dashboard — public/assets/lead-filters.js.
@@ -1758,7 +1759,7 @@ function empRenderLeads(list) {
   const span = vis.length + 2; // add-column + actions
   if (!list.length) { tbody.innerHTML = `<tr><td colspan="${span}" style="text-align:center;color:var(--muted);padding:28px">No leads found.</td></tr>`; return; }
   const shown = list.slice(0, _leadsShown);
-  tbody.innerHTML = shown.map(c => `<tr data-id="${c.id}" style="border-bottom:1px solid rgba(255,255,255,.04)">
+  tbody.innerHTML = shown.map(c => `<tr data-id="${c.id}" style="border-bottom:1px solid rgba(var(--ov,255,255,255),.04)">
       ${vis.map(col => leadCellHtml(c, col)).join('')}
       <td></td>
       <td style="padding:10px 14px;white-space:nowrap;text-align:right">
@@ -1931,7 +1932,7 @@ function leadCellHtml(c, col) {
   const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
   const base = 'padding:10px 14px;font-size:12px';
   const attrs = `class="lead-cell" style="${base}" onclick="leadCellClick(event, ${c.id}, '${esc(col.key)}')"`;
-  if (col.key === 'name') return `<td class="lead-cell" style="${base};font-size:13px" onclick="leadCellClick(event, ${c.id}, 'name')" title="Open profile"><strong style="color:var(--primary);cursor:pointer">${esc(raw || '—')}</strong></td>`;
+  if (col.key === 'name') return `<td class="lead-cell" style="${base};font-size:13px" onclick="leadCellClick(event, ${c.id}, 'name')" title="Open profile"><strong style="color:var(--primary-text,var(--primary));cursor:pointer">${esc(raw || '—')}</strong></td>`;
   if (col.key === 'next_followup') {
     const due = _pendingFollowups[c.id];
     if (!due) return `<td class="lead-cell" style="${base};color:var(--muted)" onclick="leadCellClick(event, ${c.id}, 'next_followup')">—</td>`;
@@ -2033,8 +2034,11 @@ function renderLeadDrawer() {
   const badge = document.getElementById('ld-status');
   badge.textContent = (stMap[stKey] || c.lead_status || 'Cold') + ' ▾';
   const stHex = leadOptColor(leadCol('lead_status'), stKey);
-  badge.style.background = stHex ? hexA(stHex, 0.16) : 'rgba(255,255,255,.06)';
-  badge.style.color = stHex || '#b9b3a4';
+  badge.style.background = stHex ? hexA(stHex, 0.16) : 'rgba(var(--ov,255,255,255),.06)';
+  badge.style.color = stHex || 'var(--text-2,#b9b3a4)';
+  // A colour somebody picked is data: light mode mixes it toward the text colour (.ce-pill).
+  badge.classList.toggle('ce-pill', !!stHex);
+  if (stHex) badge.style.setProperty('--ce-c', stHex); else badge.style.removeProperty('--ce-c');
   document.getElementById('ld-phone').textContent = c.phone || '';
   document.getElementById('ld-call').href = c.phone ? 'tel:' + c.phone : '#';
   document.getElementById('ld-wa').href = c.phone ? 'https://wa.me/' + ldWaDigits(c.phone) : '#';
@@ -2073,8 +2077,8 @@ function renderLeadDrawer() {
     let bodyHtml = esc(a.body || '');
     if (a.type === 'status_change' && a.meta?.to) {
       const fk = normKey(a.meta.from, stMap), tk = normKey(a.meta.to, stMap);
-      const pill = k => { const h = leadOptColor(leadCol('lead_status'), k); return `background:${h ? hexA(h, 0.16) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
-      bodyHtml = `Status: <span class="ld-stage-pill" style="${pill(fk)}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="${pill(tk)}">${esc(stMap[tk] || a.meta.to)}</span>`;
+      const pill = (k, label) => { const h = leadOptColor(leadCol('lead_status'), k); return `<span class="ld-stage-pill${h ? ' ce-pill' : ''}" style="background:${h ? hexA(h, 0.16) : 'rgba(var(--ov,255,255,255),.06)'};color:${h || 'var(--text-2,#b9b3a4)'}${h ? ';--ce-c:' + h : ''}">${esc(label)}</span>`; };
+      bodyHtml = `Status: ${pill(fk, stMap[fk] || a.meta.from || '—')} → ${pill(tk, stMap[tk] || a.meta.to)}`;
     }
     return `<div class="ld-tl-item">
       <div class="ld-tl-icon"><i data-lucide="${LD_ACT_ICONS[a.type] || 'circle'}"></i></div>
@@ -2225,10 +2229,10 @@ function empAttachVehicleSearch(inputId = 'eml-car', priceId = 'eml-car-price', 
       const items = d.items || [];
       if (!items.length) { hide(); return; }
       results.innerHTML = items.map((it, i) => `
-        <div class="veh-opt" data-i="${i}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;gap:10px;align-items:center"
+        <div class="veh-opt" data-i="${i}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(var(--ov,255,255,255),.05);display:flex;justify-content:space-between;gap:10px;align-items:center"
              onmouseover="this.style.background='rgba(201,163,94,.12)'" onmouseout="this.style.background='none'">
           <div style="min-width:0"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</div>${it.subtitle ? `<div style="font-size:11px;color:var(--muted)">${esc(it.subtitle)}</div>` : ''}</div>
-          ${it.price ? `<div style="font-size:12px;color:var(--primary);white-space:nowrap;font-weight:600">${money(it.price)}</div>` : ''}
+          ${it.price ? `<div style="font-size:12px;color:var(--primary-text,var(--primary));white-space:nowrap;font-weight:600">${money(it.price)}</div>` : ''}
         </div>`).join('');
       results._items = items;
       [...results.querySelectorAll('.veh-opt')].forEach(el => el.addEventListener('mousedown', ev => {
@@ -2270,7 +2274,7 @@ function openEmpLeadModal(id, presetStatus) {
     const v = (c?.custom_fields || {})[col.key];
     if (col.type === 'checkbox') {
       return `<div><label class="form-label">${esc(col.label)}</label>
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#0e0e10;border:1px solid var(--border);border-radius:8px">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--field-bg,#0e0e10);border:1px solid var(--border);border-radius:8px">
           <input type="checkbox" id="eml-cf-${esc(col.key)}" ${v ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--primary)">
           <label for="eml-cf-${esc(col.key)}" style="font-size:13px;cursor:pointer">Yes</label>
         </div></div>`;
@@ -2512,7 +2516,7 @@ async function gchatOpen(space, keepPoll) {
         <button class="chat-send-btn" id="gchat-send" onclick="gchatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
       </div>`
       : `<div class="chat-composer" style="justify-content:center;color:var(--muted);font-size:12px">
-          ${empCan('gchat', 'send') ? `Read-only — you didn't grant permission to send. <a href="#" onclick="gchatConnect();return false" style="color:var(--primary);margin-left:4px">Reconnect</a>` : 'Read-only — your admin has not granted sending.'}
+          ${empCan('gchat', 'send') ? `Read-only — you didn't grant permission to send. <a href="#" onclick="gchatConnect();return false" style="color:var(--primary-text,var(--primary));margin-left:4px">Reconnect</a>` : 'Read-only — your admin has not granted sending.'}
         </div>`}`;
   await gchatLoadMessages();
   if (!keepPoll) gchatStartPoll();
@@ -2733,7 +2737,7 @@ async function empCalendarToggle() {
 /* ── Reports (only the ones this employee is granted) ── */
 function empRepEgp(n) { return (Number(n) || 0).toLocaleString() + ' EGP'; }
 function empRepTile(label, value, sub) {
-  return `<div style="flex:1;min-width:140px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+  return `<div style="flex:1;min-width:140px;background:var(--bg);border:1px solid var(--border);border-radius:calc(10px * var(--r-k,1));padding:12px 14px">
     <div style="font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">${esc(label)}</div>
     <div style="font-size:19px;font-weight:700;margin-top:3px">${esc(value)}</div>
     ${sub ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(sub)}</div>` : ''}
@@ -2856,10 +2860,10 @@ function empRenderDeals() {
   const kanban = document.getElementById('emp-deals-kanban');
   kanban.innerHTML = EMP_DEAL_STAGES.map(stage => {
     const stageDeals = _empDeals.filter(d => d.stage === stage);
-    return `<div class="emp-deal-col" data-stage="${stage}" ondragover="empDealDragOver(event)" ondragleave="empDealDragLeave(event)" ondrop="empDealDrop(event,'${stage}')" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:160px;transition:outline .1s">
+    return `<div class="emp-deal-col" data-stage="${stage}" ondragover="empDealDragOver(event)" ondragleave="empDealDragLeave(event)" ondrop="empDealDrop(event,'${stage}')" style="background:var(--surface);border:1px solid var(--border);border-radius:calc(10px * var(--r-k,1));padding:12px;min-height:160px;transition:outline .1s">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${EMP_DEAL_STAGE_LABELS[stage]}</div>
-        <div style="background:rgba(255,255,255,.07);border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">${stageDeals.length}</div>
+        <div style="background:rgba(var(--ov,255,255,255),.07);border-radius:calc(20px * var(--r-k,1));padding:2px 8px;font-size:11px;font-weight:700">${stageDeals.length}</div>
       </div>
       ${stageDeals.map(d => empDealCard(d)).join('')}
     </div>`;
@@ -2869,7 +2873,7 @@ function empRenderDeals() {
 
 function empDealCard(d) {
   const cust = d.customers;
-  return `<div class="emp-deal-card" draggable="true" ondragstart="empDealDragStart(event,${d.id})" ondragend="empDealDragEnd(event)" style="background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;cursor:grab">
+  return `<div class="emp-deal-card" draggable="true" ondragstart="empDealDragStart(event,${d.id})" ondragend="empDealDragEnd(event)" style="background:var(--card,#18181b);border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));padding:12px;margin-bottom:10px;cursor:grab">
     <div style="display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
       <div style="font-size:13px;font-weight:600;line-height:1.3">${esc(d.title)}</div>
       <div style="display:flex;gap:2px;flex-shrink:0">
@@ -2879,7 +2883,7 @@ function empDealCard(d) {
     </div>
     ${cust ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${esc(cust.name)}</div>` : ''}
     ${d.car_model ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(d.car_model)}</div>` : ''}
-    ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary);margin-top:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
+    ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary-text,var(--primary));margin-top:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
   </div>`;
 }
 
@@ -2995,7 +2999,7 @@ async function renderEmailInbox(status) {
   c.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
       <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:34px;height:34px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff">${esc(status.name?.[0]||'?')}</div>
+        <div style="width:34px;height:34px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--on-primary-w,#fff)">${esc(status.name?.[0]||'?')}</div>
         <div><div style="font-weight:600;font-size:14px">${esc(status.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(status.email)}</div></div>
       </div>
       <button class="btn btn-outline" style="font-size:12px" onclick="empEmailDisconnect()">Disconnect</button>
@@ -3037,7 +3041,7 @@ function renderEmailList() {
   if (!list) return;
   if (!emailMessages.length) { list.innerHTML = '<div class="empty" style="padding:32px">No messages in inbox</div>'; return; }
   list.innerHTML = emailMessages.map(m => `
-    <div onclick="openEmail('${m.id}')" style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .15s;${activeEmailId===m.id?'background:var(--primary-glow);':''}" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background='${activeEmailId===m.id?'var(--primary-glow)':''}'" >
+    <div onclick="openEmail('${m.id}')" style="padding:14px 18px;border-bottom:1px solid rgba(var(--ov,255,255,255),.04);cursor:pointer;transition:background .15s;${activeEmailId===m.id?'background:var(--primary-glow);':''}" onmouseover="this.style.background='rgba(var(--ov,255,255,255),.03)'" onmouseout="this.style.background='${activeEmailId===m.id?'var(--primary-glow)':''}'" >
       <div style="display:flex;align-items:flex-start;gap:10px">
         ${m.unread ? '<div style="width:7px;height:7px;border-radius:50%;background:var(--primary);flex-shrink:0;margin-top:5px"></div>' : '<div style="width:7px;height:7px;flex-shrink:0;margin-top:5px"></div>'}
         <div style="flex:1;min-width:0">
@@ -3172,7 +3176,7 @@ async function empScrapeUrl() {
   if (!url) { alert('Please enter a URL'); return; }
   res.style.display  = 'none';
   stat.style.display = 'block';
-  stat.style.cssText = 'display:block;padding:12px 16px;border-radius:8px;font-size:13px;background:rgba(124,106,255,.08);border:1px solid rgba(124,106,255,.2);color:var(--primary)';
+  stat.style.cssText = 'display:block;padding:12px 16px;border-radius:8px;font-size:13px;background:rgba(124,106,255,.08);border:1px solid rgba(124,106,255,.2);color:var(--primary-text,var(--primary))';
   stat.textContent   = 'Scraping… this may take 20–30 seconds';
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Scraping…';
   try {
@@ -3199,9 +3203,9 @@ function renderScrapeResults(data) {
   const trims  = data.trims  || [];
   const thead  = document.getElementById('emp-scrape-thead');
   const tbody  = document.getElementById('emp-scrape-tbody');
-  thead.innerHTML = `<tr style="background:rgba(255,255,255,.03)"><th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border)">Spec</th>${trims.map(t => `<th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border)">${esc(t.name)}</th>`).join('')}</tr>`;
+  thead.innerHTML = `<tr style="background:rgba(var(--ov,255,255,255),.03)"><th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border)">Spec</th>${trims.map(t => `<th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border)">${esc(t.name)}</th>`).join('')}</tr>`;
   tbody.innerHTML = specs.map(s =>
-    `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+    `<tr style="border-bottom:1px solid rgba(var(--ov,255,255,255),.04)">
       <td style="padding:9px 12px;font-size:12px;font-weight:500">${esc(s.name)}</td>
       ${(s.values || []).map(v => `<td style="padding:9px 12px;font-size:12px;color:var(--muted)">${esc(v||'—')}</td>`).join('')}
     </tr>`
@@ -3249,7 +3253,7 @@ async function submitForgotPassword() {
     const r = await fetch('/api/employee/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
     const d = await r.json();
     if (d.error) { err.textContent = d.error; err.style.display = 'block'; return; }
-    err.style.cssText = 'display:block;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25);color:var(--success);padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px';
+    err.style.cssText = 'display:block;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25);color:var(--success);padding:12px 16px;border-radius:calc(8px * var(--r-k,1));font-size:13px;margin-bottom:16px';
     err.textContent = 'If an account with that email exists, a reset link has been sent.';
   } catch (e) { err.textContent = 'Connection error'; err.style.display = 'block'; }
   finally { btn.disabled = false; btn.textContent = 'Send Reset Link'; }
@@ -3274,7 +3278,7 @@ async function submitResetPassword() {
     const r = await fetch('/api/employee/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: window._resetToken, newPassword }) });
     const d = await r.json();
     if (d.error) { err.textContent = d.error; err.style.display = 'block'; return; }
-    err.style.cssText = 'display:block;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25);color:var(--success);padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px';
+    err.style.cssText = 'display:block;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25);color:var(--success);padding:12px 16px;border-radius:calc(8px * var(--r-k,1));font-size:13px;margin-bottom:16px';
     err.textContent = 'Password updated! You can now sign in.';
     setTimeout(showLoginForm, 2000);
     history.replaceState({}, '', '/employee');
@@ -3719,7 +3723,7 @@ async function chatOpenRoom(roomId) {
       <button onclick="chatStopRecording()" class="btn btn-primary btn-sm">Send <i data-lucide="check" style="width:12px;height:12px"></i></button>
     </div>
     <div class="chat-reply-bar" id="chat-reply-bar">
-      <span style="color:var(--primary);display:flex"><i data-lucide="corner-up-left" style="width:14px;height:14px"></i></span>
+      <span style="color:var(--primary-text,var(--primary));display:flex"><i data-lucide="corner-up-left" style="width:14px;height:14px"></i></span>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:11px" id="chat-reply-sender"></div>
         <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="chat-reply-body"></div>
@@ -4175,8 +4179,8 @@ function helpInit() {
   style.textContent = `
     .hb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9994;opacity:0;pointer-events:none;transition:opacity .2s}
     .hb-overlay.open{opacity:1;pointer-events:auto}
-    .hb-panel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(201,163,94,.3);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,.5)}
-    .hb-panel.open{transform:translateX(0)}
+    .hb-panel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(var(--primary-rgb,201,163,94),.3);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1), box-shadow 0s .28s;box-shadow:none}
+    .hb-panel.open{transform:translateX(0);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,calc(.5 * var(--sh-k,1)))}
     .hb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 18px;border-bottom:1px solid var(--border,#2a2a2e)}
     .hb-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
     .hb-tabs{display:flex;gap:4px;padding:10px 14px 0;border-bottom:1px solid var(--border,#2a2a2e)}
@@ -4185,10 +4189,10 @@ function helpInit() {
     .hb-tab.active{color:var(--text,#e8e4da);border-bottom-color:var(--primary,#c9a35e)}
     .hb-docs{flex:1;overflow-y:auto;padding:14px;display:none;flex-direction:column;gap:10px}
     .hb-docs.open{display:flex}
-    .hb-search{background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);
-               border-radius:8px;padding:8px 11px;font-size:13px;font-family:inherit}
+    .hb-search{background:var(--field-bg-2,#101013);color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);
+               border-radius:calc(8px * var(--r-k,1));padding:8px 11px;font-size:13px;font-family:inherit}
     .hb-doc{display:block;width:100%;text-align:start;background:none;border:1px solid var(--border,#2a2a2e);
-            border-radius:9px;padding:10px 12px;color:inherit;cursor:pointer;margin-bottom:7px}
+            border-radius:calc(9px * var(--r-k,1));padding:10px 12px;color:inherit;cursor:pointer;margin-bottom:7px}
     .hb-doc:hover{border-color:var(--primary,#c9a35e)}
     .hb-doc-t{font-size:13px;font-weight:700}
     .hb-doc-s{font-size:11.5px;color:var(--muted,#9a958a);margin-top:3px;
@@ -4197,16 +4201,16 @@ function helpInit() {
     .hb-art p{font-size:13px;line-height:1.65;margin:0 0 9px}
     .hb-art li{font-size:13px;line-height:1.65;margin-bottom:4px}
     .hb-art[dir="rtl"]{text-align:right}
-    .hb-back{background:none;border:none;color:var(--primary,#c9a35e);font-size:12px;cursor:pointer;padding:0 0 8px}
-    .hb-msg{max-width:86%;padding:10px 13px;border-radius:14px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
-    .hb-msg.user{align-self:flex-end;background:var(--primary,#c9a35e);color:#0c0c0e;border-bottom-right-radius:4px}
-    .hb-msg.bot{align-self:flex-start;background:rgba(255,255,255,.06);color:var(--text,#e8e4da);border-bottom-left-radius:4px}
+    .hb-back{background:none;border:none;color:var(--primary-text,var(--primary,#c9a35e));font-size:12px;cursor:pointer;padding:0 0 8px}
+    .hb-msg{max-width:86%;padding:10px 13px;border-radius:calc(14px * var(--r-k,1));font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+    .hb-msg.user{align-self:flex-end;background:var(--primary,#c9a35e);color:var(--on-primary,#0c0c0e);border-bottom-right-radius:calc(4px * var(--r-k,1))}
+    .hb-msg.bot{align-self:flex-start;background:rgba(var(--ov,255,255,255),.06);color:var(--text,#e8e4da);border-bottom-left-radius:calc(4px * var(--r-k,1))}
     .hb-msg.ar{direction:rtl;text-align:right}
-    .hb-chip{display:inline-block;margin:4px 4px 0 0;padding:6px 10px;font-size:12px;border:1px solid var(--border,#2a2a2e);border-radius:16px;cursor:pointer;color:var(--muted,#9a958a);background:none}
-    .hb-chip:hover{border-color:var(--primary,#c9a35e);color:var(--primary,#c9a35e)}
+    .hb-chip{display:inline-block;margin:4px 4px 0 0;padding:6px 10px;font-size:12px;border:1px solid var(--border,#2a2a2e);border-radius:calc(16px * var(--r-k,1));cursor:pointer;color:var(--muted,#9a958a);background:none}
+    .hb-chip:hover{border-color:var(--primary,#c9a35e);color:var(--primary-text,var(--primary,#c9a35e))}
     .hb-composer{display:flex;gap:8px;padding:12px;border-top:1px solid var(--border,#2a2a2e)}
-    .hb-composer textarea{flex:1;resize:none;background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:10px;padding:9px 12px;font-size:13.5px;font-family:inherit;max-height:120px}
-    .hb-send{background:var(--primary,#c9a35e);color:#0c0c0e;border:none;border-radius:10px;padding:0 14px;cursor:pointer;font-weight:700}
+    .hb-composer textarea{flex:1;resize:none;background:var(--field-bg-2,#101013);color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:calc(10px * var(--r-k,1));padding:9px 12px;font-size:13.5px;font-family:inherit;max-height:120px}
+    .hb-send{background:var(--primary,#c9a35e);color:var(--on-primary,#0c0c0e);border:none;border-radius:calc(10px * var(--r-k,1));padding:0 14px;cursor:pointer;font-weight:700}
   `;
   document.head.appendChild(style);
   const root = document.createElement('div');
@@ -4217,7 +4221,7 @@ function helpInit() {
       <div class="hb-head">
         <div style="font-weight:800;font-size:15px">Help · مساعدة</div>
         <div style="display:flex;gap:6px;align-items:center">
-          <select id="hb-lang" onchange="_helpLang=this.value" style="background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:8px;padding:4px 6px">
+          <select id="hb-lang" onchange="_helpLang=this.value" style="background:var(--field-bg-2,#101013);color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:calc(8px * var(--r-k,1));padding:4px 6px">
             <option value="auto">Auto</option><option value="en">EN</option><option value="ar">AR</option>
           </select>
           <button onclick="helpClose()" style="background:none;border:none;color:var(--muted,#9a958a);font-size:22px;cursor:pointer;line-height:1">×</button>

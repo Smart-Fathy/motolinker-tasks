@@ -84,7 +84,7 @@
           </select></div>
       </div>
       <div class="form-group"><label class="form-label">Attendees</label>
-        <div id="mt-attendees" style="display:flex;flex-wrap:wrap;gap:8px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px">
+        <div id="mt-attendees" style="display:flex;flex-wrap:wrap;gap:8px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));padding:10px">
           ${people.map(p => `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;border:1px solid var(--border);border-radius:16px;padding:4px 10px">
             <input type="checkbox" class="mt-att" value="${p.id}" ${picked.has(String(p.id)) ? 'checked' : ''} style="accent-color:var(--primary)"> ${esc(p.name)}</label>`).join('')
           || '<span style="color:var(--muted);font-size:12px">No team members found</span>'}

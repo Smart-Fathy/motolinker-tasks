@@ -24,10 +24,10 @@
     if (typeof lucide === 'undefined') window.lucide = { createIcons() {} };
     if (typeof Chart === 'undefined') window.Chart = class { constructor() {} destroy() {} update() {} };
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=150">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=151">
   <!-- Shared with the team portal. Last on purpose: several mobile rules were being
        beaten by later same-specificity rules in the sheet above. -->
-  <link rel="stylesheet" href="/assets/mobile.css?v=150">
+  <link rel="stylesheet" href="/assets/mobile.css?v=151">
 </head>
 <body>
 <!-- The gradient every colourful brain icon strokes with (the Accounting nav item,
@@ -39,9 +39,9 @@
 <!-- ── Auth Screen ─────────────────────────────────────────────────────────── -->
 <div id="auth-screen" class="auth-screen" style="display:none">
   <div class="auth-card">
-    <div class="auth-icon"><i data-lucide="shield-check" style="width:28px;height:28px;color:#fff"></i></div>
-    <h2 class="auth-title">Admin Access</h2>
-    <p class="auth-sub">Sign in with your admin credentials</p>
+    <div class="auth-icon"><i data-lucide="shield-check" style="width:28px;height:28px;color:var(--strong,#fff)"></i></div>
+    <h2 class="auth-title" data-ws-text="admin_title">Admin Access</h2>
+    <p class="auth-sub" data-ws-text="admin_sub">Sign in with your admin credentials</p>
     <input type="text"     id="login-username" class="auth-input" placeholder="Username" autocomplete="username">
     <input type="password" id="login-password" class="auth-input" placeholder="Password" autocomplete="current-password">
     <p id="auth-error" class="auth-error">Invalid username or password.</p>
@@ -94,7 +94,7 @@
       <div class="sidebar-logo-icon"></div>
       <div class="sidebar-logo-textwrap">
         <div class="sidebar-logo-text" data-ws-name>MotoLinker</div>
-        <div class="sidebar-logo-sub">Super Admin</div>
+        <div class="sidebar-logo-sub" data-ws-text="admin_role">Super Admin</div>
       </div>
       <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
       <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu" aria-label="Close menu">&times;</button>
@@ -128,7 +128,7 @@
           <div class="nav-item"        onclick="navigate('employees')" id="nav-employees"><span class="nav-icon"><i data-lucide="users"></i></span> Employees</div>
           <div class="nav-item"        onclick="navigate('requests')"    id="nav-requests">    <span class="nav-icon"><i data-lucide="inbox"></i></span> Requests</div>
           <div class="nav-item"        onclick="navigate('hours')"       id="nav-hours">       <span class="nav-icon"><i data-lucide="clock"></i></span> Hours Logs</div>
-          <div class="nav-item"        onclick="navigate('deletions')"   id="nav-deletions">   <span class="nav-icon"><i data-lucide="trash-2"></i></span> Approvals <span id="nav-deletions-badge" style="display:none;margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;padding:0 5px;align-items:center;justify-content:center;line-height:1"></span></div>
+          <div class="nav-item"        onclick="navigate('deletions')"   id="nav-deletions">   <span class="nav-icon"><i data-lucide="trash-2"></i></span> Approvals <span id="nav-deletions-badge" style="display:none;margin-left:auto;background:var(--danger-fill,var(--danger));color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:calc(9px * var(--r-k,1));padding:0 5px;align-items:center;justify-content:center;line-height:1"></span></div>
         </div>
       </div>
       <div class="nav-group" data-group="crm">
@@ -184,7 +184,8 @@
       <div class="nav-group" data-group="system">
         <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">System</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
         <div class="nav-group-items">
-          <div class="nav-item"        onclick="navigate('notif')"     id="nav-notif">    <span class="nav-icon"><i data-lucide="bell"></i></span> Notifications<span id="notif-nav-badge" style="display:none;margin-left:auto;background:var(--danger);color:#fff;border-radius:9px;font-size:10px;font-weight:700;padding:1px 6px;line-height:1.4">0</span></div>
+          <div class="nav-item"        onclick="navigate('notif')"     id="nav-notif">    <span class="nav-icon"><i data-lucide="bell"></i></span> Notifications<span id="notif-nav-badge" style="display:none;margin-left:auto;background:var(--danger-fill,var(--danger));color:#fff;border-radius:calc(9px * var(--r-k,1));font-size:10px;font-weight:700;padding:1px 6px;line-height:1.4">0</span></div>
+          <div class="nav-item"        onclick="navigate('workspace')" id="nav-workspace"><span class="nav-icon"><i data-lucide="palette"></i></span> Workspace</div>
           <div class="nav-item"        onclick="helpOpen()"            id="nav-help">     <span class="nav-icon"><i data-lucide="help-circle"></i></span> Help</div>
         </div>
       </div>
@@ -217,7 +218,7 @@
       <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu"><i data-lucide="menu" style="width:22px;height:22px"></i></button>
       <div class="logo"></div>
       <h1 data-ws-name>MotoLinker</h1>
-      <span class="header-badge">Admin Dashboard</span>
+      <span class="header-badge" data-ws-text="admin_badge">Admin Dashboard</span>
     </div>
     <div class="header-right">
       <div class="refresh-indicator">
@@ -225,6 +226,7 @@
         <span id="refresh-countdown">Auto-refresh in 30s</span>
       </div>
       <span class="last-updated" id="last-updated"></span>
+      <button class="notif-bell" id="ml-mode-toggle" onclick="mlCycleMode()" aria-label="Colour mode" title="Colour mode"></button>
       <button class="notif-bell" id="help-btn" onclick="helpOpen()" aria-label="Help" title="Help · مساعدة">
         <i data-lucide="help-circle" style="width:20px;height:20px"></i>
       </button>
@@ -510,7 +512,7 @@
       <div class="page-title" style="margin-bottom:6px">Google Meet</div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:28px">Start or join a video meeting instantly.</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;max-width:640px">
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:calc(14px * var(--r-k,1));padding:24px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
           <div style="width:52px;height:52px;background:rgba(52,211,153,.1);border-radius:50%;display:flex;align-items:center;justify-content:center">
             <i data-lucide="video" style="width:24px;height:24px;color:var(--success)"></i>
           </div>
@@ -519,9 +521,9 @@
             <i data-lucide="video" style="width:14px;height:14px"></i> Start Meeting
           </a>
         </div>
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
-          <div style="width:52px;height:52px;background:rgba(124,106,255,.1);border-radius:50%;display:flex;align-items:center;justify-content:center">
-            <i data-lucide="link" style="width:24px;height:24px;color:var(--primary)"></i>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:calc(14px * var(--r-k,1));padding:24px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
+          <div style="width:52px;height:52px;background:rgba(var(--alt-rgb,124,106,255),.1);border-radius:50%;display:flex;align-items:center;justify-content:center">
+            <i data-lucide="link" style="width:24px;height:24px;color:var(--primary-text,var(--primary))"></i>
           </div>
           <div><div style="font-weight:700;margin-bottom:4px">Join a Meeting</div><div style="font-size:12px;color:var(--muted)">Enter a meeting code to join an existing meeting.</div></div>
           <div style="display:flex;gap:8px;width:100%">
@@ -606,8 +608,8 @@
         <button class="task-view-tab" data-lview="follow" onclick="setLeadView('follow')">
           <i data-lucide="calendar-clock"></i> Follow-ups</button>
       </div>
-      <div id="leads-bulk-bar" style="display:none;align-items:center;gap:12px;padding:8px 14px;background:rgba(201,163,94,.08);border:1px solid var(--hair-gold);border-radius:8px;margin-bottom:12px">
-        <span id="leads-bulk-count" style="font-size:13px;font-weight:600;color:var(--gold)">0 selected</span>
+      <div id="leads-bulk-bar" style="display:none;align-items:center;gap:12px;padding:8px 14px;background:rgba(var(--primary-rgb,201,163,94),.08);border:1px solid var(--hair-gold);border-radius:calc(8px * var(--r-k,1));margin-bottom:12px">
+        <span id="leads-bulk-count" style="font-size:13px;font-weight:600;color:var(--primary-text,var(--gold))">0 selected</span>
         <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--danger);border:none" onclick="bulkDeleteLeads()">
           <i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete Selected
         </button>
@@ -783,8 +785,8 @@
 
   <!-- Shared document viewer — opens above the lead drawer (z-index 701) -->
   <div id="doc-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1200;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto">
-    <div style="background:#1a1d35;border:1px solid rgba(255,255,255,.08);border-radius:16px;width:100%;max-width:1100px;overflow:hidden">
-      <div style="padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between;gap:12px">
+    <div style="background:var(--doc-bg,#1a1d35);border:1px solid rgba(var(--ov,255,255,255),.08);border-radius:calc(16px * var(--r-k,1));width:100%;max-width:1100px;overflow:hidden">
+      <div style="padding:16px 22px;border-bottom:1px solid rgba(var(--ov,255,255,255),.08);display:flex;align-items:center;justify-content:space-between;gap:12px">
         <div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;min-width:0">
           <i data-lucide="file-text" style="width:17px;height:17px;flex-shrink:0"></i>
           <span id="doc-modal-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Document</span>
@@ -798,7 +800,7 @@
         <div id="doc-modal-loading" style="padding:40px;text-align:center;color:var(--muted);font-size:13px">
           <div class="spinner" style="margin:0 auto 10px"></div> Rendering PDF…
         </div>
-        <iframe id="doc-preview-frame" style="width:100%;min-height:72vh;border:none;border-radius:8px;background:#fff;display:none"></iframe>
+        <iframe id="doc-preview-frame" style="width:100%;min-height:72vh;border:none;border-radius:calc(8px * var(--r-k,1));background:#fff;display:none"></iframe>
       </div>
     </div>
   </div>
@@ -806,8 +808,8 @@
   <!-- Purchase Order PDF preview -->
   <!-- Contract PDF preview -->
   <div id="ct-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto">
-    <div style="background:#1a1d35;border:1px solid rgba(255,255,255,.08);border-radius:16px;width:100%;max-width:900px;overflow:hidden">
-      <div style="padding:18px 24px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between">
+    <div style="background:var(--doc-bg,#1a1d35);border:1px solid rgba(var(--ov,255,255,255),.08);border-radius:calc(16px * var(--r-k,1));width:100%;max-width:900px;overflow:hidden">
+      <div style="padding:18px 24px;border-bottom:1px solid rgba(var(--ov,255,255,255),.08);display:flex;align-items:center;justify-content:space-between">
         <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
           <i data-lucide="file-signature" style="width:18px;height:18px"></i> Contract Preview
         </div>
@@ -819,7 +821,7 @@
         </div>
       </div>
       <div style="padding:12px">
-        <iframe id="ct-preview-frame" style="width:100%;min-height:70vh;border:none;border-radius:8px;background:#fff"></iframe>
+        <iframe id="ct-preview-frame" style="width:100%;min-height:70vh;border:none;border-radius:calc(8px * var(--r-k,1));background:#fff"></iframe>
       </div>
     </div>
   </div>
@@ -1095,7 +1097,7 @@
             <label class="form-label">Car in Question <span id="cm-car-hint" style="color:var(--muted);font-weight:400;font-size:11px"></span></label>
             <input class="form-input" id="cm-car" placeholder="Search inventory or type a vehicle…" autocomplete="off">
             <input type="hidden" id="cm-car-price"><input type="hidden" id="cm-car-images">
-            <div id="cm-car-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.45)"></div>
+            <div id="cm-car-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,calc(.45 * var(--sh-k,1)))"></div>
           </div>
           <div>
             <label class="form-label">Budget (EGP)</label>
@@ -1115,7 +1117,7 @@
           </div>
           <div style="display:flex;flex-direction:column;justify-content:flex-end">
             <label class="form-label">Been Contacted?</label>
-            <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#0e0e10;border:1px solid var(--hair);border-radius:6px">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--field-bg,#0e0e10);border:1px solid var(--hair);border-radius:calc(6px * var(--r-k,1))">
               <input type="checkbox" id="cm-been-contacted" style="width:16px;height:16px;accent-color:var(--gold)">
               <label for="cm-been-contacted" style="font-size:13px;cursor:pointer">Yes, contacted</label>
             </div>
@@ -1210,7 +1212,7 @@
         <button class="modal-close" onclick="document.getElementById('csv-import-modal').style.display='none'">×</button>
       </div>
       <div class="modal-body" style="padding:24px;display:grid;gap:14px">
-        <div style="font-size:12px;color:var(--muted);line-height:1.7;background:rgba(255,255,255,.03);padding:10px 14px;border-radius:8px;border:1px solid var(--hair)">
+        <div style="font-size:12px;color:var(--muted);line-height:1.7;background:rgba(var(--ov,255,255,255),.03);padding:10px 14px;border-radius:calc(8px * var(--r-k,1));border:1px solid var(--hair)">
           Match by column name: a CSV header is imported into the leads column with the same on-screen name (built-in or your own — including built-in columns you've renamed). Common variants are also recognised (e.g. Full Name, Mobile / Phone Number, Lead Status, Vehicle / Model / Vehicle Requested, Lead Source, Contacted, Lead Date).<br>
           Headers that don't match any existing column are listed after import (not imported) — add those columns first (+ button), then re-import.<br>
           <em>name</em> column is required. Leads without a phone are de-duplicated by name + vehicle + budget + date.
@@ -1224,7 +1226,7 @@
           <label class="form-label">Google Sheets URL <span style="color:var(--muted);font-weight:400">(must be publicly shared)</span></label>
           <input class="form-input" id="csv-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/…">
         </div>
-        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12px;color:var(--muted);line-height:1.6;background:rgba(255,255,255,.03);padding:10px 14px;border-radius:8px;border:1px solid var(--hair)">
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12px;color:var(--muted);line-height:1.6;background:rgba(var(--ov,255,255,255),.03);padding:10px 14px;border-radius:calc(8px * var(--r-k,1));border:1px solid var(--hair)">
           <input type="checkbox" id="csv-update-existing" checked style="margin-top:2px">
           <span><strong style="color:var(--text)">Update leads that already exist</strong> — fill in blank fields (e.g. Vehicle Requested) on matching leads from the sheet. Existing values are never overwritten. Leave off to only add brand-new leads.</span>
         </label>
@@ -1244,7 +1246,7 @@
         <button class="modal-close" onclick="document.getElementById('dedupe-modal').style.display='none'">×</button>
       </div>
       <div class="modal-body" style="padding:20px 24px;overflow-y:auto">
-        <div style="font-size:12px;color:var(--muted);line-height:1.7;background:rgba(255,255,255,.03);padding:10px 14px;border-radius:8px;border:1px solid var(--hair);margin-bottom:14px">
+        <div style="font-size:12px;color:var(--muted);line-height:1.7;background:rgba(var(--ov,255,255,255),.03);padding:10px 14px;border-radius:calc(8px * var(--r-k,1));border:1px solid var(--hair);margin-bottom:14px">
           Leads are grouped the same way imports de-duplicate: by phone number, or (when there's no phone) by name + vehicle + budget + date. The <strong>oldest</strong> lead in each group is kept; the newer copies are pre-selected for removal. Nothing is deleted until you press <em>Remove Selected</em>.
         </div>
         <div id="dedupe-body" style="display:grid;gap:12px"><div style="color:var(--muted);padding:20px;text-align:center">Scanning…</div></div>
@@ -1339,7 +1341,7 @@
     <div id="wa-qr-panel" style="display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px;text-align:center">
       <div style="font-size:16px;font-weight:700">Link your dedicated WhatsApp number</div>
       <div style="font-size:13px;color:var(--muted);max-width:360px;line-height:1.6">On the phone with your dedicated number, open <b>WhatsApp → Settings → Linked Devices → Link a Device</b> and scan this code.</div>
-      <img id="wa-qr-img" alt="WhatsApp QR" style="width:264px;height:264px;background:#fff;border-radius:12px;padding:10px">
+      <img id="wa-qr-img" alt="WhatsApp QR" style="width:264px;height:264px;background:#fff;border-radius:calc(12px * var(--r-k,1));padding:10px">
     </div>
 
     <!-- Conversation layout (shown when ready) -->
@@ -1456,6 +1458,11 @@
     </div>
   </div>
 
+  <!-- ── Workspace: name, picture and look (assets/workspace-admin.js draws it) ── -->
+  <div id="page-workspace" class="page">
+    <div class="page-body wsa-body" id="wsa-root"></div>
+  </div>
+
   <!-- ── Notifications Page ── -->
   <div id="page-notif" class="page">
     <div class="page-body" style="max-width:720px">
@@ -1553,39 +1560,41 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
-<script src="/assets/workspace.js?v=150"></script>
-<script src="/assets/mobile.js?v=150"></script>
-<script src="/assets/columns.js?v=150"></script>
-<script src="/assets/client-folder.js?v=150"></script>
-<script src="/assets/lead-filters.js?v=150"></script>
-<script src="/assets/lead-views.js?v=150"></script>
-<script src="/assets/chat-extras.js?v=150"></script>
-<script src="/assets/home.js?v=150"></script>
-<script src="/assets/huddle.js?v=150"></script>
-<script src="/assets/procurement.js?v=150"></script>
-<script src="/assets/quote.js?v=150"></script>
-<script src="/assets/meetings.js?v=150"></script>
-<script src="/assets/calendar.js?v=150"></script>
-<script src="/assets/availability.js?v=150"></script>
-<script src="/assets/logistics.js?v=150"></script>
-<script src="/assets/accounting.js?v=150"></script>
-<script src="/assets/assistant.js?v=150"></script>
-<script src="/assets/security.js?v=150"></script>
-<script src="/assets/dashboard.js?v=150"></script>
+<script src="/assets/theme-core.js?v=151"></script>
+<script src="/assets/workspace.js?v=151"></script>
+<script src="/assets/workspace-admin.js?v=151"></script>
+<script src="/assets/mobile.js?v=151"></script>
+<script src="/assets/columns.js?v=151"></script>
+<script src="/assets/client-folder.js?v=151"></script>
+<script src="/assets/lead-filters.js?v=151"></script>
+<script src="/assets/lead-views.js?v=151"></script>
+<script src="/assets/chat-extras.js?v=151"></script>
+<script src="/assets/home.js?v=151"></script>
+<script src="/assets/huddle.js?v=151"></script>
+<script src="/assets/procurement.js?v=151"></script>
+<script src="/assets/quote.js?v=151"></script>
+<script src="/assets/meetings.js?v=151"></script>
+<script src="/assets/calendar.js?v=151"></script>
+<script src="/assets/availability.js?v=151"></script>
+<script src="/assets/logistics.js?v=151"></script>
+<script src="/assets/accounting.js?v=151"></script>
+<script src="/assets/assistant.js?v=151"></script>
+<script src="/assets/security.js?v=151"></script>
+<script src="/assets/dashboard.js?v=151"></script>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
-<div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
-  <img src="/icons/icon-192.png" style="width:40px;height:40px;border-radius:10px;flex-shrink:0" alt="" onerror="this.style.display='none'">
+<div id="pwa-install-banner" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:var(--card,#fff);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,calc(.12 * var(--sh-k,1)))">
+  <img src="/icons/icon-192.png" style="width:40px;height:40px;border-radius:calc(10px * var(--r-k,1));flex-shrink:0" alt="" onerror="this.style.display='none'">
   <div style="flex:1;min-width:0">
     <div style="font-weight:700;font-size:14px;color:var(--text)">Install Admin Dashboard</div>
     <div style="font-size:12px;color:var(--muted);margin-top:2px">Add to your home screen for the full app experience</div>
   </div>
-  <button onclick="triggerAdminInstall()" style="flex-shrink:0;padding:8px 16px;font-size:13px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">Install</button>
+  <button onclick="triggerAdminInstall()" style="flex-shrink:0;padding:8px 16px;font-size:13px;background:var(--primary);color:var(--on-primary-w,#fff);border:none;border-radius:calc(8px * var(--r-k,1));cursor:pointer;font-weight:600">Install</button>
   <button onclick="dismissAdminInstallBanner()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;padding:4px 6px;flex-shrink:0;line-height:1">×</button>
 </div>
 
 <!-- ── PWA iOS Hint ── -->
-<div id="pwa-ios-hint" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:flex-start;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.12)">
+<div id="pwa-ios-hint" style="display:none;position:fixed;bottom:16px;left:12px;right:12px;z-index:400;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:flex-start;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,calc(.12 * var(--sh-k,1)))">
   <div style="flex-shrink:0;display:flex"><i data-lucide="smartphone" style="width:24px;height:24px"></i></div>
   <div style="flex:1;min-width:0">
     <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:var(--text)">Install Admin Dashboard</div>
@@ -1598,12 +1607,12 @@
 </div>
 
 <!-- Huddle & chat-panel overlays (shared by every page) -->
-<div id="hd-bar"></div>
-<div id="hd-toast"></div>
-<div id="hd-join-chip"></div>
-<div id="hd-incoming"></div>
+<div id="hd-bar" class="on-dark"></div>
+<div id="hd-toast" class="on-dark"></div>
+<div id="hd-join-chip" class="on-dark"></div>
+<div id="hd-incoming" class="on-dark"></div>
 <div id="hd-sheet" onclick="if(event.target===this)hdSheetClose()"></div>
 
-<script src="/help-docs.js?v=150"></script>
+<script src="/help-docs.js?v=151"></script>
 </body>
 </html>

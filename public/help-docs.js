@@ -230,9 +230,9 @@ A group has a picture everyone in it sees. Whoever manages the group sets it fro
 group's ⋯ menu or its info panel; the admin can also add one when creating the group.
 
 ## Workspace (admin)
-**Workspace**, at the bottom of the admin sidebar, changes the workspace's name and
-profile picture. Both portals, the team's sign-in page and the browser tab show them, and
-pages that are open update at once.`,
+**Workspace**, in the admin sidebar, changes the workspace's name, picture and look — see
+*Workspace and appearance*. Both portals, the team's sign-in page and the browser tab show
+them, and pages that are open update at once.`,
       ar: `## المحادثة
 رسائل مباشرة ومجموعات، مع الملفات والرسائل الصوتية والرد وإعادة التوجيه والتعديل.
 تظهر حالتك بجوار اسمك في كل مكان، ويمكنك ضبطها من ملفك الشخصي.
@@ -267,9 +267,115 @@ pages that are open update at once.`,
 من لوحة معلوماتها، ويمكن للمسؤول إضافتها عند إنشاء المجموعة.
 
 ## مساحة العمل (للمسؤول)
-من **Workspace** أسفل الشريط الجانبي للمسؤول يمكن تغيير اسم مساحة العمل وصورتها. يظهر
-الاسم والصورة في البوابتين وصفحة دخول الفريق وتبويب المتصفح، وتتحدث الصفحات المفتوحة
-فوراً.`,
+من **Workspace** في الشريط الجانبي للمسؤول يمكن تغيير اسم مساحة العمل وصورتها ومظهرها،
+راجع *مساحة العمل والمظهر*. يظهر الاسم والصورة في البوابتين وصفحة دخول الفريق وتبويب
+المتصفح، وتتحدث الصفحات المفتوحة فوراً.`,
+    },
+  },
+  {
+    id: 'appearance',
+    title: { en: 'Workspace and appearance', ar: 'مساحة العمل والمظهر' },
+    body: {
+      en: `## Who changes it
+The admin does, from **Workspace** in the sidebar (System, and the shortcut at the bottom).
+Nothing changes for anyone until **Save** is pressed; pages that are open then update at
+once, without a reload.
+
+## Name and picture
+The name shows in both portals, the sign-in pages, the browser tab and the installed app's
+title. The picture is the round mark everywhere, and the tab's icon. A picture is saved as
+soon as it is chosen; a square one works best.
+
+## Colours
+Pick a **preset**: *Black & Gold* (the original), *Moto Palette* (the company's greens),
+*Cyberpunk Tech*, *Neon Minimalist*, *Synthwave*, *Matrix*, *Deep Ocean* or *Ember*. Each
+has a dark and a light version. Then, if you like:
+- choose your own **accent** and a **second colour** — each mode gets the shade of it that
+  reads, lighter on a dark page and deeper on a light one
+- turn the **neon glow** on the primary button, the active item and focus rings up or off
+- open **Advanced** and set the page, panels, sidebar, text and secondary text for dark and
+  light separately
+
+Statuses (done, late, high priority) keep their meaning and hue whatever you choose. A
+combination nobody could read is named in the **Readability** table and cannot be saved.
+
+## Type and shape
+Two faces — one for headings, one for body text (Cairo reads Arabic) — **roundness** from
+sharp to round, and **density** from compact to roomy. Touch screens keep comfortable tap
+targets either way.
+
+## Wording
+Seven lines can be replaced: the admin and team sign-in headings and sub-lines, the admin
+header badge, and the role under the name in each sidebar. Leave one empty to keep the
+original; \`{ws}\` in a line stands for the workspace's name.
+
+## Dark or light — for everyone
+Every person has a **sun / moon button** at the top of the screen. It goes *Dark → Light →
+Automatic*; automatic follows the device. The choice is remembered, and follows the person
+to their other devices. The admin chooses what people see until they choose, and can turn
+the button off so everyone sees the same.
+
+## Try it, share it, undo it
+- **Try it on this page** puts the draft on the real screen for a minute, with **Keep it**
+  and **Put it back**. Nobody else sees it.
+- **Share or back up a look** (Behaviour) is the look as text: copy it, download it, or
+  paste another in and load it into the editor.
+- **Put the original look back** returns every colour, face, shape and line to how the app
+  came; the name and picture stay.
+- If a look is ever hard to read, add \`?safe=1\` to the address of any page: it opens in the
+  original look whatever is saved, and the Workspace page is one click away.
+
+## The installed app
+The installed app's name and colours follow the workspace; the icon image does not change.
+An installed copy picks up a change the next time the browser checks.`,
+      ar: `## من يغيّره
+المسؤول، من **Workspace** في الشريط الجانبي (قسم النظام، وفي الاختصار أسفل الشريط). لا يتغير
+شيء لأي شخص قبل الضغط على **Save**؛ بعدها تتحدث الصفحات المفتوحة فوراً دون إعادة تحميل.
+
+## الاسم والصورة
+يظهر الاسم في البوابتين وصفحتي الدخول وتبويب المتصفح وعنوان التطبيق المثبّت. الصورة هي
+الشعار الدائري في كل مكان وأيقونة التبويب. تُحفظ الصورة بمجرد اختيارها، والأفضل أن تكون مربعة.
+
+## الألوان
+اختر **قالباً**: *Black & Gold* (الأصلي)، *Moto Palette* (ألوان الشركة الخضراء)،
+*Cyberpunk Tech*، *Neon Minimalist*، *Synthwave*، *Matrix*، *Deep Ocean* أو *Ember*. لكل قالب
+نسخة داكنة وأخرى فاتحة. وبعدها إن أردت:
+- اختر **لونك الأساسي** و**لوناً ثانياً** — ويأخذ كل وضع الدرجة التي تُقرأ منه، أفتح على
+  الصفحة الداكنة وأعمق على الفاتحة
+- شغّل **توهج النيون** أو أطفئه على الزر الرئيسي والعنصر النشط وحلقات التركيز
+- افتح **Advanced** واضبط لون الصفحة واللوحات والشريط الجانبي والنص والنص الثانوي للوضعين
+  الداكن والفاتح كلٌّ على حدة
+
+تحتفظ الحالات (منجز، متأخر، أولوية عالية) بمعناها ولونها مهما اخترت. وأي تركيبة لا يمكن
+قراءتها تُذكر في جدول **Readability** ولا يمكن حفظها.
+
+## الخط والشكل
+خطان — واحد للعناوين وآخر للنص (خط Cairo يقرأ العربية) — و**الاستدارة** من الحاد إلى
+المستدير، و**الكثافة** من المضغوط إلى الواسع. تحتفظ شاشات اللمس بمساحات ضغط مريحة في الحالتين.
+
+## الصياغة
+يمكن استبدال سبعة أسطر: عناوين وأسطر دخول المسؤول والفريق، وشارة رأس المسؤول، والدور
+تحت الاسم في كل شريط جانبي. اترك السطر فارغاً للإبقاء على الأصل، و\`{ws}\` في السطر
+تعني اسم مساحة العمل.
+
+## داكن أو فاتح — لكل شخص
+لكل شخص **زر شمس / قمر** أعلى الشاشة. يتنقل بين *داكن ← فاتح ← تلقائي*؛ والتلقائي يتبع
+الجهاز. يُحفظ الاختيار ويلحق بالشخص إلى أجهزته الأخرى. يحدد المسؤول ما يراه الناس قبل أن
+يختاروا، ويستطيع إيقاف الزر ليرى الجميع الشيء نفسه.
+
+## جرّبه وشاركه وتراجع عنه
+- **Try it on this page** يضع المسودة على الشاشة الفعلية لدقيقة مع **Keep it** و**Put it
+  back**. ولا يراها أحد غيرك.
+- **Share or back up a look** (في Behaviour) هو المظهر كنص: انسخه أو نزّله أو ألصق مظهراً
+  آخر وحمّله في المحرر.
+- **Put the original look back** يعيد كل لون وخط وشكل وسطر كما جاء التطبيق؛ ويبقى الاسم
+  والصورة.
+- إذا صعبت قراءة مظهر ما، أضف \`?safe=1\` إلى عنوان أي صفحة: تُفتح بالمظهر الأصلي مهما كان
+  المحفوظ، وتبقى صفحة Workspace على بُعد نقرة.
+
+## التطبيق المثبّت
+يتبع اسم التطبيق المثبّت وألوانه مساحة العمل؛ أما صورة الأيقونة فلا تتغير. تلتقط النسخة
+المثبّتة التغيير عندما يفحص المتصفح التطبيق في المرة التالية.`,
     },
   },
   {

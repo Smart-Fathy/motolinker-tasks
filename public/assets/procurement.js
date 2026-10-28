@@ -158,7 +158,7 @@
         <tbody>${_contractsCache.map(c => `
           <tr style="border-bottom:1px solid var(--border)">
             <td style="padding:8px 10px;font-family:monospace;font-weight:600">${esc(c.contract_no)}</td>
-            <td style="padding:8px 10px">${esc(c.title || '—')}${c.created_by === 'auto_won' ? ' <span style="font-size:10.5px;color:var(--primary);border:1px solid var(--primary);border-radius:8px;padding:1px 6px">auto</span>' : ''}</td>
+            <td style="padding:8px 10px">${esc(c.title || '—')}${c.created_by === 'auto_won' ? ' <span style="font-size:10.5px;color:var(--primary-text,var(--primary));border:1px solid var(--primary);border-radius:8px;padding:1px 6px">auto</span>' : ''}</td>
             <td style="padding:8px 10px">${docStatusBadge('contracts', c.status)}</td>
             <td style="padding:8px 10px;color:var(--muted)">${c.created_at ? new Date(c.created_at).toLocaleDateString() : ''}</td>
             <td style="padding:8px 10px;text-align:right;white-space:nowrap">
@@ -623,7 +623,7 @@
           <div class="po-lbl" style="margin-bottom:6px">Vehicle lines</div>
           <!-- min-width:0 lets this grid item shrink so the wide table scrolls
                inside it instead of stretching the whole modal -->
-          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:10px">
+          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:calc(10px * var(--r-k,1))">
             <table id="po-grid" style="border-collapse:collapse;font-size:12px;min-width:1500px">
               <thead><tr>
                 <th class="po-th" style="width:38px">No</th>
@@ -637,7 +637,7 @@
             <button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="poAddRow()">+ Add vehicle line</button> ${procColsBtn('po_items')}
             <button class="btn btn-outline" style="padding:5px 10px;font-size:12px;margin-left:6px" onclick="openCataloguePicker('po')">
               <i data-lucide="list-plus" style="width:13px;height:13px"></i> From supplier catalogue</button>
-            <div id="po-total" style="font-size:13px;font-weight:700;color:var(--primary)"></div>
+            <div id="po-total" style="font-size:13px;font-weight:700;color:var(--primary-text,var(--primary))"></div>
           </div>
         </div>
 
@@ -899,7 +899,7 @@
 
         <div>
           <div class="po-lbl" style="margin-bottom:6px">Requested vehicles</div>
-          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:10px">
+          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:calc(10px * var(--r-k,1))">
             <table style="border-collapse:collapse;font-size:12px;min-width:1080px">
               <thead><tr>
                 <th class="po-th" style="width:34px">#</th>
@@ -1279,7 +1279,7 @@
         ${procColsBtn('supplier_vehicles')}
         <button class="btn btn-outline btn-sm" onclick="supAddVehicleRow()"><i data-lucide="plus" style="width:13px;height:13px"></i> Add vehicle</button>
       </div>
-      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px">
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:calc(10px * var(--r-k,1))">
         <table style="border-collapse:collapse;font-size:12px;min-width:900px;width:100%">
           <thead><tr>${cols.map(c => procTh('supplier_vehicles', c, { cls: 'po-th', style: `min-width:${c.width || 100}px` })).join('')}<th class="po-th" style="width:38px"></th></tr></thead>
           <tbody id="sup-v-body">${rows.map(supVehicleRowHtml).join('')}</tbody>
@@ -1492,7 +1492,7 @@
       c.innerHTML = `
         <div class="table-scroll" style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow)">
           <table style="width:100%;border-collapse:collapse">
-            <thead><tr style="background:#101012">
+            <thead><tr style="background:var(--thead-bg,#101012)">
               <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Name</th>
               <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Lead</th>
               <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Email</th>
@@ -1505,8 +1505,8 @@
             <tbody>${data.map(s => `
               <tr style="border-bottom:1px solid var(--border)">
                 <td style="padding:12px 16px;font-size:13px;font-weight:600">${esc(s.name)}</td>
-                <td style="padding:12px 16px;font-size:12px">${s.customer_id ? `<span onclick="openLeadProfile(${s.customer_id})" title="Open lead profile" style="cursor:pointer;color:var(--primary);background:rgba(230,150,80,.12);padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap">→ ${esc(s.lead_name || 'lead')}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
-                <td style="padding:12px 16px;font-size:13px"><a href="mailto:${esc(s.email)}" style="color:var(--primary)">${esc(s.email)}</a></td>
+                <td style="padding:12px 16px;font-size:12px">${s.customer_id ? `<span onclick="openLeadProfile(${s.customer_id})" title="Open lead profile" style="cursor:pointer;color:var(--primary-text,var(--primary));background:rgba(230,150,80,.12);padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap">→ ${esc(s.lead_name || 'lead')}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
+                <td style="padding:12px 16px;font-size:13px"><a href="mailto:${esc(s.email)}" style="color:var(--primary-text,var(--primary))">${esc(s.email)}</a></td>
                 <td style="padding:12px 16px;font-size:13px;color:var(--muted)">${esc(s.phone || '—')}</td>
                 <td style="padding:12px 16px;font-size:13px">${esc(s.car_interest || '—')}</td>
                 <td style="padding:12px 16px;font-size:13px;color:var(--muted);max-width:240px;white-space:pre-wrap;word-break:break-word">${esc(s.message || '—')}</td>
@@ -1567,7 +1567,7 @@
     const chev = eng && eng.cfg.canEdit()
       ? `<span class="col-chev-btn" title="Field options — type, dropdown options, colors"
            onclick="event.stopPropagation();CE('${entity}').openMenu(event,'${escJs(col.key)}')"
-           style="cursor:pointer;display:inline-flex;align-items:center;padding:0 2px;margin-left:3px;border-radius:4px;opacity:.7;vertical-align:middle"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></span>`
+           style="cursor:pointer;display:inline-flex;align-items:center;padding:0 2px;margin-left:3px;border-radius:calc(4px * var(--r-k,1));opacity:.7;vertical-align:middle"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></span>`
       : '';
     return `<th class="${opts.cls || ''}" style="${opts.style || ''}">${esc(col.label)}${chev}</th>`;
   }
@@ -1745,6 +1745,8 @@
     const col = eng && eng.loaded ? (eng.visible() || []).find(c => c.key === 'status') : null;
     return (col && col.options) || PO_LINE_STATUSES.map(o => ({ key: o.key, label: o.label, color: o.fg }));
   }
+  // A hue written as hex reads its theme token (--h-<hex>) when a look defines one: sunk on a light page, lifted on a chosen dark one.
+  const hueVar = c => /^#[0-9a-f]{6}$/i.test(c) ? 'var(--h-' + String(c).slice(1).toLowerCase() + ',' + c + ')' : c;
   function stockStatusMeta(key) {
     const hit = stockStatusOpts().find(o => o.key === key);
     return { label: hit ? hit.label : (key || 'Unassigned'), color: (hit && hit.color) || 'var(--muted)' };
@@ -1775,7 +1777,7 @@
       const k = c.key;
       if (k === 'status') {
         const st = stockStatusMeta(u[k]);
-        return `<td data-label="${esc(c.label)}"><span class="stk-pill" style="--c:${st.color}">${esc(st.label)}</span></td>`;
+        return `<td data-label="${esc(c.label)}"><span class="stk-pill" style="--c:${hueVar(st.color)}">${esc(st.label)}</span></td>`;
       }
       if (k === 'vin') return `<td data-label="${esc(c.label)}" class="stk-vin">${esc(u[k] || '—')}</td>`;
       if (k === 'colour') return `<td data-label="${esc(c.label)}">${u[k]
@@ -1921,7 +1923,7 @@
         return `<section class="lb-col" style="--c:${o.color || 'var(--muted)'}">
           <div class="lb-head">
             <div class="lb-head-top">
-              <span class="stk-pill" style="--c:${o.color || 'var(--muted)'}">${esc(o.label)}</span>
+              <span class="stk-pill" style="--c:${hueVar(o.color || 'var(--muted)')}">${esc(o.label)}</span>
               <span class="lb-n num">${list.length}</span>
             </div>
             <div><span class="lb-val num">${val ? egp(val) : '—'}</span><span class="lb-share num">${pct}% of units</span></div>
@@ -2031,7 +2033,7 @@
 
         <div>
           <label class="form-label">Units in stock <span style="color:var(--muted);font-weight:400">(one row per physical car)</span></label>
-          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:10px">
+          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:calc(10px * var(--r-k,1))">
             <table style="border-collapse:collapse;font-size:12px;min-width:1080px">
               <thead><tr>
                 <th class="po-th" style="width:34px">#</th>
@@ -2166,7 +2168,7 @@
               // status or recoloring it in the field editor shows up here.
               if (c.type === 'select' || c.type === 'radio') return `<td style="padding:8px 10px">${eng.badgeHtml(c, x[k])}</td>`;
               if (SALE_NUM_KEYS.includes(k)) return `<td style="padding:8px 10px;text-align:right">${Number(x[k]) ? Number(x[k]).toLocaleString() : '—'}</td>`;
-              if (k === 'client_file' && ceLinkUrl(x[k])) return `<td style="padding:8px 10px"><a href="${esc(ceLinkUrl(x[k]))}" target="_blank" rel="noopener" style="color:var(--primary)">file</a></td>`;
+              if (k === 'client_file' && ceLinkUrl(x[k])) return `<td style="padding:8px 10px"><a href="${esc(ceLinkUrl(x[k]))}" target="_blank" rel="noopener" style="color:var(--primary-text,var(--primary))">file</a></td>`;
               return `<td style="padding:8px 10px">${esc(x[k] || '')}</td>`;
             }).join('')}
             <td style="padding:8px 10px;text-align:right;white-space:nowrap">
@@ -2243,7 +2245,7 @@
     if (!r.ok) {
       msg.style.color = 'var(--danger)';
       msg.innerHTML = esc(d.error || 'Upload failed.')
-        + (r.status === 409 ? ' <a href="#" onclick="hideModal();navigate(\'drive\');return false" style="color:var(--primary)">Connect Drive</a>' : '');
+        + (r.status === 409 ? ' <a href="#" onclick="hideModal();navigate(\'drive\');return false" style="color:var(--primary-text,var(--primary))">Connect Drive</a>' : '');
       return;
     }
     msg.style.color = 'var(--success)';
@@ -2251,7 +2253,7 @@
     // questions people actually had ("uploaded WHERE?").
     const meta = d.client_file_meta || {};
     msg.innerHTML = `Saved to Drive → MotoLinker / Client Files` +
-      (ceLinkUrl(d.client_file) ? ` · <a href="${esc(ceLinkUrl(d.client_file))}" target="_blank" rel="noopener" style="color:var(--primary)">${esc(meta.name || 'open the file')}</a>` : '');
+      (ceLinkUrl(d.client_file) ? ` · <a href="${esc(ceLinkUrl(d.client_file))}" target="_blank" rel="noopener" style="color:var(--primary-text,var(--primary))">${esc(meta.name || 'open the file')}</a>` : '');
     document.getElementById('sale-client_file').value = d.client_file || '';
     loadSales();
   }

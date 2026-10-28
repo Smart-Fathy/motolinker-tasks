@@ -119,7 +119,7 @@ function renderLeadFilterChips() {
   if (!box) return;
   box.style.display = _leadFilters.length ? 'flex' : 'none';
   box.innerHTML = _leadFilters.map((f, i) => `
-    <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border:1px solid var(--hair-gold,var(--border));border-radius:14px;background:rgba(201,163,94,.08)">
+    <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border:1px solid var(--hair-gold,var(--border));border-radius:calc(14px * var(--r-k,1));background:rgba(var(--primary-rgb,201,163,94),.08)">
       ${esc(leadFilterLabel(f))}
       <button onclick="removeLeadFilter(${i})" title="Remove" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0">×</button>
     </span>`).join('');

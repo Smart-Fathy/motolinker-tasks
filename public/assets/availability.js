@@ -168,7 +168,7 @@
     const hours = day.status !== 'off' && span ? span : meta.label;
     const title = [meta.label, span, day.note || ''].filter(Boolean).join(' · ');
     return `<td style="padding:7px 8px;text-align:center" title="${esc(title)}">
-      <span style="display:inline-block;padding:2px 8px;border-radius:9px;font-size:10.5px;font-weight:600;background:${meta.color}26;color:${meta.color};white-space:nowrap">${esc(hours)}</span>
+      <span style="display:inline-block;padding:2px 8px;border-radius:calc(9px * var(--r-k,1));font-size:10.5px;font-weight:600;background:${meta.color}26;color:${meta.color};white-space:nowrap">${esc(hours)}</span>
     </td>`;
   }
 
@@ -206,8 +206,8 @@
             return `<th style="padding:7px 8px;text-align:center">${n}<div style="font-weight:400;font-size:10px">${dd.getDate()}</div></th>`; }).join('')}
         </tr></thead>
         <tbody>${d.members.map(m => `
-          <tr style="border-bottom:1px solid rgba(255,255,255,.05)">
-            <td style="padding:7px 8px;font-weight:600${m.me ? ';color:var(--primary)' : ''}">${esc(m.name)}${m.me ? ' · you' : ''}</td>
+          <tr style="border-bottom:1px solid rgba(var(--ov,255,255,255),.05)">
+            <td style="padding:7px 8px;font-weight:600${m.me ? ';color:var(--primary-text,var(--primary))' : ''}">${esc(m.name)}${m.me ? ' · you' : ''}</td>
             ${DAY_NAMES.map((_, i) => cellHtml(m.days && m.days[i])).join('')}
           </tr>`).join('')}</tbody>
       </table></div>`;

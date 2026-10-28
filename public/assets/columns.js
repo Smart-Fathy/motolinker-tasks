@@ -96,10 +96,12 @@ function ColumnsEngine(entity, cfg) {
   E.badgeHtml = function (col, rawKey, label) {
     const text = label != null ? label : (E.optMap(col)[rawKey] || rawKey || '—');
     const hex = E.optionColor(col, rawKey);
-    const bg = hex ? hexA(hex, 0.12) : 'rgba(255,255,255,.06)';
+    const bg = hex ? hexA(hex, 0.12) : 'rgba(var(--ov,255,255,255),.06)';
     const fg = hex || 'var(--muted)';
-    const bd = hex ? hexA(hex, 0.30) : 'rgba(255,255,255,.12)';
-    return `<span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;line-height:1.5;white-space:nowrap;background:${bg};color:${fg};border:1px solid ${bd}">${esc(text)}</span>`;
+    const bd = hex ? hexA(hex, 0.30) : 'rgba(var(--ov,255,255,255),.12)';
+    // A colour somebody picked is data, not a theme token. On a light page the stylesheet
+    // mixes it toward the text colour (.ce-pill reads --ce-c) so the label stays readable.
+    return `<span${hex ? ' class="ce-pill"' : ''} style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;line-height:1.5;white-space:nowrap;background:${bg};color:${fg};border:1px solid ${bd}${hex ? ';--ce-c:' + hex : ''}">${esc(text)}</span>`;
   };
 
   // ── The floating menu (sort / rename / type / options / move / hide / delete)
@@ -369,8 +371,8 @@ function ColumnsEngine(entity, cfg) {
   E._optRow = function (key, label, color) {
     return `<div class="lo-row" data-optkey="${esc(key)}" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
       <input class="form-control" value="${esc(label)}" placeholder="Option label" style="flex:1">
-      <input type="color" value="${esc(color || '#8a8f98')}" title="Badge color" style="width:34px;height:32px;padding:2px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer">
-      <button onclick="this.closest('.lo-row').remove()" title="Remove" style="background:rgba(239,68,68,.1);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:30px;height:30px;flex-shrink:0">✕</button>
+      <input type="color" value="${esc(color || '#8a8f98')}" title="Badge color" style="width:34px;height:32px;padding:2px;border:1px solid var(--border);border-radius:calc(6px * var(--r-k,1));background:none;cursor:pointer">
+      <button onclick="this.closest('.lo-row').remove()" title="Remove" style="background:rgba(239,68,68,.1);border:none;border-radius:calc(6px * var(--r-k,1));color:var(--danger);cursor:pointer;width:30px;height:30px;flex-shrink:0">✕</button>
     </div>`;
   };
   E.addOptRow = function () {

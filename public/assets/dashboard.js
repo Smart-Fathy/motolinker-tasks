@@ -37,6 +37,7 @@ async function checkAuth() {
     return false;
   }
   document.getElementById('app').style.display = 'block';
+  if (typeof mlSyncPrefs === 'function') mlSyncPrefs();   // the colour mode this person chose on another device
   // A security alert pushed to this device opens /dashboard#security.
   if (location.hash === '#security') setTimeout(openSecurity, 0);
   return true;
@@ -282,13 +283,13 @@ function renderTopPerformers(byEmployee) {
     c.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:12px">No assigned tasks yet</div>';
     return;
   }
-  const medalColors = ['#d4af37', '#b9bcc2', '#c58a4a'];   // gold, silver, bronze
+  const medalColors = ['var(--h-d4af37,#d4af37)', 'var(--h-b9bcc2,#b9bcc2)', 'var(--h-c58a4a,#c58a4a)'];   // gold, silver, bronze
   c.innerHTML = list.slice(0, 8).map((e, i) => {
     const pct = e.total ? Math.round((e.done / e.total) * 100) : 0;
     const initials = (e.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
     const avatar = e.avatar_url
       ? `<img src="${esc(e.avatar_url)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0">`
-      : `<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;font-size:10px;font-weight:700;flex-shrink:0">${initials}</span>`;
+      : `<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--primary);color:var(--on-primary-w,#fff);font-size:10px;font-weight:700;flex-shrink:0">${initials}</span>`;
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border)">
       <span style="width:26px;display:flex;align-items:center;justify-content:center;font-size:11px;color:${i < 3 ? medalColors[i] : 'var(--muted)'};flex-shrink:0">${i < 3 ? '<i data-lucide="award" style="width:15px;height:15px"></i>' : '#' + (i + 1)}</span>
       ${avatar}
@@ -298,7 +299,7 @@ function renderTopPerformers(byEmployee) {
           <span style="color:var(--success);white-space:nowrap">${e.done} <span style="color:var(--muted);font-weight:400">/ ${e.total}</span></span>
         </div>
         <div style="height:5px;background:var(--border);border-radius:99px;margin-top:5px;overflow:hidden">
-          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--primary),#e6c98a);border-radius:99px"></div>
+          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--primary),var(--accent-soft,#e6c98a));border-radius:99px"></div>
         </div>
       </div>
     </div>`;
@@ -422,11 +423,11 @@ function renderReportStats(s) {
     || ((Number(s.totalPipeline) || 0) + (Number(s.revenueWon) || 0));
   const pct = (a, b) => (Number(b) ? Math.round((Number(a) / Number(b)) * 100) : 0);
   const tiles = [
-    { label: 'Open pipeline',   value: egp(s.totalPipeline),      c: 'var(--gold)',     share: pct(s.totalPipeline, totalValue), sub: 'of all deal value' },
+    { label: 'Open pipeline',   value: egp(s.totalPipeline),      c: 'var(--primary-text,var(--gold))',     share: pct(s.totalPipeline, totalValue), sub: 'of all deal value' },
     { label: 'Weighted pipeline', value: egp(s.weightedPipeline), c: 'var(--st-todo)',  share: pct(s.weightedPipeline, s.totalPipeline), sub: 'of open pipeline · probability-adjusted' },
     { label: 'Revenue won',     value: egp(s.revenueWon),         c: 'var(--success)',  share: pct(s.revenueWon, totalValue), sub: `${s.wonCount} deal${s.wonCount === 1 ? '' : 's'}` },
     { label: 'Win rate',        value: s.winRate + '%',           c: 'var(--st-progress)', share: Number(s.winRate) || 0, sub: 'closed deals won' },
-    { label: 'Avg deal',        value: egp(s.avgDeal),            c: 'var(--gold)',     share: null, sub: 'per won deal' },
+    { label: 'Avg deal',        value: egp(s.avgDeal),            c: 'var(--primary-text,var(--gold))',     share: null, sub: 'per won deal' },
     { label: 'Quotes generated', value: String(s.quotesCount),    c: 'var(--stage-inquiry)', share: null, sub: 'in range' },
   ];
   document.getElementById('reports-stats').innerHTML = tiles.map(t => `
@@ -471,7 +472,7 @@ function donutSvg(rows, centreValue, centreLabel) {
     return seg;
   }).join('');
   return `<svg viewBox="0 0 140 140" class="donut" role="img" aria-label="${esc(centreLabel)}">
-      <circle r="${R}" cx="70" cy="70" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="16"></circle>
+      <circle r="${R}" cx="70" cy="70" fill="none" style="stroke:rgba(var(--ov,255,255,255),.06)" stroke-width="16"></circle>
       ${arcs}
     </svg>
     <div class="donut-centre">
@@ -624,7 +625,7 @@ function lrFmt(d, v) { return d.measure === 'count' ? Number(v).toLocaleString()
 function renderLeadsReport(d) {
   const hotPct = d.totals.count ? Math.round(d.hotCount / d.totals.count * 100) : 0;
   const tiles = [
-    { label: 'Total leads', value: d.totals.count.toLocaleString(), c: 'var(--gold)',    share: null,   sub: lrRangeLabel(d) },
+    { label: 'Total leads', value: d.totals.count.toLocaleString(), c: 'var(--primary-text,var(--gold))',    share: null,   sub: lrRangeLabel(d) },
     { label: 'Hot leads',   value: d.hotCount.toLocaleString(),     c: 'var(--danger)',  share: hotPct, sub: 'ready to buy now' },
     { label: 'Avg budget',  value: egp(d.totals.avg),               c: 'var(--st-todo)', share: null,   sub: 'per lead' },
   ];
@@ -667,7 +668,7 @@ function renderLeadsSingle(d) {
         const barPct = Math.round((isCount ? r.count : (Number(r.value) || 0)) / maxV * 100);
         const right = isCount ? (d.totals.count ? Math.round(r.count / d.totals.count * 100) : 0) + '%' : egp(r.value);
         const rc = lrRowColor(d.groupBy, r.key, i);
-        return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+        return `<tr style="border-bottom:1px solid rgba(var(--ov,255,255,255),.04)">
           <td style="padding:6px 8px"><div class="lr-bar-cell"><i style="width:${barPct}%;background:${rc}"></i><span><b style="background:${rc}"></b>${esc(r.label)}</span></div></td>
           <td style="padding:6px 8px;text-align:right;font-weight:600">${r.count.toLocaleString()}</td>
           <td style="padding:6px 8px;text-align:right;color:var(--muted)">${right}</td></tr>`;
@@ -715,7 +716,7 @@ function renderLeadsCrossTab(d) {
         <th style="padding:6px 8px">${esc(gl)} \\ ${esc(sl)}</th>
         ${cats.map(c => `<th style="padding:6px 8px;text-align:right;white-space:nowrap">${esc(c.label)}</th>`).join('')}
         <th style="padding:6px 8px;text-align:right;font-weight:700">Total</th></tr></thead>
-      <tbody>${rows.map(r => `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+      <tbody>${rows.map(r => `<tr style="border-bottom:1px solid rgba(var(--ov,255,255,255),.04)">
         <td style="padding:6px 8px;font-weight:600">${esc(r.label)}</td>
         ${cats.map(c => { const v = r.cells[c.key] || 0; return `<td style="padding:6px 8px;text-align:right;color:${v ? 'inherit' : 'var(--muted)'}">${v ? lrFmt(d, v) : '·'}</td>`; }).join('')}
         <td style="padding:6px 8px;text-align:right;font-weight:700">${lrFmt(d, d.measure === 'count' ? r.count : r.value)}</td></tr>`).join('')}
@@ -1098,7 +1099,7 @@ function amRenderActions() {
         : `<div style="font-size:11px;color:var(--warning,#e0a800)"><i data-lucide="alert-triangle" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></i> This action needs a lead — it won't do anything for this trigger. Use “Send a notification”, “Notify all employees” or “Create a task” instead.</div>`;
     }
     return `
-    <div style="border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;gap:6px">
+    <div style="border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));padding:10px;display:grid;gap:6px">
       <div style="display:flex;gap:6px;align-items:center">
         <select class="form-input" style="flex:1;padding:6px 8px;font-size:12px" onchange="amChangeActionType(${i}, this.value)">
           ${AM_ACTIONS.map(t => `<option value="${t[0]}"${a.type === t[0] ? ' selected' : ''}>${t[1]}</option>`).join('')}
@@ -2225,7 +2226,7 @@ function rtAssigneeNames(rt) {
   return ids.map(id => { const e = (employeesForTasks || []).find(x => String(x.id) === id); return e ? e.name : id; }).join(', ') || '—';
 }
 function rtCardHtml(rt) {
-  return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+  return `<div style="border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));padding:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
     <div style="min-width:180px;flex:1">
       <div style="font-weight:600;font-size:13px;margin-bottom:4px">${esc(rt.title)} ${rt.active ? '' : '<span style="color:var(--muted);font-size:11px">· paused</span>'}</div>
       <div style="font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:10px">
@@ -2249,19 +2250,19 @@ function openRecurringForm(id) {
   const rt = id ? _recurringCache.find(x => x.id === id) : null;
   const current = new Set((Array.isArray(rt?.assignee_ids) && rt.assignee_ids.length ? rt.assignee_ids : (rt?.assignee_id ? [rt.assignee_id] : [])).map(String));
   const assigneeChecks = (employeesForTasks || []).map(e => `
-    <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:13px">
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:calc(6px * var(--r-k,1));cursor:pointer;font-size:13px">
       <input type="checkbox" class="rt-assignee-cb" value="${e.id}" ${current.has(String(e.id)) ? 'checked' : ''} style="accent-color:var(--gold)"> ${esc(e.name)}
     </label>`).join('');
   const type = rt?.recurrence_type || 'interval';
   const wd = new Set((rt?.weekdays || []).map(Number));
   const weekdayBtns = RT_WEEKDAYS.map((l, i) => `
-    <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:5px 9px;cursor:pointer">
+    <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1px solid var(--border);border-radius:calc(6px * var(--r-k,1));padding:5px 9px;cursor:pointer">
       <input type="checkbox" class="rt-weekday-cb" value="${i}" ${wd.has(i) ? 'checked' : ''} style="accent-color:var(--gold)"> ${l}</label>`).join('');
   showModal(rt ? 'Edit recurring task' : 'New recurring task', `
     <div class="form-group"><label class="form-label">Title *</label><input class="form-control" id="rt-title" value="${esc(rt?.title || '')}" placeholder="e.g. Weekly stock report"></div>
     <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="rt-desc" rows="2">${esc(rt?.description || '')}</textarea></div>
     <div class="form-group"><label class="form-label">Assignee(s) * <span style="color:var(--muted);font-size:11px">(select one or more)</span></label>
-      <div style="max-height:130px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px">${assigneeChecks || '<div style="padding:8px;color:var(--muted);font-size:12px">No employees yet</div>'}</div>
+      <div style="max-height:130px;overflow-y:auto;border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));padding:4px">${assigneeChecks || '<div style="padding:8px;color:var(--muted);font-size:12px">No employees yet</div>'}</div>
     </div>
     <div class="form-group"><label class="form-label">Repeat *</label>
       <select class="form-control" id="rt-type" onchange="rtToggleTypeFields()">
@@ -2412,7 +2413,7 @@ async function loadTaskComments() {
   const list = document.getElementById('tc-list');
   if (!list) return;
   list.innerHTML = (Array.isArray(rows) && rows.length) ? rows.map(c => `
-    <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:8px 12px">
+    <div style="background:rgba(var(--ov,255,255,255),.03);border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));padding:8px 12px">
       <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);margin-bottom:3px"><strong style="color:var(--text)">${esc(c.author_name || '—')}</strong><span>${new Date(c.created_at).toLocaleString()}</span></div>
       ${c.body ? `<div style="font-size:13px;white-space:pre-wrap;word-break:break-word">${tcRenderBody(c.body)}</div>` : ''}
       ${commentAttachHtml(c)}${googleUnfurl(c.body)}
@@ -2467,7 +2468,7 @@ function gLinkCard(url) {
 function tcRenderBody(b) {
   let h = esc(b || '');
   (employeesForTasks || []).forEach(e => {
-    if (e.name) h = h.split('@' + esc(e.name)).join(`<span style="color:var(--gold);font-weight:700">@${esc(e.name)}</span>`);
+    if (e.name) h = h.split('@' + esc(e.name)).join(`<span style="color:var(--primary-text,var(--gold));font-weight:700">@${esc(e.name)}</span>`);
   });
   return h;
 }
@@ -2541,7 +2542,7 @@ async function uploadCSV() {
   const data = await r.json();
   const res = document.getElementById('csv-result');
   if (data.error) { res.innerHTML = `<div class="error-msg">${esc(data.error)}</div>`; return; }
-  res.innerHTML = `<div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;padding:10px 14px;border-radius:8px;font-size:13px">Inserted <strong>${data.inserted}</strong> task(s)${data.errors?.length ? `<br><span style="color:var(--warning)">${data.errors.join('<br>')}</span>` : ''}</div>`;
+  res.innerHTML = `<div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;padding:10px 14px;border-radius:calc(8px * var(--r-k,1));font-size:13px">Inserted <strong>${data.inserted}</strong> task(s)${data.errors?.length ? `<br><span style="color:var(--warning)">${data.errors.join('<br>')}</span>` : ''}</div>`;
   loadDashboard();
 }
 
@@ -2582,7 +2583,7 @@ async function importStockCsv() {
   const r = await fetch('/api/dashboard/stock/bulk', { method: 'POST', headers, body: fd });
   const data = await r.json();
   if (!r.ok || data.error) { res.innerHTML = `<div class="error-msg">${esc(data.error || 'Upload failed')}</div>`; return; }
-  res.innerHTML = `<div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;padding:10px 14px;border-radius:8px;font-size:13px">Imported <strong>${data.inserted}</strong> vehicle(s)${data.errors?.length ? `<br><span style="color:var(--warning)">${data.errors.map(esc).join('<br>')}</span>` : ''}</div>`;
+  res.innerHTML = `<div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;padding:10px 14px;border-radius:calc(8px * var(--r-k,1));font-size:13px">Imported <strong>${data.inserted}</strong> vehicle(s)${data.errors?.length ? `<br><span style="color:var(--warning)">${data.errors.map(esc).join('<br>')}</span>` : ''}</div>`;
   loadStock();
 }
 
@@ -2980,7 +2981,7 @@ async function gchatOpen(space, keepPoll) {
         <button class="chat-send-btn" id="gchat-send" onclick="gchatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
       </div>`
       : `<div class="chat-composer" style="justify-content:center;color:var(--muted);font-size:12px">
-          Read-only — you didn't grant permission to send. <a href="#" onclick="gchatConnect();return false" style="color:var(--primary);margin-left:4px">Reconnect</a>
+          Read-only — you didn't grant permission to send. <a href="#" onclick="gchatConnect();return false" style="color:var(--primary-text,var(--primary));margin-left:4px">Reconnect</a>
         </div>`}`;
   await gchatLoadMessages();
   if (!keepPoll) gchatStartPoll();
@@ -3096,12 +3097,13 @@ async function calendarSyncToggle() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { home: loadHome, tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: () => initQuotationPage(), calendar: () => { loadCalendarSync(); loadCalendar(); }, gchat: loadGChat, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, meet: () => loadMeetings(), reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests, accounting: () => loadAccounting() };
+const pageLoaders = { home: loadHome, tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: () => initQuotationPage(), calendar: () => { loadCalendarSync(); loadCalendar(); }, gchat: loadGChat, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, meet: () => loadMeetings(), reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests, accounting: () => loadAccounting(), workspace: () => wsAdminLoad() };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
   if (currentPage === 'whatsapp' && page !== 'whatsapp') waCloseSse();
   if (currentPage === 'gchat' && page !== 'gchat') gchatStopPoll();
+  if (currentPage === 'workspace' && page !== 'workspace' && typeof wsAdminLeave === 'function') wsAdminLeave();
   // A page id that doesn't exist — a stale hash, or a cached bundle whose page
   // list disagrees with the HTML mid-deploy — used to throw here, which killed
   // init and left the whole app blank. Fall back to home like the team portal.
@@ -3404,7 +3406,7 @@ async function loadEmployees() {
           const scoped = !!(sc.assignedOnly || (sc.dealStages && sc.dealStages.length) || (sc.leadStatuses && sc.leadStatuses.length));
           const badges = empPermsCell(p, scoped);
           const initials = (e.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-          const avatar = e.avatar_url ? `<img src="${esc(e.avatar_url)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;font-size:10px;font-weight:700;vertical-align:middle;margin-right:8px">${initials}</span>`;
+          const avatar = e.avatar_url ? `<img src="${esc(e.avatar_url)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--primary);color:var(--on-primary-w,#fff);font-size:10px;font-weight:700;vertical-align:middle;margin-right:8px">${initials}</span>`;
           const statusStr = (e.status_emoji || e.status_text) ? `${esc(e.status_emoji||'')} ${esc(e.status_text||'')}`.trim() : '—';
           return `<tr>
             <td><input type="checkbox" class="emp-pick" value="${e.id}" ${_empPicked.has(e.id) ? 'checked' : ''} onchange="empTogglePick(${e.id})"></td>
@@ -3912,7 +3914,7 @@ function renderRequestsTable() {
     <tbody>${allRequests.map(r => `<tr>
       <td class="task-id">#${r.id}</td>
       <td><div class="task-title">${esc(r.title)}</div>${r.description ? `<div class="task-desc">${esc(r.description)}</div>` : ''}${r.category ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(r.category)}</div>` : ''}</td>
-      <td style="font-size:13px"><span style="background:rgba(99,102,241,.12);color:var(--primary);padding:3px 8px;border-radius:6px;font-size:12px;font-weight:600">${esc(r.created_by || '—')}</span></td>
+      <td style="font-size:13px"><span style="background:rgba(99,102,241,.12);color:var(--primary-text,var(--primary));padding:3px 8px;border-radius:6px;font-size:12px;font-weight:600">${esc(r.created_by || '—')}</span></td>
       <td>${priorityBadge(r.priority)}</td>
       <td><span class="badge ${reqStatusColors[r.status] || 'badge-pending'}">${reqStatusLabels[r.status] || r.status}</span></td>
       <td style="font-size:12px;color:var(--muted)">${esc(reqAssigneeName(r) || '—')}</td>
@@ -4001,7 +4003,7 @@ async function loadRequestComments() {
   const list = document.getElementById('rc-list');
   if (!list) return;
   list.innerHTML = (Array.isArray(rows) && rows.length) ? rows.map(c => `
-    <div style="background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:8px 12px">
+    <div style="background:rgba(var(--ov,255,255,255),.03);border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));padding:8px 12px">
       <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);margin-bottom:3px"><strong style="color:var(--text)">${esc(c.author_name || '—')}</strong><span>${new Date(c.created_at).toLocaleString()}</span></div>
       ${c.body ? `<div style="font-size:13px;white-space:pre-wrap;word-break:break-word">${tcRenderBody(c.body)}</div>` : ''}
       ${commentAttachHtml(c)}${googleUnfurl(c.body)}
@@ -4124,7 +4126,7 @@ async function loadEmail() {
       c.innerHTML = `<div class="email-connect-card">
         <div class="email-icon"></div><div class="email-title">Connect Gmail</div>
         <div class="email-sub">Add these env vars in Railway then redeploy:</div>
-        <pre style="text-align:left;background:var(--bg);padding:12px;border-radius:8px;font-size:12px;margin-bottom:16px">GOOGLE_CLIENT_ID=...\nGOOGLE_CLIENT_SECRET=...\nAPP_URL=https://your-app.railway.app</pre>
+        <pre style="text-align:left;background:var(--bg);padding:12px;border-radius:calc(8px * var(--r-k,1));font-size:12px;margin-bottom:16px">GOOGLE_CLIENT_ID=...\nGOOGLE_CLIENT_SECRET=...\nAPP_URL=https://your-app.railway.app</pre>
       </div>`; return;
     }
     if (!status.connected) {
@@ -4138,7 +4140,7 @@ async function loadEmail() {
     c.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:36px;height:36px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px">${esc(status.name?.[0]||'?')}</div>
+          <div style="width:36px;height:36px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--on-primary-w,#fff);font-size:15px">${esc(status.name?.[0]||'?')}</div>
           <div><div style="font-weight:600;font-size:14px">${esc(status.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(status.email)}</div></div>
         </div>
         <div style="display:flex;gap:8px">
@@ -4172,7 +4174,7 @@ function renderInboxList() {
   if (!inbox) return;
   if (!emailInboxCache.length) { inbox.innerHTML = '<div class="empty-state" style="padding:24px">No messages</div>'; return; }
   inbox.innerHTML = emailInboxCache.map(m => `
-    <div class="inbox-item" onclick="openEmail('${esc(m.id)}')" style="cursor:pointer;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;gap:10px;align-items:flex-start;transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
+    <div class="inbox-item" onclick="openEmail('${esc(m.id)}')" style="cursor:pointer;padding:14px 20px;border-bottom:1px solid rgba(var(--ov,255,255,255),.04);display:flex;gap:10px;align-items:flex-start;transition:background .15s" onmouseover="this.style.background='rgba(var(--ov,255,255,255),.03)'" onmouseout="this.style.background=''">
       ${m.unread ? '<div class="unread-dot" style="width:8px;height:8px;background:var(--primary);border-radius:50%;flex-shrink:0;margin-top:5px"></div>' : '<div style="width:8px;flex-shrink:0"></div>'}
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px">
@@ -4292,9 +4294,9 @@ function driveFileIcon(mimeType) {
   if (mimeType === 'application/vnd.google-apps.document') return '<i data-lucide="file-text" style="width:16px;height:16px;vertical-align:middle;color:var(--info)"></i>';
   if (mimeType === 'application/vnd.google-apps.presentation') return '<i data-lucide="presentation" style="width:16px;height:16px;vertical-align:middle;color:var(--warning)"></i>';
   if (mimeType === 'application/pdf') return '<i data-lucide="file-type" style="width:16px;height:16px;vertical-align:middle;color:var(--danger)"></i>';
-  if (mimeType.startsWith('image/')) return '<i data-lucide="image" style="width:16px;height:16px;vertical-align:middle;color:var(--primary)"></i>';
+  if (mimeType.startsWith('image/')) return '<i data-lucide="image" style="width:16px;height:16px;vertical-align:middle;color:var(--primary-text,var(--primary))"></i>';
   if (mimeType.startsWith('video/')) return '<i data-lucide="video" style="width:16px;height:16px;vertical-align:middle;color:var(--warning)"></i>';
-  if (mimeType.startsWith('audio/')) return '<i data-lucide="music" style="width:16px;height:16px;vertical-align:middle;color:var(--primary)"></i>';
+  if (mimeType.startsWith('audio/')) return '<i data-lucide="music" style="width:16px;height:16px;vertical-align:middle;color:var(--primary-text,var(--primary))"></i>';
   return '<i data-lucide="paperclip" style="width:16px;height:16px;vertical-align:middle"></i>';
 }
 
@@ -4337,14 +4339,14 @@ async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, co
       <div class="page-body">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
           <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:36px;height:36px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px">${esc(status.name?.[0]||'?')}</div>
+            <div style="width:36px;height:36px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--on-primary-w,#fff);font-size:15px">${esc(status.name?.[0]||'?')}</div>
             <div><div style="font-weight:600;font-size:14px">${esc(status.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(status.email)}</div></div>
           </div>
           <button class="btn btn-outline" onclick="${disconnectFn}()" style="font-size:12px">Disconnect</button>
         </div>
         ${status.canUpload === false ? `<div class="error-msg" style="display:block;margin-bottom:16px">
           This connection was authorised before uploads were supported, so attaching a client
-          file will fail. <a href="#" onclick="${connectFn}();return false" style="color:var(--primary)">Reconnect</a> to fix it.
+          file will fail. <a href="#" onclick="${connectFn}();return false" style="color:var(--primary-text,var(--primary))">Reconnect</a> to fix it.
         </div>` : ''}
         <div class="table-card">
           <div class="table-header"><span class="table-title">${icon} ${title}</span><span style="font-size:12px;color:var(--muted)">${files.length} file${files.length!==1?'s':''}</span></div>
@@ -4355,7 +4357,7 @@ async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, co
               <th style="padding:10px 16px;border-bottom:1px solid var(--border)"></th>
             </tr></thead>
             <tbody>${files.map((f, i) => `
-              <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+              <tr style="border-bottom:1px solid rgba(var(--ov,255,255,255),.04)">
                 <td style="padding:12px 16px;font-size:13px">${driveFileIcon(f.mimeType)} ${esc(f.name)}</td>
                 <td style="padding:12px 16px;font-size:12px;color:var(--muted)">${f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '—'}</td>
                 <td style="padding:12px 16px;text-align:right;white-space:nowrap">
@@ -4606,7 +4608,7 @@ function notifCenterClick(id, urlEnc, type) {
 function showAdminToast(msg) {
   let t = document.createElement('div');
   t.textContent = msg;
-  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#141416;color:#f3efe7;border:1px solid var(--hair-gold);padding:12px 18px;border-radius:8px;font-size:13px;z-index:9999;opacity:0;transition:opacity .3s,transform .3s;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,.5);';
+  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--option-bg,#141416);color:var(--text,#f3efe7);border:1px solid var(--hair-gold);padding:12px 18px;border-radius:calc(8px * var(--r-k,1));font-size:13px;z-index:9999;opacity:0;transition:opacity .3s,transform .3s;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,calc(.5 * var(--sh-k,1)));';
   document.body.appendChild(t);
   requestAnimationFrame(() => { t.style.opacity = '1'; t.style.transform = 'translateX(-50%) translateY(0)'; });
   setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(-50%) translateY(20px)'; setTimeout(() => t.remove(), 400); }, 4000);
@@ -4824,7 +4826,7 @@ async function adminChatOpenRoom(roomId) {
       <button onclick="adminChatStopRecording()" class="btn btn-primary btn-sm">Send <i data-lucide="check" style="width:12px;height:12px"></i></button>
     </div>
     <div class="chat-reply-bar" id="admin-reply-bar">
-      <span style="color:var(--primary);display:flex"><i data-lucide="corner-up-left" style="width:14px;height:14px"></i></span>
+      <span style="color:var(--primary-text,var(--primary));display:flex"><i data-lucide="corner-up-left" style="width:14px;height:14px"></i></span>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:11px" id="admin-reply-sender"></div>
         <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="admin-reply-body"></div>
@@ -5309,67 +5311,7 @@ async function adminCreateGroup() {
   if (picture) await chatRoomPictureUpload(room.id, picture);
 }
 
-// ── Workspace: its name and picture ───────────────────────────────────────────
-// Everyone sees them — the sidebar and header of both portals, the sign-in page, the
-// browser tab — and every open page updates the moment they change (assets/workspace.js).
-function openWorkspaceSettings() {
-  const ws = wsCurrent();
-  showModal('Workspace', `
-    <div class="ws-edit-pic">
-      <div class="logo ws-edit-face" aria-hidden="true"></div>
-      <div style="min-width:0">
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-outline btn-sm" type="button" onclick="document.getElementById('ws-logo-input').click()">
-            <i data-lucide="image-up" style="width:13px;height:13px"></i> ${ws.logo_url ? 'Change picture' : 'Upload a picture'}</button>
-          ${ws.logo_url ? `<button class="btn btn-outline btn-sm" type="button" onclick="wsRemoveLogo()">Use the default</button>` : ''}
-        </div>
-        <div class="ws-edit-hint">The workspace's profile picture. A square image works best — PNG, JPEG, WebP or GIF, up to 5 MB.</div>
-        <input type="file" id="ws-logo-input" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" onchange="wsUploadLogo(this)">
-      </div>
-    </div>
-    <div class="form-group" style="margin-top:16px">
-      <label class="form-label" for="ws-name">Workspace name</label>
-      <input class="form-control" id="ws-name" maxlength="60" value="${esc(ws.name)}" onkeydown="if(event.key==='Enter')wsSaveName()">
-      <div class="ws-edit-hint">Shown in the sidebar and header of both portals, the team's sign-in page and the browser tab.</div>
-    </div>`,
-    `<button class="btn btn-outline" onclick="hideModal()">Close</button>
-     <button class="btn btn-primary" id="ws-save-btn" onclick="wsSaveName()">Save name</button>`);
-  requestAnimationFrame(() => lucide.createIcons());
-}
-async function wsSaveName() {
-  const input = document.getElementById('ws-name');
-  const name = (input && input.value || '').trim();
-  if (!name) { showAdminToast('Give the workspace a name.'); return; }
-  const r = await apiFetch('/api/dashboard/workspace', { method: 'PUT', body: JSON.stringify({ name }) });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) { showAdminToast(d.error || 'Could not rename the workspace.'); return; }
-  wsApply(d);
-  showAdminToast('Workspace renamed to ' + d.name + '.');
-}
-async function wsUploadLogo(input) {
-  const f = input.files && input.files[0];
-  input.value = '';
-  if (!f) return;
-  if (!/^image\/(png|jpeg|webp|gif)$/.test(f.type || '')) { showAdminToast('Choose a PNG, JPEG, WebP or GIF picture.'); return; }
-  if (f.size > 5 * 1024 * 1024) { showAdminToast('The picture must be under 5 MB.'); return; }
-  const pic = await chatSquarePicture(f, 512);
-  const fd = new FormData();
-  fd.append('file', pic.blob, pic.name);
-  const r = await apiFetch('/api/dashboard/workspace/logo', { method: 'POST', body: fd });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) { showAdminToast(d.error || 'Could not set the picture.'); return; }
-  wsApply(d);
-  showAdminToast('Workspace picture updated.');
-  openWorkspaceSettings();
-}
-async function wsRemoveLogo() {
-  const r = await apiFetch('/api/dashboard/workspace/logo', { method: 'DELETE' });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) { showAdminToast(d.error || 'Could not remove the picture.'); return; }
-  wsApply(d);
-  showAdminToast('Back to the default picture.');
-  openWorkspaceSettings();
-}
+// ── Workspace: its name, picture and look → assets/workspace-admin.js ──────────
 
 // ── Approvals (employee-requested lead/deal deletions awaiting sign-off) ────────
 async function loadDeletionRequests() {
@@ -5382,13 +5324,13 @@ async function loadDeletionRequests() {
     updateDeletionBadge(pending.length);
     const card = (r, actionable) => `
       <div class="card" style="display:flex;align-items:center;gap:14px;padding:14px 18px;margin-bottom:10px">
-        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:3px 8px;border-radius:20px;background:${r.entity_type === 'lead' ? 'rgba(124,106,255,.15)' : 'rgba(90,180,120,.15)'};color:${r.entity_type === 'lead' ? 'var(--primary)' : '#5ab478'}">${r.entity_type}</span>
+        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:3px 8px;border-radius:calc(20px * var(--r-k,1));background:${r.entity_type === 'lead' ? 'rgba(124,106,255,.15)' : 'rgba(90,180,120,.15)'};color:${r.entity_type === 'lead' ? 'var(--primary)' : '#5ab478'}">${r.entity_type}</span>
         <div style="flex:1;min-width:0">
           <div style="font-weight:600;font-size:14px">${esc(r.entity_label || ('#' + r.entity_id))}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:2px">by ${esc(r.requested_by)} · ${new Date(r.created_at).toLocaleString()}${r.reason ? ' · “' + esc(r.reason) + '”' : ''}</div>
         </div>
         ${actionable ? `
-          <button class="btn btn-sm btn-outline" style="color:#5ab478;border-color:#5ab478" onclick="reviewDeletion(${r.id}, 'approved')"><i data-lucide="check" style="width:13px;height:13px"></i> Approve &amp; delete</button>
+          <button class="btn btn-sm btn-outline" style="color:var(--h-5ab478,#5ab478);border-color:#5ab478" onclick="reviewDeletion(${r.id}, 'approved')"><i data-lucide="check" style="width:13px;height:13px"></i> Approve &amp; delete</button>
           <button class="btn btn-sm btn-outline" onclick="reviewDeletion(${r.id}, 'rejected')"><i data-lucide="x" style="width:13px;height:13px"></i> Reject</button>`
           : `<span style="font-size:12px;font-weight:700;color:${r.status === 'approved' ? '#5ab478' : 'var(--muted)'}">${r.status === 'approved' ? '✓ Approved' : 'Rejected'}</span>`}
       </div>`;
@@ -5426,8 +5368,8 @@ function helpInit() {
   style.textContent = `
     .hb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9994;opacity:0;pointer-events:none;transition:opacity .2s}
     .hb-overlay.open{opacity:1;pointer-events:auto}
-    .hb-panel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(201,163,94,.3);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,.5)}
-    .hb-panel.open{transform:translateX(0)}
+    .hb-panel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(var(--primary-rgb,201,163,94),.3);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1), box-shadow 0s .28s;box-shadow:none}
+    .hb-panel.open{transform:translateX(0);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,calc(.5 * var(--sh-k,1)))}
     .hb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 18px;border-bottom:1px solid var(--border,#2a2a2e)}
     .hb-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
     .hb-tabs{display:flex;gap:4px;padding:10px 14px 0;border-bottom:1px solid var(--border,#2a2a2e)}
@@ -5436,10 +5378,10 @@ function helpInit() {
     .hb-tab.active{color:var(--text,#e8e4da);border-bottom-color:var(--primary,#c9a35e)}
     .hb-docs{flex:1;overflow-y:auto;padding:14px;display:none;flex-direction:column;gap:10px}
     .hb-docs.open{display:flex}
-    .hb-search{background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);
-               border-radius:8px;padding:8px 11px;font-size:13px;font-family:inherit}
+    .hb-search{background:var(--field-bg-2,#101013);color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);
+               border-radius:calc(8px * var(--r-k,1));padding:8px 11px;font-size:13px;font-family:inherit}
     .hb-doc{display:block;width:100%;text-align:start;background:none;border:1px solid var(--border,#2a2a2e);
-            border-radius:9px;padding:10px 12px;color:inherit;cursor:pointer;margin-bottom:7px}
+            border-radius:calc(9px * var(--r-k,1));padding:10px 12px;color:inherit;cursor:pointer;margin-bottom:7px}
     .hb-doc:hover{border-color:var(--primary,#c9a35e)}
     .hb-doc-t{font-size:13px;font-weight:700}
     .hb-doc-s{font-size:11.5px;color:var(--muted,#9a958a);margin-top:3px;
@@ -5448,16 +5390,16 @@ function helpInit() {
     .hb-art p{font-size:13px;line-height:1.65;margin:0 0 9px}
     .hb-art li{font-size:13px;line-height:1.65;margin-bottom:4px}
     .hb-art[dir="rtl"]{text-align:right}
-    .hb-back{background:none;border:none;color:var(--primary,#c9a35e);font-size:12px;cursor:pointer;padding:0 0 8px}
-    .hb-msg{max-width:86%;padding:10px 13px;border-radius:14px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
-    .hb-msg.user{align-self:flex-end;background:var(--primary,#c9a35e);color:#0c0c0e;border-bottom-right-radius:4px}
-    .hb-msg.bot{align-self:flex-start;background:rgba(255,255,255,.06);color:var(--text,#e8e4da);border-bottom-left-radius:4px}
+    .hb-back{background:none;border:none;color:var(--primary-text,var(--primary,#c9a35e));font-size:12px;cursor:pointer;padding:0 0 8px}
+    .hb-msg{max-width:86%;padding:10px 13px;border-radius:calc(14px * var(--r-k,1));font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+    .hb-msg.user{align-self:flex-end;background:var(--primary,#c9a35e);color:var(--on-primary,#0c0c0e);border-bottom-right-radius:calc(4px * var(--r-k,1))}
+    .hb-msg.bot{align-self:flex-start;background:rgba(var(--ov,255,255,255),.06);color:var(--text,#e8e4da);border-bottom-left-radius:calc(4px * var(--r-k,1))}
     .hb-msg.ar{direction:rtl;text-align:right}
-    .hb-chip{display:inline-block;margin:4px 4px 0 0;padding:6px 10px;font-size:12px;border:1px solid var(--border,#2a2a2e);border-radius:16px;cursor:pointer;color:var(--muted,#9a958a);background:none}
-    .hb-chip:hover{border-color:var(--primary,#c9a35e);color:var(--primary,#c9a35e)}
+    .hb-chip{display:inline-block;margin:4px 4px 0 0;padding:6px 10px;font-size:12px;border:1px solid var(--border,#2a2a2e);border-radius:calc(16px * var(--r-k,1));cursor:pointer;color:var(--muted,#9a958a);background:none}
+    .hb-chip:hover{border-color:var(--primary,#c9a35e);color:var(--primary-text,var(--primary,#c9a35e))}
     .hb-composer{display:flex;gap:8px;padding:12px;border-top:1px solid var(--border,#2a2a2e)}
-    .hb-composer textarea{flex:1;resize:none;background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:10px;padding:9px 12px;font-size:13.5px;font-family:inherit;max-height:120px}
-    .hb-send{background:var(--primary,#c9a35e);color:#0c0c0e;border:none;border-radius:10px;padding:0 14px;cursor:pointer;font-weight:700}
+    .hb-composer textarea{flex:1;resize:none;background:var(--field-bg-2,#101013);color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:calc(10px * var(--r-k,1));padding:9px 12px;font-size:13.5px;font-family:inherit;max-height:120px}
+    .hb-send{background:var(--primary,#c9a35e);color:var(--on-primary,#0c0c0e);border:none;border-radius:calc(10px * var(--r-k,1));padding:0 14px;cursor:pointer;font-weight:700}
   `;
   document.head.appendChild(style);
   const root = document.createElement('div');
@@ -5471,7 +5413,7 @@ function helpInit() {
           <div id="hb-status" style="font-size:11px;margin-top:2px;display:none"></div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
-          <select id="hb-lang" onchange="_helpLang=this.value" style="background:#101013;color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:8px;padding:4px 6px">
+          <select id="hb-lang" onchange="_helpLang=this.value" style="background:var(--field-bg-2,#101013);color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:calc(8px * var(--r-k,1));padding:4px 6px">
             <option value="auto">Auto</option><option value="en">EN</option><option value="ar">AR</option>
           </select>
           <button onclick="helpClose()" style="background:none;border:none;color:var(--muted,#9a958a);font-size:22px;cursor:pointer;line-height:1">×</button>
@@ -5575,8 +5517,8 @@ async function helpRefreshStatus() {
     const d = await apiFetch('/api/dashboard/help/status').then(r => r.json());
     el.style.display = 'block'; el.title = '';
     if (d.ai && d.ok) { el.textContent = '● AI connected (' + String(d.model || 'AI').replace(/^@cf\/[^/]+\//, '') + (d.provider ? ' via ' + d.provider : '') + ')'; el.style.color = '#6dd8a4'; }
-    else if (d.ai && d.status === 429) { el.textContent = '● AI busy — out of capacity, retry shortly'; el.style.color = '#e6a850'; el.title = d.error || ''; }
-    else if (d.ai && d.ok === false) { el.textContent = '● AI key set but failing — tap for details'; el.style.color = '#e6a850'; el.title = d.error || 'unknown error'; }
+    else if (d.ai && d.status === 429) { el.textContent = '● AI busy — out of capacity, retry shortly'; el.style.color = 'var(--h-e6a850,#e6a850)'; el.title = d.error || ''; }
+    else if (d.ai && d.ok === false) { el.textContent = '● AI key set but failing — tap for details'; el.style.color = 'var(--h-e6a850,#e6a850)'; el.title = d.error || 'unknown error'; }
     else if (d.ai) { el.textContent = '● AI ready — send a message to test'; el.style.color = 'var(--muted,#9a958a)'; }
     else { el.textContent = '● AI off — answering from the built-in guide'; el.style.color = 'var(--muted,#9a958a)'; }
   } catch (_) { el.style.display = 'none'; }
@@ -5884,7 +5826,7 @@ function renderLeadHead() {
   tr.innerHTML = `
     <th style="width:36px;padding:8px 6px"><input type="checkbox" id="select-all-leads" onchange="toggleSelectAllLeads(this)"></th>
     ${ths}
-    <th style="width:34px;text-align:center"><button onclick="openAddLeadColModal()" title="Add column" style="background:none;border:1px dashed var(--border);border-radius:6px;color:var(--muted);cursor:pointer;width:24px;height:24px;font-size:15px;line-height:1">+</button></th>
+    <th style="width:34px;text-align:center"><button onclick="openAddLeadColModal()" title="Add column" style="background:none;border:1px dashed var(--border);border-radius:calc(6px * var(--r-k,1));color:var(--muted);cursor:pointer;width:24px;height:24px;font-size:15px;line-height:1">+</button></th>
     <th>Actions</th>`;
   requestAnimationFrame(() => lucide.createIcons());
 }
@@ -6006,7 +5948,7 @@ async function saveLeadCell(id, col, val) {
 function leadCellHtml(c, col) {
   const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
   const attrs = `class="lead-cell" onclick="leadCellClick(event, ${c.id}, '${esc(col.key)}')"`;
-  if (col.key === 'name') return `<td ${attrs} title="Open profile"><strong style="color:var(--primary);cursor:pointer">${esc(raw || '—')}</strong></td>`;
+  if (col.key === 'name') return `<td ${attrs} title="Open profile"><strong style="color:var(--primary-text,var(--primary));cursor:pointer">${esc(raw || '—')}</strong></td>`;
   if (col.key === 'next_followup') {
     const due = _pendingFollowups[c.id];
     if (!due) return `<td ${attrs} style="font-size:12px;color:var(--muted)">—</td>`;
@@ -6153,7 +6095,7 @@ function leadHeaderClick(e, key) {
 }
 function leadSortArrow(key) {
   if (!_leadSort || _leadSort.key !== key) return '';
-  return `<span class="lead-sort-arrow" style="color:var(--primary);margin-left:3px;font-size:10px">${_leadSort.dir === 'desc' ? '▼' : '▲'}</span>`;
+  return `<span class="lead-sort-arrow" style="color:var(--primary-text,var(--primary));margin-left:3px;font-size:10px">${_leadSort.dir === 'desc' ? '▼' : '▲'}</span>`;
 }
 
 // ── Lead filters ────────────────────────────────────────────────────────────────
@@ -6322,8 +6264,11 @@ function renderLeadDrawer() {
   const badge = document.getElementById('ld-status');
   badge.textContent = (stMap[stKey] || c.lead_status || 'Cold') + ' ▾';
   const stHex = leadOptColor(stCol, stKey);
-  badge.style.background = stHex ? hexA(stHex, 0.12) : 'rgba(255,255,255,.06)';
-  badge.style.color = stHex || '#b9b3a4';
+  badge.style.background = stHex ? hexA(stHex, 0.12) : 'rgba(var(--ov,255,255,255),.06)';
+  badge.style.color = stHex || 'var(--text-2,#b9b3a4)';
+  // A colour somebody picked is data: light mode mixes it toward the text colour (.ce-pill).
+  badge.classList.toggle('ce-pill', !!stHex);
+  if (stHex) badge.style.setProperty('--ce-c', stHex); else badge.style.removeProperty('--ce-c');
   document.getElementById('ld-phone').textContent = c.phone || '';
   document.getElementById('ld-call').href = c.phone ? 'tel:' + c.phone : '#';
   document.getElementById('ld-wa').href = c.phone ? 'https://wa.me/' + ldWaDigits(c.phone) : '#';
@@ -6365,8 +6310,8 @@ function renderLeadDrawer() {
     let bodyHtml = esc(a.body || '');
     if (a.type === 'status_change' && a.meta?.to) {
       const fk = normKey(a.meta.from, stMap), tk = normKey(a.meta.to, stMap);
-      const pill = k => { const h = leadOptColor(stCol, k); return `background:${h ? hexA(h, 0.12) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
-      bodyHtml = `Status: <span class="ld-stage-pill" style="${pill(fk)}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="${pill(tk)}">${esc(stMap[tk] || a.meta.to)}</span>`;
+      const pill = (k, label) => { const h = leadOptColor(stCol, k); return `<span class="ld-stage-pill${h ? ' ce-pill' : ''}" style="background:${h ? hexA(h, 0.12) : 'rgba(var(--ov,255,255,255),.06)'};color:${h || 'var(--text-2,#b9b3a4)'}${h ? ';--ce-c:' + h : ''}">${esc(label)}</span>`; };
+      bodyHtml = `Status: ${pill(fk, stMap[fk] || a.meta.from || '—')} → ${pill(tk, stMap[tk] || a.meta.to)}`;
     }
     return `<div class="ld-tl-item">
       <div class="ld-tl-icon"><i data-lucide="${LD_ACT_ICONS[a.type] || 'circle'}"></i></div>
@@ -6642,10 +6587,10 @@ function attachVehicleSearch(inputId, priceId, resultsId, endpoint, hintId, imag
       const items = d.items || [];
       if (!items.length) { hide(); return; }
       results.innerHTML = items.map((it, i) => `
-        <div class="veh-opt" data-i="${i}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;gap:10px;align-items:center"
+        <div class="veh-opt" data-i="${i}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(var(--ov,255,255,255),.05);display:flex;justify-content:space-between;gap:10px;align-items:center"
              onmouseover="this.style.background='rgba(201,163,94,.12)'" onmouseout="this.style.background='none'">
           <div style="min-width:0"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</div>${it.subtitle ? `<div style="font-size:11px;color:var(--muted)">${esc(it.subtitle)}</div>` : ''}</div>
-          ${it.price ? `<div style="font-size:12px;color:var(--primary);white-space:nowrap;font-weight:600">${money(it.price)}</div>` : ''}
+          ${it.price ? `<div style="font-size:12px;color:var(--primary-text,var(--primary));white-space:nowrap;font-weight:600">${money(it.price)}</div>` : ''}
         </div>`).join('');
       results._items = items;
       [...results.querySelectorAll('.veh-opt')].forEach(el => el.addEventListener('mousedown', ev => {
@@ -6701,7 +6646,7 @@ function openCustomerModal(id, presetStatus) {
     const v = (c?.custom_fields || {})[col.key];
     if (col.type === 'checkbox') {
       return `<div><label class="form-label">${esc(col.label)}</label>
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#0e0e10;border:1px solid var(--hair);border-radius:6px">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--field-bg,#0e0e10);border:1px solid var(--hair);border-radius:calc(6px * var(--r-k,1))">
           <input type="checkbox" id="cm-cf-${esc(col.key)}" ${v ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--gold)">
           <label for="cm-cf-${esc(col.key)}" style="font-size:13px;cursor:pointer">Yes</label>
         </div></div>`;
@@ -6719,7 +6664,7 @@ function openCustomerModal(id, presetStatus) {
       return `<div style="position:relative"><label class="form-label">${esc(col.label)} <span id="cm-cf-${esc(col.key)}-hint" style="color:var(--muted);font-weight:400;font-size:11px"></span></label>
         <input class="form-input" id="cm-cf-${esc(col.key)}" value="${esc(v ?? '')}" placeholder="Search inventory or type a vehicle…" autocomplete="off">
         <input type="hidden" id="cm-cf-${esc(col.key)}-price"><input type="hidden" id="cm-cf-${esc(col.key)}-images">
-        <div id="cm-cf-${esc(col.key)}-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.45)"></div></div>`;
+        <div id="cm-cf-${esc(col.key)}-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,calc(.45 * var(--sh-k,1)))"></div></div>`;
     }
     const t = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : col.type === 'link' ? 'url' : 'text';
     return `<div><label class="form-label">${esc(col.label)}</label>
@@ -6867,11 +6812,11 @@ async function openDedupeModal() {
       return;
     }
     const fmt = c => [c.phone, c.car_in_question, c.lead_date].filter(Boolean).join(' · ') || '—';
-    body.innerHTML = `<div style="font-size:13px;color:var(--gold);font-weight:600">${data.groupCount} duplicate group(s) · ${data.totalRemove} lead(s) to remove</div>` +
+    body.innerHTML = `<div style="font-size:13px;color:var(--primary-text,var(--gold));font-weight:600">${data.groupCount} duplicate group(s) · ${data.totalRemove} lead(s) to remove</div>` +
       _dedupeGroups.map((g, gi) => `
-        <div style="border:1px solid var(--hair);border-radius:8px;padding:10px 12px">
+        <div style="border:1px solid var(--hair);border-radius:calc(8px * var(--r-k,1));padding:10px 12px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            <span style="font-size:12px;background:rgba(100,180,120,.15);color:#7fce9a;padding:2px 8px;border-radius:6px">KEEP</span>
+            <span style="font-size:12px;background:rgba(100,180,120,.15);color:var(--h-7fce9a,#7fce9a);padding:2px 8px;border-radius:calc(6px * var(--r-k,1))">KEEP</span>
             <strong style="font-size:13px">${esc(g.keeper.name || '(no name)')}</strong>
             <span style="font-size:11px;color:var(--muted)">${esc(fmt(g.keeper))} · #${g.keeper.id}</span>
           </div>
@@ -6908,11 +6853,16 @@ const DEAL_STAGE_LABELS = { lead:'Lead', inquiry:'Inquiry', quoted:'Quoted', neg
 // The same six hues DEAL_STAGE_COLORS carries, at full opacity. That constant was
 // declared and never read, so every kanban column rendered the same grey and the
 // purple on Inquiry — which is in the source — had never been visible.
-const DEAL_STAGE_HEX = { lead:'#c9a35e', inquiry:'#7c6aff', quoted:'#5a78c8', negotiating:'#e69650', won:'#64b478', lost:'#ef4444' };
+// (The Lead stage is the workspace's accent — it is gold only where the accent still is — so it is read when asked.)
+const DEAL_STAGE_HEX = {
+  get lead() { const a = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(); return /^#[0-9a-f]{6}$/i.test(a) ? a : '#c9a35e'; },
+  inquiry:'#7c6aff', quoted:'#5a78c8', negotiating:'#e69650', won:'#64b478', lost:'#ef4444',
+};
 // #5a78c8 is 4.34:1 on the panel: fine as an 8px dot or a 3px bar, not as 10.5px
 // type. The label takes a lighter tone of the same hue; the dot and bar keep the
-// declared value.
-const DEAL_STAGE_TEXT = { quoted:'#8aa4e0' };
+// declared value. Every stage's label reads the token the theme can sink on a light page
+// (the fallbacks are the values the sheets declare for them, so a dark page is unchanged).
+const DEAL_STAGE_TEXT = { lead:'var(--stage-lead,#c9a35e)', inquiry:'var(--stage-inquiry,#7c6aff)', quoted:'var(--stage-quoted-text,#8aa4e0)', negotiating:'var(--stage-negotiating,#e69650)', won:'var(--stage-won,#64b478)', lost:'var(--stage-lost,#ef4444)' };
 const DEAL_STAGE_COLORS = { lead:'rgba(201,163,94,.15)', inquiry:'rgba(124,106,255,.15)', quoted:'rgba(90,120,200,.15)', negotiating:'rgba(230,150,80,.15)', won:'rgba(100,180,120,.15)', lost:'rgba(239,68,68,.1)' };
 let _allDeals = [];
 let _dealsCustomerFilter = null;
@@ -6999,7 +6949,7 @@ function renderDealsKanban() {
           <span style="font-size:10.5px;color:var(--muted)">EGP</span>
           <span class="num" style="margin-left:auto;font-size:10.5px;font-weight:800;color:${txt}">${pct}% of deals</span>
         </div>
-        <div style="height:3px;background:rgba(255,255,255,.07);border-radius:99px;margin-top:9px;overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:${c};border-radius:99px"></i></div>
+        <div style="height:3px;background:rgba(var(--ov,255,255,255),.07);border-radius:99px;margin-top:9px;overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:${c};border-radius:99px"></i></div>
       </div>
       <div style="padding:0 12px 12px;display:grid;gap:9px">${stagDeals.map(d => dealCard(d)).join('')}
         <button class="lb-add" onclick="openDealModal(null, '${stage}')"><i data-lucide="plus"></i> Add</button>
@@ -7017,13 +6967,13 @@ function dealCard(d) {
       onclick="dealCardClick(${d.id})">
     <div style="font-size:13px;font-weight:600;margin-bottom:6px;line-height:1.3">${esc(d.title)}</div>
     ${customer && d.customer_id
-      ? `<div onclick="dealOpenLead(event, ${d.customer_id})" title="View lead profile" style="font-size:11px;color:var(--primary);margin-bottom:4px;cursor:pointer;display:inline-flex;align-items:center;gap:3px"><i data-lucide="user" style="width:10px;height:10px"></i> ${esc(customer.name)}</div>`
+      ? `<div onclick="dealOpenLead(event, ${d.customer_id})" title="View lead profile" style="font-size:11px;color:var(--primary-text,var(--primary));margin-bottom:4px;cursor:pointer;display:inline-flex;align-items:center;gap:3px"><i data-lucide="user" style="width:10px;height:10px"></i> ${esc(customer.name)}</div>`
       : (customer ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px"><i data-lucide="user" style="width:10px;height:10px"></i> ${esc(customer.name)}</div>` : '')}
     ${d.car_model ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px"><i data-lucide="car" style="width:10px;height:10px"></i> ${esc(d.car_model)}</div>` : ''}
-    ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
+    ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary-text,var(--primary));margin-bottom:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
       ${d.assigned_to ? `<div style="font-size:10px;color:var(--muted)">${esc(d.assigned_to)}</div>` : '<div></div>'}
-      <div style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;${daysOpen > 20 ? 'background:rgba(239,68,68,.12);color:#ef4444' : daysOpen > 10 ? 'background:rgba(245,158,11,.12);color:#f59e0b' : 'color:var(--muted)'}">${daysOpen}d</div>
+      <div style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;${daysOpen > 20 ? 'background:rgba(239,68,68,.12);color:var(--h-ef4444,#ef4444)' : daysOpen > 10 ? 'background:rgba(245,158,11,.12);color:var(--h-f59e0b,#f59e0b)' : 'color:var(--muted)'}">${daysOpen}d</div>
     </div>
   </div>`;
 }
@@ -7056,7 +7006,7 @@ function dealDragStart(e, id) {
   e.dataTransfer.effectAllowed = 'move';
   // Cool drag ghost: a tilted, glowing clone of the card
   const ghost = card.cloneNode(true);
-  ghost.style.cssText = `position:fixed;top:-500px;left:-500px;width:${card.offsetWidth}px;transform:rotate(4deg) scale(1.05);box-shadow:0 14px 40px rgba(201,163,94,.45), 0 0 0 1px var(--primary);border-radius:8px;background:var(--card,#18181b);opacity:.95;pointer-events:none;padding:12px`;
+  ghost.style.cssText = `position:fixed;top:-500px;left:-500px;width:${card.offsetWidth}px;transform:rotate(4deg) scale(1.05);box-shadow:0 14px 40px rgba(var(--primary-rgb,201,163,94),.45), 0 0 0 1px var(--primary);border-radius:calc(8px * var(--r-k,1));background:var(--card,#18181b);opacity:.95;pointer-events:none;padding:12px`;
   document.body.appendChild(ghost);
   e.dataTransfer.setDragImage(ghost, card.offsetWidth / 2, 24);
   setTimeout(() => ghost.remove(), 0);
@@ -7305,7 +7255,7 @@ function waRenderMessages() {
     const t = new Date(m.ts || m.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
     let media = '';
     if (m.media_url) {
-      if ((m.media_type||'').startsWith('image/')) media = `<a href="${esc(m.media_url)}" target="_blank"><img src="${esc(m.media_url)}" style="max-width:220px;border-radius:10px;margin-bottom:4px;display:block"></a>`;
+      if ((m.media_type||'').startsWith('image/')) media = `<a href="${esc(m.media_url)}" target="_blank"><img src="${esc(m.media_url)}" style="max-width:220px;border-radius:calc(10px * var(--r-k,1));margin-bottom:4px;display:block"></a>`;
       else media = `<a href="${esc(m.media_url)}" target="_blank" style="color:inherit;text-decoration:underline"><i data-lucide="paperclip" style="width:12px;height:12px"></i> Attachment</a>`;
     }
     return `<div class="chat-msg ${mine?'mine':'theirs'}">

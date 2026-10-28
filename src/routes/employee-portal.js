@@ -27,9 +27,8 @@ const autoCreateContractForWonDeal = (...a) => ctx.autoCreateContractForWonDeal(
 const changePasswordLimiter = createLimiter({ max: 5, windowMs: 15 * 60_000 });
 
 // ─── Employee Portal ──────────────────────────────────────────────────────────
-// PUBLIC_DIR, not __dirname: this file lives in src/routes, so joining its own
-// directory resolved to src/routes/public and the portal answered 404.
-receiver.router.get('/employee', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'employee.html')));
+// The portal page itself (/employee) is served by src/routes/shell.js, which writes
+// the workspace's name and look into it on the way out.
 
 // Employee Requests
 receiver.router.get('/api/employee/requests', requireEmployeeAuth, requirePerm('requests', 'view'), async (req, res) => {

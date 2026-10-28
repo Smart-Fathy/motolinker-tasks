@@ -25,13 +25,13 @@
   const CSS = `
   #sec-overlay{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:10000;display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px;-webkit-overflow-scrolling:touch}
   #sec-overlay.open{display:flex}
-  .sec-box{background:var(--surface,#141416);border:1px solid var(--border,rgba(255,255,255,.09));border-radius:16px;width:100%;max-width:580px;padding:22px 22px 18px;color:var(--text,#f3efe7);box-shadow:0 20px 60px rgba(0,0,0,.5);margin:auto 0}
+  .sec-box{background:var(--surface,#141416);border:1px solid var(--border,rgba(255,255,255,.09));border-radius:calc(16px * var(--r-k,1));width:100%;max-width:580px;padding:22px 22px 18px;color:var(--text,#f3efe7);box-shadow:0 20px 60px rgba(0,0,0,calc(.5 * var(--sh-k,1)));margin:auto 0}
   .sec-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:4px}
   .sec-title{font-size:17px;font-weight:700}
   .sec-lead{font-size:12px;color:var(--muted,#8d897f);margin:0 0 16px}
-  .sec-x{background:none;border:none;color:var(--muted,#8d897f);font-size:24px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:6px}
+  .sec-x{background:none;border:none;color:var(--muted,#8d897f);font-size:24px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:calc(6px * var(--r-k,1))}
   .sec-x:hover{color:var(--text,#f3efe7)}
-  .sec-card{border:1px solid var(--border,rgba(255,255,255,.09));border-radius:12px;padding:14px 16px;margin-bottom:14px}
+  .sec-card{border:1px solid var(--border,rgba(255,255,255,.09));border-radius:calc(12px * var(--r-k,1));padding:14px 16px;margin-bottom:14px}
   .sec-h{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .sec-sub{font-size:12px;color:var(--muted,#8d897f);margin-top:4px;line-height:1.5}
   .sec-row{display:flex;align-items:center;justify-content:space-between;gap:14px}
@@ -39,30 +39,30 @@
   .sec-pill{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:99px}
   .sec-pill.on{background:rgba(138,154,134,.18);color:var(--success,#8a9a86)}
   .sec-pill.off{background:rgba(201,125,110,.14);color:var(--danger,#c97d6e)}
-  .sec-pill.new{background:rgba(201,163,94,.16);color:var(--warning,#c9a35e)}
+  .sec-pill.new{background:rgba(var(--primary-rgb,201,163,94),.16);color:var(--warning,#c9a35e)}
   .sec-pill.here{background:rgba(138,154,134,.18);color:var(--success,#8a9a86)}
   .sec-list{display:flex;flex-direction:column}
   .sec-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--border,rgba(255,255,255,.09))}
   .sec-item:first-child{border-top:none;padding-top:2px}
   .sec-item b{font-size:13px;font-weight:600}
   .sec-meta{font-size:11.5px;color:var(--muted,#8d897f);margin-top:2px;line-height:1.45}
-  .sec-input{width:100%;box-sizing:border-box;background:var(--bg,#0c0c0e);border:1px solid var(--border,rgba(255,255,255,.12));color:var(--text,#f3efe7);border-radius:9px;padding:11px 12px;font-size:14px;font-family:inherit;margin-top:6px}
+  .sec-input{width:100%;box-sizing:border-box;background:var(--bg,#0c0c0e);border:1px solid var(--border,rgba(255,255,255,.12));color:var(--text,#f3efe7);border-radius:calc(9px * var(--r-k,1));padding:11px 12px;font-size:14px;font-family:inherit;margin-top:6px}
   .sec-input:focus{outline:none;border-color:var(--primary,#c9a35e)}
   .sec-label{font-size:12px;font-weight:600;margin-top:12px;display:block}
-  .sec-btn{border:1px solid var(--border,rgba(255,255,255,.14));background:transparent;color:var(--text,#f3efe7);border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
+  .sec-btn{border:1px solid var(--border,rgba(255,255,255,.14));background:transparent;color:var(--text,#f3efe7);border-radius:calc(9px * var(--r-k,1));padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
   .sec-btn:hover{border-color:var(--primary,#c9a35e)}
   .sec-btn:disabled{opacity:.5;cursor:default}
   .sec-btn.primary{background:var(--primary,#c9a35e);border-color:var(--primary,#c9a35e);color:#17130a}
   .sec-btn.danger{color:var(--danger,#c97d6e);border-color:rgba(201,125,110,.4)}
   .sec-btn.sm{padding:5px 10px;font-size:11.5px}
-  .sec-msg{display:none;padding:10px 14px;border-radius:9px;font-size:12.5px;margin-bottom:12px;line-height:1.45}
+  .sec-msg{display:none;padding:10px 14px;border-radius:calc(9px * var(--r-k,1));font-size:12.5px;margin-bottom:12px;line-height:1.45}
   .sec-msg.err{display:block;background:rgba(201,125,110,.1);border:1px solid rgba(201,125,110,.3);color:var(--danger,#c97d6e)}
   .sec-msg.ok{display:block;background:rgba(138,154,134,.1);border:1px solid rgba(138,154,134,.3);color:var(--success,#8a9a86)}
   .sec-qr{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:10px 0 4px}
-  .sec-qr img{width:176px;height:176px;border-radius:10px;background:#fff;padding:6px;box-sizing:border-box}
-  .sec-key{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;letter-spacing:.06em;word-break:break-all;background:var(--bg,#0c0c0e);border:1px solid var(--border,rgba(255,255,255,.12));border-radius:8px;padding:8px 10px;margin-top:6px;user-select:all}
+  .sec-qr img{width:176px;height:176px;border-radius:calc(10px * var(--r-k,1));background:#fff;padding:6px;box-sizing:border-box}
+  .sec-key{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;letter-spacing:.06em;word-break:break-all;background:var(--bg,#0c0c0e);border:1px solid var(--border,rgba(255,255,255,.12));border-radius:calc(8px * var(--r-k,1));padding:8px 10px;margin-top:6px;user-select:all}
   .sec-codes{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0}
-  .sec-codes code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;background:var(--bg,#0c0c0e);border:1px solid var(--border,rgba(255,255,255,.12));border-radius:8px;padding:8px 10px;text-align:center;user-select:all}
+  .sec-codes code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;background:var(--bg,#0c0c0e);border:1px solid var(--border,rgba(255,255,255,.12));border-radius:calc(8px * var(--r-k,1));padding:8px 10px;text-align:center;user-select:all}
   .sec-steps{font-size:12.5px;color:var(--muted,#8d897f);line-height:1.6;margin:8px 0 0;padding-left:18px}
   .sec-check{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin:12px 0;cursor:pointer}
   .sec-foot{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
@@ -213,7 +213,7 @@
       <ol class="sec-steps"><li>Open the app and add an account (＋), then scan the code below.</li>
         <li>Type the 6-digit code it shows to finish.</li></ol>
       <div class="sec-qr"><img alt="QR code to scan with your authenticator app" src="${esc(s.qr)}">
-        <div style="flex:1;min-width:190px"><div class="sec-sub">On your phone? <a href="${esc(s.otpauth)}" style="color:var(--primary,#c9a35e)">Open in your authenticator app</a>.</div>
+        <div style="flex:1;min-width:190px"><div class="sec-sub">On your phone? <a href="${esc(s.otpauth)}" style="color:var(--primary-text,var(--primary,#c9a35e))">Open in your authenticator app</a>.</div>
           <div class="sec-sub" style="margin-top:10px">Or enter this key by hand:</div><div class="sec-key">${esc(groups4(s.secret))}</div></div></div>
       <label class="sec-label" for="sec-code">6-digit code</label>
       <input class="sec-input" id="sec-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456" onkeydown="if(event.key==='Enter')SecurityPanel.finishSetup()">

@@ -1610,6 +1610,7 @@ function hdThreadEl() {
   if (el) return el;
   el = document.createElement('div');
   el.id = 'hd-thread';
+  el.className = 'on-dark';   // part of the call: it stays dark in a light page, like the widget
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', 'Huddle thread');
   el.innerHTML = '<div class="hd-th-head">'

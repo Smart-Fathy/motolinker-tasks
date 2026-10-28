@@ -507,6 +507,12 @@ ctx.requirePerm = requirePerm;
 // has to work the relative depth out again.
 const PUBLIC_DIR = ctx.PUBLIC_DIR = path.join(__dirname, 'public');
 
+// The two pages and their install manifests are answered here, not by the static
+// middleware below, so the workspace's name, picture and look are already in them
+// when they arrive (src/lib/shell.js). Asked for per request: the workspace module is
+// loaded much further down.
+require('./src/routes/shell').mountShell({ receiver, publicDir: PUBLIC_DIR, profile: () => ctx.workspaceProfile({ patience: 1500 }) });
+
 receiver.router.use(express.static(PUBLIC_DIR));
 
 receiver.router.get('/sw-employee.js', (req, res) => {
@@ -525,7 +531,6 @@ receiver.router.get('/sw-dashboard.js', (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 receiver.router.get('/', (_req, res) => res.redirect('/dashboard'));
-receiver.router.get('/dashboard', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'dashboard.html')));
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 receiver.router.post('/api/auth/login', express.json(), async (req, res) => {

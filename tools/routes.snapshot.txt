@@ -1,11 +1,16 @@
 USE query
 USE expressInit
 USE compression
+GET /dashboard
+GET /dashboard.html
+GET /manifest-dashboard.json
+GET /employee
+GET /employee.html
+GET /manifest-employee.json
 USE serveStatic
 GET /sw-employee.js
 GET /sw-dashboard.js
 GET /
-GET /dashboard
 POST /api/auth/login
 POST /api/auth/logout
 GET /api/auth/check
@@ -165,7 +170,6 @@ POST /api/employee/email/disconnect
 GET /api/employee/email/messages
 GET /api/employee/email/messages/:id
 POST /api/employee/email/send
-GET /employee
 GET /api/employee/requests
 POST /api/employee/requests
 GET /api/dashboard/permissions/catalogue
@@ -294,6 +298,11 @@ POST /api/dashboard/tasks/upload
 POST /api/employee/tasks/upload
 GET /api/workspace
 PUT /api/dashboard/workspace
+PUT /api/dashboard/workspace/theme
+GET /api/dashboard/ui-prefs
+PUT /api/dashboard/ui-prefs
+GET /api/employee/ui-prefs
+PUT /api/employee/ui-prefs
 POST /api/dashboard/workspace/logo
 DELETE /api/dashboard/workspace/logo
 POST /api/dashboard/link-preview

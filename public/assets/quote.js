@@ -274,7 +274,7 @@
       <td><div style="position:relative">
         <input class="form-control" placeholder="e.g. 22500 or Free" value="${esc(priceUsd)}" ${isFree ? 'readonly' : ''} oninput="recalcItem(this)" style="padding-right:50px">
         <span onclick="toggleFreeItem(this)" title="Mark as Free"
-          style="position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;cursor:pointer;padding:2px 6px;border-radius:4px;background:${isFree ? 'var(--primary)' : 'rgba(255,255,255,.08)'};color:${isFree ? '#fff' : 'var(--muted)'}">FREE</span>
+          style="position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;cursor:pointer;padding:2px 6px;border-radius:calc(4px * var(--r-k,1));background:${isFree ? 'var(--primary)' : 'rgba(var(--ov,255,255,255),.08)'};color:${isFree ? '#fff' : 'var(--muted)'}">FREE</span>
       </div></td>
       <td class="qt-egp">—</td>
       <td><button class="qt-remove" onclick="this.closest('.qt-item-row').remove();qtRenumber();recalcGrandTotal()" aria-label="Remove line">✕</button></td>`;
@@ -288,7 +288,7 @@
 
   function toggleFreeItem(btn) {
     const isNowFree = btn.style.background !== 'var(--primary)' && !btn.style.background.includes('124,106,255');
-    btn.style.background = isNowFree ? 'var(--primary)' : 'rgba(255,255,255,.08)';
+    btn.style.background = isNowFree ? 'var(--primary)' : 'rgba(var(--ov,255,255,255),.08)';
     btn.style.color = isNowFree ? '#fff' : 'var(--muted)';
     const input = btn.closest('div').querySelector('input');
     if (isNowFree) { input.value = 'Free'; input.readOnly = true; }
@@ -338,7 +338,7 @@
     row.innerHTML = `
       <input class="form-control" placeholder="e.g. Incoterms: CIF">
       <button onclick="this.closest('.qt-custom-spec-row').remove()"
-        style="background:rgba(248,113,113,.12);border:none;border-radius:6px;color:var(--danger);cursor:pointer;height:26px">✕</button>`;
+        style="background:rgba(248,113,113,.12);border:none;border-radius:calc(6px * var(--r-k,1));color:var(--danger);cursor:pointer;height:26px">✕</button>`;
     container.appendChild(row);
   }
 
@@ -382,7 +382,7 @@
     src = /^(data:image\/[a-z0-9.+-]+;base64,|https:\/\/)/i.test(String(src || '')) ? esc(src) : '';
     const wrap = document.createElement('div');
     wrap.style.cssText = 'position:relative;display:inline-block';
-    wrap.innerHTML = `<img src="${src}" style="height:90px;width:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+    wrap.innerHTML = `<img src="${src}" style="height:90px;width:120px;object-fit:cover;border-radius:calc(8px * var(--r-k,1));border:1px solid var(--border)">
       <button onclick="${onRemove}"
         style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);border:none;border-radius:50%;width:20px;height:20px;color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0">×</button>`;
     return wrap;

@@ -1,4 +1,4 @@
-const CACHE = 'motolinker-dash-v150';
+const CACHE = 'motolinker-dash-v151';
 // The version rides every asset URL (?v=N). The HTML references assets with the
 // SAME stamp, so a deploy changes the cache key: new HTML can never be paired
 // with the previous bundle out of this cache, which is what used to blank the
@@ -6,7 +6,7 @@ const CACHE = 'motolinker-dash-v150';
 // asserts the HTML and this file agree on N.
 const V = CACHE.split('-v')[1];
 const SHELL = ['/dashboard', '/manifest-dashboard.json', '/help-docs.js?v=' + V, '/assets/dashboard.css?v=' + V, '/assets/mobile.css?v=' + V, '/assets/dashboard.js?v=' + V, '/assets/home.js?v=' + V, '/assets/huddle.js?v=' + V,
-  '/assets/procurement.js?v=' + V, '/assets/quote.js?v=' + V, '/assets/meetings.js?v=' + V, '/assets/calendar.js?v=' + V, '/assets/availability.js?v=' + V, '/assets/logistics.js?v=' + V, '/assets/accounting.js?v=' + V, '/assets/assistant.js?v=' + V, '/assets/chat-extras.js?v=' + V, '/assets/columns.js?v=' + V, '/assets/client-folder.js?v=' + V, '/assets/lead-filters.js?v=' + V, '/assets/lead-views.js?v=' + V, '/assets/mobile.js?v=' + V, '/assets/security.js?v=' + V, '/assets/workspace.js?v=' + V];
+  '/assets/procurement.js?v=' + V, '/assets/quote.js?v=' + V, '/assets/meetings.js?v=' + V, '/assets/calendar.js?v=' + V, '/assets/availability.js?v=' + V, '/assets/logistics.js?v=' + V, '/assets/accounting.js?v=' + V, '/assets/assistant.js?v=' + V, '/assets/chat-extras.js?v=' + V, '/assets/columns.js?v=' + V, '/assets/client-folder.js?v=' + V, '/assets/lead-filters.js?v=' + V, '/assets/lead-views.js?v=' + V, '/assets/mobile.js?v=' + V, '/assets/security.js?v=' + V, '/assets/workspace.js?v=' + V, '/assets/theme-core.js?v=' + V, '/assets/workspace-admin.js?v=' + V];
 const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com', 'cdn.jsdelivr.net'];
 
 self.addEventListener('install', e => {
@@ -69,8 +69,23 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Icons and manifests — cache-first
-  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/') || url.pathname.startsWith('/manifest-dashboard')) {
+  // The manifest carries the workspace's name and colours: network-first, so a rename
+  // reaches an installed copy, and the last one seen still answers offline.
+  if (url.pathname.startsWith('/manifest-dashboard')) {
+    e.respondWith(
+      fetch(request)
+        .then(res => {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(request, clone));
+          return res;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Icons and assets — cache-first
+  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/')) {
     e.respondWith(
       caches.match(request).then(hit => {
         if (hit) return hit;

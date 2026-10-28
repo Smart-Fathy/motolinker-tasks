@@ -422,22 +422,78 @@ that won't connect.
   until then setting one answers 409 saying so.
 
 
-## 🏷 The workspace's name and picture
+## 🎨 The workspace — its name, picture and look
 
-The admin renames the workspace and sets its profile picture under **Workspace** at the
-bottom of the admin sidebar. Both portals show them — the sidebar, the header, the
-team's sign-in page, the page title and the browser tab's icon — and every open page,
-in either portal, updates at once: the change is announced on the notification stream
-each of them keeps open (`event: workspace`). Each page remembers the last one it saw,
-so a renamed workspace doesn't flash its old name while loading.
+The admin changes how both portals look under **Workspace** (System, in the admin sidebar,
+and the shortcut at its foot): the name and picture, a preset (Black & Gold — the original —
+Moto Palette, Cyberpunk Tech, Neon Minimalist, Synthwave, Matrix, Deep Ocean, Ember; each has
+a dark and a light version), an accent and a second colour, the neutrals of each mode, a neon
+glow, two fonts, roundness and density, the wording of the sign-in pages, and whether people
+may pick dark or light for themselves. Everything is a draft with a live preview until it is
+saved; "Try it on this page" wears it on the real screen for a minute; a look nobody could read
+is refused with the pair that fails; and any page opened with `?safe=1` is in the original look
+whatever is saved. Every open page, in either portal, re-themes at once: the profile is
+announced on the notification stream each keeps open (`event: workspace`).
 
-They are stored in `quotation_settings` (key `workspace_profile`), so this needs no
-migration. `GET /api/workspace` is public on purpose — the sign-in page reads it before
-anyone has signed in — and returns nothing but the name and the picture's address.
-Changing them is the admin's alone (`PUT /api/dashboard/workspace`,
-`POST`/`DELETE /api/dashboard/workspace/logo`). The picture follows the same rules as a
-group's. This is the app's own name: the company details printed on quotations and
-contracts are separate settings and are not changed by it.
+**Data.** One record, `quotation_settings` key `workspace_profile` (no migration): the name,
+the picture's address, and four sections — `theme` (`preset`, `accent`, `accent2`, `neutrals`
+per mode, `glow`, `default_mode`, `allow_user_mode`), `typography`, `shape`, `texts`. Every field
+is a hex colour, an id from an allow-list, a small integer or a short plain line of text; the
+server never accepts CSS, validates on write and again on read, and `PUT .../workspace/theme`
+replaces the sections it is sent and leaves the others alone (`{ "reset": true }` puts all four
+back). `GET /api/workspace` is public on purpose — the sign-in pages read it before anyone has
+signed in. Changing it is the admin's alone (`PUT /api/dashboard/workspace`, `.../workspace/theme`,
+`POST`/`DELETE .../workspace/logo`). A person's own dark / light / automatic is theirs:
+`GET`/`PUT /api/{dashboard,employee}/ui-prefs`, one row per person, the owner taken from the
+session.
+
+**One source of truth: `public/assets/theme-core.js`.** The presets, the fonts, the contrast
+maths and the rendering run in the browser (the editor's preview, the live re-theme) and on the
+server (the first paint). It writes **custom properties and nothing else** — `--bg`, `--primary`,
+`--font-head`, `--r-k` … — and the stylesheets read them with the original value as the `var()`
+fallback, so a workspace that has chosen nothing renders exactly as the app always did. Two
+rules keep that true when you change a sheet: write a colour as `var(--token, <the value it
+had>)`, never rename a token (the help panel bakes `var(--primary,#c9a35e)` into articles), and
+keep `!important` out of `mobile.css` and off custom properties (the theme `<style>` lands after
+the sheets and has to win). `tests/themecss.js` holds the sheets to the table theme-core carries.
+
+**First paint.** The portals' pages are served by `src/routes/shell.js` (before
+`express.static`, so `/dashboard.html` is covered), which writes the workspace into the HTML
+before it is sent: the name, the picture, a `<style id="ws-theme">`, the fonts link, the
+browser-bar colour, the wording an admin replaced, and a few lines in `<head>` that choose dark
+or light before anything is drawn. Nothing flashes, and if the database is down the page still
+opens in the last look it knew (`src/lib/shell.js`). `public/assets/workspace.js` keeps the page
+in step afterwards and never lets an older profile overwrite a newer one. Installed apps follow
+through `/manifest-dashboard.json` and `/manifest-employee.json`, which are written the same way.
+
+**Readability is checked, not hoped for.** The accent has a deeper twin for use as text on a
+light page and a lighter one on a dark page; status hues are lifted or sunk to read on a wash of
+themselves; the sidebar picks its own text; the only colours that can fall short are the
+neutrals an admin sets by hand, and those are refused. `bash tests/run.sh` includes
+`tests/themeaudit.js`, which opens every screen of both portals — every page, every tab, every
+form that sits hidden until opened, both sign-in pages — in each checked look and measures every
+piece of text and every icon against what it is drawn on — at desktop width, and for the two
+looks that differ most (Moto Palette light, Cyberpunk dark) at phone width too (`--full` runs
+all sixteen looks, `--only=moto:light --list` one look, `--width=390` any run at phone width).
+A lead's status is drawn in every colour the product ships and five awkward ones, so the pills
+are held to the bar as well. Black & Gold's dark, the original, is outside it: thirty
+kinds of text in it were always below 4.5:1 and it is not changed.
+
+A colour somebody *picked* — the colour of a lead status, of any select column's option — is
+data, not a token, so it is not themed. On a light page its label is taken down to a lightness
+that reads (`.ce-pill` reads `--ce-c`, same hue and chroma); the pill's wash and border keep the
+colour as chosen, and a dark page shows it as chosen. Anything that draws such a pill should
+build it with `ColumnsEngine.badgeHtml` so it gets the class.
+
+**The tools.** `tools/theme-codemod.js` turned the sheets' and scripts' hard-coded colours,
+radii and type into tokens, one kind of change at a time (`list` shows the passes); each pass
+only *inserts* text around what was there, and `--check` proves it against the committed file.
+`tools/theme-golden.js` records how every stylesheet rule and every element of both portals
+resolves in a real browser, so a conversion can be shown to move no pixel (`record` before,
+`check` after).
+
+This is the app's own look: the company details printed on quotations and contracts are
+separate settings and are not changed by it.
 
 ## 📁 Where files are stored
 
@@ -676,6 +732,9 @@ src/lib/constants.js  domain vocabulary used across features
 src/routes/*.js       one module per feature (stock, suppliers, rfq, huddles, …)
 public/*.html         page markup only
 public/assets/*.{css,js}   the portals' styles and application code
+public/assets/theme-core.js   the look: presets, contrast, tokens (browser and server)
+public/assets/workspace*.js   the live look; the admin's Workspace editor
+tools/theme-*.js      the codemod and the golden-record tool behind the theme
 tools/route-inventory.js   dumps every registered route, in order
 tests/                browser, unit and migration suites
 ```

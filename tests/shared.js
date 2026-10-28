@@ -23,6 +23,8 @@ const avail   = read('public/assets/availability.js');
 const logi    = read('public/assets/logistics.js');
 const secpanel = read('public/assets/security.js');
 const workspace = read('public/assets/workspace.js');
+const themecore = read('public/assets/theme-core.js');
+const wsadmin = read('public/assets/workspace-admin.js');
 const bundles = { dashboard: read('public/assets/dashboard.js'), employee: read('public/assets/employee.js') };
 const pages   = { dashboard: read('public/dashboard.html'),      employee: read('public/employee.html') };
 const workers = { dashboard: read('public/sw-dashboard.js'),     employee: read('public/sw-employee.js') };
@@ -43,6 +45,7 @@ const MARKERS = {
   '/assets/logistics.js':    { src: logi,    re: /function containerCardHtml\(/ },
   '/assets/security.js':     { src: secpanel, re: /window\.SecurityPanel = \{/ },
   '/assets/workspace.js':    { src: workspace, re: /function wsApply\(/ },
+  '/assets/theme-core.js':   { src: themecore, re: /function renderThemeCss\(/ },
 };
 
 for (const [path, { src, re }] of Object.entries(MARKERS)) {
@@ -55,6 +58,15 @@ for (const [path, { src, re }] of Object.entries(MARKERS)) {
     check(`${portal} bundle has no second copy of ${path}`, !re.test(bundles[portal]));
   }
 }
+
+// The Workspace editor is the admin's alone: its page loads it and caches it, the team portal
+// has no use for it, and the dashboard bundle holds no second copy.
+check('/assets/workspace-admin.js holds the real module', /function wsAdminLoad\(/.test(wsadmin));
+check('dashboard loads /assets/workspace-admin.js', /src="\/assets\/workspace-admin\.js(\?v=\d+)?"/.test(pages.dashboard));
+check('dashboard service worker caches /assets/workspace-admin.js', workers.dashboard.includes("'/assets/workspace-admin.js?v=' + V"));
+check('the team portal does not load the admin\'s editor', !/workspace-admin\.js/.test(pages.employee) && !/workspace-admin\.js/.test(workers.employee));
+check('dashboard bundle has no second copy of /assets/workspace-admin.js', !/function wsAdminLoad\(/.test(bundles.dashboard));
+check('the editor loads before the dashboard bundle that opens it', pages.dashboard.indexOf('workspace-admin.js') > 0 && pages.dashboard.indexOf('workspace-admin.js') < pages.dashboard.indexOf('/assets/dashboard.js'));
 
 // The adapters are the seam and must stay in the portal bundles, not the shared files.
 for (const portal of ['dashboard', 'employee']) {

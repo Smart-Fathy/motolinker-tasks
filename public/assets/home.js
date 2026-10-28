@@ -234,7 +234,7 @@ const HOME_BAR_TONE = {
 };
 function homeBarTone(label) {
   const t = HOME_BAR_TONE[String(label || '').trim().toLowerCase().replace(/[\s-]+/g, '_')];
-  return t ? `var(${t})` : 'var(--primary)';
+  return t ? `var(${t})` : 'var(--primary-text,var(--primary))';
 }
 // The server groups by the raw column value, so bars read "in_progress".
 function homeBarLabel(label) {

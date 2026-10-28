@@ -7,10 +7,15 @@
 cd "$(dirname "$0")/.." || exit 1
 pass=0; fail=0
 run() {
-  printf '%-14s ' "$1"; shift
+  name=$1; printf '%-14s ' "$name"; shift
   out=$("$@" 2>&1); rc=$?
   echo "$out" | tail -1
-  [ $rc -eq 0 ] && pass=$((pass+1)) || fail=$((fail+1))
+  if [ $rc -eq 0 ]; then pass=$((pass+1))
+  else
+    fail=$((fail+1))
+    # The last line is rarely the one that says what went wrong.
+    echo "$out" > "${TMPDIR:-/tmp}/ml-suite-$name.txt"; echo "               full output: ${TMPDIR:-/tmp}/ml-suite-$name.txt"
+  fi
 }
 run hdtest      node tests/hdtest.js
 run sharetest   node tests/sharetest.js
@@ -36,6 +41,10 @@ run hdsignal    node tests/hdsignal.js
 run hdmeeting   node tests/hdmeeting.js
 run hdextras    node tests/hdextras.js
 run workspaceui node tests/workspaceui.js
+run workspaceapi node tests/workspaceapi.js
+run shell        node tests/shell.js
+run themeui     node tests/themeui.js
+run wsedit      node tests/wsedit.js
 run icontest    node tests/icontest.js
 run leadstest   node tests/leadstest.js
 run permstest   node tests/permstest.js
@@ -75,6 +84,9 @@ run tracktest   node tests/tracktest.js
 run portaltest  node tests/portaltest.js
 run envexample  node tests/envexample.js
 run mobiletest  node tests/mobiletest.js
+run themecss    node tests/themecss.js
+run themecore   node tests/themecore.js
+run themeaudit  node tests/themeaudit.js
 run homecache   node tests/homecache.js
 run dbfetch     node tests/dbfetch.js
 run fetchall    node tests/fetchall.js
