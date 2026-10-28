@@ -29,6 +29,7 @@ run linktest    node tests/linktest.js
 run emailview   node tests/emailview.js
 run attachlinks node tests/attachlinks.js
 run configguard node tests/configguard.js
+run scopewrite  node tests/scopewrite.js
 run pastetest   node tests/pastetest.js
 run invitetest  node tests/invitetest.js
 run hdsignal    node tests/hdsignal.js

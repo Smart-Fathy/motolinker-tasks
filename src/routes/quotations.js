@@ -42,6 +42,24 @@ function generateQuoteId() {
 }
 
 // ── Employee CRM (gated by the leads/deals permission; delete goes via approval) ──
+
+// The reads below show an employee only the leads and deals inside their data scope.
+// The writes hold to the same line: without it, a rep limited to their own leads
+// could edit, reassign or annotate anyone's by changing the id in the URL — the ids
+// are sequential. Same check the lead profile already makes.
+async function leadOutOfScope(emp, customerId) {
+  if (!empHasScope(emp)) return false;
+  const { data: c } = await supabase.from('customers').select('id,assigned_to,lead_status').eq('id', customerId).maybeSingle();
+  if (!c || c.id == null) return false;   // nothing there to protect; the write finds no row
+  return !customerInScope(c, emp, await scopedQuotedIds(emp));
+}
+async function dealOutOfScope(emp, dealId) {
+  if (!empHasScope(emp)) return false;
+  const { data: d } = await supabase.from('deals').select('id,stage,assigned_to,customers(assigned_to,lead_status)').eq('id', dealId).maybeSingle();
+  if (!d || d.id == null) return false;
+  return !dealInScope(d, emp);
+}
+
 receiver.router.get('/api/employee/leads', requireEmployeeAuth, async (req, res) => {
   if (!empCan(req.employee, 'leads', 'view')) return res.status(403).json({ error: 'Not permitted' });
   const { data, error } = await fetchAll(() => supabase.from('customers').select('*').order('created_at', { ascending: false }));
@@ -81,6 +99,7 @@ receiver.router.post('/api/employee/leads', requireEmployeeAuth, express.json(),
 
 receiver.router.put('/api/employee/leads/:id', requireEmployeeAuth, express.json(), async (req, res) => {
   if (!empCan(req.employee, 'leads', 'edit')) return res.status(403).json({ error: 'Not permitted' });
+  if (await leadOutOfScope(req.employee, req.params.id)) return res.status(403).json({ error: 'Not permitted' });
   const { data: prev } = await supabase.from('customers').select('lead_status,been_contacted').eq('id', req.params.id).single();
   const patch = { ...req.body, updated_at: new Date().toISOString() };
   delete patch.force; delete patch.created_by; delete patch.id;
@@ -132,6 +151,7 @@ receiver.router.put('/api/employee/deals/:id', requireEmployeeAuth, express.json
     const allowed = onlyStage ? (empCan(req.employee, 'deals', 'move') || empCan(req.employee, 'deals', 'edit')) : empCan(req.employee, 'deals', 'edit');
     if (!allowed) return res.status(403).json({ error: 'Not permitted' });
   }
+  if (await dealOutOfScope(req.employee, req.params.id)) return res.status(403).json({ error: 'Not permitted' });
   const { data: prev } = await supabase.from('deals').select('stage').eq('id', req.params.id).single();
   const updates = { ...req.body, updated_at: new Date().toISOString() };
   delete updates.created_by; delete updates.id;
@@ -234,6 +254,7 @@ receiver.router.get('/api/employee/customers/:id/profile', requireEmployeeAuth, 
 
 receiver.router.post('/api/employee/customers/:id/activities', requireEmployeeAuth, express.json(), async (req, res) => {
   if (!empCan(req.employee, 'leads', 'edit')) return res.status(403).json({ error: 'Not permitted' });
+  if (await leadOutOfScope(req.employee, req.params.id)) return res.status(403).json({ error: 'Not permitted' });
   const type = ['note', 'call', 'whatsapp', 'meeting'].includes(req.body?.type) ? req.body.type : 'note';
   const body = String(req.body?.body || '').trim().slice(0, 2000);
   if (!body) return res.status(400).json({ error: 'Activity text is required' });
@@ -246,6 +267,7 @@ receiver.router.post('/api/employee/customers/:id/activities', requireEmployeeAu
 
 receiver.router.post('/api/employee/customers/:id/followups', requireEmployeeAuth, express.json(), async (req, res) => {
   if (!empCan(req.employee, 'leads', 'edit')) return res.status(403).json({ error: 'Not permitted' });
+  if (await leadOutOfScope(req.employee, req.params.id)) return res.status(403).json({ error: 'Not permitted' });
   const due_at = req.body?.due_at;
   if (!due_at || isNaN(new Date(due_at).getTime())) return res.status(400).json({ error: 'A valid due date/time is required' });
   const note = String(req.body?.note || '').trim().slice(0, 500);
@@ -260,6 +282,10 @@ receiver.router.post('/api/employee/customers/:id/followups', requireEmployeeAut
 
 receiver.router.put('/api/employee/followups/:id', requireEmployeeAuth, express.json(), async (req, res) => {
   if (!empCan(req.employee, 'leads', 'edit')) return res.status(403).json({ error: 'Not permitted' });
+  if (empHasScope(req.employee)) {
+    const { data: f } = await supabase.from('lead_followups').select('customer_id').eq('id', req.params.id).maybeSingle();
+    if (f && await leadOutOfScope(req.employee, f.customer_id)) return res.status(403).json({ error: 'Not permitted' });
+  }
   const status = ['done', 'cancelled', 'pending'].includes(req.body?.status) ? req.body.status : 'done';
   const patch = { status, completed_at: status === 'done' ? new Date().toISOString() : null };
   const { data, error } = await supabase.from('lead_followups').update(patch).eq('id', req.params.id).select().single();
