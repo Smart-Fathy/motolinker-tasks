@@ -81,6 +81,7 @@ run portaltest  node tests/portaltest.js
 run envexample  node tests/envexample.js
 run mobiletest  node tests/mobiletest.js
 run themecss    node tests/themecss.js
+run themecore   node tests/themecore.js
 run homecache   node tests/homecache.js
 run dbfetch     node tests/dbfetch.js
 run fetchall    node tests/fetchall.js
