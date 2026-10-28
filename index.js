@@ -106,11 +106,22 @@ async function loadOrCreateVapidKeys() {
   if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     vapidKeys = ctx.vapidKeys = { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY };
   } else {
-    try {
-      const { data } = await supabase.from('google_tokens').select('tokens').eq('user_key', 'vapid').single();
-      if (data?.tokens?.publicKey && data?.tokens?.privateKey) vapidKeys = ctx.vapidKeys = data.tokens;
-    } catch (_) {}
-    if (!vapidKeys) {
+    // A pair is made only when the database says it holds none. A read that failed
+    // says nothing about that, and making one anyway swapped the key under every
+    // subscribed device: a browser keeps the subscription it made with the old key, so
+    // pushes signed with the new one are refused — silently, and for good once the new
+    // pair is saved. Until the read works push stays off (every sender checks
+    // vapidKeys) and the read is tried again.
+    let data = null, error = null;
+    try { ({ data, error } = await supabase.from('google_tokens').select('tokens').eq('user_key', 'vapid').maybeSingle()); }
+    catch (e) { error = e; }
+    if (error && !isMissingRelation(error)) {
+      console.warn('[VAPID] Could not read the key pair, push is off until it can:', error.message);
+      retryBootRead(loadOrCreateVapidKeys);
+      return;
+    }
+    if (data?.tokens?.publicKey && data?.tokens?.privateKey) vapidKeys = ctx.vapidKeys = data.tokens;
+    else {
       vapidKeys = ctx.vapidKeys = webpush.generateVAPIDKeys();
       await saveGoogleToken('vapid', vapidKeys);
       console.log('[VAPID] Generated and persisted a new key pair');
@@ -161,7 +172,14 @@ const pendingDriveAuth     = new Map();
 // ─── Google Token Persistence ─────────────────────────────────────────────────
 async function loadGoogleTokens() {
   try {
-    const { data } = await supabase.from('google_tokens').select('user_key, tokens');
+    const { data, error } = await supabase.from('google_tokens').select('user_key, tokens');
+    // A read that failed is not "no tokens". Taken as that, every Google connection
+    // read as disconnected until the next deploy, though the database came back.
+    if (error && !isMissingRelation(error)) {
+      console.warn('[tokens] Could not load from DB:', error.message);
+      retryBootRead(loadGoogleTokens);
+      return;
+    }
     if (!data) return;
     for (const row of data) {
       const t = row.tokens;
@@ -2209,17 +2227,38 @@ async function reconcileAdminPassword() {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+// Boot reads the database before it opens the port, so the first request finds the
+// Google tokens, the push key and the admin-password check already in place; on a
+// healthy database the three reads take about a second. A stalled database never
+// answers them — each query waits until Supabase's gateway gives up, two to five
+// minutes later — and a deploy made during such an outage kept its port shut for
+// over ten minutes, so Railway answered every visitor with "Application failed to
+// respond", for the pages too, which need no database at all. So the reads get
+// BOOT_DB_WAIT_MS, then the port opens regardless and they finish behind it. Nothing
+// a request needs waits on them: requireAuth refuses an admin session from an old
+// password by itself, and the browser skips push registration while the key is empty.
+const BOOT_DB_WAIT_MS = 5000;
+
+// A boot read that failed is tried again rather than given up on: the outage it met
+// is usually over long before the next deploy. On the context so a test can shorten it.
+ctx.BOOT_RETRY_MS = 30_000;
+function retryBootRead(read) {
+  setTimeout(() => read().catch(e => console.warn('[boot] retry failed:', e.message)), ctx.BOOT_RETRY_MS).unref();
+}
+
 (async () => {
-  await loadGoogleTokens();
-  await loadOrCreateVapidKeys();
-  await reconcileAdminPassword();
-  ctx.scheduleDueDateReminders();
-  ctx.scheduleHoursLogReminder();
-  scheduleFollowupReminders();
-  ctx.scheduleAutomationSweep();
-  ctx.scheduleRecurringTasks();
-  setTimeout(() => ctx.backfillHotLeadDeals().catch(console.error), 15 * 1000); // one-time: deals for pre-existing Hot leads
-  if (process.env.WHATSAPP_ENABLED === 'true') ctx.initWhatsApp().catch(console.error);
+  const bootReads = (async () => {
+    await loadGoogleTokens();
+    await loadOrCreateVapidKeys();
+    await reconcileAdminPassword();
+  })();
+  let waitTimer;
+  const stalled = await Promise.race([
+    bootReads.then(() => false),
+    new Promise(resolve => { waitTimer = setTimeout(resolve, BOOT_DB_WAIT_MS, true); }),
+  ]);
+  clearTimeout(waitTimer);
+  if (stalled) console.warn(`[boot] no answer from the database in ${BOOT_DB_WAIT_MS / 1000}s, opening the port without it`);
   const port = process.env.PORT || 3000;
   const server = receiver.app.listen(port, () => {
     console.log(`⚡️  MotoLinker running on port ${port}`);
@@ -2235,4 +2274,12 @@ async function reconcileAdminPassword() {
   ctx.httpServer = server;
   console.log(`📊  Admin dashboard → http://localhost:${port}/dashboard`);
   if (!ADMIN_PASSWORD) console.warn('⚠️   ADMIN_PASSWORD is not set — dashboard login will fail!');
+  await bootReads;
+  ctx.scheduleDueDateReminders();
+  ctx.scheduleHoursLogReminder();
+  scheduleFollowupReminders();
+  ctx.scheduleAutomationSweep();
+  ctx.scheduleRecurringTasks();
+  setTimeout(() => ctx.backfillHotLeadDeals().catch(console.error), 15 * 1000); // one-time: deals for pre-existing Hot leads
+  if (process.env.WHATSAPP_ENABLED === 'true') ctx.initWhatsApp().catch(console.error);
 })();

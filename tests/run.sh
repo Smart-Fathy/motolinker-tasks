@@ -49,6 +49,7 @@ run availsched  node tests/availsched.js
 run portalgaps  node tests/portalgaps.js
 run bindings    node tests/bindings.js
 run boottest    node tests/boottest.js
+run dbdown      node tests/dbdown.js
 run sessions    node tests/sessiontest.js
 run authlibs    node tests/authlibs.js
 run revoketest  node tests/revoketest.js
