@@ -1,7 +1,7 @@
 // Employee Portal
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
-const { sanitizeAttachments } = require('../lib/constants');
+const { LEADS_ENUM_DEFAULTS, sanitizeAttachments } = require('../lib/constants');
 const { fetchAll } = require('../lib/fetch-all');
 const { createLimiter } = require('../lib/rate-limit');
 const { requestMeta } = require('../lib/request-info');

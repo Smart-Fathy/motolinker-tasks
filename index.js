@@ -1081,7 +1081,7 @@ receiver.router.put('/api/dashboard/requests/:id', requireAuth, express.json(), 
   if (data?.assignee_id && String(data.assignee_id) !== String(existing?.assignee_id || '')) {
     ctx.createNotification(`employee_${data.assignee_id}`, { type: 'request', title: 'A request was assigned to you', body: data.title, url: '/employee#requests' }, 'always');
   }
-  if (existing && data && existing.status !== data.status) ctx.runAutomations('request.status_changed', { ...requestCtx(data), from: existing.status, to: data.status });
+  if (existing && data && existing.status !== data.status) ctx.runAutomations('request.status_changed', { ...ctx.requestCtx(data), from: existing.status, to: data.status });
   res.json(data);
 });
 
