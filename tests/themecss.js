@@ -137,12 +137,18 @@ for (const [portal, tokens] of Object.entries(roots)) {
   const own = new Set(['--bg', '--surface', '--sidebar', '--glass']);
   const wrong = [];
   for (const [k, v] of Object.entries(derived)) {
-    if (own.has(k) || !(k in roots.admin) || k.startsWith('--sb-')) continue;
+    // (the fixed hues are lifted in a chosen dark look so they read; the table they start from is checked below)
+    if (own.has(k) || !(k in roots.admin) || k.startsWith('--sb-') || k in T.STATUS) continue;
     if (roots.admin[k] !== norm(v)) wrong.push(`${k}: sheet ${roots.admin[k]} vs theme-core ${norm(v)}`);
   }
   check('the admin sheet\'s tokens are Black & Gold\'s dark, as theme-core derives it', wrong.length === 0, wrong.slice(0, 4).join('; '));
-  check('…and so is the team portal\'s, on the tokens it shares with it', Object.entries(derived).every(([k, v]) => own.has(k) || !(k in roots.team) || k.startsWith('--sb-') || ['--success', '--warning', '--danger'].includes(k) || roots.team[k] === norm(v)),
-    Object.entries(derived).filter(([k, v]) => !own.has(k) && (k in roots.team) && !k.startsWith('--sb-') && roots.team[k] !== norm(v)).map(([k, v]) => `${k}: ${roots.team[k]} vs ${norm(v)}`).join('; '));
+  check('…and so is the team portal\'s, on the tokens it shares with it', Object.entries(derived).every(([k, v]) => own.has(k) || !(k in roots.team) || k.startsWith('--sb-') || k in T.STATUS || roots.team[k] === norm(v)),
+    Object.entries(derived).filter(([k, v]) => !own.has(k) && (k in roots.team) && !k.startsWith('--sb-') && !(k in T.STATUS) && roots.team[k] !== norm(v)).map(([k, v]) => `${k}: ${roots.team[k]} vs ${norm(v)}`).join('; '));
+  // The fixed hues: the sheets say what theme-core's table says (a chosen look moves them from there).
+  for (const [portal, tokens] of Object.entries(roots)) {
+    const drift = Object.entries(T.STATUS).filter(([k, x]) => k in tokens && !['--success', '--warning', '--danger'].includes(k) && tokens[k] !== norm(x)).map(([k, x]) => `${k}: sheet ${tokens[k]} vs table ${norm(x)}`);
+    check(`${portal}: the fixed hues in the sheet are the ones theme-core starts from`, drift.length === 0, drift.slice(0, 4).join('; '));
+  }
 }
 // .sidebar puts the page's tokens back to the sidebar's own; with no --sb-* in play it must
 // put back exactly what the page had.

@@ -411,7 +411,9 @@
   const NAV_HUES = ['#6dd8a4', '#9fb0bd', '#94a3b8', '#f59e0b', '#c98b5e', '#a78bfa'];
   const hueToken = hex => '--h-' + hex.slice(1);
   // Tokens the stylesheets leave undefined (each use carries its own fallback) and a look may define.
-  const LIGHT_ONLY = ['--on-primary-w', '--alt-rgb', '--t-dim', '--t-soft', '--glow', '--chev-select', '--cal-today', '--sh-k'].concat(HUES.concat(OLD_ACCENT).map(hueToken));
+  const LIGHT_ONLY = ['--success-fill', '--warning-fill', '--danger-fill', '--on-primary-w', '--alt-rgb', '--t-dim', '--t-soft', '--glow', '--chev-select', '--cal-today', '--sh-k'].concat(HUES.concat(OLD_ACCENT).map(hueToken));
+
+  const STATUS_FILLS = ['--success', '--warning', '--danger'];
 
   // ── What the sheets already say ─────────────────────────────────────────────
   // The new tokens' values as the stylesheets carry them today — written into both :root
@@ -526,7 +528,10 @@
     v['--color-scheme'] = c.dark ? 'dark' : 'light';
     // A status hue is read as text on a wash of itself (a badge is the hue at 12-25% behind the
     // hue), which is darker than the panel: sink it until it reads there.
-    if (!c.dark) for (const [k, hex] of Object.entries(STATUS)) v[k] = c.sink(hex, 0.25);
+    for (const [k, hex] of Object.entries(STATUS)) v[k] = c.sink(hex, 0.25);
+    // ...and one that carries white text (a Delete button, a count badge) is a fill: the hue,
+    // darkened until the white reads.
+    for (const k of STATUS_FILLS) v[k + '-fill'] = ensure(c.dark ? STATUS[k] : v[k], '#ffffff', 4.5, 'darker');
     // A calendar's today-cell is a wash of the accent that the grid shows through. On a dark page
     // that lightens it; on a light one it would be muddier than its neighbours, so it is solid.
     if (!c.dark) v['--cal-today'] = over(c.accent, c.bg, 0.1);

@@ -96,9 +96,24 @@ check('…and its sidebar accent is the lime, not that green, which would vanish
   const wrong = Object.entries(want).filter(([k, x]) => norm(v[k]) !== x).map(([k, x]) => `${k}: ${v[k]} (sheets say ${x})`);
   check('Black & Gold dark carries the sheets\' own values', wrong.length === 0, wrong.join('; '));
   // Every token in BASE is either derived (and then agrees) or a fixed hue the theme only touches in light.
-  const wrongBase = Object.entries(T.BASE).filter(([k, x]) => (k in v ? norm(v[k]) !== norm(x) : !(k in T.STATUS))).map(([k, x]) => `${k}: ${v[k]} (BASE ${x})`);
+  const wrongBase = Object.entries(T.BASE).filter(([k, x]) => !(k in T.STATUS) && (k in v ? norm(v[k]) !== norm(x) : true)).map(([k, x]) => `${k}: ${v[k]} (BASE ${x})`);
   check('…and so does every token in BASE, the table the stylesheets are checked against (the fixed hues apart)', wrongBase.length === 0, wrongBase.join('; '));
-  check('a fixed hue is what the sheets say in dark, and is sunk to a readable one in light', Object.entries(T.STATUS).every(([k, x]) => !(k in T.BASE) || norm(T.BASE[k]) === norm(x)) && Object.keys(T.STATUS).every(k => k in T.deriveVars({}, 'light') && !(k in T.deriveVars({}, 'dark')) || k === '--w-gold' || k === '--stage-lead'));
+  // The fixed hues (status, priority, stage…): the table is what the sheets say; a chosen dark look
+  // lifts each until it reads on a wash of itself and a light one sinks it — the same hue, only
+  // its lightness moves, and only in the direction that helps.
+  const hsl = h => { const [r, g, b] = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; if (!d) return [0, 0, (mx + mn) / 2]; let hue = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return [(hue * 60 + 360) % 360, 0, (mx + mn) / 2]; };
+  const dv = T.deriveVars({ theme: { preset: 'moto' } }, 'dark'), lv = T.deriveVars({ theme: { preset: 'moto' } }, 'light');
+  const hueOff = (a, b) => { const d = Math.abs(hsl(a)[0] - hsl(b)[0]); return Math.min(d, 360 - d); };
+  const lum = h => T.color.luminance(h);
+  const badFixed = [];
+  for (const [k, x] of Object.entries(T.STATUS)) {
+    if (k in T.BASE && norm(T.BASE[k]) !== norm(x)) badFixed.push(`${k}: STATUS ${x} but BASE ${T.BASE[k]}`);
+    if (!(k in dv) || !(k in lv)) { badFixed.push(`${k}: not written in both modes`); continue; }
+    if (lum(dv[k]) < lum(x) - 1e-9) badFixed.push(`${k}: darker in dark (${x} → ${dv[k]})`);
+    if (lum(lv[k]) > lum(x) + 1e-9) badFixed.push(`${k}: lighter in light (${x} → ${lv[k]})`);
+    if (hsl(x)[2] > 0.02 && hsl(x)[2] < 0.98 && (hueOff(x, dv[k]) > 3 || hueOff(x, lv[k]) > 3) && x.slice(1, 3) !== x.slice(3, 5)) badFixed.push(`${k}: the hue moved (${x} → ${dv[k]} / ${lv[k]})`);
+  }
+  check('a fixed hue is what the sheets say; a chosen dark look lifts it and a light one sinks it, same hue', badFixed.length === 0, badFixed.slice(0, 4).join('; '));
 }
 
 // ── Choosing: overrides and the guard ─────────────────────────────────────────
