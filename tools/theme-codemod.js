@@ -13,12 +13,13 @@
 //
 // Why it can be trusted: every replacement keeps the original text as the var()'s
 // fallback — rgba(201,163,94,.35) becomes rgba(var(--primary-rgb,201,163,94),.35) — so a
-// page that never defines the token paints exactly as before, and the change can be
-// undone by reading it backwards. --check does that: it takes the file as it is, undoes
-// the pass line by line, and requires the result to be the committed version, byte for
-// byte. (tools/theme-golden.js then proves in a browser that every rule still resolves
-// to the same colours.) What a pass does not do is a judgment call — those are listed
-// when it runs, for a person to decide.
+// page that never defines the token paints exactly as before, and a pass only ever
+// *inserts* text around what was there. --check holds it to that: the committed file
+// must be what the pass makes of the committed file's own text, and must be a
+// subsequence of the changed one, so nothing that was there has been altered or removed.
+// (tools/theme-golden.js then proves in a browser that every rule still resolves to the
+// same colours.) What a pass does not do is a judgment call — those are listed when it
+// runs, for a person to decide.
 const fs = require('fs');
 const { execFileSync } = require('child_process');
 
@@ -109,8 +110,9 @@ function maskedSpans(v) {
 const overlaps = (spans, a, b) => spans.some(([x, y]) => a < y && b > x);
 
 // ── The passes ────────────────────────────────────────────────────────────────
-// Each pass: `forward(value, decl, ctx)` returns the new value or null, and `backward(line)`
-// undoes it on one line of output. `review` collects what it found but would not decide.
+// Each pass: `forward(value, decl, ctx)` returns the new value or null. A pass only ever
+// inserts text around what was there (a var( before, a fallback and ) after). `review`
+// collects what a pass found but would not decide.
 const H = (hex) => new RegExp('(?<![0-9a-z#_-])' + hex.replace('#', '#') + '(?![0-9a-z_-])', 'gi');
 const sub = (value, spans, re, fn) => {
   let out = '', last = 0, changed = false;
@@ -138,14 +140,6 @@ function swaps(list, { props } = {}) {
       }
       return any ? cur : null;
     },
-    backward(line) {
-      let cur = line;
-      for (const [lit, token] of list) {
-        const esc = lit.replace(/[.*+?^${}()|[\]\\#]/g, '\\$&');
-        cur = cur.replace(new RegExp('var\\(' + token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ',(' + esc + ')\\)', 'gi'), '$1');
-      }
-      return cur;
-    },
   };
 }
 // An rgba() whose rgb is fixed: rgba(R,G,B,A) -> rgba(var(--token,R,G,B),A)
@@ -155,9 +149,6 @@ function rgbaSwap(r, g, b, token) {
     forward(value) {
       return sub(value, maskedSpans(value), re, m => 'rgba(var(' + token + ',' + m[0].slice(5, -1) + '),');
     },
-    backward(line) {
-      return line.replace(new RegExp('rgba\\(var\\(' + token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ',(\\s*' + r + '\\s*,\\s*' + g + '\\s*,\\s*' + b + ')\\),', 'gi'), 'rgba($1,');
-    },
   };
 }
 
@@ -166,7 +157,6 @@ const PASSES = {
   'scheme': {
     about: 'color-scheme: dark → var(--color-scheme, dark)',
     forward(value, d) { return d.prop === 'color-scheme' && /^\s*dark\s*$/i.test(value) ? value.replace(/dark/i, m => 'var(--color-scheme,' + m + ')') : null; },
-    backward(line) { return line.replace(/var\(--color-scheme,(dark)\)/gi, '$1'); },
   },
   // translucent white (the page's overlays) -> overlays made of the mode's ink
   'ov': Object.assign({ about: 'rgba(255,255,255,a) → rgba(var(--ov,255,255,255),a)' }, rgbaSwap(255, 255, 255, '--ov')),
@@ -197,16 +187,8 @@ PASSES.fills = (() => {
       }
       return any ? cur : null;
     },
-    backward(line) {
-      let cur = line;
-      for (const [lit, token] of rgbas) {
-        const esc = lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/,/g, '\\s*,\\s*');
-        cur = cur.replace(new RegExp('var\\(' + token + ',(' + esc + ')\\)', 'gi'), '$1');
-      }
-      return cur;
-    },
   };
-  return { about: 'the dark fills (fields, table heads, options, bars, the header glass) → tokens', forward: (v, d, c) => { let cur = v, any = false; for (const p of [hex, rg]) { const r = p.forward(cur, d, c); if (r != null) { cur = r; any = true; } } return any ? cur : null; }, backward: l => rg.backward(hex.backward(l)) };
+  return { about: 'the dark fills (fields, table heads, options, bars, the header glass) → tokens', forward: (v, d, c) => { let cur = v, any = false; for (const p of [hex, rg]) { const r = p.forward(cur, d, c); if (r != null) { cur = r; any = true; } } return any ? cur : null; } };
 })();
 
 // Dark ink on the accent. Text colour only; the sites are listed so each can be looked at.
@@ -220,7 +202,6 @@ PASSES['ink'] = {
     ctx.review.push(`${ctx.file}:${ctx.line}  ${ctx.selector}  { color: ${m[1]} }`);
     return value.replace(m[1], 'var(' + token + ',' + m[1] + ')');
   },
-  backward(line) { return line.replace(/var\(--on-primary,(#0c0c0e)\)/gi, '$1').replace(/var\(--on-primary-2,(#1b1608)\)/gi, '$1'); },
 };
 
 // Radii scale with the workspace's roundness.
@@ -234,7 +215,6 @@ PASSES['radius'] = {
       return px >= 4 && px <= 24 ? 'calc(' + m[0] + ' * var(--r-k,1))' : null;
     });
   },
-  backward(line) { return line.replace(/calc\((\d+(?:\.\d+)?px) \* var\(--r-k,1\)\)/g, '$1'); },
 };
 // ...and so do the tokens the rest of the sheet reads them through.
 const RADIUS_TOKENS = ['--radius', '--radius-sm', '--r-xs', '--r-sm', '--r-md', '--r-lg', '--r-xl'];
@@ -246,7 +226,6 @@ PASSES['radius-tokens'] = {
     const m = /^\s*(\d+(?:\.\d+)?px)\s*$/.exec(value);
     return m ? value.replace(m[1], 'calc(' + m[1] + ' * var(--r-k,1))') : null;
   },
-  backward: PASSES.radius.backward,
 };
 
 // Type: the two families the sheets name
@@ -263,7 +242,6 @@ PASSES['fonts'] = {
     for (const [re, token] of FAMILIES) if (re.test(value)) return wrap(value, token);
     return null;
   },
-  backward(line) { return line.replace(/var\(--font-(?:head|body),((?:'Cormorant Garamond'|'Manrope')\s*,\s*(?:serif|sans-serif))\)/gi, '$1'); },
 };
 // The tokens that name a family also follow the workspace's choice.
 PASSES['font-tokens'] = {
@@ -274,7 +252,6 @@ PASSES['font-tokens'] = {
     if (d.prop === '--font-num' && /^\s*'Manrope'\s*,\s*system-ui\s*,\s*-apple-system\s*,\s*sans-serif\s*$/.test(value)) return wrap(value, '--font-body');
     return null;
   },
-  backward(line) { return line.replace(/var\(--font-body,('Manrope'\s*,\s*system-ui\s*,[^)]*)\)/g, '$1'); },
 };
 
 // The select arrow, drawn in the accent
@@ -284,7 +261,6 @@ PASSES['chevron'] = {
     if (d.prop !== 'background-image') return null;
     return /^\s*url\("data:image\/svg\+xml;charset=utf-8,[^"]*%23c9a35e[^"]*"\)\s*$/.test(value) ? value.replace(/(url\([\s\S]*\))/, 'var(--chev-select,$1)') : null;
   },
-  backward(line) { return line.replace(/var\(--chev-select,(url\("data:image\/svg\+xml;charset=utf-8,[^"]*%23c9a35e[^"]*"\))\)/g, '$1'); },
 };
 
 // ── Running ───────────────────────────────────────────────────────────────────
@@ -308,10 +284,12 @@ function apply(css, passNames, file) {
   }
   return { out, report, review };
 }
-function undo(css, passNames) {
-  let out = css;
-  for (const name of passNames.slice().reverse()) out = out.split('\n').map(l => PASSES[name].backward(l)).join('\n');
-  return out;
+// Is every character of `small` in `big`, in order? A pass that only inserts leaves the
+// original a subsequence of the result; one that altered or removed anything does not.
+function isSubsequence(small, big) {
+  let i = 0;
+  for (let j = 0; j < big.length && i < small.length; j++) if (big[j] === small[i]) i++;
+  return i === small.length;
 }
 
 if (require.main === module) {
@@ -324,19 +302,22 @@ if (require.main === module) {
   for (const file of files) {
     const css = fs.readFileSync(file, 'utf8');
     if (mode === 'check') {
-      // The file as it is, with the passes undone, must be the committed file.
       let committed;
       try { committed = execFileSync('git', ['show', 'HEAD:' + file], { encoding: 'utf8', maxBuffer: 1 << 26 }); } catch (e) { console.log(`${file}: not committed yet`); bad++; continue; }
-      const back = undo(css, names);
-      if (back === committed) {
-        const changed = css.split('\n').filter((l, i) => l !== committed.split('\n')[i]).length;
-        console.log(`${file}: ${changed} line(s) differ from the committed file, and undoing ${names.join('+')} gives it back exactly`);
-      } else {
+      // 1. the file is exactly what the pass makes of the committed file — nothing else was touched
+      const expected = apply(committed, names, file).out;
+      if (expected !== css) {
         bad++;
-        const a = back.split('\n'), b = committed.split('\n');
+        const a = css.split('\n'), b = expected.split('\n');
         const at = a.findIndex((l, i) => l !== b[i]);
-        console.log(`${file}: NOT a pure ${names.join('+')} change — first difference at line ${at + 1}:\n  now:       ${(a[at] || '').slice(0, 160)}\n  committed: ${(b[at] || '').slice(0, 160)}`);
+        console.log(`${file}: NOT what ${names.join('+')} makes of the committed file — first difference at line ${at + 1}:\n  now:      ${(a[at] || '').slice(0, 160)}\n  expected: ${(b[at] || '').slice(0, 160)}`);
+        continue;
       }
+      // 2. …and the committed file is inside it, in order: the pass only inserted
+      if (!isSubsequence(committed, css)) { bad++; console.log(`${file}: the pass altered or removed something that was there`); continue; }
+      const cl = committed.split('\n'), nl = css.split('\n');
+      const changed = nl.filter((l, i) => l !== cl[i]).length;
+      console.log(`${file}: ${changed} line(s) changed by ${names.join('+')}; the committed text is intact inside them (insertions only)`);
       continue;
     }
     const { out, report, review } = apply(css, names, file);
@@ -348,4 +329,4 @@ if (require.main === module) {
   process.exit(bad ? 1 : 0);
 }
 
-module.exports = { parse, apply, undo, PASSES, maskedSpans };
+module.exports = { parse, apply, PASSES, maskedSpans };
