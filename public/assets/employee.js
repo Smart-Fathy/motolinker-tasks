@@ -2270,7 +2270,7 @@ function openEmpLeadModal(id, presetStatus) {
     const v = (c?.custom_fields || {})[col.key];
     if (col.type === 'checkbox') {
       return `<div><label class="form-label">${esc(col.label)}</label>
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#0e0e10;border:1px solid var(--border);border-radius:8px">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--field-bg,#0e0e10);border:1px solid var(--border);border-radius:8px">
           <input type="checkbox" id="eml-cf-${esc(col.key)}" ${v ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--primary)">
           <label for="eml-cf-${esc(col.key)}" style="font-size:13px;cursor:pointer">Yes</label>
         </div></div>`;

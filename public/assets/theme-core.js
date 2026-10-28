@@ -405,13 +405,15 @@
   const OLD_ACCENT = '#c9a35e';
   const HUES = ['#6dd8a4', '#e57373', '#e6a850', '#9fb0bd', '#a78bfa', '#c98b5e', '#8a9a86', '#f59e0b', '#ef4444', '#10b981',
     '#38bdf8', '#f87171', '#f472b6', '#e69650', '#5ab478', '#7fce9a', '#7cc4ff', '#7c6aff', '#5a78c8', '#64b478', '#8aa4e0', '#94a3b8',
-    '#d4af37', '#b9bcc2', '#c58a4a'];   // (the last three are the leaderboard's gold, silver and bronze)
+    '#d4af37', '#b9bcc2', '#c58a4a',   // the leaderboard's gold, silver and bronze
+    // the stock and logistics statuses, drawn dark for a light page: a dark page lifts them
+    '#2f3f8f', '#7b2d8e', '#9a4b12', '#3d6b1e', '#1e6b2a', '#14568c', '#8e2d2d', '#555555', '#8a5a00'];
   // The hues the rail colours its group icons with. The rail is its own surface, so it gets its own
   // copy of each (--sb-h-<hex>), sunk or lifted for the rail's colour rather than the page's.
   const NAV_HUES = ['#6dd8a4', '#9fb0bd', '#94a3b8', '#f59e0b', '#c98b5e', '#a78bfa'];
   const hueToken = hex => '--h-' + hex.slice(1);
   // Tokens the stylesheets leave undefined (each use carries its own fallback) and a look may define.
-  const LIGHT_ONLY = ['--success-fill', '--warning-fill', '--danger-fill', '--on-primary-w', '--alt-rgb', '--t-dim', '--t-soft', '--glow', '--chev-select', '--cal-today', '--sh-k'].concat(HUES.concat(OLD_ACCENT).map(hueToken));
+  const LIGHT_ONLY = ['--muted-w', '--success-fill', '--warning-fill', '--danger-fill', '--on-primary-w', '--alt-rgb', '--t-dim', '--t-soft', '--glow', '--chev-select', '--cal-today', '--sh-k'].concat(HUES.concat(OLD_ACCENT).map(hueToken));
 
   const STATUS_FILLS = ['--success', '--warning', '--danger'];
 
@@ -468,6 +470,7 @@
     v['--header-bg'] = rgba(c.bg, 0.85);
     v['--topbar-bg'] = rgba(c.bg, 0.9);
     v['--field-bg'] = c.field;
+    v['--doc-bg'] = c.panel;   // the document and contract previews' frame (a navy panel the older sheets left behind)
     v['--field-bg-2'] = c.field2;
     v['--thead-bg'] = c.thead;
     v['--option-bg'] = c.panel;
@@ -534,11 +537,13 @@
     for (const k of STATUS_FILLS) v[k + '-fill'] = ensure(c.dark ? STATUS[k] : v[k], '#ffffff', 4.5, 'darker');
     // A calendar's today-cell is a wash of the accent that the grid shows through. On a dark page
     // that lightens it; on a light one it would be muddier than its neighbours, so it is solid.
-    if (!c.dark) v['--cal-today'] = over(c.accent, c.bg, 0.1);
+    v['--cal-today'] = over(c.accent, c.dark ? c.panel : c.bg, 0.1);
+    // Secondary text that sits on a tinted header (a lane's count, a share): a step toward the text.
+    v['--muted-w'] = mix(c.muted, c.text, 0.35);
     // Shadows are black at some opacity, drawn for a dark page; on a light one they are softened.
     if (!c.dark) v['--sh-k'] = '0.4';
     v[hueToken(OLD_ACCENT)] = c.accentText;
-    if (!c.dark) for (const h of HUES) v[hueToken(h)] = c.sink(h, 0.25);
+    for (const h of HUES) v[hueToken(h)] = c.sink(h, 0.25);
     return v;
   }
 

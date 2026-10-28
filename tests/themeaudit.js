@@ -41,6 +41,10 @@ const ALLOWED = [
   // (none yet)
 ];
 
+// The tab strips the pages use (a tab that is already showing is not another screen).
+const TAB_SELECTOR = '.page.active .tab, .page.active .task-view-tab, .page.active .deal-tab, .page.active .logi-tab, .page.active [role="tab"], .page.active .acct-tab, .page.active .rep-tab';
+const TABS = sel => [...document.querySelectorAll(sel)].filter(e => e.checkVisibility() && !e.classList.contains('active')).map(e => (e.textContent || '').trim().slice(0, 18));
+
 // Runs in the page: [{ sig, text, fg, bg, ratio, need }] for everything that shows text.
 function auditPage() {
   const parse = c => {
@@ -180,7 +184,7 @@ function auditPage() {
     // The admin saves the look; the page then arrives with it already in.
     const saved = await fetch(base + '/api/dashboard/workspace/theme', { method: 'PUT', headers: { Authorization: 'Bearer ' + ADMIN, 'Content-Type': 'application/json' }, body: JSON.stringify(preset === 'black-gold' ? { reset: true } : { theme: { preset } }) });
     if (!saved.ok) throw new Error('could not save ' + preset + ': ' + await saved.text());
-    for (const p of portals) {
+    for (const p of portals) for (const signedIn of [false, true]) {
       const page = await browser.newPage();
       await page.setViewport({ width: 1280, height: 900 });
       await page.setBypassServiceWorker(true);
@@ -202,22 +206,45 @@ function auditPage() {
           }
         } };
         window.Chart = function () { return { destroy() {}, update() {} }; };
-        localStorage.setItem(key, token);
+        if (token) localStorage.setItem(key, token);
         localStorage.setItem('ml_mode', mode);
         const Real = Date, FIXED = Real.UTC(2026, 2, 4, 10, 0, 0);
         window.Date = class extends Real { constructor(...a) { if (a.length) super(...a); else super(FIXED); } static now() { return FIXED; } };
         window.Date.UTC = Real.UTC; window.Date.parse = Real.parse;
-      }, p.key, p.token, mode);
+      }, p.key, signedIn ? p.token : null, mode);
       await page.goto(base + p.route, { waitUntil: 'domcontentloaded' });
       await sleep(1000);
       const got = await page.evaluate(() => document.documentElement.getAttribute('data-mode'));
       if (got !== mode) throw new Error(`${preset}:${mode} ${p.who}: the page opened in ${got}`);
+      const look = preset + ':' + mode;
+      const measure = async label => {
+        await page.evaluate(() => document.getAnimations().forEach(a => a.cancel()));
+        screens++;
+        for (const f of await page.evaluate(auditPage)) all.push({ look, who: p.who, page: label, ...f });
+      };
+      // The sign-in screen is the first thing anyone sees; it has nothing to navigate to.
+      if (!signedIn) { if (!PAGES) await measure('sign-in'); await page.close(); continue; }
       for (const pg of (PAGES ? PAGES.split(',') : p.pages)) {
         await page.evaluate(n => { try { navigate(n); } catch (e) {} }, pg);
         await sleep(450);
-        await page.evaluate(() => document.getAnimations().forEach(a => a.cancel()));
-        screens++;
-        for (const f of await page.evaluate(auditPage)) all.push({ look: preset + ':' + mode, who: p.who, page: pg, ...f });
+        await measure(pg);
+        // …and every tab the page has, one at a time (a tab is another screen).
+        const tabs = await page.evaluate(TABS, TAB_SELECTOR);
+        for (let i = 0; i < Math.min(tabs.length, 8); i++) {
+          const label = await page.evaluate((sel, i) => { const t = [...document.querySelectorAll(sel)].filter(e => e.checkVisibility() && !e.classList.contains('active'))[i]; if (!t) return null; t.click(); return (t.textContent || '').trim().slice(0, 18); }, TAB_SELECTOR, i);
+          if (label == null) break;
+          await sleep(350);
+          await measure(pg + '→' + label);
+        }
+      }
+      // The pages' forms, which sit hidden until opened: each is shown in turn.
+      if (!PAGES) {
+        const modals = await page.evaluate(() => [...document.querySelectorAll('[id$="-modal"], #modal-overlay')].filter(e => e.style.display === 'none').map(e => e.id));
+        for (const id of modals) {
+          await page.evaluate(id => { const e = document.getElementById(id); e.style.display = 'flex'; }, id);
+          await measure('modal:' + id);
+          await page.evaluate(id => { document.getElementById(id).style.display = 'none'; }, id);
+        }
       }
       await page.close();
     }

@@ -29,6 +29,8 @@
   // These mirror src/lib/constants.js. Duplicated rather than fetched because the
   // page has to render before any request completes — tests/logistics.js asserts
   // the two copies agree, so the duplication cannot drift unnoticed.
+  // A hue written as hex reads its theme token (--h-<hex>) when a look defines one: sunk on a light page, lifted on a chosen dark one.
+  const hueVar = c => /^#[0-9a-f]{6}$/i.test(c) ? 'var(--h-' + String(c).slice(1).toLowerCase() + ',' + c + ')' : c;
   const UNIT_STATUSES = [
     { key: 'ordered',   label: 'Ordered',         fg: '#2f3f8f' },
     { key: 'produced',  label: 'In production',   fg: '#7b2d8e' },
@@ -217,7 +219,7 @@
   }
   function statusPill(list, key) {
     const s = list.find(x => x.key === key) || list[0];
-    return `<span class="logi-pill" style="background:${s.fg}22;color:${s.fg}">${esc(s.label)}</span>`;
+    return `<span class="logi-pill" style="background:${s.fg}22;color:${hueVar(s.fg)}">${esc(s.label)}</span>`;
   }
   const ic = (n, size) => `<i data-lucide="${n}" style="width:${size || 16}px;height:${size || 16}px"></i>`;
   function opts(list, cur, keyOf, labelOf) {

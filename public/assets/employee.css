@@ -1508,9 +1508,9 @@
   .lb-col{ background:var(--bg); border:1px solid var(--border); border-radius:calc(12px * var(--r-k,1)); overflow:hidden; min-height:180px; }
   .lb-head{ padding:13px 13px 12px; background:linear-gradient(180deg, color-mix(in srgb, var(--c) 14%, transparent), rgba(var(--surface-rgb,20,20,22),0)); }
   .lb-head-top{ display:flex; align-items:center; gap:9px; margin-bottom:9px; }
-  .lb-n{ margin-left:auto; min-width:22px; text-align:center; font-size:11.5px; font-weight:700; color:var(--muted); background:rgba(var(--ov,255,255,255),.06); border-radius:99px; padding:1px 7px; }
+  .lb-n{ margin-left:auto; min-width:22px; text-align:center; font-size:11.5px; font-weight:700; color:var(--muted-w,var(--muted)); background:rgba(var(--ov,255,255,255),.06); border-radius:99px; padding:1px 7px; }
   .lb-val{ font-size:17px; font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums lining-nums; }
-  .lb-share{ font-size:10.5px; font-weight:700; color:var(--muted); margin-left:7px; }
+  .lb-share{ font-size:10.5px; font-weight:700; color:var(--muted-w,var(--muted)); margin-left:7px; }
   .lb-body{ padding:0 11px 11px; display:grid; gap:9px; }
   .lb-card{ background:var(--surface); border:1px solid var(--border); border-radius:calc(10px * var(--r-k,1)); padding:12px 13px; min-width:0; overflow:hidden; }
   .lb-name{ font-size:13px; font-weight:700; margin-bottom:7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

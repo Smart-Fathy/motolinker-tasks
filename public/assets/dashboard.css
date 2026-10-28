@@ -2567,13 +2567,13 @@
   .lb-head-top{ display:flex; align-items:center; gap:9px; margin-bottom:9px; }
   .lb-n{
     margin-left:auto; min-width:22px; text-align:center;
-    font-size:11.5px; font-weight:700; color:var(--muted);
+    font-size:11.5px; font-weight:700; color:var(--muted-w,var(--muted));
     background:rgba(var(--ov,255,255,255),.06); border-radius:var(--r-pill); padding:1px 7px;
   }
   /* Value first, share second: the money is the reason to look at a column,
    * the percentage only qualifies it. */
   .lb-val{ font-size:17px; font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums lining-nums; }
-  .lb-share{ font-size:10.5px; font-weight:700; color:var(--muted); margin-left:7px; }
+  .lb-share{ font-size:10.5px; font-weight:700; color:var(--muted-w,var(--muted)); margin-left:7px; }
   .lb-body{ padding:0 11px 11px; display:grid; gap:9px; }
   .lb-card{
     background:var(--surface); border:1px solid var(--border);

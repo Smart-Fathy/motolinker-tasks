@@ -1745,6 +1745,8 @@
     const col = eng && eng.loaded ? (eng.visible() || []).find(c => c.key === 'status') : null;
     return (col && col.options) || PO_LINE_STATUSES.map(o => ({ key: o.key, label: o.label, color: o.fg }));
   }
+  // A hue written as hex reads its theme token (--h-<hex>) when a look defines one: sunk on a light page, lifted on a chosen dark one.
+  const hueVar = c => /^#[0-9a-f]{6}$/i.test(c) ? 'var(--h-' + String(c).slice(1).toLowerCase() + ',' + c + ')' : c;
   function stockStatusMeta(key) {
     const hit = stockStatusOpts().find(o => o.key === key);
     return { label: hit ? hit.label : (key || 'Unassigned'), color: (hit && hit.color) || 'var(--muted)' };
@@ -1775,7 +1777,7 @@
       const k = c.key;
       if (k === 'status') {
         const st = stockStatusMeta(u[k]);
-        return `<td data-label="${esc(c.label)}"><span class="stk-pill" style="--c:${st.color}">${esc(st.label)}</span></td>`;
+        return `<td data-label="${esc(c.label)}"><span class="stk-pill" style="--c:${hueVar(st.color)}">${esc(st.label)}</span></td>`;
       }
       if (k === 'vin') return `<td data-label="${esc(c.label)}" class="stk-vin">${esc(u[k] || '—')}</td>`;
       if (k === 'colour') return `<td data-label="${esc(c.label)}">${u[k]
@@ -1921,7 +1923,7 @@
         return `<section class="lb-col" style="--c:${o.color || 'var(--muted)'}">
           <div class="lb-head">
             <div class="lb-head-top">
-              <span class="stk-pill" style="--c:${o.color || 'var(--muted)'}">${esc(o.label)}</span>
+              <span class="stk-pill" style="--c:${hueVar(o.color || 'var(--muted)')}">${esc(o.label)}</span>
               <span class="lb-n num">${list.length}</span>
             </div>
             <div><span class="lb-val num">${val ? egp(val) : '—'}</span><span class="lb-share num">${pct}% of units</span></div>
