@@ -10,6 +10,8 @@
 //
 //   node tools/theme-golden.js record out.json     record the stylesheets as they are now
 //   node tools/theme-golden.js check  out.json     compare the stylesheets as they are now
+//   … check out.json --ignore-class=on-dark       leave a class out of every element's signature, for a
+//                                                  change that only adds it
 //   … check out.json --effective                   compare what each selector resolves to, not
 //                                                  which rule says it: for a change that adds
 //                                                  or reorders rules (a new token block, say)
@@ -360,8 +362,23 @@ async function recordPages() {
   return { pages: result, problems };
 }
 
-function diffPages(a, b) {
+function diffPages(a, b, ignore = []) {
   const lines = [];
+  if (ignore.length) {
+    // Two signatures that differ only by the ignored class become one: their looks are pooled.
+    const bare = sig => ignore.reduce((t, c) => t.replace(new RegExp('\\.' + c.replace(/[-\\^$*+?.()|[\]{}]/g, '\\$&') + '(?![\\w-])', 'g'), ''), sig);
+    const strip = o => Object.fromEntries(Object.entries(o).map(([scene, kinds]) => {
+      const out = {};
+      for (const [sig, rows] of Object.entries(kinds)) {
+        const k = bare(sig);
+        const seen = new Map((out[k] || []).map(r => [r.join('\u0001'), r]));
+        for (const r of rows) seen.set(r.join('\u0001'), r);
+        out[k] = [...seen.values()];
+      }
+      return [scene, out];
+    }));
+    a = strip(a); b = strip(b);
+  }
   for (const scene of Object.keys(a)) {
     const A = a[scene], B = b[scene] || {};
     const sigs = new Set([...Object.keys(A), ...Object.keys(B)]);
@@ -412,7 +429,7 @@ function diffPages(a, b) {
   } else {
     const was = JSON.parse(fs.readFileSync(file, 'utf8'));
     const effective = args.includes('--effective');
-    const diff = [...(now.rules && was.rules ? (effective ? diffRulesEffective : diffRules)(was.rules, now.rules) : []), ...(now.pages && was.pages ? diffPages(was.pages, now.pages) : [])];
+    const diff = [...(now.rules && was.rules ? (effective ? diffRulesEffective : diffRules)(was.rules, now.rules) : []), ...(now.pages && was.pages ? diffPages(was.pages, now.pages, ((args.find(a => a.startsWith('--ignore-class=')) || '').slice(15) || '').split(',').filter(Boolean)) : [])];
     if (diff.length) { console.log(diff.slice(0, 80).join('\n')); console.log(`${diff.length} difference(s)`); process.exitCode = 1; }
     else console.log(`identical: ${nRules} rules and ${nKinds} kinds of element (${nLooks} looks) resolve exactly as recorded` + (effective ? `; ${diffRulesEffective.added} property(ies) added` : ''));
   }
