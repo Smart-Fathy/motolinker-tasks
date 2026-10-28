@@ -35,11 +35,18 @@ const ENTITY_COLUMNS = {
 
 const COLUMN_TYPES = ['text', 'number', 'date', 'link', 'select', 'radio', 'checkbox', 'virtual'];
 
+// Keys become attribute values and handler arguments on every screen that draws the
+// column. The app only ever makes them from [a-z0-9_] (ceSlug in public/assets/
+// columns.js), so a quote, backslash, angle bracket, ampersand or backtick in one is
+// never legitimate — it is a way out of an onclick string. Such a column or option
+// is dropped, not stored.
+const UNSAFE_KEY = /['"`\\<>&]/;
+
 function sanitizeColumns(columns) {
   if (!Array.isArray(columns)) return null;
   const seen = new Set();
   return columns
-    .filter(c => c && typeof c.key === 'string' && c.key && !seen.has(c.key) && seen.add(c.key))
+    .filter(c => c && typeof c.key === 'string' && c.key && !UNSAFE_KEY.test(c.key) && !seen.has(c.key) && seen.add(c.key))
     .slice(0, 60)
     .map(c => {
       const out = {
@@ -55,7 +62,7 @@ function sanitizeColumns(columns) {
       if (w >= 40 && w <= 800) out.width = w;
       if (Array.isArray(c.options)) {
         out.options = c.options.slice(0, 40)
-          .filter(o => o && o.key)
+          .filter(o => o && o.key && !UNSAFE_KEY.test(String(o.key)))
           .map(o => {
             const opt = { key: String(o.key).slice(0, 60), label: String(o.label || o.key).slice(0, 80) };
             if (typeof o.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(o.color)) opt.color = o.color.toLowerCase();
@@ -71,7 +78,10 @@ async function readColumns(entity, res) {
   if (!ent) return res.status(404).json({ error: 'Unknown entity' });
   const { data } = await supabase.from('quotation_settings').select('value').eq('key', ent.kvKey).single();
   let columns = null;
-  try { if (data && data.value) columns = JSON.parse(data.value); } catch (_) {}
+  // Sanitised on the way out as well: a config that reached the table by another
+  // route (the generic settings write accepted any key until it got an allowlist)
+  // must not reach the screens unchecked. A config saved here passes unchanged.
+  try { if (data && data.value) columns = sanitizeColumns(JSON.parse(data.value)); } catch (_) {}
   res.json({ columns, entity });
 }
 

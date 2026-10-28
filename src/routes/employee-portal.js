@@ -1359,7 +1359,8 @@ receiver.router.get('/api/dashboard/followups/pending', requireAuth, async (_req
 receiver.router.get('/api/dashboard/leads/columns', requireAuth, async (_req, res) => {
   const { data } = await supabase.from('quotation_settings').select('value').eq('key', 'leads_columns_config').single();
   let columns = null;
-  try { if (data?.value) columns = JSON.parse(data.value); } catch (_) {}
+  // Sanitised on read too, like readColumns in src/routes/columns.js.
+  try { if (data?.value) columns = ctx.sanitizeColumns(JSON.parse(data.value)); } catch (_) {}
   res.json({ columns });
 });
 

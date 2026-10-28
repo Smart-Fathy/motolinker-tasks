@@ -381,18 +381,28 @@ receiver.router.delete('/api/dashboard/quotations/:id', requireAuth, async (req,
 });
 
 // Employee quotation settings — read + write (shared, company-wide; gated by the quotation permission)
+//
+// Only the keys the quote builder uses (public/assets/quote.js loadQtSettings and
+// saveQtSettings). The table also holds the org-wide nav and column layouts, every
+// user's home layout and a fingerprint of the admin password: before this list, a
+// rep with the settings permission could overwrite any of them (including column
+// configs, bypassing their sanitiser), and anyone who could draft a quote could
+// read all of them.
+const EMP_QUOTE_SETTINGS = ['company_name', 'company_phone', 'company_email', 'company_website',
+  'company_address', 'company_tax_id', 'payment_terms', 'footer_note', 'contact_notify_employee_id'];
 receiver.router.get('/api/employee/quotation/settings', requireEmployeeAuth, async (req, res) => {
   // Reading settings is needed to build a draft, so draft OR settings access suffices.
   if (!(empCan(req.employee, 'quotation', 'draft') || empCan(req.employee, 'quotation', 'settings'))) return res.status(403).json({ error: 'Not permitted' });
-  const { data } = await supabase.from('quotation_settings').select('key,value');
+  const { data } = await supabase.from('quotation_settings').select('key,value').in('key', EMP_QUOTE_SETTINGS);
   const settings = {};
-  for (const row of data || []) settings[row.key] = row.value;
+  for (const row of data || []) if (EMP_QUOTE_SETTINGS.includes(row.key)) settings[row.key] = row.value;
   res.json(settings);
 });
 
 receiver.router.put('/api/employee/quotation/settings', requireEmployeeAuth, express.json(), async (req, res) => {
   if (!empCan(req.employee, 'quotation', 'settings')) return res.status(403).json({ error: 'Not permitted' });
-  const entries = Object.entries(req.body || {}).map(([key, value]) => ({ key, value: String(value) }));
+  const entries = Object.entries(req.body || {}).filter(([key]) => EMP_QUOTE_SETTINGS.includes(key))
+    .map(([key, value]) => ({ key, value: String(value) }));
   if (!entries.length) return res.json({ ok: true });
   const { error } = await supabase.from('quotation_settings').upsert(entries, { onConflict: 'key' });
   if (error) return res.status(500).json({ error: error.message });

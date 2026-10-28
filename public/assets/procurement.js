@@ -42,9 +42,13 @@
   // ── Shared document viewer (lead profile → view an attached file as PDF) ────────
   // Every attached document type re-renders server-side from its stored record, so
   // what you see here is exactly what Download produces.
-  // esc() leaves ' alone, which would break a single-quoted onclick argument.
+  // esc() leaves ' alone, which would break a single-quoted onclick argument. And the
+  // browser decodes entities in the attribute BEFORE running it as script, so & is
+  // escaped first: otherwise the six characters &#39; in a stored value (a quote
+  // number such as  Q1&#39;);…//) arrived as a quote, closed the string and ran.
   function escJs(s) {
-    return String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      .replace(/\r/g, '\\r').replace(/\n/g, '\\n')
       .replace(/</g, '&lt;').replace(/"/g, '&quot;');
   }
   const DOC_ENDPOINTS = {
