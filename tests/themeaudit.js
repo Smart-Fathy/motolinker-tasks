@@ -14,6 +14,7 @@
 //   node tests/themeaudit.js --only=moto:light   one look
 //   node tests/themeaudit.js --pages=home,tasks  fewer screens, for a quick look
 //   node tests/themeaudit.js --list              print every failure, not the top few
+//   node tests/themeaudit.js --width=390         everything at phone width (the default run adds two looks at 390)
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
@@ -24,16 +25,21 @@ const T = require('../public/assets/theme-core.js');
 const args = process.argv.slice(2);
 const flag = n => (args.find(a => a.startsWith('--' + n + '=')) || '').slice(n.length + 3);
 const FULL = args.includes('--full'), LIST = args.includes('--list');
-const ONLY = flag('only'), PAGES = flag('pages');
+const ONLY = flag('only'), PAGES = flag('pages'), WIDTH = +flag('width') || 0;
 
 // The matrix the suite runs. The others are the same maths on other colours: --full has them.
 // (Not in either: Black & Gold's dark, which is the original look — what a workspace that has
 // chosen nothing shows, unchanged by all of this, and not held to a bar it never met: thirty or
 // so kinds of text in it are under 4.5:1 and always were. --only=black-gold:dark lists them.)
 const CHECKED = [['black-gold', 'light'], ['moto', 'light'], ['moto', 'dark'], ['cyberpunk', 'dark'], ['cyberpunk', 'light'], ['neon-minimal', 'light']];
-const matrix = ONLY ? [ONLY.split(':')]
+// Each entry is [preset, mode, width]. The checked matrix is at desktop width; the two looks that differ
+// most (a light page under a dark rail, a neon dark) are also run at phone width, where the pages draw
+// their own bottom bar, drawers and header.
+const PHONE = [['moto', 'light'], ['cyberpunk', 'dark']];
+const matrix = (ONLY ? [ONLY.split(':')]
   : FULL ? T.PRESET_ORDER.flatMap(p => [[p, 'dark'], [p, 'light']]).filter(([p, m]) => !(p === 'black-gold' && m === 'dark'))
-  : CHECKED;
+  : CHECKED).map(([p, m]) => [p, m, WIDTH || 1280]);
+if (!ONLY && !FULL && !WIDTH) for (const [p, m] of PHONE) matrix.push([p, m, 390]);
 
 const ADMIN_PAGES = ['home', 'tasks', 'employees', 'requests', 'hours', 'calendar', 'quotation', 'customers', 'deals', 'suppliers', 'rfqs', 'stock', 'contracts', 'purchaseorders', 'reports', 'accounting', 'automations', 'chat', 'notif', 'workspace'];
 const TEAM_PAGES = ['home', 'tasks', 'hours', 'requests', 'leads', 'deals', 'stock', 'suppliers', 'rfq', 'purchaseorders', 'contracts', 'issues', 'calendar', 'accounting', 'reports', 'quotation', 'chat', 'notif'];
@@ -41,7 +47,9 @@ const TEAM_PAGES = ['home', 'tasks', 'hours', 'requests', 'leads', 'deals', 'sto
 // Text that is allowed to fall short, and why. Each entry is matched against the element's
 // signature (tag and classes) and must say what makes it exempt.
 const ALLOWED = [
-  // (none yet)
+  // `look` (optional) limits an entry to looks it matches: every look a failure was seen in has to match.
+  { test: /^span\.wsa-ct-aa/, why: 'the Readability table\'s "Aa" is a sample of the pair it reports, with its ratio printed beside it (a pair that has to reach 3:1 as a fill is shown as it is)' },
+  { test: /^span\.ce-pill/, look: /:dark/, why: 'a colour somebody picked for a status is data, drawn as chosen on a dark page — exactly as in the original look, where the shipped #dc2626 and #888888 are the same colours' },
 ];
 
 // The tab strips the pages use (a tab that is already showing is not another screen).
@@ -218,13 +226,14 @@ function auditPage() {
   ];
   const all = [];   // { look, who, page, ...failure }
   let screens = 0;
-  for (const [preset, mode] of matrix) {
+  for (const [preset, mode, width] of matrix) {
     // The admin saves the look; the page then arrives with it already in.
     const saved = await fetch(base + '/api/dashboard/workspace/theme', { method: 'PUT', headers: { Authorization: 'Bearer ' + ADMIN, 'Content-Type': 'application/json' }, body: JSON.stringify(preset === 'black-gold' ? { reset: true } : { theme: { preset } }) });
     if (!saved.ok) throw new Error('could not save ' + preset + ': ' + await saved.text());
     for (const p of portals) for (const signedIn of [false, true]) {
       const page = await browser.newPage();
-      await page.setViewport({ width: 1280, height: 900 });
+      const phone = width < 600;
+      await page.setViewport({ width, height: phone ? 844 : 900, isMobile: phone, hasTouch: phone });
       await page.setBypassServiceWorker(true);
       await page.setRequestInterception(true);
       page.on('request', req => { if (/unpkg|jsdelivr|fonts\.g|gstatic/.test(req.url())) return req.respond({ status: 200, contentType: 'text/plain', body: '' }); req.continue(); });
@@ -255,7 +264,7 @@ function auditPage() {
       await sleep(1000);
       const got = await page.evaluate(() => document.documentElement.getAttribute('data-mode'));
       if (got !== mode) throw new Error(`${preset}:${mode} ${p.who}: the page opened in ${got}`);
-      const look = preset + ':' + mode;
+      const look = preset + ':' + mode + (phone ? '@' + width : '');
       const measure = async label => {
         await page.evaluate(() => document.getAnimations().forEach(a => a.cancel()));
         screens++;
@@ -312,7 +321,7 @@ function auditPage() {
     g.looks.add(f.look); g.pages.add(f.who + '/' + f.page);
     g.ratio = Math.min(g.ratio, f.ratio);
   }
-  const allowed = f => ALLOWED.some(a => a.test.test(f.sig));
+  const allowed = g => ALLOWED.some(a => a.test.test(g.sig) && (!a.look || [...g.looks].every(l => a.look.test(l))));
   const bad = [...groups.values()].filter(g => !allowed(g)).sort((a, b) => b.pages.size - a.pages.size);
   console.log(`${matrix.length} look(s) × ${screens / matrix.length} screens: ${all.length} short of contrast, in ${groups.size} kinds of element`);
   for (const g of bad.slice(0, LIST ? 1e9 : 40)) {

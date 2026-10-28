@@ -160,7 +160,7 @@
     background: none; border: none; color: var(--muted); font-size: 26px;
     line-height: 1; cursor: pointer; border-radius: 8px;
   }
-  .sidebar-close-btn:active { background: rgba(255,255,255,.06); }
+  .sidebar-close-btn:active { background: rgba(var(--ov,255,255,255),.06); }
 
   /* ── Bottom navigation ───────────────────────────────────────────────────
    * The team portal shipped one of these from the start and the admin never had it —
@@ -213,7 +213,7 @@
     padding: 6px 0; border: none; white-space: normal; max-width: none;
     font-size: 14px; overflow-wrap: anywhere;
   }
-  .table-scroll td + td, .table-card td + td { border-top: 1px solid rgba(255,255,255,.05); }
+  .table-scroll td + td, .table-card td + td { border-top: 1px solid rgba(var(--ov,255,255,255),.05); }
   .table-scroll td::before, .table-card td::before {
     content: attr(data-label); flex: 0 0 38%; max-width: 38%;
     color: var(--muted); font-size: 11px; font-weight: 600;

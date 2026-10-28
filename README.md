@@ -472,8 +472,11 @@ themselves; the sidebar picks its own text; the only colours that can fall short
 neutrals an admin sets by hand, and those are refused. `bash tests/run.sh` includes
 `tests/themeaudit.js`, which opens every screen of both portals — every page, every tab, every
 form that sits hidden until opened, both sign-in pages — in each checked look and measures every
-piece of text and every icon against what it is drawn on (`--full` runs all sixteen looks,
-`--only=moto:light --list` one look). Black & Gold's dark, the original, is outside it: thirty
+piece of text and every icon against what it is drawn on — at desktop width, and for the two
+looks that differ most (Moto Palette light, Cyberpunk dark) at phone width too (`--full` runs
+all sixteen looks, `--only=moto:light --list` one look, `--width=390` any run at phone width).
+A lead's status is drawn in every colour the product ships and five awkward ones, so the pills
+are held to the bar as well. Black & Gold's dark, the original, is outside it: thirty
 kinds of text in it were always below 4.5:1 and it is not changed.
 
 A colour somebody *picked* — the colour of a lead status, of any select column's option — is

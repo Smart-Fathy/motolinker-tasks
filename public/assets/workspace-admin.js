@@ -111,7 +111,7 @@ function wsaRender() {
         <div id="wsa-tab" role="tabpanel">${wsaTabHtml()}</div>
       </div>
       <aside class="wsa-col wsa-side">
-        <div class="wsa-card wsa-pv-card">
+        <div class="wsa-card wsa-pv-outer">
           <div class="wsa-pv-head">
             <span>Preview</span>
             <span class="wsa-seg" id="wsa-pv-modes">
