@@ -116,15 +116,26 @@ async function loadOrCreateVapidKeys() {
     try { ({ data, error } = await supabase.from('google_tokens').select('tokens').eq('user_key', 'vapid').maybeSingle()); }
     catch (e) { error = e; }
     if (error && !isMissingRelation(error)) {
-      console.warn('[VAPID] Could not read the key pair, push is off until it can:', error.message);
+      console.warn('[VAPID] Could not read the key pair, push is off until it can:', dbErrorText(error));
       retryBootRead(loadOrCreateVapidKeys);
       return;
     }
     if (data?.tokens?.publicKey && data?.tokens?.privateKey) vapidKeys = ctx.vapidKeys = data.tokens;
     else {
-      vapidKeys = ctx.vapidKeys = webpush.generateVAPIDKeys();
-      await saveGoogleToken('vapid', vapidKeys);
-      console.log('[VAPID] Generated and persisted a new key pair');
+      // And only a pair that was saved is used: one held in memory alone is replaced at
+      // the next boot, cutting off every browser that subscribed with it in between.
+      // (The log said "persisted" for one whose save had failed.)
+      const fresh = webpush.generateVAPIDKeys();
+      const { error: saveError } = await supabase.from('google_tokens')
+        .upsert({ user_key: 'vapid', tokens: fresh, updated_at: new Date().toISOString() }, { onConflict: 'user_key' })
+        .then(r => r, e => ({ error: e }));
+      if (saveError && !isMissingRelation(saveError)) {
+        console.warn('[VAPID] Could not save a new key pair, push is off until it can:', dbErrorText(saveError));
+        retryBootRead(loadOrCreateVapidKeys);
+        return;
+      }
+      vapidKeys = ctx.vapidKeys = fresh;
+      console.log(saveError ? '[VAPID] Generated a key pair (there is no google_tokens table to keep it in)' : '[VAPID] Generated and saved a new key pair');
     }
   }
   webpush.setVapidDetails('mailto:admin@motolinker.com', vapidKeys.publicKey, vapidKeys.privateKey);
@@ -176,7 +187,7 @@ async function loadGoogleTokens() {
     // A read that failed is not "no tokens". Taken as that, every Google connection
     // read as disconnected until the next deploy, though the database came back.
     if (error && !isMissingRelation(error)) {
-      console.warn('[tokens] Could not load from DB:', error.message);
+      console.warn('[tokens] Could not load from DB:', dbErrorText(error));
       retryBootRead(loadGoogleTokens);
       return;
     }
@@ -372,7 +383,14 @@ const verifyAdminPassword = pw => !!ADMIN_PASSWORD && sameSecret(pw, ADMIN_PASSW
 
 // PostgREST says a table does not exist as PGRST205 (not in the schema cache) or, from
 // Postgres itself, 42P01. Either way there is nothing in it to be stale.
-const isMissingRelation = e => !!e && (e.code === 'PGRST205' || e.code === '42P01' || /does not exist|schema cache/i.test(String(e.message || '')));
+//
+// PGRST002 names the schema cache too — "Could not query the database for the schema
+// cache. Retrying." — but it is PostgREST waiting on a database that is restarting:
+// the table is there, the answer is not. Taken for a missing table, the minute after a
+// Supabase restart read as "no second factor" at sign-in (a password alone let in), made
+// boot mint a push key and give up on the Google tokens, and signed people out.
+const isMissingRelation = e => !!e && e.code !== 'PGRST002' && !/could not query the database/i.test(String(e.message || ''))
+  && (e.code === 'PGRST205' || e.code === '42P01' || /does not exist|schema cache/i.test(String(e.message || '')));
 ctx.isMissingRelation = isMissingRelation;
 
 // Hang up the event streams opened with these tokens. Both stream families are tagged
@@ -2259,6 +2277,14 @@ const BOOT_DB_WAIT_MS = 5000;
 ctx.BOOT_RETRY_MS = 30_000;
 function retryBootRead(read) {
   setTimeout(() => read().catch(e => console.warn('[boot] retry failed:', e.message)), ctx.BOOT_RETRY_MS).unref();
+}
+// A failed read, in one line. Cloudflare in front of Supabase answers a stalled database
+// with a whole HTML page (521, 522), and each retry printed all of it; its title says
+// enough ("…supabase.co | 522: Connection timed out").
+function dbErrorText(e) {
+  const s = String((e && e.message) || e || '');
+  const title = /<title>([^<]*)<\/title>/i.exec(s);
+  return (title ? title[1] : s).replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
 (async () => {

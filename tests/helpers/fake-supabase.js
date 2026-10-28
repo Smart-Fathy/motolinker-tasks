@@ -10,6 +10,7 @@
 //   db.tables.sessions                   // the live rows
 //   db.missing.add('login_events')       // behave as if the table were never migrated
 //   db.failing.add('account_security')   // answer 500, as a database that is down does
+//   db.restarting.add('account_security')   // answer 503 PGRST002, as PostgREST does while a restarted database comes back
 //   db.latency = 20                      // ms per query, so concurrent requests really interleave
 //   { defaults: { t: () => ({ col: v }) } }  // column defaults applied on insert, like the real table's
 //   db.storage                           // Storage objects uploaded: 'bucket/path' -> { contentType, size, bytes }
@@ -24,6 +25,10 @@ function createFakeSupabase(initial = {}, { serial = {}, defaults = {} } = {}) {
   }
   const missing = new Set();
   const failing = new Set();   // tables that answer 500, as a database that is down or timing out does
+  // Tables that answer as PostgREST does for the minute after a database restart, while
+  // it reloads its schema cache. The message names the schema cache, as a missing
+  // table's does — which is the mistake this exists to catch.
+  const restarting = new Set();
   const log = [];   // { method, table, query } for assertions about what the app asked for
   const storage = new Map();   // 'bucket/path' -> { contentType, size }
 
@@ -120,6 +125,9 @@ function createFakeSupabase(initial = {}, { serial = {}, defaults = {} } = {}) {
     if (failing.has(table)) {
       return new Response(JSON.stringify({ code: 'XX000', message: 'simulated database failure' }), { status: 500, headers: JSON_HEADERS });
     }
+    if (restarting.has(table)) {
+      return new Response(JSON.stringify({ code: 'PGRST002', details: null, hint: null, message: 'Could not query the database for the schema cache. Retrying.' }), { status: 503, headers: JSON_HEADERS });
+    }
     if (!(table in tables) || missing.has(table)) {
       return new Response(JSON.stringify({ code: 'PGRST205', details: null, hint: null, message: `Could not find the table 'public.${table}' in the schema cache` }), { status: 404, headers: JSON_HEADERS });
     }
@@ -190,7 +198,7 @@ function createFakeSupabase(initial = {}, { serial = {}, defaults = {} } = {}) {
     };
     return db;
   }
-  const db = { tables, missing, failing, log, storage, install, handle, latency: 0 };
+  const db = { tables, missing, failing, restarting, log, storage, install, handle, latency: 0 };
   return db;
 }
 

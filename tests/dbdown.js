@@ -31,6 +31,9 @@ const FIRST_BOOT = process.argv.includes('--first-boot');
 process.env.PORT = FIRST_BOOT ? '3964' : (process.env.PORT || '3963');
 const base = 'http://127.0.0.1:' + process.env.PORT;
 const pushKey = async () => (await (await fetch(base + '/api/push/vapid-public-key')).json()).key;
+// What PostgREST answers for the minute after a database restart, while it reloads.
+const pgrst002 = () => new Response(JSON.stringify({ code: 'PGRST002', details: null, hint: null, message: 'Could not query the database for the schema cache. Retrying.' }),
+  { status: 503, headers: { 'Content-Type': 'application/json' } });
 
 if (FIRST_BOOT) firstBoot(); else outage();
 
@@ -45,7 +48,8 @@ async function outage() {
   db.install();
 
   // 'stalled' holds a query until the test lets go of it; 'gateway' answers the way
-  // Supabase's gateway did once it gave up; 'healthy' reaches the database.
+  // Supabase's gateway did once it gave up; 'restarting' the way PostgREST does while a
+  // restarted database comes back; 'healthy' reaches the database.
   let mode = 'stalled';
   const held = [], asked = [];
   const viaDb = global.fetch;
@@ -56,6 +60,7 @@ async function outage() {
     asked.push({ method: String((init && init.method) || 'GET').toUpperCase(), url });
     if (mode === 'healthy') return viaDb(input, init);
     if (mode === 'gateway') return Promise.resolve(gatewayTimeout());
+    if (mode === 'restarting') return Promise.resolve(pgrst002());
     return new Promise((resolve, reject) => {
       held.push(() => resolve(mode === 'healthy' ? viaDb(input, init) : gatewayTimeout()));
       // As a real fetch does: a request its caller gives up on rejects at once.
@@ -65,6 +70,7 @@ async function outage() {
   };
   const vapidReads = () => asked.filter(a => a.method === 'GET' && /google_tokens.*user_key=eq\.vapid/.test(a.url)).length;
   const tokenWrites = () => asked.filter(a => a.method !== 'GET' && /\/google_tokens/.test(a.url)).length;
+  const tokenLoads = () => asked.filter(a => a.method === 'GET' && /google_tokens\?select=user_key/.test(a.url)).length;
   // With its own deadline: a guard that waits on the stalled database never answers at
   // all, and a test that hangs is no use to anyone. No answer reads as status 0.
   const whoAmI = (p, token) => fetch(base + p, { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(5000) })
@@ -112,6 +118,19 @@ async function outage() {
   c('the Google tokens are not loaded yet either', !ctx.driveTokens);
   c('a 504 from the gateway is a 503 to the portals as well', (await whoAmI('/api/auth/check', 'stored-admin')).status === 503);
 
+  // ── Supabase restarts: PostgREST answers PGRST002 until it has reloaded ─────────
+  // Its message names the schema cache, as a missing table's does. In production that
+  // minute made boot mint a push key it could not save, give up on the Google tokens,
+  // and sign out whoever checked in.
+  mode = 'restarting';
+  await sleep(400);
+  const loadsThen = tokenLoads();
+  await sleep(800);
+  c('a database that is restarting makes no new pair either: the key stays empty', (await pushKey()) === '');
+  c('…and nothing is written over the stored pair', tokenWrites() === 0, `${tokenWrites()} write(s) to google_tokens`);
+  c('the Google tokens are still asked for, not taken to be none', tokenLoads() > loadsThen, `${loadsThen} → ${tokenLoads()} reads`);
+  c('a sign-in it cannot confirm yet is still a 503, not a 401', (await whoAmI('/api/auth/check', 'stored-admin')).status === 503);
+
   // ── The database recovers ────────────────────────────────────────────────────
   mode = 'healthy';
   let key = '';
@@ -133,7 +152,7 @@ async function outage() {
   // ── A first boot still makes, saves and serves a pair ─────────────────────────
   const child = spawnSync(process.execPath, [__filename, '--first-boot'], { encoding: 'utf8', timeout: 30_000 });
   const verdict = String(child.stdout || '').split('\n').find(l => l.startsWith('FIRST-BOOT')) || 'no verdict';
-  c('with no pair stored, boot makes one, saves it and serves it', child.status === 0, verdict);
+  c('with no pair stored, boot makes one and serves it only once it is saved', child.status === 0, verdict);
   done();
 }
 
@@ -147,14 +166,25 @@ function done() {
 async function firstBoot() {
   const db = createFakeSupabase({ google_tokens: [], quotation_settings: [], sessions: [], push_subscriptions: [] });
   db.install();
+  // The first save meets a database that is restarting. A pair held only in memory is
+  // replaced at the next boot, so it must not be served until a save has gone through.
+  let saves = 0;
+  const viaDb = global.fetch;
+  global.fetch = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    const write = /\/google_tokens/.test(url) && String((init && init.method) || 'GET').toUpperCase() === 'POST';
+    if (write && saves++ === 0) return Promise.resolve(pgrst002());
+    return viaDb(input, init);
+  };
   require(process.cwd() + '/index.js');
+  require(process.cwd() + '/src/ctx').BOOT_RETRY_MS = 200;
   let key = '';
   for (let i = 0; i < 100 && !key; i++) {
     try { key = await pushKey(); } catch (_) {}
     if (!key) await sleep(100);
   }
   const row = db.tables.google_tokens.find(r => r.user_key === 'vapid');
-  const ok = !!key && !!row && row.tokens.publicKey === key && !!row.tokens.privateKey;
-  console.log(ok ? 'FIRST-BOOT ok' : `FIRST-BOOT key=${key ? key.slice(0, 12) : '(none)'} saved=${row ? row.tokens.publicKey.slice(0, 12) : '(none)'}`);
+  const ok = !!key && !!row && row.tokens.publicKey === key && !!row.tokens.privateKey && saves >= 2;
+  console.log(ok ? `FIRST-BOOT ok (served after save ${saves})` : `FIRST-BOOT key=${key ? key.slice(0, 12) : '(none)'} saved=${row ? row.tokens.publicKey.slice(0, 12) : '(none)'} saves=${saves}`);
   process.exit(ok ? 0 : 1);
 }
