@@ -60,41 +60,74 @@ function serve() {
   });
 }
 
-// Runs in the page: every rule of every sheet, as { key: { property: resolved value } }.
-function dumpAll() {
-  const out = {};
-  const seen = new Map();
+// Every rule of a sheet, as the text of its declarations and where it sits. The same reader
+// tools/theme-codemod.js uses to find what to change.
+function readRules(css) {
+  const { parse } = require('./theme-codemod');
+  const seen = new Set(), out = [];
+  for (const d of parse(css)) {
+    const r = d.rule;
+    if (seen.has(r)) continue;
+    seen.add(r);
+    const ctx = [];
+    for (let g = r.parent; g; g = g.parent) ctx.unshift(g.head.replace(/\s+/g, ' '));
+    out.push({ head: r.head.replace(/\s+/g, ' '), ctx: ctx.join(' >> '), block: css.slice(r.bodyStart, r.bodyEnd) });
+  }
+  return out;
+}
+
+// Runs in the page. Each rule's declarations are written into a stylesheet under the
+// name of a probe element, and what the browser resolves every property of the rule to
+// is read back from that element: { property: resolved value }.
+function dumpAll(rules) {
   const stage = document.getElementById('stage');
-  const walk = (rules, ctx, sheet) => {
-    for (const r of rules) {
-      if (r.cssRules && !r.style) { walk(r.cssRules, ctx + ' >> ' + r.cssText.split('{')[0].trim(), sheet); continue; }
-      if (!r.style) continue;
-      const sel = r.selectorText || r.keyText || r.cssText.split('{')[0].trim();
-      const k0 = sheet + ' | ' + ctx + ' | ' + sel;
-      const n = (seen.get(k0) || 0) + 1; seen.set(k0, n);
-      const el = document.createElement('div');
-      el.style.cssText = r.style.cssText;
-      stage.appendChild(el);
-      // A rule that animates would otherwise be caught mid-flight.
-      el.getAnimations().forEach(a => a.cancel());
-      const cs = getComputedStyle(el);
-      const d = {};
-      for (const name of r.style) d[name] = cs.getPropertyValue(name);
-      el.remove();
-      out[n > 1 ? k0 + ' #' + n : k0] = d;
-    }
+  const style = document.createElement('style');
+  style.textContent = rules.map((r, i) => `golden-probe[data-k="${i}"]{${r.block}}`).join('\n');
+  document.head.appendChild(style);
+  // A shorthand names several properties; setting it to "inherit" (valid for all of them)
+  // is the way to ask which.
+  const t = document.createElement('div');
+  const longhands = new Map();
+  const expand = name => {
+    if (longhands.has(name)) return longhands.get(name);
+    t.style.cssText = '';
+    t.style.setProperty(name, name.startsWith('--') ? '0' : 'inherit');
+    const list = [...t.style];
+    longhands.set(name, list);
+    return list;
   };
-  for (const s of document.styleSheets) walk(s.cssRules, '', (s.href || '').replace(/^.*\/assets\//, '').replace(/\?.*$/, ''));
+  const out = {};
+  rules.forEach((r, i) => {
+    const el = document.createElement('golden-probe');
+    el.setAttribute('data-k', i);
+    stage.appendChild(el);
+    el.getAnimations().forEach(a => a.cancel());
+    const cs = getComputedStyle(el);
+    const d = {};
+    for (const m of r.block.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/(?:^|[;{}\s])(-{0,2}[a-zA-Z][\w-]*)\s*:/g)) for (const name of expand(m[1].toLowerCase())) d[name] = cs.getPropertyValue(name);
+    el.remove();
+    out[r.key] = d;
+  });
+  style.remove();
   return out;
 }
 
 async function recordRules(browser, origin) {
   const result = {};
   for (const which of Object.keys(SHEETS)) {
+    const rules = [];
+    const seen = new Map();
+    for (const sheet of SHEETS[which]) {
+      for (const r of readRules(fs.readFileSync(path.join(ROOT, sheet), 'utf8'))) {
+        const k0 = path.basename(sheet) + ' | ' + r.ctx + ' | ' + r.head;
+        const n = (seen.get(k0) || 0) + 1; seen.set(k0, n);
+        rules.push({ key: n > 1 ? k0 + ' #' + n : k0, block: r.block });
+      }
+    }
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
     await page.goto(`${origin}/__harness?w=${which}`, { waitUntil: 'load' });
-    result[which] = await page.evaluate(dumpAll);
+    result[which] = await page.evaluate(dumpAll, rules);
     await page.close();
   }
   return result;
