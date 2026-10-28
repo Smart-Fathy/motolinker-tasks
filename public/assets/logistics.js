@@ -156,7 +156,7 @@
     .logi-map .leaflet-control-attribution{background:rgba(0,0,0,.55);color:#9aa;font-size:9px}
     .logi-map .leaflet-control-attribution a{color:#bcd}
     .logi-ship-marker{display:flex;align-items:center;justify-content:center;color:var(--primary-text,var(--primary,#c9a35e));
-                      filter:drop-shadow(0 0 3px rgba(0,0,0,.8))}
+                      filter:drop-shadow(0 0 3px rgba(0,0,0,calc(.8 * var(--sh-k,1))))}
 
     .logi-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:calc(20px * var(--r-k,1));
                font-size:10.5px;font-weight:800;letter-spacing:.02em;white-space:nowrap}

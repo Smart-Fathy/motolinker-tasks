@@ -25,7 +25,7 @@
   const CSS = `
   #sec-overlay{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:10000;display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px;-webkit-overflow-scrolling:touch}
   #sec-overlay.open{display:flex}
-  .sec-box{background:var(--surface,#141416);border:1px solid var(--border,rgba(255,255,255,.09));border-radius:calc(16px * var(--r-k,1));width:100%;max-width:580px;padding:22px 22px 18px;color:var(--text,#f3efe7);box-shadow:0 20px 60px rgba(0,0,0,.5);margin:auto 0}
+  .sec-box{background:var(--surface,#141416);border:1px solid var(--border,rgba(255,255,255,.09));border-radius:calc(16px * var(--r-k,1));width:100%;max-width:580px;padding:22px 22px 18px;color:var(--text,#f3efe7);box-shadow:0 20px 60px rgba(0,0,0,calc(.5 * var(--sh-k,1)));margin:auto 0}
   .sec-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:4px}
   .sec-title{font-size:17px;font-weight:700}
   .sec-lead{font-size:12px;color:var(--muted,#8d897f);margin:0 0 16px}

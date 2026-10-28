@@ -738,7 +738,7 @@
           <div style="position:relative"><label class="form-label">Car in Question <span id="eml-car-hint" style="color:var(--muted);font-weight:400;font-size:11px"></span></label>
             <input class="form-control" id="eml-car" placeholder="Search inventory or type a vehicle…" autocomplete="off">
             <input type="hidden" id="eml-car-price"><input type="hidden" id="eml-car-images">
-            <div id="eml-car-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.45)"></div>
+            <div id="eml-car-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,calc(.45 * var(--sh-k,1)))"></div>
           </div>
           <div><label class="form-label">Budget (EGP)</label><input class="form-control" id="eml-budget" placeholder="e.g. 1700000 or 1.7M - 2M"></div>
           <div><label class="form-label">Next Action</label>
@@ -1417,7 +1417,7 @@
 </div>
 
 <!-- ── PWA Install Banner (Android/Chrome) ── -->
-<div id="pwa-install-banner" style="display:none;position:fixed;bottom:calc(var(--bottomnav-h) + 12px);left:12px;right:12px;z-index:400;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+<div id="pwa-install-banner" style="display:none;position:fixed;bottom:calc(var(--bottomnav-h) + 12px);left:12px;right:12px;z-index:400;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,calc(.5 * var(--sh-k,1)))">
   <img src="/icons/icon-192.png" style="width:40px;height:40px;border-radius:calc(10px * var(--r-k,1));flex-shrink:0" alt="" onerror="this.style.display='none'">
   <div style="flex:1;min-width:0">
     <div style="font-weight:700;font-size:14px">Install <span data-ws-name>MotoLinker</span></div>
@@ -1428,7 +1428,7 @@
 </div>
 
 <!-- ── PWA iOS Hint ── -->
-<div id="pwa-ios-hint" style="display:none;position:fixed;bottom:calc(var(--bottomnav-h) + 12px);left:12px;right:12px;z-index:400;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:flex-start;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+<div id="pwa-ios-hint" style="display:none;position:fixed;bottom:calc(var(--bottomnav-h) + 12px);left:12px;right:12px;z-index:400;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:flex-start;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,calc(.5 * var(--sh-k,1)))">
   <div style="flex-shrink:0;display:flex"><i data-lucide="smartphone" style="width:24px;height:24px"></i></div>
   <div style="flex:1;min-width:0">
     <div style="font-weight:700;font-size:14px;margin-bottom:4px">Install <span data-ws-name>MotoLinker</span></div>

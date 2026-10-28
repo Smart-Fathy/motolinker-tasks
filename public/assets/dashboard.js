@@ -4606,7 +4606,7 @@ function notifCenterClick(id, urlEnc, type) {
 function showAdminToast(msg) {
   let t = document.createElement('div');
   t.textContent = msg;
-  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--option-bg,#141416);color:var(--text,#f3efe7);border:1px solid var(--hair-gold);padding:12px 18px;border-radius:calc(8px * var(--r-k,1));font-size:13px;z-index:9999;opacity:0;transition:opacity .3s,transform .3s;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,.5);';
+  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--option-bg,#141416);color:var(--text,#f3efe7);border:1px solid var(--hair-gold);padding:12px 18px;border-radius:calc(8px * var(--r-k,1));font-size:13px;z-index:9999;opacity:0;transition:opacity .3s,transform .3s;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,calc(.5 * var(--sh-k,1)));';
   document.body.appendChild(t);
   requestAnimationFrame(() => { t.style.opacity = '1'; t.style.transform = 'translateX(-50%) translateY(0)'; });
   setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(-50%) translateY(20px)'; setTimeout(() => t.remove(), 400); }, 4000);
@@ -5426,7 +5426,7 @@ function helpInit() {
   style.textContent = `
     .hb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9994;opacity:0;pointer-events:none;transition:opacity .2s}
     .hb-overlay.open{opacity:1;pointer-events:auto}
-    .hb-panel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(var(--primary-rgb,201,163,94),.3);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,.5)}
+    .hb-panel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(var(--primary-rgb,201,163,94),.3);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,calc(.5 * var(--sh-k,1)))}
     .hb-panel.open{transform:translateX(0)}
     .hb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 18px;border-bottom:1px solid var(--border,#2a2a2e)}
     .hb-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
@@ -6719,7 +6719,7 @@ function openCustomerModal(id, presetStatus) {
       return `<div style="position:relative"><label class="form-label">${esc(col.label)} <span id="cm-cf-${esc(col.key)}-hint" style="color:var(--muted);font-weight:400;font-size:11px"></span></label>
         <input class="form-input" id="cm-cf-${esc(col.key)}" value="${esc(v ?? '')}" placeholder="Search inventory or type a vehicle…" autocomplete="off">
         <input type="hidden" id="cm-cf-${esc(col.key)}-price"><input type="hidden" id="cm-cf-${esc(col.key)}-images">
-        <div id="cm-cf-${esc(col.key)}-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.45)"></div></div>`;
+        <div id="cm-cf-${esc(col.key)}-results" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:var(--card,#18181b);border:1px solid var(--border);border-radius:calc(8px * var(--r-k,1));margin-top:4px;max-height:240px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,calc(.45 * var(--sh-k,1)))"></div></div>`;
     }
     const t = col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : col.type === 'link' ? 'url' : 'text';
     return `<div><label class="form-label">${esc(col.label)}</label>

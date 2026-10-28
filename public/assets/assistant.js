@@ -117,7 +117,7 @@
       .ai-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9994;opacity:0;pointer-events:none;transition:opacity .2s}
       .ai-overlay.open{opacity:1;pointer-events:auto}
       .ai-overlay button{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
-      .ai-panel{position:fixed;top:0;right:0;bottom:0;width:var(--ai-w);max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(167,139,250,.35);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,.5)}
+      .ai-panel{position:fixed;top:0;right:0;bottom:0;width:var(--ai-w);max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(167,139,250,.35);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,calc(.5 * var(--sh-k,1)))}
       .ai-panel.open{transform:translateX(0)}
       .ai-grip{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:2}
       .ai-grip:hover,.ai-grip.on{background:linear-gradient(180deg,rgba(244,114,182,.5),rgba(167,139,250,.5),rgba(56,189,248,.5))}
