@@ -18,6 +18,7 @@ const TABLES = {
   deals: [{ id: 50, stage: 'negotiation', assigned_to: OTHER, customer_id: 5, customers: { assigned_to: OTHER, lead_status: 'hot' } },
           { id: 60, stage: 'negotiation', assigned_to: REP, customer_id: 6, customers: { assigned_to: REP, lead_status: 'hot' } }],
   lead_followups: [{ id: 70, customer_id: 5, status: 'pending' }, { id: 80, customer_id: 6, status: 'pending' }],
+  employees: [{ id: REP, name: 'Rep', username: 'rep', job_title: 'Sales', permissions: {} }],
 };
 const writes = [];
 const realFetch = global.fetch;
@@ -37,6 +38,8 @@ global.fetch = async (input, init) => {
   }
   if (method !== 'GET') {
     if (method === 'POST') rows = [{ id: 1000 + writes.length, customer_id: 6, due_at: new Date().toISOString(), ...JSON.parse(String(init.body || '{}')) }];
+    // An update answers with the row as it now is, like PostgREST's return=representation.
+    if (method === 'PATCH') rows = rows.map(r => ({ ...r, ...JSON.parse(String(init.body || '{}')) }));
   }
   const out = accept.includes('pgrst.object') ? (rows[0] || {}) : rows;
   return new Response(JSON.stringify(out), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -82,6 +85,22 @@ const base = 'http://127.0.0.1:' + process.env.PORT;
   }
   const open = await call('open-rep', 'PUT', '/api/employee/leads/5', { notes: 'x' });
   check('a rep with no scope still edits any lead, as before', open.status === 200 && open.wrote > 0, JSON.stringify(open));
+
+  // The admin narrows that rep to their own leads in the employee editor. The rep's
+  // session is already open; the change must hold on it at once, not at their next
+  // page load (the single editor used to update the table but not open sessions).
+  const { token: admin } = await (await fetch(base + '/api/auth/login', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: process.env.ADMIN_USERNAME || 'admin', password: 'pw' }) })).json();
+  const edit = await fetch(base + `/api/dashboard/employees/${REP}`, { method: 'PUT',
+    headers: { Authorization: 'Bearer ' + admin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Rep', username: 'rep', job_title: 'Sales',
+      permissions: { leads: true, leadsActions: { view: true, edit: true }, scope: { assignedOnly: true } } }) });
+  check('the admin saves the narrower scope', edit.status === 200, String(edit.status));
+  const after = await call('open-rep', 'PUT', '/api/employee/leads/5', { notes: 'y' });
+  check("…and the rep's open session is held to it at once", after.status === 403 && after.wrote === 0, JSON.stringify(after));
+  const ownAfter = await call('open-rep', 'PUT', '/api/employee/leads/6', { notes: 'y' });
+  check('…while their own lead still saves', ownAfter.status === 200, JSON.stringify(ownAfter));
 
   const pass = results.filter(Boolean).length;
   console.log(`\n${pass}/${results.length} scope checks passed`);

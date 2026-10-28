@@ -756,6 +756,15 @@ receiver.router.put('/api/dashboard/employees/:id', requireAuth, express.json(),
   const { data, error } = await supabase.from('employees').update(updates).eq('id', req.params.id)
     .select('id, name, username, email, job_title, slack_user_id, permissions, created_at, avatar_url, status_text, status_emoji').single();
   if (error) return res.status(500).json({ error: error.message });
+  // Open sessions carry the permissions, scope and title they signed in with, and
+  // requirePerm reads the session, not this table. Bring them in line now, as the
+  // bulk editor above does — otherwise a demoted employee kept their old rights for
+  // as long as they did not reload the page, up to the session's 30 days.
+  if (data && data.id != null) {
+    for (const [token, sess] of employeeSessions) {
+      if (String(sess.id) === String(data.id)) employeeSessions.set(token, { ...sess, ...employeeSessionPayload(data) });
+    }
+  }
   // An administrator setting a new password is the other way a login ends: if it was
   // set because the old one leaked, the person holding it must not stay signed in.
   if (password) {
