@@ -115,7 +115,7 @@ for (const [portal, html, own] of [['admin', 'public/dashboard.html', 'dashboard
 // Every value the workspace can redefine has a default in the sheet; they must be the
 // ones theme-core says (BASE) and, for Black & Gold's dark, the ones it derives. Otherwise
 // "a workspace that has chosen nothing looks as it always did" quietly stops being true.
-const norm = v => String(v).replace(/\s+/g, '').replace(/\b0\./g, '.').toLowerCase();
+const norm = v => String(v).replace(/\s+/g, '').replace(/\b0\./g, '.').replace(/#([0-9a-f])([0-9a-f])([0-9a-f])\b/gi, '#$1$1$2$2$3$3').toLowerCase();
 // name -> value, across every :root rule of a sheet (later wins, as in the cascade)
 function rootTokens(css) {
   const out = {};

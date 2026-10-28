@@ -94,7 +94,7 @@
       // changing the accent must not move any neutral.
       dark:  { bg: '#0c0c0e', panel: '#141416', sidebar: '#0f0f12', text: '#f3efe7', text2: '#b9b3a4', muted: '#8d897f', accent: '#c9a35e', accent2: '#e8cd93',
                card: '#18181b', field: '#0e0e10', field2: '#101013', thead: '#101012', auth1: '#15130e', auth2: '#0b0b0c', avatar1: '#1c1a14', ink2: '#1b1608',
-               soft: '#d9bd7f', deep: '#a07e3f', lite: '#e8cd93', dim: '#8a6a30' },
+               soft: '#d9bd7f', deep: '#a07e3f', lite: '#e8cd93', dim: '#8a6a30', muted2: '#a5a29a', placeholder: '#6f6b63' },
       light: { bg: '#f7f4ee', panel: '#ffffff', sidebar: '#ffffff', text: '#1f1c17', muted: '#6b6558', accent: '#806224', accent2: '#b78c3d' },
     },
     'moto': {
@@ -321,6 +321,8 @@
       bg: P.bg, panel: P.panel, sidebar: P.sidebar, text: P.text, text2, muted: P.muted,
       card: P.card || (dark ? mix(P.panel, '#ffffff', 0.02) : P.panel),
       field, field2: P.field2 || field,
+      muted2: P.muted2 || (dark ? mix(P.muted, P.text, 0.28) : mix(P.muted, P.text, 0.18)),
+      placeholder: P.placeholder || ensure(mix(P.muted, field, 0.3), field, dark ? 3 : 3.2),
       thead: P.thead || (dark ? mix(P.bg, P.panel, 0.6) : mix(P.panel, P.bg, 0.6)),
       auth1: P.auth1 || (dark ? mix(P.bg, fill, 0.05) : mix(P.bg, P.panel, 0.4)),
       auth2: P.auth2 || (dark ? mix(P.bg, '#000000', 0.2) : P.bg),
@@ -344,9 +346,16 @@
     '--success': '#10b981', '--warning': '#f59e0b', '--danger': '#ef4444', '--info': '#9fb0bd', '--orange': '#c98b5e',
     '--st-todo': '#94a3b8', '--st-progress': '#f59e0b', '--st-done': '#10b981',
     '--pri-high': '#ef4444', '--pri-med': '#f59e0b', '--pri-low': '#10b981',
-    '--stage-lead': '#c9a35e', '--stage-inquiry': '#7c6aff', '--stage-quoted': '#5a78c8', '--stage-negotiating': '#e69650',
+    '--stage-inquiry': '#7c6aff', '--stage-quoted': '#5a78c8', '--stage-negotiating': '#e69650',
     '--stage-won': '#64b478', '--stage-lost': '#ef4444', '--stage-quoted-text': '#8aa4e0',
     '--stock-in': '#10b981', '--stock-transit': '#5a78c8', '--stock-reserved': '#f59e0b', '--stock-sold': '#8d897f',
+    '--lead-cold': '#b9b3a4', '--lead-warm': '#e69650', '--lead-hot': '#f87171', '--lead-immediate': '#6dd8a4',
+    '--lead-notinterested': '#888888', '--lead-blacklist': '#dc2626',
+    '--w-mint': '#6dd8a4', '--w-blue': '#9fb0bd', '--w-slate': '#94a3b8', '--w-amber': '#f59e0b', '--w-orange': '#c98b5e',
+    '--w-muted': '#8d897f', '--w-red': '#ef4444', '--w-green': '#10b981',
+    // text colours the sheets spell out for particular places (a badge, the calendar key, a notice)
+    '--danger-text': '#f87171', '--cal-task': '#60a5fa', '--cal-task-text': '#8ec0ff', '--notice-text': '#e9c98a', '--notice-strong': '#f8dfae',
+    '--warning-soft': '#fbbf24', '--success-soft': '#34d399', '--success-text': '#9fb59a', '--error-text': '#ff8888',
   };
 
   // ── What the sheets already say ─────────────────────────────────────────────
@@ -361,7 +370,10 @@
     '--field-bg': '#0e0e10', '--field-bg-2': '#101013', '--thead-bg': '#101012', '--option-bg': '#141416',
     '--header-bg': 'rgba(12,12,14,.85)', '--topbar-bg': 'rgba(12,12,14,.9)',
     '--auth-bg-1': '#15130e', '--auth-bg-2': '#0b0b0c', '--avatar-bg-1': '#1c1a14',
-    '--color-scheme': 'dark',
+    '--color-scheme': 'dark', '--strong': '#fff',
+    '--danger-text': '#f87171', '--cal-task': '#60a5fa', '--cal-task-text': '#8ec0ff', '--notice-text': '#e9c98a', '--notice-strong': '#f8dfae',
+    '--warning-soft': '#fbbf24', '--success-soft': '#34d399', '--success-text': '#9fb59a', '--error-text': '#f88',
+    '--muted-2': '#a5a29a', '--placeholder': '#6f6b63',
   };
 
   // ── Variables ───────────────────────────────────────────────────────────────
@@ -381,6 +393,9 @@
     v['--text'] = c.text;
     v['--text-2'] = c.text2;
     v['--muted'] = c.muted;
+    v['--muted-2'] = c.muted2;
+    v['--placeholder'] = c.placeholder;
+    v['--strong'] = c.dark ? '#ffffff' : c.text;
     v['--ov'] = triplet(c.ink);
     v['--surface-rgb'] = triplet(c.panel);
     v['--border'] = rgba(c.ink, ovA);
@@ -414,10 +429,16 @@
     v['--hair-gold'] = rgba(c.accent, c.dark ? 0.22 : 0.3);
     v['--accent-2'] = c.accent2;
     v['--accent-2-rgb'] = triplet(c.accent2);
+    // Tints the sheets still write in an older purple: they follow the second colour
+    v['--alt-rgb'] = triplet(c.accent2);
+    // The widgets and the pipeline's first stage wear the accent
+    v['--w-gold'] = c.accent;
+    v['--stage-lead'] = c.accent;
     // The sidebar's own: the sheets put these in place of the page's inside .sidebar
     v['--sb-text'] = c.sbText;
     v['--sb-muted'] = c.sbMuted;
     v['--sb-ov'] = triplet(c.sbText);
+    v['--sb-strong'] = contrast('#ffffff', c.sidebar) >= 7 ? '#ffffff' : c.sbText;
     v['--sb-accent'] = c.sbAccent;
     v['--sb-accent-rgb'] = triplet(c.sbAccent);
     v['--sb-hair'] = rgba(c.sbText, 0.09);

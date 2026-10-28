@@ -83,7 +83,7 @@ check('…and its sidebar accent is the lime, not that green, which would vanish
 // changing only the accent must not move a neutral.
 {
   const v = T.deriveVars({}, 'dark');
-  const norm = x => String(x).replace(/\b0\./g, '.');
+  const norm = x => String(x).replace(/\b0\./g, '.').replace(/#([0-9a-f])([0-9a-f])([0-9a-f])\b/gi, '#$1$1$2$2$3$3').toLowerCase();
   const want = {
     '--bg': '#0c0c0e', '--surface': '#141416', '--panel': '#141416', '--card': '#18181b', '--text': '#f3efe7', '--muted': '#8d897f',
     '--border': 'rgba(255,255,255,.09)', '--hair': 'rgba(255,255,255,.09)', '--hair-gold': 'rgba(201,163,94,.22)',
@@ -93,8 +93,10 @@ check('…and its sidebar accent is the lime, not that green, which would vanish
   };
   const wrong = Object.entries(want).filter(([k, x]) => norm(v[k]) !== x).map(([k, x]) => `${k}: ${v[k]} (sheets say ${x})`);
   check('Black & Gold dark carries the sheets\' own values', wrong.length === 0, wrong.join('; '));
-  const wrongBase = Object.entries(T.BASE).filter(([k, x]) => k !== '--glow' && norm(v[k]) !== norm(x)).map(([k, x]) => `${k}: ${v[k]} (BASE ${x})`);
-  check('…and so does every token in BASE, the table the stylesheets are checked against', wrongBase.length === 0, wrongBase.join('; '));
+  // Every token in BASE is either derived (and then agrees) or a fixed hue the theme only touches in light.
+  const wrongBase = Object.entries(T.BASE).filter(([k, x]) => (k in v ? norm(v[k]) !== norm(x) : !(k in T.STATUS))).map(([k, x]) => `${k}: ${v[k]} (BASE ${x})`);
+  check('…and so does every token in BASE, the table the stylesheets are checked against (the fixed hues apart)', wrongBase.length === 0, wrongBase.join('; '));
+  check('a fixed hue is what the sheets say in dark, and is sunk to a readable one in light', Object.entries(T.STATUS).every(([k, x]) => !(k in T.BASE) || norm(T.BASE[k]) === norm(x)) && Object.keys(T.STATUS).every(k => k in T.deriveVars({}, 'light') && !(k in T.deriveVars({}, 'dark')) || k === '--w-gold' || k === '--stage-lead'));
 }
 
 // ── Choosing: overrides and the guard ─────────────────────────────────────────

@@ -450,14 +450,17 @@
     --field-bg:#0e0e10; --field-bg-2:#101013; --thead-bg:#101012; --option-bg:#141416;
     --header-bg:rgba(12,12,14,.85); --topbar-bg:rgba(12,12,14,.9);
     --auth-bg-1:#15130e; --auth-bg-2:#0b0b0c; --avatar-bg-1:#1c1a14;
-    --color-scheme:dark;
+    --color-scheme:dark; --strong:#fff;
+    --danger-text:#f87171; --cal-task:#60a5fa; --cal-task-text:#8ec0ff; --notice-text:#e9c98a; --notice-strong:#f8dfae;
+    --warning-soft:#fbbf24; --success-soft:#34d399; --success-text:#9fb59a; --error-text:#f88;
+    --muted-2:#a5a29a; --placeholder:#6f6b63;
   }
   /* The sidebar is its own surface: a forest-green one can sit beside a white page, a
      white one beside a dark page. Inside it the page's tokens are put back to the
      sidebar's own (--sb-*, from theme-core), so every rule in here that reads --text,
      --muted, --gold or an rgba(var(--ov),a) overlay follows without being rewritten. */
   .sidebar{
-    --ov:var(--sb-ov,255,255,255); --text:var(--sb-text,#f3efe7); --muted:var(--sb-muted,#8d897f);
+    --ov:var(--sb-ov,255,255,255); --strong:var(--sb-strong,#fff); --text:var(--sb-text,#f3efe7); --muted:var(--sb-muted,#8d897f);
     --gold:var(--sb-accent,#c9a35e); --primary:var(--sb-accent,#c9a35e); --primary-rgb:var(--sb-accent-rgb,201,163,94);
     --hair:var(--sb-hair,rgba(255,255,255,.09)); --hair-gold:var(--sb-hair-gold,rgba(201,163,94,.22));
     --border:var(--sb-hair,rgba(255,255,255,.09)); --glass-border:var(--sb-glass-border,rgba(255,255,255,.07));

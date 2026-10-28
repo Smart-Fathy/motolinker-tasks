@@ -113,6 +113,9 @@ const overlaps = (spans, a, b) => spans.some(([x, y]) => a < y && b > x);
 // Each pass: `forward(value, decl, ctx)` returns the new value or null. A pass only ever
 // inserts text around what was there (a var( before, a fallback and ) after). `review`
 // collects what a pass found but would not decide.
+// var(--token, <value>) around a value's text, leaving the whitespace outside it as it was
+const wrap = (value, token) => value.replace(/^(\s*)([\s\S]*?)(\s*)$/, (m, a, b, c) => a + 'var(' + token + ',' + b + ')' + c);
+const TEXT_PROPS = /^(color|fill|stroke|border(-(top|right|bottom|left))?(-color)?|outline(-color)?|text-decoration(-color)?|caret-color|-webkit-text-fill-color)$/;
 const H = (hex) => new RegExp('(?<![0-9a-z#_-])' + hex.replace('#', '#') + '(?![0-9a-z_-])', 'gi');
 const sub = (value, spans, re, fn) => {
   let out = '', last = 0, changed = false;
@@ -127,10 +130,11 @@ const sub = (value, spans, re, fn) => {
   return changed ? out + value.slice(last) : null;
 };
 // A pass made of exact-literal -> token swaps
-function swaps(list, { props } = {}) {
+function swaps(list, { props, textOnly } = {}) {
   return {
     forward(value, d) {
       if (props && !props.includes(d.prop)) return null;
+      if (textOnly && !TEXT_PROPS.test(d.prop)) return null;
       const spans = maskedSpans(value);
       let cur = value, any = false;
       for (const [lit, token] of list) {
@@ -191,6 +195,34 @@ PASSES.fills = (() => {
   return { about: 'the dark fills (fields, table heads, options, bars, the header glass) → tokens', forward: (v, d, c) => { let cur = v, any = false; for (const p of [hex, rg]) { const r = p.forward(cur, d, c); if (r != null) { cur = r; any = true; } } return any ? cur : null; } };
 })();
 
+// The older purple the sheets still tint some places with (focus rings, a reply quote, the
+// sign-in glow). Left undefined in the sheets, so each keeps its own shade; a workspace's
+// look defines it as the second colour, and they follow.
+for (const [r, g, b] of [[90, 103, 216], [99, 102, 241], [124, 106, 255]]) {
+  PASSES['alt:' + r] = Object.assign({ about: `rgba(${r},${g},${b},a) → rgba(var(--alt-rgb,${r},${g},${b}),a)` }, rgbaSwap(r, g, b, '--alt-rgb'));
+}
+PASSES['alt'] = { about: 'the older purple tints → the second colour', forward: (v, d, c) => { let cur = v, any = false; for (const k of ['alt:90', 'alt:99', 'alt:124']) { const r = PASSES[k].forward(cur, d, c); if (r != null) { cur = r; any = true; } } return any ? cur : null; } };
+
+// Status hues used as text, icons and rules go through the tokens that a light page
+// sinks to a readable shade. Fills (backgrounds) keep the vivid hue.
+PASSES['status'] = Object.assign({ about: 'status hues as text/rules → --success --warning --danger --st-todo --info … (a light page sinks them)' }, swaps([
+  ['#10b981', '--success'], ['#f59e0b', '--warning'], ['#ef4444', '--danger'], ['#94a3b8', '--st-todo'], ['#9fb0bd', '--info'], ['#6dd8a4', '--w-mint'],
+  ['#f87171', '--danger-text'], ['#e69650', '--stage-negotiating'], ['#60a5fa', '--cal-task'], ['#8ec0ff', '--cal-task-text'],
+  ['#e9c98a', '--notice-text'], ['#f8dfae', '--notice-strong'], ['#a5a29a', '--muted-2'], ['#6f6b63', '--placeholder'],
+  ['#fbbf24', '--warning-soft'], ['#34d399', '--success-soft'], ['#9fb59a', '--success-text'], ['#f88', '--error-text'],
+], { props: null, textOnly: true }));
+
+// White text on the sidebar and on page surfaces, where it has to follow the surface. White on a saturated
+// fill (a red button, a live badge) stays white, so only the places listed here change.
+const STRONG_SITES = new Set(['.sidebar-logo-text', '.sidebar-collapse-btn:hover', '.chat-action-btn:hover']);
+PASSES['strong'] = {
+  about: 'white text on the sidebar and the chat bar → var(--strong,#fff)',
+  forward(value, d, ctx) {
+    if (d.prop !== 'color' || !/^\s*#fff\s*$/i.test(value) || !STRONG_SITES.has(d.rule.head.replace(/\s+/g, ' '))) return null;
+    return wrap(value, '--strong');
+  },
+};
+
 // Dark ink on the accent. Text colour only; the sites are listed so each can be looked at.
 PASSES['ink'] = {
   about: '#0c0c0e / #1b1608 as text → --on-primary / --on-primary-2',
@@ -233,8 +265,6 @@ const FAMILIES = [
   [/^\s*'Cormorant Garamond'\s*,\s*serif\s*$/i, '--font-head'],
   [/^\s*'Manrope'\s*,\s*sans-serif\s*$/i, '--font-body'],
 ];
-// var(--token, <value>) around a value's text, leaving the whitespace outside it as it was
-const wrap = (value, token) => value.replace(/^(\s*)([\s\S]*?)(\s*)$/, (m, a, b, c) => a + 'var(' + token + ',' + b + ')' + c);
 PASSES['fonts'] = {
   about: "'Cormorant Garamond',serif → --font-head; 'Manrope',sans-serif → --font-body",
   forward(value, d) {
