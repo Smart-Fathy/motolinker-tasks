@@ -117,8 +117,8 @@
       .ai-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9994;opacity:0;pointer-events:none;transition:opacity .2s}
       .ai-overlay.open{opacity:1;pointer-events:auto}
       .ai-overlay button{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
-      .ai-panel{position:fixed;top:0;right:0;bottom:0;width:var(--ai-w);max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(167,139,250,.35);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,calc(.5 * var(--sh-k,1)))}
-      .ai-panel.open{transform:translateX(0)}
+      .ai-panel{position:fixed;top:0;right:0;bottom:0;width:var(--ai-w);max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(167,139,250,.35);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1), box-shadow 0s .28s;box-shadow:none}
+      .ai-panel.open{transform:translateX(0);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,calc(.5 * var(--sh-k,1)))}
       .ai-grip{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:2}
       .ai-grip:hover,.ai-grip.on{background:linear-gradient(180deg,rgba(244,114,182,.5),rgba(167,139,250,.5),rgba(56,189,248,.5))}
       .ai-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:12px 14px 10px;border-bottom:1px solid var(--border,#2a2a2e);background:linear-gradient(135deg,rgba(244,114,182,.10),rgba(167,139,250,.10) 45%,rgba(56,189,248,.10))}
@@ -511,10 +511,10 @@
     if (!el) return;
     try {
       const d = await aiJson(await api('/api/dashboard/ai/status'));
-      if (d.ai === false) { el.textContent = '● AI not configured — set CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN (or GEMINI_API_KEY) on the server'; el.style.color = '#e6a850'; return; }
+      if (d.ai === false) { el.textContent = '● AI not configured — set CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN (or GEMINI_API_KEY) on the server'; el.style.color = 'var(--h-e6a850,#e6a850)'; return; }
       if (d.ok) { el.textContent = '● Connected (' + String(d.model || 'AI').replace(/^@cf\/[^/]+\//, '') + ') · reading ' + _ai.label; el.style.color = '#6dd8a4'; }
-      else if (d.status === 429) { el.textContent = '● Busy — out of capacity, retry shortly'; el.style.color = '#e6a850'; }
-      else if (d.ok === false) { el.textContent = '● Key set but failing: ' + (d.error || 'unknown error'); el.style.color = '#e6a850'; }
+      else if (d.status === 429) { el.textContent = '● Busy — out of capacity, retry shortly'; el.style.color = 'var(--h-e6a850,#e6a850)'; }
+      else if (d.ok === false) { el.textContent = '● Key set but failing: ' + (d.error || 'unknown error'); el.style.color = 'var(--h-e6a850,#e6a850)'; }
       else { el.textContent = '● Ready · reading ' + _ai.label; el.style.color = 'var(--muted,#9a958a)'; }
     } catch (_) { el.textContent = ''; }
   }

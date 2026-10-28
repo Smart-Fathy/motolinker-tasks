@@ -298,7 +298,7 @@ function renderTopPerformers(byEmployee) {
           <span style="color:var(--success);white-space:nowrap">${e.done} <span style="color:var(--muted);font-weight:400">/ ${e.total}</span></span>
         </div>
         <div style="height:5px;background:var(--border);border-radius:99px;margin-top:5px;overflow:hidden">
-          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--primary),#e6c98a);border-radius:99px"></div>
+          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--primary),var(--accent-soft,#e6c98a));border-radius:99px"></div>
         </div>
       </div>
     </div>`;
@@ -5426,8 +5426,8 @@ function helpInit() {
   style.textContent = `
     .hb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9994;opacity:0;pointer-events:none;transition:opacity .2s}
     .hb-overlay.open{opacity:1;pointer-events:auto}
-    .hb-panel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(var(--primary-rgb,201,163,94),.3);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,calc(.5 * var(--sh-k,1)))}
-    .hb-panel.open{transform:translateX(0)}
+    .hb-panel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:96vw;background:var(--surface,#141416);border-left:1px solid rgba(var(--primary-rgb,201,163,94),.3);z-index:9995;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1), box-shadow 0s .28s;box-shadow:none}
+    .hb-panel.open{transform:translateX(0);transition:transform .28s cubic-bezier(.16,1,.3,1);box-shadow:-16px 0 48px rgba(0,0,0,calc(.5 * var(--sh-k,1)))}
     .hb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 18px;border-bottom:1px solid var(--border,#2a2a2e)}
     .hb-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
     .hb-tabs{display:flex;gap:4px;padding:10px 14px 0;border-bottom:1px solid var(--border,#2a2a2e)}
@@ -5575,8 +5575,8 @@ async function helpRefreshStatus() {
     const d = await apiFetch('/api/dashboard/help/status').then(r => r.json());
     el.style.display = 'block'; el.title = '';
     if (d.ai && d.ok) { el.textContent = '● AI connected (' + String(d.model || 'AI').replace(/^@cf\/[^/]+\//, '') + (d.provider ? ' via ' + d.provider : '') + ')'; el.style.color = '#6dd8a4'; }
-    else if (d.ai && d.status === 429) { el.textContent = '● AI busy — out of capacity, retry shortly'; el.style.color = '#e6a850'; el.title = d.error || ''; }
-    else if (d.ai && d.ok === false) { el.textContent = '● AI key set but failing — tap for details'; el.style.color = '#e6a850'; el.title = d.error || 'unknown error'; }
+    else if (d.ai && d.status === 429) { el.textContent = '● AI busy — out of capacity, retry shortly'; el.style.color = 'var(--h-e6a850,#e6a850)'; el.title = d.error || ''; }
+    else if (d.ai && d.ok === false) { el.textContent = '● AI key set but failing — tap for details'; el.style.color = 'var(--h-e6a850,#e6a850)'; el.title = d.error || 'unknown error'; }
     else if (d.ai) { el.textContent = '● AI ready — send a message to test'; el.style.color = 'var(--muted,#9a958a)'; }
     else { el.textContent = '● AI off — answering from the built-in guide'; el.style.color = 'var(--muted,#9a958a)'; }
   } catch (_) { el.style.display = 'none'; }
@@ -6908,7 +6908,11 @@ const DEAL_STAGE_LABELS = { lead:'Lead', inquiry:'Inquiry', quoted:'Quoted', neg
 // The same six hues DEAL_STAGE_COLORS carries, at full opacity. That constant was
 // declared and never read, so every kanban column rendered the same grey and the
 // purple on Inquiry — which is in the source — had never been visible.
-const DEAL_STAGE_HEX = { lead:'#c9a35e', inquiry:'#7c6aff', quoted:'#5a78c8', negotiating:'#e69650', won:'#64b478', lost:'#ef4444' };
+// (The Lead stage is the workspace's accent — it is gold only where the accent still is — so it is read when asked.)
+const DEAL_STAGE_HEX = {
+  get lead() { const a = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(); return /^#[0-9a-f]{6}$/i.test(a) ? a : '#c9a35e'; },
+  inquiry:'#7c6aff', quoted:'#5a78c8', negotiating:'#e69650', won:'#64b478', lost:'#ef4444',
+};
 // #5a78c8 is 4.34:1 on the panel: fine as an 8px dot or a 3px bar, not as 10.5px
 // type. The label takes a lighter tone of the same hue; the dot and bar keep the
 // declared value. Every stage's label reads the token the theme can sink on a light page

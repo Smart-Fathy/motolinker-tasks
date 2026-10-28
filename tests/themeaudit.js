@@ -206,7 +206,8 @@ function auditPage() {
           }
         } };
         window.Chart = function () { return { destroy() {}, update() {} }; };
-        if (token) localStorage.setItem(key, token);
+        // (the browser keeps its storage between pages: being signed out has to be said, not assumed)
+        if (token) localStorage.setItem(key, token); else localStorage.removeItem(key);
         localStorage.setItem('ml_mode', mode);
         const Real = Date, FIXED = Real.UTC(2026, 2, 4, 10, 0, 0);
         window.Date = class extends Real { constructor(...a) { if (a.length) super(...a); else super(FIXED); } static now() { return FIXED; } };

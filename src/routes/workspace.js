@@ -18,7 +18,7 @@
 // does. Nothing else is in the record.
 const ctx = require('../ctx');
 const ThemeCore = require('../../public/assets/theme-core.js');
-const { crypto, express, multer, receiver, requireAuth, supabase } = ctx.need('crypto', 'express', 'multer', 'receiver', 'requireAuth', 'supabase');
+const { crypto, express, multer, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('crypto', 'express', 'multer', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
 
 const WORKSPACE_KEY = 'workspace_profile';
 const WORKSPACE_DEFAULT_NAME = 'MotoLinker';
@@ -177,6 +177,40 @@ receiver.router.put('/api/dashboard/workspace/theme', requireAuth, express.json(
     res.json(await workspaceSave(patch));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// A person's own display choices, kept per person like the nav favourites (one row each in the
+// same settings table, keyed by who is signed in — never by anything in the request). Today
+// that is the colour mode: dark, light, or whatever the device says. The browser holds its own
+// copy first, which is what lets the page open in the right mode before it paints; this is
+// what lets the choice follow a person to another device. Nothing here is a permission.
+const UI_MODES = ['dark', 'light', 'auto'];
+const uiPrefsKey = owner => `ui_prefs:${owner}`;
+const cleanUiPrefs = raw => (raw && typeof raw === 'object' && UI_MODES.includes(raw.mode) ? { mode: raw.mode } : {});
+function mountUiPrefs(base, guard, owner) {
+  receiver.router.get(`${base}/ui-prefs`, guard, async (req, res) => {
+    try {
+      const { data } = await supabase.from('quotation_settings').select('value').eq('key', uiPrefsKey(owner(req))).single();
+      res.set('Cache-Control', 'no-store');
+      res.json(cleanUiPrefs(data && data.value ? JSON.parse(data.value) : null));
+    } catch (_) { res.json({}); }
+  });
+  receiver.router.put(`${base}/ui-prefs`, guard, express.json({ limit: '2kb' }), async (req, res) => {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    if (body.mode !== undefined && !UI_MODES.includes(body.mode)) return res.status(400).json({ error: 'The mode is dark, light or auto.' });
+    try {
+      const key = uiPrefsKey(owner(req));
+      const { data } = await supabase.from('quotation_settings').select('value').eq('key', key).single();
+      let before = {};
+      try { before = cleanUiPrefs(data && data.value ? JSON.parse(data.value) : null); } catch (_) {}
+      const next = { ...before, ...cleanUiPrefs(body) };
+      const { error } = await supabase.from('quotation_settings').upsert({ key, value: JSON.stringify(next) }, { onConflict: 'key' });
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(next);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+}
+mountUiPrefs('/api/dashboard', requireAuth, () => 'admin');
+mountUiPrefs('/api/employee', requireEmployeeAuth, req => `employee_${req.employee.id}`);
 
 receiver.router.post('/api/dashboard/workspace/logo', requireAuth, logoUpload, async (req, res) => {
   const ext = req.file && LOGO_TYPES[req.file.mimetype];

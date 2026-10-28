@@ -187,6 +187,32 @@ db.install();
     check('…carrying the whole profile, so the page needs no second request', !!sent && sent.name && sent.updated_at && sent.typography && sent.shape);
   }
 
+  // ── A person's own display choices ───────────────────────────────────────────
+  {
+    const row = key => { const r = db.tables.quotation_settings.find(x => x.key === key); return r ? JSON.parse(r.value) : null; };
+    const none = { 'Content-Type': 'application/json' };
+    check('display preferences are for people who are signed in (both portals)',
+      (await fetch(base + '/api/dashboard/ui-prefs')).status === 401 && (await fetch(base + '/api/employee/ui-prefs')).status === 401
+      && (await put('/api/dashboard/ui-prefs', { mode: 'light' }, none)).status === 401 && (await put('/api/employee/ui-prefs', { mode: 'light' }, none)).status === 401);
+    check('a person who has chosen nothing has nothing stored', JSON.stringify(await (await fetch(base + '/api/dashboard/ui-prefs', { headers: A })).json()) === '{}');
+    const set = await put('/api/dashboard/ui-prefs', { mode: 'light' });
+    check('the admin\'s choice is kept (and handed back)', set.status === 200 && (await set.json()).mode === 'light' && (await (await fetch(base + '/api/dashboard/ui-prefs', { headers: A })).json()).mode === 'light');
+    check('…under the admin\'s own row', row('ui_prefs:admin') && row('ui_prefs:admin').mode === 'light');
+    const bad = await put('/api/dashboard/ui-prefs', { mode: 'sepia' });
+    check('a mode that does not exist is refused, and the choice stays as it was', bad.status === 400 && row('ui_prefs:admin').mode === 'light');
+    const sara = await put('/api/employee/ui-prefs', { mode: 'auto' }, E);
+    check('a team member\'s choice is hers alone: her own row, and the admin\'s is untouched', sara.status === 200 && row('ui_prefs:employee_2').mode === 'auto' && row('ui_prefs:admin').mode === 'light');
+    // Whose row it is comes from the session; nothing in the request can change it.
+    await put('/api/employee/ui-prefs', { mode: 'dark', owner: 'admin', key: 'ui_prefs:admin', employee_id: 1 }, E);
+    check('whose row it is cannot be asked for: only the mode is read', row('ui_prefs:employee_2').mode === 'dark' && row('ui_prefs:admin').mode === 'light' && !db.tables.quotation_settings.some(x => x.key === 'ui_prefs:employee_1'));
+    await put('/api/dashboard/ui-prefs', '{"mode":"dark","__proto__":{"mode":"light"},"x":"<script>alert(1)</script>"}');
+    check('nothing but the mode is ever stored or handed back', JSON.stringify(row('ui_prefs:admin')) === '{"mode":"dark"}');
+    db.tables.quotation_settings.find(x => x.key === 'ui_prefs:admin').value = JSON.stringify({ mode: 'dark', extra: '<img src=x onerror=1>' });
+    check('…even from a row somebody edited by hand', JSON.stringify(await (await fetch(base + '/api/dashboard/ui-prefs', { headers: A })).json()) === '{"mode":"dark"}');
+    db.tables.quotation_settings.find(x => x.key === 'ui_prefs:admin').value = '{not json';
+    check('…and a row that is not JSON is as good as no row', JSON.stringify(await (await fetch(base + '/api/dashboard/ui-prefs', { headers: A })).json()) === '{}');
+  }
+
   // ── Order ────────────────────────────────────────────────────────────────────
   {
     const a = await (await put('/api/dashboard/workspace/theme', { theme: { preset: 'moto' } })).json();

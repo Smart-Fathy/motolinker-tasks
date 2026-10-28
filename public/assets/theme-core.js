@@ -490,6 +490,7 @@
     v['--on-primary-w'] = c.onAccent;   // the older spots that wrote white on the accent: the ink that reads on it
     v['--gold'] = c.accent;
     v['--gold-soft'] = c.soft;
+    v['--accent-soft'] = c.soft;   // the pale end of an accent gradient the sheets wrote in a literal
     v['--gold-deep'] = c.deep;
     v['--gold-lite'] = c.dark ? c.lite : c.accentText;   // it is only ever a text colour (an active chip), so on a light page it is the accent's text shade
     v['--gold-dim'] = c.dim;
