@@ -73,12 +73,16 @@ setTimeout(async () => {
   });
 
   // Group-chat management checks ownership of a real chat_rooms row, and there is no
-  // real database here. These six cannot be reached without one, so they are named —
+  // real database here. These cannot be reached without one, so they are named —
   // any OTHER route turned away by a guard still fails the run.
   const dataGated = new Set([
     'PUT /api/dashboard/chat/rooms/:id',
     'PUT /api/dashboard/chat/rooms/:id/icon',
     'PUT /api/employee/chat/rooms/:id/icon',
+    'POST /api/dashboard/chat/rooms/:id/picture',
+    'DELETE /api/dashboard/chat/rooms/:id/picture',
+    'POST /api/employee/chat/rooms/:id/picture',
+    'DELETE /api/employee/chat/rooms/:id/picture',
     'POST /api/dashboard/chat/rooms/:id/members',
     'DELETE /api/dashboard/chat/rooms/:id/members/:memberKey',
     'PUT /api/employee/chat/rooms/:id',

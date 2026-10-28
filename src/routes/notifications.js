@@ -122,6 +122,13 @@ function huddleSignalSend(keys, payload) {
     for (const [key, buf] of signalBuffers) { pruneSignals(buf, now); if (!buf.length) signalBuffers.delete(key); }
   }
 }
+// A frame that only means something now — a reaction in a call. It carries no id and
+// is not kept: replayed to a stream that reconnects a minute later, it would be a
+// reaction to nothing anyone remembers.
+function huddleSignalLive(keys, payload) {
+  const chunk = `event: huddle-signal\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const key of new Set(keys)) notifWrite(key, chunk);
+}
 // Replay what a reconnecting stream missed. No last id means a fresh page, which
 // learns the live huddles from /huddle/live instead of from replayed offers.
 function huddleSignalReplay(key, res, lastId) {
@@ -387,4 +394,4 @@ receiver.router.get('/api/employee/chat/events', requireEmployeeAuth, requirePer
 });
 
 
-module.exports = { chatCreateOrGetDirect, chatDeleteMsg, chatEditMsg, chatGetMessages, chatListRooms, chatSendMessage, closeNotifStreams, createNotification, huddleSignalReplay, huddleSignalSend, memberKeyForAssignee, notifAdd, notifLegacyPrune, notifLegacyState, notifRemove, notifTokenTag, notifSseClients, notifWrite, notifyEmployeeTaskAssigned };
+module.exports = { chatCreateOrGetDirect, chatDeleteMsg, chatEditMsg, chatGetMessages, chatListRooms, chatProfileMap, chatSendMessage, closeNotifStreams, createNotification, huddleSignalLive, huddleSignalReplay, huddleSignalSend, memberKeyForAssignee, notifAdd, notifLegacyPrune, notifLegacyState, notifRemove, notifTokenTag, notifSseClients, notifWrite, notifyEmployeeTaskAssigned };

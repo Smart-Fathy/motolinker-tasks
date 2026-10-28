@@ -18,12 +18,22 @@ const ROOMS = [
     lastMessage: null },
   { id: 3, type: 'group', name: 'Old project', icon: '', archived: true,
     members: [{ member_key: 'admin', member_name: 'Admin' }], lastMessage: null },
+  // A group with a picture AND an emoji from before pictures: the picture wins.
+  { id: 4, type: 'group', name: 'Design', icon: '🎨', avatar_url: '/icons/icon-192.png', archived: false,
+    members: [{ member_key: 'admin', member_name: 'Admin' }, { member_key: 'employee_2', member_name: 'Sara' }],
+    lastMessage: null },
 ];
-let stateCalls = [], iconCalls = [], deleteCalls = [];
+let stateCalls = [], iconCalls = [], deleteCalls = [], pictureCalls = [];
 
-function api(pathname, method, body) {
+function api(pathname, method, body, headers) {
   if (/\/rooms\/\d+\/state$/.test(pathname)) { stateCalls.push({ pathname, body: JSON.parse(body || '{}') }); return { ok: true }; }
   if (/\/rooms\/\d+\/icon$/.test(pathname)) { iconCalls.push({ pathname, body: JSON.parse(body || '{}') }); return { ok: true, id: 2 }; }
+  if (/\/rooms\/\d+\/picture$/.test(pathname)) {
+    // The body is binary multipart, which the browser does not hand to request
+    // interception; the server suite parses real uploads.
+    pictureCalls.push({ pathname, method, type: String((headers || {})['content-type'] || '') });
+    return { ok: true, id: 2 };
+  }
   if (method === 'DELETE' && /\/chat\/rooms\/\d+$/.test(pathname)) { deleteCalls.push(pathname); return { ok: true }; }
   if (/chat\/rooms$/.test(pathname)) return ROOMS;
   if (/huddle\/live$/.test(pathname)) return [];
@@ -43,7 +53,7 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
     if (u.pathname.startsWith('/api/')) {
       if (/events|stream$/.test(u.pathname)) return req.respond({ status: 200, contentType: 'text/event-stream', body: ': ok\n\n' });
       return req.respond({ status: 200, contentType: 'application/json',
-        body: JSON.stringify(api(u.pathname, req.method(), req.postData())) });
+        body: JSON.stringify(api(u.pathname, req.method(), req.postData(), req.headers())) });
     }
     if (u.pathname === route) return req.respond({ status: 200, contentType: 'text/html', body: fs.readFileSync(file, 'utf8') });
     const f = path.join('public', u.pathname.replace(/^\//, ''));
@@ -85,7 +95,9 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
                dots: el.querySelectorAll('.chat-room-dots').length,
                archHead: (el.querySelector('.chat-arch-head') || {}).textContent?.replace(/\s+/g, ' ').trim() || '',
                archHidden: (el.querySelector('.chat-arch-list') || {}).style?.display === 'none',
-               icon: [...el.querySelectorAll('.chat-room-avatar')].map(a => a.textContent.trim()) };
+               icon: [...el.querySelectorAll('.chat-room-avatar')].map(a => a.textContent.trim()),
+               picture: (el.querySelector('[data-room="4"] .chat-room-avatar img') || {}).getAttribute?.('src') || '',
+               pictureText: (el.querySelector('[data-room="4"] .chat-room-avatar') || {}).textContent?.trim() || '' };
     });
     check(`${portal.label}: every conversation has a ⋯`, list.dots >= 2 && list.dots === list.rows,
       JSON.stringify({ rows: list.rows, dots: list.dots }));
@@ -93,6 +105,8 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       /Archived \(1\)/.test(list.archHead) && list.archHidden === true, JSON.stringify(list.archHead));
     check(`${portal.label}: a group icon is shown where the initials were`,
       list.icon.includes('🚚'), JSON.stringify(list.icon));
+    check(`${portal.label}: a group's picture is shown in place of its icon`,
+      list.picture === '/icons/icon-192.png' && list.pictureText === '', JSON.stringify({ picture: list.picture, text: list.pictureText }));
 
     const menu = await page.evaluate(async () => {
       chatRoomMenu({ stopPropagation() {}, clientX: 60, clientY: 60 }, 2);
@@ -104,10 +118,20 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       menu.some(t => /Archive for me/.test(t)) && menu.some(t => /Delete for me/.test(t)), JSON.stringify(menu));
     check(`${portal.label}: group management is the admin's alone`,
       portal.admin
-        ? (menu.some(t => /Rename group/.test(t)) && menu.some(t => /Group icon/.test(t))
+        ? (menu.some(t => /Rename group/.test(t)) && menu.some(t => /Group picture/.test(t))
            && menu.some(t => /Delete group for everyone/.test(t)))
-        : !menu.some(t => /Rename group|Group icon|Delete group/.test(t)),
+        : !menu.some(t => /Rename group|Group picture|Group icon|Delete group/.test(t)),
       JSON.stringify(menu));
+    if (portal.admin) {
+      check('the menu offers a picture, not an emoji', !menu.some(t => /Group icon/.test(t)), JSON.stringify(menu));
+      const withPic = await page.evaluate(async () => {
+        chatRoomMenu({ stopPropagation() {}, clientX: 60, clientY: 60 }, 4);
+        await new Promise(r => setTimeout(r, 80));
+        return [...document.querySelectorAll('.lead-menu.open button')].map(b => b.textContent.trim());
+      });
+      check('…and, for a group that has one, a way to remove it',
+        withPic.some(t => /Change group picture/.test(t)) && withPic.some(t => /Remove group picture/.test(t)), JSON.stringify(withPic));
+    }
 
     const acted = await page.evaluate(async () => {
       chatRoomArchive(1, true);
@@ -127,22 +151,37 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
 
   // The admin's group tools reach the routes only the admin has.
   {
-    stateCalls = []; iconCalls = []; deleteCalls = [];
+    stateCalls = []; iconCalls = []; deleteCalls = []; pictureCalls = [];
     const { page } = await openPortal(browser, {
       route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token', port });
     await page.evaluate(() => navigate('chat'));
     await sleep(600);
-    await page.evaluate(async () => {
-      window.prompt = () => '🚀';
+    const shrunk = await page.evaluate(async () => {
       window.confirm = () => true;
-      await chatRoomIcon(2);
+      // A wide 800×400 photo, as a phone would hand it over.
+      const c = document.createElement('canvas'); c.width = 800; c.height = 400;
+      const g = c.getContext('2d'); g.fillStyle = '#c9a35e'; g.fillRect(0, 0, 800, 400);
+      const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+      const photo = new File([blob], 'team.jpg', { type: 'image/jpeg' });
+      const out = await chatSquarePicture(photo, 256);
+      const img = await createImageBitmap(out.blob);
+      await chatRoomPictureUpload(2, photo);
+      await new Promise(r => setTimeout(r, 200));
+      await chatRoomPictureRemove(4);
       await new Promise(r => setTimeout(r, 200));
       await chatRoomDelete(2);
       await new Promise(r => setTimeout(r, 200));
+      return { w: img.width, h: img.height, name: out.name };
     });
-    check('setting a group icon PUTs it', iconCalls.length === 1
-      && iconCalls[0].pathname === '/api/dashboard/chat/rooms/2/icon' && iconCalls[0].body.icon === '🚀',
-      JSON.stringify(iconCalls));
+    check('a picture is cropped square and scaled down before it is sent',
+      shrunk.w === 256 && shrunk.h === 256 && /\.jpg$/.test(shrunk.name), JSON.stringify(shrunk));
+    const up = pictureCalls.find(c => c.method === 'POST');
+    check('setting a group picture uploads it to that group',
+      !!up && up.pathname === '/api/dashboard/chat/rooms/2/picture' && /multipart\/form-data/.test(up.type),
+      JSON.stringify(pictureCalls));
+    const down = pictureCalls.find(c => c.method === 'DELETE');
+    check('removing it DELETEs the picture', !!down && down.pathname === '/api/dashboard/chat/rooms/4/picture', JSON.stringify(pictureCalls));
+    check('nothing sets an emoji icon any more', iconCalls.length === 0, JSON.stringify(iconCalls));
     check('deleting a group DELETEs the room', deleteCalls.length === 1
       && deleteCalls[0] === '/api/dashboard/chat/rooms/2', JSON.stringify(deleteCalls));
     await page.close();

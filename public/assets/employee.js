@@ -862,7 +862,7 @@ function navigate(page) {
   openGroupForPage(page); // reveal the group containing the active item
   const bottomNav = document.getElementById('bnav-' + page);
   if (bottomNav) bottomNav.classList.add('active');
-  document.getElementById('topbar-title').textContent = pageTitles[page] || 'MotoLinker';
+  document.getElementById('topbar-title').textContent = pageTitles[page] || (typeof wsName === 'function' ? wsName() : 'MotoLinker');
   rememberPage(page);
   if (pageLoaders[page]) pageLoaders[page]();
   if (page === 'hours' && typeof renderAvailabilityBoard === 'function') renderAvailabilityBoard('availability-board');
@@ -3424,6 +3424,8 @@ function openNotifStream() {
   es.addEventListener('huddle-signal', huddleOnStreamFrame);
   // Back after a gap: the server replays what it kept; this re-reads the roster.
   es.addEventListener('open', () => { huddleOnStreamOpen(); });
+  // The admin changed the workspace's name or picture: show it at once.
+  es.addEventListener('workspace', wsOnStreamEvent);
   es.addEventListener('notification', e => {
     try {
       const n = JSON.parse(e.data);
@@ -3624,9 +3626,7 @@ function chatRenderRoomList() {
     const unread = chatUnread.has(room.id) ? '<div class="chat-unread-dot"></div>' : '';
     return `<div class="chat-room-item${activeChatRoomId === room.id ? ' active' : ''}" onclick="chatOpenRoom(${room.id})" data-room="${room.id}">
       <div class="chat-room-avatar-wrap">
-        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${
-          room.type === 'group' && room.icon ? esc(room.icon)
-            : (other?.member_avatar ? `<img src="${esc(other.member_avatar)}" alt="">` : esc(init))}</div>
+        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${chatRoomFaceHtml(room, other, init)}</div>
         ${room.type === 'direct' ? `<div class="presence-dot" id="presence-dot-${room.id}"></div>` : ''}
       </div>
       <div class="chat-room-info">
@@ -3654,7 +3654,8 @@ async function chatOpenRoom(roomId) {
 
   const room = chatRooms.find(r => r.id === roomId);
   const myKey = myChatKey();
-  const name = room?.type === 'group' ? room.name : (room?.members || []).find(m => m.member_key !== myKey)?.member_name || 'Chat';
+  const peer = room?.type === 'direct' ? (room.members || []).find(m => m.member_key !== myKey) : null;
+  const name = room?.type === 'group' ? room.name : peer?.member_name || 'Chat';
 
   // Mobile: swap panels
   document.getElementById('chat-rooms-panel')?.classList.remove('mob-show');
@@ -3663,7 +3664,7 @@ async function chatOpenRoom(roomId) {
   main.innerHTML = `
     <div class="chat-header">
       <button class="chat-back-btn" onclick="chatBackToRooms()" title="Back"><i data-lucide="arrow-left" style="width:18px;height:18px"></i></button>
-      <div class="chat-room-avatar chat-header-avatar${room?.type === 'group' ? ' grp' : ''}">${esc(name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}</div>
+      <div class="chat-room-avatar chat-header-avatar${room?.type === 'group' ? ' grp' : ''}">${chatRoomFaceHtml(room, peer, name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}</div>
       <div class="chat-header-id">
         <div class="chat-header-name">${esc(name)} ${chatHeaderStatus(room)}</div>
         <div class="chat-header-meta" id="chat-header-meta">${room?.type === 'group' ? `${(room.members||[]).length} members` : 'Direct message'}</div>

@@ -227,6 +227,38 @@ function chatImageFromDrop(e) {
   return files.length ? files[0] : null;
 }
 
+// ── Pictures that stand for something ─────────────────────────────────────────
+// A group's picture and the workspace's are drawn at 30–40px. Sent as taken, a phone
+// photo is several megabytes for every page that shows it, and a wide one is squashed
+// into the circle. So it is cropped to its middle square and scaled to `size` first.
+// PNG and WebP stay PNG (they may be transparent); a GIF is left alone, since a canvas
+// keeps only its first frame. Resolves { blob, name }; if the browser cannot decode
+// the file it hands back the original, and the server decides.
+function chatSquarePicture(file, size) {
+  const fallback = { blob: file, name: file.name || 'picture' };
+  if (!file || file.type === 'image/gif' || typeof document === 'undefined') return Promise.resolve(fallback);
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    const done = v => { URL.revokeObjectURL(url); resolve(v); };
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth, h = img.naturalHeight, s = Math.min(w, h);
+        if (!s) return done(fallback);
+        const out = Math.min(size, s);
+        const c = document.createElement('canvas');
+        c.width = c.height = out;
+        c.getContext('2d').drawImage(img, (w - s) / 2, (h - s) / 2, s, s, 0, 0, out, out);
+        const png = file.type === 'image/png' || file.type === 'image/webp';
+        c.toBlob(b => done(b ? { blob: b, name: 'picture.' + (png ? 'png' : 'jpg') } : fallback),
+          png ? 'image/png' : 'image/jpeg', 0.9);
+      } catch (_) { done(fallback); }
+    };
+    img.onerror = () => done(fallback);
+    img.src = url;
+  });
+}
+
 // ── Icons: draw only what is new ──────────────────────────────────────────────
 // lucide.createIcons() redraws every icon on the page, not just new placeholders:
 // the SVG it draws keeps the data-lucide attribute, so the next call matches it and

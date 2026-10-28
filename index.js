@@ -2042,6 +2042,9 @@ Object.assign(ctx, require('./src/routes/account-security'));
 // Group administration + huddles  → src/routes/huddles.js
 Object.assign(ctx, { chatBroadcast, chatCallerIdentity, crypto, express, multer, path, receiver, requireAuth, requireEmployeeAuth, supabase, upload });
 require('./src/routes/huddles');
+// The workspace's name and picture  → src/routes/workspace.js
+// Announces a change over the notification streams, so it loads after that module.
+Object.assign(ctx, require('./src/routes/workspace'));
 Object.assign(ctx, require('./src/routes/link-preview'));
 // ─── Typing indicator ─────────────────────────────────────────────────────────
 async function handleTyping(req, res, callerKey, callerName, roomId) {

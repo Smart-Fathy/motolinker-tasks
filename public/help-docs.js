@@ -200,10 +200,21 @@ Your status shows next to your name everywhere — set it from your profile.
 Press the headphones icon in any conversation to start a call, or the camera icon to
 start with video. Others get a prompt; anyone else sees a *Huddle in progress* chip.
 
-During a call you can mute, turn the camera on, share a screen, and pull in anyone from
-the workspace. Someone invited who is not in that conversation joins **as a guest** —
+During a call you can mute, turn the camera on, share a screen, react, and pull in anyone
+from the workspace. Someone invited who is not in that conversation joins **as a guest** —
 they get the call, not its message history.
 
+- **Reactions** — the smiley button offers eight. The one you pick floats up over your
+  tile on the screen of everyone in the call.
+- **Thread** — the speech-bubble button opens the huddle's thread. Links, notes and
+  decisions written there reach everyone in the call at once and stay after it ends.
+  Past threads are under the speech-bubble button above your conversations, and in a
+  conversation's info panel under *Huddles*. Anyone in the conversation, and anyone who
+  was in the call, can read them and add to them.
+- **The host** — whoever started the huddle runs it, and their tile says *host*. The host
+  can remove someone with the button on that person's tile: they are disconnected and
+  can't rejoin unless the host invites them again. If the host leaves, whoever has been
+  in the call longest takes over until they are back.
 - **Full screen** — the expand button on a tile, or double-click the video. Best way to
   read someone's shared screen.
 - **Move it** — drag the widget by its header. Collapse it to a pill or maximise it with
@@ -212,7 +223,16 @@ they get the call, not its message history.
   packet loss and round-trip time.
 
 A call is capped at six people, because every participant connects directly to every
-other one.`,
+other one.
+
+## Groups
+A group has a picture everyone in it sees. Whoever manages the group sets it from the
+group's ⋯ menu or its info panel; the admin can also add one when creating the group.
+
+## Workspace (admin)
+**Workspace**, at the bottom of the admin sidebar, changes the workspace's name and
+profile picture. Both portals, the team's sign-in page and the browser tab show them, and
+pages that are open update at once.`,
       ar: `## المحادثة
 رسائل مباشرة ومجموعات، مع الملفات والرسائل الصوتية والرد وإعادة التوجيه والتعديل.
 تظهر حالتك بجوار اسمك في كل مكان، ويمكنك ضبطها من ملفك الشخصي.
@@ -221,8 +241,18 @@ other one.`,
 اضغط أيقونة السماعة في أي محادثة لبدء مكالمة، أو أيقونة الكاميرا للبدء بالفيديو.
 يصل تنبيه للآخرين، ويرى الباقون شارة *مكالمة جارية*.
 
-أثناء المكالمة يمكنك كتم الصوت وتشغيل الكاميرا ومشاركة الشاشة وضم أي شخص في مساحة
-العمل. من يُدعى وهو خارج المحادثة ينضم **كضيف**: يحصل على المكالمة دون سجل الرسائل.
+أثناء المكالمة يمكنك كتم الصوت وتشغيل الكاميرا ومشاركة الشاشة والتفاعل وضم أي شخص في
+مساحة العمل. من يُدعى وهو خارج المحادثة ينضم **كضيف**: يحصل على المكالمة دون سجل الرسائل.
+
+- **التفاعلات** — زر الوجه الضاحك يعرض ثمانية تفاعلات، وما تختاره يطفو فوق بطاقتك على
+  شاشة كل من في المكالمة.
+- **سلسلة المكالمة** — زر فقاعات الحديث يفتح سلسلة المكالمة: ما يُكتب فيها من روابط
+  وملاحظات وقرارات يصل فوراً إلى كل من في المكالمة ويبقى بعد انتهائها. تجد السلاسل
+  السابقة من زر فقاعات الحديث أعلى قائمة المحادثات، وفي لوحة معلومات المحادثة تحت
+  *Huddles*. يستطيع كل من في المحادثة وكل من حضر المكالمة قراءتها والإضافة إليها.
+- **المضيف** — من بدأ المكالمة يديرها، وتظهر كلمة *host* على بطاقته. يستطيع المضيف
+  إخراج أي مشارك بالزر الموجود على بطاقته، فيُفصل ولا يستطيع العودة إلا إذا دعاه المضيف
+  من جديد. وإذا غادر المضيف تنتقل الإدارة إلى أقدم الحاضرين حتى يعود.
 
 - **ملء الشاشة** — زر التكبير على البطاقة أو نقرة مزدوجة على الفيديو، وهو الأنسب
   لقراءة شاشة مشتركة.
@@ -230,7 +260,16 @@ other one.`,
 - **جودة الاتصال** — الأعمدة على كل بطاقة تبيّن جودة اتصال ذلك الشخص، ومرّر المؤشر
   لرؤية نسبة الفقد وزمن الرحلة.
 
-الحد الأقصى ستة أشخاص، لأن كل مشارك يتصل بكل الآخرين مباشرة.`,
+الحد الأقصى ستة أشخاص، لأن كل مشارك يتصل بكل الآخرين مباشرة.
+
+## المجموعات
+لكل مجموعة صورة يراها جميع أعضائها. يضبطها من يدير المجموعة من قائمة ⋯ الخاصة بها أو
+من لوحة معلوماتها، ويمكن للمسؤول إضافتها عند إنشاء المجموعة.
+
+## مساحة العمل (للمسؤول)
+من **Workspace** أسفل الشريط الجانبي للمسؤول يمكن تغيير اسم مساحة العمل وصورتها. يظهر
+الاسم والصورة في البوابتين وصفحة دخول الفريق وتبويب المتصفح، وتتحدث الصفحات المفتوحة
+فوراً.`,
     },
   },
   {

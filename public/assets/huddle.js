@@ -56,7 +56,8 @@ function chatRoomMenu(e, roomId) {
       <i data-lucide="eye-off" style="width:13px;height:13px"></i> Delete for me</button>
     ${isGroup && chatMayManage() ? `<div class="lead-menu-sep"></div>
       <button onclick="chatRoomRename(${roomId})"><i data-lucide="pencil" style="width:13px;height:13px"></i> Rename group</button>
-      <button onclick="chatRoomIcon(${roomId})"><i data-lucide="smile" style="width:13px;height:13px"></i> Group icon…</button>
+      <button onclick="chatRoomPicture(${roomId})"><i data-lucide="image" style="width:13px;height:13px"></i> ${room.avatar_url ? 'Change group picture…' : 'Group picture…'}</button>
+      ${room.avatar_url ? `<button onclick="chatRoomPictureRemove(${roomId})"><i data-lucide="image-off" style="width:13px;height:13px"></i> Remove group picture</button>` : ''}
       <button class="danger" onclick="chatRoomDelete(${roomId})"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete group for everyone</button>` : ''}`;
   m.style.left = Math.min(e.clientX, window.innerWidth - 240) + 'px';
   m.style.top = Math.min(e.clientY + 6, window.innerHeight - 80) + 'px';
@@ -89,18 +90,74 @@ async function chatRoomRename(roomId) {
   if (!r.ok) return hdToast('Could not rename the group.');
   if (HDCFG.refreshRooms) await HDCFG.refreshRooms();
 }
-// An emoji, so setting one needs no upload and no storage. Blank clears it.
-async function chatRoomIcon(roomId) {
-  chatMenuClose();
-  const room = hdRoom(roomId);
-  const icon = prompt('Group icon — one emoji. Leave blank to remove it.', (room && room.icon) || '');
-  if (icon === null) return;
-  const r = await hdFetch(`/rooms/${roomId}/icon`, { method: 'PUT', body: JSON.stringify({ icon: icon.trim() }) });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) return hdToast(d.error || 'Could not set the icon.');
-  hdToast(icon.trim() ? 'Group icon set.' : 'Group icon removed.');
-  if (HDCFG.refreshRooms) await HDCFG.refreshRooms();
+// ── Group pictures ────────────────────────────────────────────────────────────
+// A group's face is a picture now, uploaded by whoever may manage it. The emoji icon
+// it replaces is still drawn for a group that has no picture yet.
+//
+// What a conversation shows as its face: a group's picture, else its icon, else its
+// initials; the other person's photo in a direct one, else theirs.
+function chatRoomFaceHtml(room, other, initials) {
+  if (room && room.type === 'group') {
+    if (room.avatar_url) return `<img src="${esc(room.avatar_url)}" alt="">`;
+    if (room.icon) return esc(room.icon);
+    return esc(initials || '');
+  }
+  if (other && other.member_avatar) return `<img src="${esc(other.member_avatar)}" alt="">`;
+  return esc(initials || '');
 }
+// One hidden picker, reused: a cancelled picker fires nothing, and a fresh input each
+// time would leave one behind for every cancel.
+let _chatPicInput = null;
+function chatRoomPicture(roomId) {
+  chatMenuClose();
+  if (!_chatPicInput) {
+    _chatPicInput = document.createElement('input');
+    _chatPicInput.type = 'file';
+    _chatPicInput.accept = 'image/png,image/jpeg,image/webp,image/gif';
+    _chatPicInput.style.display = 'none';
+    _chatPicInput.addEventListener('change', () => {
+      const f = _chatPicInput.files && _chatPicInput.files[0];
+      const id = Number(_chatPicInput.dataset.room);
+      _chatPicInput.value = '';
+      if (f && id) chatRoomPictureUpload(id, f);
+    });
+    document.body.appendChild(_chatPicInput);
+  }
+  _chatPicInput.dataset.room = String(roomId);
+  _chatPicInput.click();
+}
+async function chatRoomPictureUpload(roomId, file) {
+  if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type || '')) return hdToast('Choose a PNG, JPEG, WebP or GIF picture.');
+  if (file.size > 5 * 1024 * 1024) return hdToast('The picture must be under 5 MB.');
+  hdToast('Setting the group picture…');
+  // Drawn at 38px: a phone photo is cropped to its middle and scaled down first.
+  const pic = typeof chatSquarePicture === 'function' ? await chatSquarePicture(file, 256) : { blob: file, name: file.name };
+  const fd = new FormData();
+  fd.append('file', pic.blob, pic.name);
+  let r = null, d = {};
+  try { r = await hdFetch(`/rooms/${roomId}/picture`, { method: 'POST', body: fd }); d = await r.json().catch(() => ({})); } catch (_) {}
+  if (!r || !r.ok) return hdToast(d.error || 'Could not set the group picture.');
+  hdToast('Group picture set.');
+  await chatRoomPictureChanged(roomId);
+}
+async function chatRoomPictureRemove(roomId) {
+  chatMenuClose();
+  if (!confirm('Remove this group’s picture? Everyone in it sees the change.')) return;
+  let r = null, d = {};
+  try { r = await hdFetch(`/rooms/${roomId}/picture`, { method: 'DELETE' }); d = await r.json().catch(() => ({})); } catch (_) {}
+  if (!r || !r.ok) return hdToast(d.error || 'Could not remove the group picture.');
+  hdToast('Group picture removed.');
+  await chatRoomPictureChanged(roomId);
+}
+// The list and an open group panel show it at once; the header follows the room
+// event the server sends everyone in the group.
+async function chatRoomPictureChanged(roomId) {
+  if (HDCFG.refreshRooms) await HDCFG.refreshRooms();
+  const sheet = document.getElementById('hd-sheet');
+  if (sheet && sheet.style.display === 'flex' && sheet.querySelector('#cg-members')
+      && sheet.dataset.room === String(roomId)) chatGroupPanel(roomId);
+}
+
 async function chatRoomDelete(roomId) {
   chatMenuClose();
   const room = hdRoom(roomId);
@@ -117,7 +174,7 @@ function chatRoomsSplit(rooms) {
   return { active: all.filter(r => !r.archived), archived: all.filter(r => r.archived) };
 }
 
-let _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: null, iceUntil: 0, roster: [], statsTimer: null, startedAt: null, clockTimer: null, sid: null, boot: null, aliveAt: 0, graceUntil: 0 };
+let _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: null, iceUntil: 0, roster: [], statsTimer: null, startedAt: null, clockTimer: null, sid: null, boot: null, aliveAt: 0, graceUntil: 0, host: null, threadUnread: 0 };
 // Id of the last huddle frame this tab received. Handed back when the portal
 // rebuilds its notification stream, so the server can replay what fell in the gap.
 let _hdSignalLastId = '';
@@ -151,7 +208,7 @@ async function huddleOnStreamOpen() {
     const res = await hdFetch('/huddle/' + roomId);
     const r = await res.json();
     if (_hd.roomId !== roomId) return;
-    if (res.status === 403) return hdLockedOut();
+    if (res.status === 403) return hdLockedOut(r);
     if (!r || !Array.isArray(r.participants)) return;
     if (r.boot === _hd.boot && hdSuperseded(r.participants)) return hdStepAside();
     if (!r.participants.some(p => p.key === hdMe() && p.sid === _hd.sid)) { await hdRejoin(roomId, r.boot === _hd.boot); return; }
@@ -175,7 +232,7 @@ function hdRejoin(roomId, dropped) {
       const res = await hdSignal('join', null, { sid: _hd.sid, afterRestart: !dropped });
       const r = await res.json();
       if (_hd.roomId !== roomId) return;
-      if (res.status === 403) return hdLockedOut();
+      if (res.status === 403) return hdLockedOut(r);
       if (!r || !Array.isArray(r.participants)) return;
       if (r.boot !== _hd.boot) _hd.graceUntil = Date.now() + 20000;
       else if (dropped) [..._hd.peers.keys()].forEach(k => { if (_hd.peers.get(k).pc.connectionState !== 'connected') hdDropPeer(k); });
@@ -200,7 +257,7 @@ async function hdAlive() {
     const res = await hdSignal('alive', null, { connected });
     const r = await res.json();
     if (_hd.roomId !== roomId) return;
-    if (res.status === 403) return hdLockedOut();
+    if (res.status === 403) return hdLockedOut(r);
     if (!r || r.error) return;
     const restarted = !!(r.boot && _hd.boot && r.boot !== _hd.boot);
     if (!restarted && r.inCall && r.sid && _hd.sid && r.sid !== _hd.sid) return hdStepAside();
@@ -237,11 +294,47 @@ function hdStepAside() {
   hdToast('You joined this huddle somewhere else, so it has ended in this tab.');
 }
 // The server won't let us back in: a guest after a restart (the grant is gone with
-// it), or someone removed from the conversation. Don't sit in a call nobody can see.
-function hdLockedOut() {
+// it), someone removed from the conversation, or someone the host removed from the
+// call whose page missed being told. Don't sit in a call nobody can see.
+function hdLockedOut(r) {
   if (!_hd.roomId) return;
+  const removed = !!(r && r.removed);
+  if (removed) _hdRemoved.set(_hd.roomId, Date.now());
   hdTeardown();
-  hdToast('You were disconnected from the huddle. Ask someone in it to invite you again.');
+  hdToast(removed ? 'The host removed you from this huddle.'
+                  : 'You were disconnected from the huddle. Ask someone in it to invite you again.');
+}
+
+// ── Removed by the host ───────────────────────────────────────────────────────
+// The host took us out of the call. Hang up without telling the server — it already
+// has us out, and a 'leave' would only send everyone a roster for nothing — and stop
+// offering this huddle back while it runs: the server would only refuse the join. An
+// invite from the host (who alone can ask us back) or the huddle ending lifts it.
+const _hdRemoved = new Map();   // roomId -> when we were removed
+function hdRemovedFrom(msg) {
+  if (!msg || msg.roomId == null) return;
+  _hdRemoved.set(msg.roomId, Date.now());
+  const ring = document.getElementById('hd-incoming');
+  if (ring && ring.dataset.room === String(msg.roomId)) ring.style.display = 'none';
+  const chip = document.getElementById('hd-join-chip');
+  if (chip && chip.dataset.room === String(msg.roomId)) hdHideJoinChip();
+  if (_hd.roomId !== msg.roomId) return;   // another tab of ours had the call
+  hdTeardown();
+  hdToast((msg.fromName || 'The host') + ' removed you from the huddle.');
+}
+
+// The host runs the call: whoever started it while they are in it, else whoever has
+// been in it longest. The server decides and marks them in every roster.
+function hdHostOf(participants) { const h = (participants || []).find(p => p && p.host); return h ? h.key : null; }
+function hdIsHost() { return !!_hd.roomId && !!_hd.host && _hd.host === hdMe(); }
+async function hdRemovePeer(key) {
+  if (!hdIsHost() || !key || key === hdMe()) return;
+  const name = (_hd.peers.get(key) || {}).name || hdNameFor(key);
+  if (!confirm('Remove ' + name + ' from the huddle? They can only come back if you invite them again.')) return;
+  let r = null;
+  try { r = await hdSignal('remove', key).then(x => x.json()); } catch (_) {}
+  if (!r || r.error) { hdToast((r && r.error) || 'Could not remove them from the huddle.'); return; }
+  hdToast(name + ' was removed from the huddle.');
 }
 
 function hdMe() { return HDCFG.me(); }
@@ -355,8 +448,13 @@ async function huddleStart(roomId, withVideo, joining) {
   let r = null;
   try { r = await hdFetch('/huddle/signal', { method: 'POST', body: JSON.stringify({ roomId, type: 'join', data: { sid: _hd.sid } }) }).then(x => x.json()); }
   catch (_) {}
-  if (!r || r.error) { hdToast((r && r.error) || 'Could not join the huddle.'); huddleLeave(); return; }
+  if (!r || r.error) {
+    if (r && r.removed) _hdRemoved.set(roomId, Date.now());
+    hdToast((r && r.error) || 'Could not join the huddle.'); huddleLeave(); return;
+  }
+  _hdRemoved.delete(roomId);
   _hd.roster = r.participants || [];
+  _hd.host = hdHostOf(_hd.roster);
   _hd.boot = r.boot || null;
   _hd.startedAt = r.started_at || Date.now();
   hdStartClock();
@@ -410,9 +508,12 @@ function hdTeardown() {
   _hd.peers.forEach(p => { clearTimeout(p.dropTimer); try { p.pc.close(); } catch (_) {} });
   _hd.peers.clear();
   [_hd.local, _hd.screen].forEach(st => st && st.getTracks().forEach(t => t.stop()));
-  _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: _hd.ice, iceUntil: _hd.iceUntil, roster: [], statsTimer: null, startedAt: null, clockTimer: null, sid: null, boot: null, aliveAt: 0, graceUntil: 0 };
+  const leftRoom = _hd.roomId;
+  _hd = { roomId: null, peers: new Map(), local: null, screen: null, muted: false, cam: false, sharing: false, ice: _hd.ice, iceUntil: _hd.iceUntil, roster: [], statsTimer: null, startedAt: null, clockTimer: null, sid: null, boot: null, aliveAt: 0, graceUntil: 0, host: null, threadUnread: 0 };
   hdPruneAudio(null);
   hdRenderBar();
+  // An open thread stays open — it is kept after the call — but no longer says we are in it.
+  if (leftRoom && _hdThread && _hdThread.roomId === leftRoom && _hdThread.joined) { _hdThread.joined = false; hdThreadRender(); }
 }
 
 function hdPeer(key) {
@@ -589,6 +690,10 @@ async function huddleOnSignal(msg) {
     // The sweep dropped us (an asleep tab) — get back on the roster.
     if (msg.left === hdMe() || (msg.left && !roster.some(p => p.key === hdMe()) && _hd.sid)) hdRejoin(_hd.roomId, true);
     _hd.roster = roster;
+    // The host role passes on when the host leaves; say so to whoever it reaches.
+    const wasHost = hdIsHost();
+    _hd.host = hdHostOf(roster);
+    if (!wasHost && hdIsHost() && msg.left) hdToast('You are the host now — you can remove people from the call.');
     const grace = Date.now() < _hd.graceUntil;
     [..._hd.peers.keys()].forEach(k => {
       const p = _hd.peers.get(k);
@@ -610,7 +715,9 @@ async function huddleOnSignal(msg) {
       // asleep and rejoins on its next ping. An unlisted pair that isn't working
       // goes now, or on the stats tick once it stops (see hdPollStats).
       const gone = !listed && !hdKept(p) && ((msg.left === k && !msg.swept) || (!grace && p.pc.connectionState !== 'connected'));
-      if (gone || replaced) hdDropPeer(k);
+      // Removed by the host: gone whatever state the pair is in, kept or not.
+      const removed = !listed && msg.removed && msg.left === k;
+      if (gone || replaced || removed) hdDropPeer(k);
       else if (listed && listed.sid && !p.sid) p.sid = listed.sid;
     });
     hdDialRoster();
@@ -635,7 +742,12 @@ async function huddleOnSignal(msg) {
     return;
   }
   if (msg.type === 'decline') { hdToast(esc(msg.fromName || 'They') + ' declined the huddle.'); return; }
+  if (msg.type === 'removed') { hdRemovedFrom(msg); return; }
+  // A thread message can be for a call we are in, one we left, or one we are reading
+  // after it ended — hdThreadIncoming sorts that out.
+  if (msg.type === 'thread') { hdThreadIncoming(msg); return; }
   if (!_hd.roomId || msg.roomId !== _hd.roomId) return;   // signal for a call we're not in
+  if (msg.type === 'reaction') { hdShowReaction(msg.from, msg.emoji, msg.fromName); return; }
   const from = msg.from;
   if (msg.type === 'restart') {
     // The other side lost us and asked for a restart; as the offering side, we run it.
@@ -936,11 +1048,23 @@ function hdNoteRoster(msg) {
   }
   // A huddle is running in a room we are not in
   if (ps.length) hdShowJoinChip(msg.roomId, ps.length, msg.started_at);
-  else hdHideJoinChip();
+  else {
+    // It ended: whoever the host removed may be in the next one, and a thread we have
+    // open on it is over.
+    _hdRemoved.delete(msg.roomId);
+    hdHideJoinChip();
+    if (_hdThread && _hdThread.roomId === msg.roomId && _hdThread.session && _hdThread.session.live) {
+      _hdThread.session.live = false;
+      _hdThread.session.ended_at = _hdThread.session.ended_at || new Date().toISOString();
+      hdThreadRender();
+    }
+  }
 }
 function hdShowJoinChip(roomId, n, startedAt) {
   const el = document.getElementById('hd-join-chip');
   if (!el || _hd.roomId) return;
+  if (_hdRemoved.has(roomId)) return;   // the host removed us from this one
+  el.dataset.room = String(roomId);
   const room = hdRoom(roomId);
   const where = room ? (room.type === 'group' ? room.name : hdNameFor((room.members || []).map(m => m.member_key).find(k => k !== hdMe()) || '')) : 'a conversation';
   el.innerHTML = `<span class="hd-chip-live"></span>
@@ -988,7 +1112,10 @@ function hdRingOnce(msg) {
   if (!msg || msg.roomId == null) return;
   const k = msg.roomId + ':' + (msg.from || '');
   const now = Date.now();
-  if (now - (_hdRang.get(k) || 0) < 10000) return;
+  // Asked back by the host after being removed (only the host's invite gets through):
+  // a new invitation, however recently the first one rang.
+  const askedBack = _hdRemoved.delete(msg.roomId);
+  if (!askedBack && now - (_hdRang.get(k) || 0) < 10000) return;
   _hdRang.set(k, now);
   if (_hdRang.size > 50) for (const [key, at] of _hdRang) if (now - at > 60000) _hdRang.delete(key);
   hdIncoming(msg);
@@ -1035,6 +1162,11 @@ function hdCssEsc(s) {
   return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, '\\$&');
 }
 
+// The host's remove button. Drawn inline rather than as a lucide placeholder: the
+// tiles are repainted on every tick, and nothing on them may ask for an icon pass.
+const HD_KICK_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m17 8 5 5"/><path d="m22 8-5 5"/></svg>';
+
 // Find-or-create a tile. Tiles are reused across renders because they hold live
 // media elements: rebuilding the bar's innerHTML would tear down every <video>
 // mid-call and restart playback, which is audible as a dropout.
@@ -1049,8 +1181,10 @@ function hdTileEl(tiles, id) {
     + '<div class="hd-avatar"><img class="hd-face" alt="" style="display:none">'
     +   '<span class="hd-initials"></span></div>'
     + '<button class="hd-full" style="display:none" title="Full screen">⛶</button>'
+    + '<button class="hd-kick" style="display:none" title="Remove from the huddle" aria-label="Remove from the huddle">' + HD_KICK_SVG + '</button>'
     + '<span class="hd-q" data-q="0"><i></i><i></i><i></i></span>';
   el.querySelector('.hd-full').addEventListener('click', () => hdFullscreen(el));
+  el.querySelector('.hd-kick').addEventListener('click', e => { e.stopPropagation(); hdRemovePeer(id); });
   el.querySelector('.hd-video').addEventListener('dblclick', () => hdFullscreen(el));
   tiles.appendChild(el);
   return el;
@@ -1173,6 +1307,14 @@ function hdPaintTile(el, label, stream, showVideo, mute, peer, key) {
   }
   // Nothing to enlarge when there is no picture
   el.querySelector('.hd-full').style.display = showVideo ? 'flex' : 'none';
+  // Only the host can take someone out, and never themselves. It sits beside the
+  // full-screen button when there is one. (Guarded like the face above: a tile without
+  // one is a bug, but not one worth an exception on every render.)
+  const kick = el.querySelector('.hd-kick');
+  if (kick) {
+    kick.style.display = peer && hdIsHost() ? 'flex' : 'none';
+    kick.style.right = showVideo ? '30px' : '4px';
+  }
   // Quality bars, so everyone can see who is struggling and why
   const q = el.querySelector('.hd-q');
   if (peer) {
@@ -1239,6 +1381,7 @@ function hdApplyWidget(bar) {
   bar.style.bottom = moved ? 'auto' : '';
 }
 function hdWidgetAct(act) {
+  if (act === 'thread') { hdThreadOpen(); return; }
   if (act === 'min') { _hdUI.min = !_hdUI.min; if (_hdUI.min) _hdUI.max = false; }
   if (act === 'max') { _hdUI.max = !_hdUI.max; if (_hdUI.max) _hdUI.min = false; }
   hdSaveUI();
@@ -1280,10 +1423,19 @@ function hdRenderBar() {
       + '<span class="hd-grip"><i data-lucide="grip-horizontal" style="width:14px;height:14px"></i></span>'
       + '<span class="hd-title"></span>'
       + '<span class="hd-clock" title="How long this huddle has been running"></span>'
+      + '<button class="hd-wbtn hd-head-thread" data-act="thread" title="New in the thread" style="display:none"></button>'
       + '<button class="hd-wbtn" data-act="min" title="Minimise"><i data-lucide="minus" style="width:14px;height:14px"></i></button>'
       + '<button class="hd-wbtn" data-act="max" title="Maximise"><i data-lucide="maximize-2" style="width:14px;height:14px"></i></button>'
-      + '</div><div class="hd-tiles"></div><div class="hd-controls"></div>';
+      + '</div><div class="hd-tiles"></div>'
+      + '<div class="hd-react-pop" role="group" aria-label="Send a reaction" style="display:none">'
+      +   HD_REACTIONS.map(e => `<button class="hd-react-pick" data-emoji="${e}" title="React ${e}">${e}</button>`).join('')
+      + '</div>'
+      + '<div class="hd-controls"></div><div class="hd-react-layer" aria-hidden="true"></div>';
     hdBindWidget(bar);
+    bar.querySelector('.hd-react-pop').addEventListener('click', e => {
+      const b = e.target.closest('.hd-react-pick');
+      if (b) huddleReact(b.dataset.emoji);
+    });
     hdIconsSoon();
   }
   const tiles = bar.querySelector('.hd-tiles');
@@ -1295,12 +1447,13 @@ function hdRenderBar() {
   bar.querySelector('.hd-title').textContent = 'Huddle · ' + (peers.length + 1);
   hdPaintClock();
 
-  const selfLabel = 'You' + (_hd.muted ? ' (muted)' : '') + (_hd.sharing ? ' · sharing' : '');
+  const selfLabel = 'You' + (hdIsHost() ? ' · host' : '') + (_hd.muted ? ' (muted)' : '') + (_hd.sharing ? ' · sharing' : '');
   hdPaintTile(hdTileEl(tiles, '__self'), selfLabel, _hd.sharing ? _hd.screen : _hd.local,
               !!(_hd.cam || _hd.sharing), true, null, hdMe());
 
   peers.forEach(([key, p]) => {
-    const label = (p.name || key) + (p.state !== 'connected' ? ' · ' + p.state : '')
+    const label = (p.name || key) + (key === _hd.host ? ' · host' : '')
+      + (p.state !== 'connected' ? ' · ' + p.state : '')
       + (p.sharing ? ' · sharing' : '');
     hdPaintTile(hdTileEl(tiles, key), label, p.stream, !!p.video, false, p, key);
     hdPaintAudio(key, p.stream);   // the voice, independent of every tile state
@@ -1322,9 +1475,24 @@ function hdRenderBar() {
     <button class="hd-btn ${_hd.muted ? 'off' : 'on'}" onclick="huddleToggleMute()" title="${_hd.muted ? 'Unmute' : 'Mute'}">${ic(_hd.muted ? 'mic-off' : 'mic')}</button>
     <button class="hd-btn ${_hd.cam ? 'on' : ''}" onclick="huddleToggleCam()" title="Camera">${ic(_hd.cam ? 'video' : 'video-off')}</button>
     <button class="hd-btn ${_hd.sharing ? 'on' : ''}" onclick="huddleToggleShare()" title="Share screen">${ic('monitor-up')}</button>
+    <button class="hd-btn hd-react-btn" onclick="hdReactToggle()" title="React" aria-label="React">${ic('smile-plus')}</button>
+    <button class="hd-btn hd-thread-btn" onclick="hdThreadOpen()" title="Thread — write to everyone in the huddle" aria-label="Thread">${ic('messages-square')}<span class="hd-badge" style="display:none"></span></button>
     <button class="hd-btn" onclick="hdOpenInvite()" title="Add someone">${ic('user-plus')}</button>
     <button class="hd-btn leave" onclick="huddleLeave()" title="Leave huddle">${ic('phone-off')}</button>`;
     hdIconsSoon();
+  }
+  // Unread thread messages are counted on the button and, with the controls hidden
+  // in a minimised widget, beside the title. Updated in place: a count is no reason
+  // to rebuild the buttons and draw their icons again.
+  const n = _hd.threadUnread || 0;
+  const label = n > 99 ? '99+' : String(n);
+  const badge = controls.querySelector('.hd-badge');
+  if (badge) { if (badge.textContent !== label) badge.textContent = label; badge.style.display = n ? '' : 'none'; }
+  const headThread = bar.querySelector('.hd-head-thread');
+  if (headThread) {
+    const txt = '💬 ' + label;
+    if (headThread.textContent !== txt) headThread.textContent = txt;
+    headThread.style.display = n ? '' : 'none';
   }
 }
 // Draw new icons on the next frame — one pass, however many renders asked for it. A
@@ -1367,6 +1535,264 @@ function hdSendInvites() {
   hdToast(picked.length ? 'Invite sent.' : 'Nobody selected.');
 }
 
+// ── Reactions ─────────────────────────────────────────────────────────────────
+// An emoji floats up from whoever sent it, on the screen of everyone in the call —
+// the sender's included. The set is fixed, and the same as the server's
+// (HUDDLE_REACTIONS), which refuses anything else; so is the limit of eight in five
+// seconds, held here too so a held-down button is told rather than refused.
+const HD_REACTIONS = ['👍', '👏', '❤️', '😂', '🎉', '😮', '🙌', '✋'];
+let _hdReactTimes = [];
+let _hdReactPopTimer = null;
+function hdReactToggle(force) {
+  const pop = document.querySelector('#hd-bar .hd-react-pop');
+  if (!pop) return;
+  const open = typeof force === 'boolean' ? force : pop.style.display === 'none';
+  pop.style.display = open ? 'flex' : 'none';
+  const btn = document.querySelector('#hd-bar .hd-react-btn');
+  if (btn) btn.classList.toggle('on', open);
+  clearTimeout(_hdReactPopTimer);
+  _hdReactPopTimer = open ? setTimeout(() => hdReactToggle(false), 8000) : null;
+}
+function huddleReact(emoji) {
+  if (!_hd.roomId || !HD_REACTIONS.includes(emoji)) return;
+  const now = Date.now();
+  _hdReactTimes = _hdReactTimes.filter(t => now - t < 5000);
+  if (_hdReactTimes.length >= 8) { hdToast('Give it a moment before reacting again.'); return; }
+  _hdReactTimes.push(now);
+  hdShowReaction(hdMe(), emoji);
+  // The picker stays up while the reactions keep coming.
+  if (_hdReactPopTimer) { clearTimeout(_hdReactPopTimer); _hdReactPopTimer = setTimeout(() => hdReactToggle(false), 8000); }
+  hdSignal('reaction', null, { emoji }).catch(() => {});
+}
+// One reaction, floating up from the sender's tile — or from the widget's head when
+// it is minimised and the tiles are hidden — with their name under it.
+function hdShowReaction(key, emoji, fromName) {
+  if (!HD_REACTIONS.includes(emoji)) return;
+  const bar = document.getElementById('hd-bar');
+  const layer = bar && bar.querySelector('.hd-react-layer');
+  // Nobody sees a hidden tab; a pile of them would all play at once on its return.
+  if (!layer || document.hidden) return;
+  const mine = key === hdMe();
+  const tile = bar.querySelector('[data-tile="' + hdCssEsc(mine ? '__self' : key) + '"]');
+  const br = bar.getBoundingClientRect();
+  const tr = tile ? tile.getBoundingClientRect() : null;
+  const shown = !!tr && tr.width > 0 && tr.height > 0;
+  // A few pixels either way, so a burst of one reaction doesn't stack into one glyph.
+  const x = (shown ? tr.left - br.left + tr.width / 2 : br.width / 2) + Math.round((Math.random() - 0.5) * 28);
+  const y = shown ? tr.top - br.top + tr.height / 2 : 14;
+  const who = mine ? 'You' : (fromName || (_hd.peers.get(key) || {}).name || hdNameFor(key));
+  const el = document.createElement('div');
+  el.className = 'hd-react';
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  el.innerHTML = `<span class="hd-react-emo">${esc(emoji)}</span><span class="hd-react-who">${esc(who)}</span>`;
+  while (layer.children.length >= 24) layer.firstChild.remove();
+  layer.appendChild(el);
+  const done = () => el.remove();
+  el.addEventListener('animationend', done);
+  setTimeout(done, 3200);   // a page with animations off never fires animationend
+  if (tile) {
+    tile.classList.add('reacting');
+    clearTimeout(tile._reactT);
+    tile._reactT = setTimeout(() => tile.classList.remove('reacting'), 1400);
+  }
+}
+
+// ── Meeting threads ───────────────────────────────────────────────────────────
+// Every huddle carries a thread: what the people in the call write to each other —
+// links, notes, decisions — kept after it ends, for everyone who was in it and
+// everyone in the conversation, who can go on adding to it. One panel shows one
+// thread: the call's own, or one opened from the history.
+let _hdThread = null;   // { roomId, sessionId, session, messages, joined, loading, error }
+
+function hdThreadEl() {
+  let el = document.getElementById('hd-thread');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'hd-thread';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', 'Huddle thread');
+  el.innerHTML = '<div class="hd-th-head">'
+    + '<div class="hd-th-titles"><div class="hd-th-title"></div><div class="hd-th-sub"></div></div>'
+    + '<button class="hd-th-x" type="button" title="Close" aria-label="Close">×</button></div>'
+    + '<div class="hd-th-who"></div>'
+    + '<div class="hd-th-list" aria-live="polite"></div>'
+    + '<form class="hd-th-foot"><textarea class="hd-th-input" rows="1" maxlength="4000"></textarea>'
+    + '<button class="hd-th-send" type="submit">Send</button></form>';
+  el.querySelector('.hd-th-x').addEventListener('click', hdThreadClose);
+  el.querySelector('.hd-th-foot').addEventListener('submit', e => { e.preventDefault(); hdThreadSend(); });
+  const input = el.querySelector('.hd-th-input');
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); hdThreadSend(); }
+  });
+  input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(120, input.scrollHeight) + 'px'; });
+  document.body.appendChild(el);
+  return el;
+}
+function hdThreadShow() { hdThreadEl().style.display = 'flex'; hdThreadRender(true); }
+function hdThreadClose() {
+  const el = document.getElementById('hd-thread');
+  if (el) el.style.display = 'none';
+  _hdThread = null;
+}
+
+// The thread of the call we are in. The server finds its session; we may not know it.
+async function hdThreadOpen() {
+  const roomId = _hd.roomId;
+  if (!roomId) return;
+  _hd.threadUnread = 0;
+  hdRenderBar();
+  if (_hdThread && _hdThread.roomId === roomId && _hdThread.joined && _hdThread.sessionId) { hdThreadShow(); return; }
+  _hdThread = { roomId, sessionId: null, session: null, messages: [], joined: true, loading: true, error: '' };
+  hdThreadShow();
+  await hdThreadLoad(_hdThread, '/huddle/' + roomId + '/thread');
+}
+// A thread from the history — of a call that ended, or one still running.
+async function hdThreadOpenSession(id) {
+  hdSheetClose();
+  _hdThread = { roomId: null, sessionId: Number(id), session: null, messages: [], joined: false, loading: true, error: '' };
+  hdThreadShow();
+  await hdThreadLoad(_hdThread, '/huddle/threads/' + Number(id));
+}
+async function hdThreadLoad(t, path) {
+  let res = null, d = null;
+  try { res = await hdFetch(path); d = await res.json().catch(() => null); } catch (_) {}
+  if (_hdThread !== t) return;   // closed, or another thread opened meanwhile
+  t.loading = false;
+  if (!res || !res.ok || !d || !d.session) {
+    t.error = (d && d.error) || (res ? 'Could not open the thread.' : 'Could not reach the server.');
+    return hdThreadRender();
+  }
+  const s = d.session;
+  t.session = s;
+  t.sessionId = s.id;
+  t.roomId = s.room_id;
+  t.joined = !!(s.live && _hd.roomId === s.room_id);
+  // What arrived while it loaded is in the answer too; keep whichever we have.
+  const have = new Map((t.messages || []).map(m => [m.id, m]));
+  for (const m of d.messages || []) have.set(m.id, m);
+  t.messages = [...have.values()].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+  if (t.joined) { _hd.threadUnread = 0; hdRenderBar(); }
+  hdThreadRender(true);
+}
+
+function hdThreadDuration(mins) { return mins < 60 ? mins + ' min' : Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min'; }
+function hdThreadWhen(iso) {
+  const t = new Date(iso);
+  return isNaN(t) ? '' : t.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+function hdThreadSubtitle(t) {
+  const s = t.session;
+  if (!s) return t.joined ? 'This huddle' : '';
+  const when = hdThreadWhen(s.started_at);
+  if (s.live && !s.ended_at) return (t.joined ? 'Live — you are in the call' : 'Live now') + (when ? ' · started ' + when : '');
+  const mins = s.ended_at ? Math.max(1, Math.round((Date.parse(s.ended_at) - Date.parse(s.started_at)) / 60000)) : 0;
+  return [when, mins ? hdThreadDuration(mins) : 'ended'].filter(Boolean).join(' · ');
+}
+function hdThreadMsgHtml(m, prev) {
+  const mine = m.sender_key === hdMe();
+  const at = new Date(m.created_at);
+  // One turn, one name: the same sender within five minutes, as in the chat.
+  const grouped = !!prev && prev.sender_key === m.sender_key && at - new Date(prev.created_at) < 5 * 60000;
+  const time = isNaN(at) ? '' : at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const body = typeof chatLinkify === 'function' ? chatLinkify(m.body) : esc(m.body);
+  const ini = String(m.sender_name || '?').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const face = m.sender_avatar ? `<img src="${esc(m.sender_avatar)}" alt="">` : esc(ini);
+  return `<div class="hd-th-msg${mine ? ' mine' : ''}${grouped ? ' grouped' : ''}" data-id="${esc(String(m.id))}">`
+    + (grouped ? '' : `<div class="hd-th-meta"><span class="hd-th-av">${face}</span><span class="hd-th-name">${esc(mine ? 'You' : (m.sender_name || ''))}</span><span class="hd-th-time">${esc(time)}</span></div>`)
+    + `<div class="hd-th-body">${body}</div></div>`;
+}
+function hdThreadRender(toEnd) {
+  const el = document.getElementById('hd-thread');
+  const t = _hdThread;
+  if (!el || !t) return;
+  const s = t.session;
+  el.querySelector('.hd-th-title').textContent = s ? 'Huddle · ' + (s.title || 'conversation') : 'Huddle thread';
+  el.querySelector('.hd-th-sub').textContent = hdThreadSubtitle(t);
+  el.querySelector('.hd-th-who').textContent = s && (s.participants || []).length
+    ? 'With ' + s.participants.map(p => (p.key === hdMe() ? 'you' : p.name)).join(', ') : '';
+  const list = el.querySelector('.hd-th-list');
+  const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+  if (t.loading) list.innerHTML = '<div class="hd-th-empty">Loading…</div>';
+  else if (t.error) list.innerHTML = `<div class="hd-th-empty">${esc(t.error)}</div>`;
+  else if (!t.messages.length) {
+    list.innerHTML = `<div class="hd-th-empty">${t.joined
+      ? 'Nothing here yet. Links, notes and decisions written here stay with this huddle after it ends.'
+      : 'Nobody wrote in this huddle’s thread. You can still add to it.'}</div>`;
+  } else list.innerHTML = t.messages.map((m, i) => hdThreadMsgHtml(m, t.messages[i - 1])).join('');
+  if (toEnd || atEnd) list.scrollTop = list.scrollHeight;
+  const input = el.querySelector('.hd-th-input');
+  input.placeholder = t.joined ? 'Write to everyone in the huddle…' : 'Add to this huddle’s thread…';
+  input.disabled = el.querySelector('.hd-th-send').disabled = !!(t.loading || t.error || !t.sessionId);
+}
+
+async function hdThreadSend() {
+  const el = document.getElementById('hd-thread');
+  const t = _hdThread;
+  if (!el || !t || !t.sessionId) return;
+  const input = el.querySelector('.hd-th-input');
+  const body = input.value.trim();
+  if (!body) return;
+  input.value = '';
+  input.style.height = 'auto';
+  // Nothing typed is lost to a failure: it goes back in the box.
+  const restore = () => { if (_hdThread === t && !input.value) input.value = body; };
+  try {
+    const res = await hdFetch('/huddle/threads/' + t.sessionId + '/messages', { method: 'POST', body: JSON.stringify({ body }) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { restore(); hdToast(d.error || 'Could not send that.'); return; }
+    hdThreadAdd(t, d);
+  } catch (_) { restore(); hdToast('Could not reach the server — your message is still in the box.'); }
+}
+function hdThreadAdd(t, m) {
+  if (!m || m.id == null || t.messages.some(x => x.id === m.id)) return false;
+  t.messages.push(m);
+  if (_hdThread === t) hdThreadRender(m.sender_key === hdMe());
+  return true;
+}
+// A message in a thread, as it is written. Shown if that thread is open; otherwise,
+// for the call we are in, counted on its button.
+function hdThreadIncoming(msg) {
+  const m = msg && msg.message;
+  if (!m) return;
+  if (_hdThread && _hdThread.sessionId === msg.sessionId) { hdThreadAdd(_hdThread, m); return; }
+  if (_hd.roomId && msg.roomId === _hd.roomId && m.sender_key !== hdMe()) {
+    _hd.threadUnread = (_hd.threadUnread || 0) + 1;
+    hdRenderBar();
+  }
+}
+
+// The history: every huddle whose thread this person can read, newest first — all of
+// them, or one conversation's.
+async function hdThreadHistory(roomId) {
+  hdSheet('Huddle threads', '<div class="hd-hist" id="hd-hist"><div class="hd-th-empty">Loading…</div></div>',
+    '<button class="btn btn-outline btn-sm" onclick="hdSheetClose()">Close</button>');
+  const html = await hdThreadListLoad(roomId, 30);
+  const box = document.getElementById('hd-hist');
+  if (box) box.innerHTML = html;
+}
+async function hdThreadListLoad(roomId, limit) {
+  try {
+    const res = await hdFetch('/huddle/threads?limit=' + limit + (roomId ? '&room=' + Number(roomId) : ''));
+    const d = await res.json().catch(() => null);
+    if (!res.ok || !Array.isArray(d)) return `<div class="hd-th-empty">${esc((d && d.error) || 'Could not load the huddle threads.')}</div>`;
+    if (!d.length) return `<div class="hd-th-empty">No huddles yet. When one runs${roomId ? ' here' : ''}, its thread is kept here.</div>`;
+    return d.map(hdThreadRowHtml).join('');
+  } catch (_) { return '<div class="hd-th-empty">Could not reach the server.</div>'; }
+}
+function hdThreadRowHtml(s) {
+  const mins = s.ended_at ? Math.max(1, Math.round((Date.parse(s.ended_at) - Date.parse(s.started_at)) / 60000)) : 0;
+  const who = (s.participants || []).map(p => (p.key === hdMe() ? 'you' : p.name)).join(', ');
+  const ini = String(s.title || '?').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const n = Number(s.message_count) || 0;
+  return `<button class="hd-hist-row" type="button" onclick="hdThreadOpenSession(${Number(s.id)})">
+    <span class="chat-room-avatar grp hd-hist-av">${chatRoomFaceHtml(s.room, null, ini)}</span>
+    <span class="hd-hist-main"><span class="hd-hist-title">${esc(s.title || 'Huddle')}${s.live ? ' <span class="hd-live">Live</span>' : ''}</span>
+      <span class="hd-hist-sub">${esc([hdThreadWhen(s.started_at), s.live ? '' : (mins ? hdThreadDuration(mins) : ''), who].filter(Boolean).join(' · '))}</span></span>
+    <span class="hd-hist-n" title="${n} message${n === 1 ? '' : 's'} in the thread">💬 ${n}</span>
+  </button>`;
+}
+
 // ── A small overlay used by the huddle invite and the group panel ──
 function hdSheet(title, bodyHTML, footHTML) {
   const el = document.getElementById('hd-sheet');
@@ -1394,7 +1820,16 @@ async function chatGroupPanel(roomId) {
   if (!room) return;
   const can = chatCanManageRoom(room);
   const members = room.members || [];
+  const initials = String(room.name || '?').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
   hdSheet(room.type === 'group' ? (room.name || 'Group') : 'Conversation', `
+    ${room.type === 'group' ? `<div class="hd-field cg-pic">
+      <div class="chat-room-avatar grp cg-pic-face">${chatRoomFaceHtml(room, null, initials)}</div>
+      ${can ? `<div class="cg-pic-acts">
+        <button class="btn btn-outline btn-sm" onclick="chatRoomPicture(${roomId})">${room.avatar_url ? 'Change picture' : 'Add a picture'}</button>
+        ${room.avatar_url ? `<button class="btn btn-outline btn-sm" onclick="chatRoomPictureRemove(${roomId})">Remove</button>` : ''}
+        <div class="cg-pic-hint">Everyone in the group sees it. A square picture works best.</div>
+      </div>` : ''}
+    </div>` : ''}
     ${can ? `<div class="hd-field">
       <label>Group name</label>
       <div style="display:flex;gap:8px">
@@ -1418,11 +1853,27 @@ async function chatGroupPanel(roomId) {
     <div class="hd-field">
       <label>Shared files</label>
       <div id="cg-files"><div style="font-size:12px;color:var(--muted);padding:6px">Loading…</div></div>
+    </div>
+    <div class="hd-field">
+      <label>Huddles</label>
+      <div class="hd-hist" id="cg-huddles"><div class="hd-th-empty">Loading…</div></div>
     </div>`,
     `<button class="btn btn-outline btn-sm" onclick="hdSheetClose()">Close</button>
      ${can ? '<button class="btn btn-primary btn-sm" onclick="chatAddMembers(' + roomId + ')">Add selected</button>' : ''}`);
+  const sheet = document.getElementById('hd-sheet');
+  if (sheet) sheet.dataset.room = String(roomId);
   if (can) chatGroupLoadCandidates(roomId);
   chatGroupLoadFiles(roomId);
+  chatGroupLoadHuddles(roomId);
+}
+
+// The last few huddles in this conversation, each opening its thread.
+async function chatGroupLoadHuddles(roomId) {
+  const html = await hdThreadListLoad(roomId, 5);
+  const box = document.getElementById('cg-huddles');
+  if (!box) return;
+  box.innerHTML = html + (/hd-hist-row/.test(html)
+    ? `<button class="hd-link" type="button" onclick="hdThreadHistory(${Number(roomId)})">All huddles in this conversation</button>` : '');
 }
 
 async function chatGroupLoadCandidates(roomId) {

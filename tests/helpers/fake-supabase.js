@@ -12,6 +12,7 @@
 //   db.failing.add('account_security')   // answer 500, as a database that is down does
 //   db.latency = 20                      // ms per query, so concurrent requests really interleave
 //   { defaults: { t: () => ({ col: v }) } }  // column defaults applied on insert, like the real table's
+//   db.storage                           // Storage objects uploaded: 'bucket/path' -> { contentType, size, bytes }
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
 function createFakeSupabase(initial = {}, { serial = {}, defaults = {} } = {}) {
@@ -24,6 +25,7 @@ function createFakeSupabase(initial = {}, { serial = {}, defaults = {} } = {}) {
   const missing = new Set();
   const failing = new Set();   // tables that answer 500, as a database that is down or timing out does
   const log = [];   // { method, table, query } for assertions about what the app asked for
+  const storage = new Map();   // 'bucket/path' -> { contentType, size }
 
   const getCol = (row, col) => {
     const m = col.match(/^(\w+)->>(\w+)$/);
@@ -84,6 +86,30 @@ function createFakeSupabase(initial = {}, { serial = {}, defaults = {} } = {}) {
     const rawH = init.headers;
     if (rawH && typeof rawH.forEach === 'function') rawH.forEach((v, k) => { hdr[k.toLowerCase()] = v; });
     else for (const [k, v] of Object.entries(rawH || {})) hdr[k.toLowerCase()] = v;
+
+    // Storage, as storage-js speaks it: an upload POSTs the bytes to object/<bucket>/<path>
+    // and is answered with its Key; a removal DELETEs object/<bucket> with the paths.
+    const obj = u.pathname.match(/^\/storage\/v1\/object\/(.+)$/);
+    if (obj) {
+      log.push({ method, table: 'storage', query: obj[1] });
+      if (method === 'POST' || method === 'PUT') {
+        const key = decodeURIComponent(obj[1]);
+        if (method === 'POST' && storage.has(key) && hdr['x-upsert'] !== 'true') {
+          return new Response(JSON.stringify({ statusCode: '409', error: 'Duplicate', message: 'The resource already exists' }), { status: 400, headers: JSON_HEADERS });
+        }
+        const body = init.body;
+        const bytes = body && (Buffer.isBuffer(body) || body instanceof Uint8Array) ? Buffer.from(body) : null;
+        storage.set(key, { contentType: hdr['content-type'] || '', size: body ? (body.length ?? body.byteLength ?? body.size ?? 0) : 0, bytes });
+        return new Response(JSON.stringify({ Id: 'obj-' + storage.size, Key: key }), { status: 200, headers: JSON_HEADERS });
+      }
+      if (method === 'DELETE') {
+        const bucket = decodeURIComponent(obj[1]);
+        const gone = [];
+        for (const p of (JSON.parse(init.body || '{}').prefixes || [])) if (storage.delete(bucket + '/' + p)) gone.push({ name: p });
+        return new Response(JSON.stringify(gone), { status: 200, headers: JSON_HEADERS });
+      }
+      throw new Error(`fake-supabase: unsupported storage method ${method}`);
+    }
     const prefer = String(hdr.prefer || '');
     const wantsRows = /return=representation/.test(prefer);
     const single = /vnd\.pgrst\.object/.test(String(hdr.accept || ''));
@@ -164,7 +190,7 @@ function createFakeSupabase(initial = {}, { serial = {}, defaults = {} } = {}) {
     };
     return db;
   }
-  const db = { tables, missing, failing, log, install, handle, latency: 0 };
+  const db = { tables, missing, failing, log, storage, install, handle, latency: 0 };
   return db;
 }
 

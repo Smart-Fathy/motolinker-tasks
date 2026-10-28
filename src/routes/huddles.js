@@ -9,7 +9,10 @@ const chatEditMsg = (...a) => ctx.chatEditMsg(...a);
 const chatGetMessages = (...a) => ctx.chatGetMessages(...a);
 const chatPeopleKeys = (...a) => ctx.chatPeopleKeys(...a);
 const chatSendMessage = (...a) => ctx.chatSendMessage(...a);
+const chatProfileMap = (...a) => ctx.chatProfileMap(...a);
+const isMissingRelation = (...a) => ctx.isMissingRelation(...a);
 const requirePerm = (...a) => ctx.requirePerm(...a);
+const { fetchAll } = require('../lib/fetch-all');
 
 // ─── Group administration + huddles ───────────────────────────────────────────
 // Admin may manage any group; an employee may manage groups they created.
@@ -23,6 +26,35 @@ async function chatCanManage(roomId, callerKey) {
 async function chatRoomMemberKeys(roomId) {
   const { data } = await supabase.from('chat_room_members').select('member_key').eq('room_id', roomId);
   return (data || []).map(m => m.member_key);
+}
+
+// A group's picture is an upload, never an address someone typed, so what everyone
+// sees is always a file this server stored. Raster images only: an SVG can carry
+// script, and opened on its own it would run it.
+const GROUP_PICTURE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+const GROUP_PICTURE_MAX = 5 * 1024 * 1024;
+const groupPictureMulter = multer({ storage: multer.memoryStorage(), limits: { fileSize: GROUP_PICTURE_MAX } }).single('file');
+// multer's own errors arrive as an exception page; say what went wrong in JSON instead.
+function groupPictureUpload(req, res, next) {
+  groupPictureMulter(req, res, err => {
+    if (!err) return next();
+    const big = err.code === 'LIMIT_FILE_SIZE';
+    res.status(big ? 413 : 400).json({ error: big ? 'The picture must be under 5 MB.' : 'Could not read that upload.' });
+  });
+}
+// Where in the chat-files bucket one of our public URLs points; null for anything else.
+function chatFilePath(url) {
+  const m = /\/storage\/v1\/object\/public\/chat-files\/([^?#]+)$/.exec(String(url || ''));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+// A picture nobody is shown any more — replaced or removed — is deleted from storage,
+// which is the free tier's to fill. Best effort: a file left behind costs a few KB.
+function chatFileForget(url) {
+  const p = chatFilePath(url);
+  if (!p) return;
+  supabase.storage.from('chat-files').remove([p])
+    .then(({ error }) => { if (error) console.warn('[chat] could not delete an old picture:', error.message); })
+    .catch(() => {});
 }
 
 // Huddle signalling checks membership on every frame, and one call is dozens of
@@ -108,6 +140,49 @@ function mountChatAdminRoutes(base, guard) {
     res.json(data);
   });
 
+  // The group's picture — what everyone in it sees in the list, the header and the
+  // call. Set or changed by whoever may manage the group; it replaces the emoji icon
+  // wherever both exist.
+  receiver.router.post(`${base}/rooms/:id/picture`, guard, groupPictureUpload, async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const roomId = parseInt(req.params.id);
+    if (!(await chatCanManage(roomId, key))) return res.status(403).json({ error: 'Not allowed' });
+    const ext = req.file && GROUP_PICTURE_TYPES[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: 'Choose a PNG, JPEG, WebP or GIF picture.' });
+    const { data: before } = await supabase.from('chat_rooms').select('avatar_url').eq('id', roomId).maybeSingle();
+    const file = `group-avatars/${roomId}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}.${ext}`;
+    const up = await supabase.storage.from('chat-files').upload(file, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+    if (up.error) return res.status(500).json({ error: up.error.message });
+    const url = supabase.storage.from('chat-files').getPublicUrl(up.data.path).data.publicUrl;
+    const { data, error } = await supabase.from('chat_rooms')
+      .update({ avatar_url: url, updated_at: new Date().toISOString() }).eq('id', roomId).select().single();
+    if (error) {
+      chatFileForget(url);
+      const missing = /avatar_url/.test(String(error.message || ''));
+      return res.status(missing ? 409 : 500).json({
+        error: missing ? 'Group pictures need migrations/024_huddles_and_group_pictures.sql applied first.' : error.message });
+    }
+    if (before && before.avatar_url && before.avatar_url !== url) chatFileForget(before.avatar_url);
+    chatBroadcast(await chatRoomMemberKeys(roomId), 'room', { roomId, room: data });
+    res.json(data);
+  });
+  receiver.router.delete(`${base}/rooms/:id/picture`, guard, async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const roomId = parseInt(req.params.id);
+    if (!(await chatCanManage(roomId, key))) return res.status(403).json({ error: 'Not allowed' });
+    const { data: before } = await supabase.from('chat_rooms').select('avatar_url').eq('id', roomId).maybeSingle();
+    const { data, error } = await supabase.from('chat_rooms')
+      .update({ avatar_url: '', updated_at: new Date().toISOString() }).eq('id', roomId).select().single();
+    if (error) {
+      const missing = /avatar_url/.test(String(error.message || ''));
+      return res.status(missing ? 409 : 500).json({
+        error: missing ? 'Group pictures need migrations/024_huddles_and_group_pictures.sql applied first.' : error.message });
+    }
+    if (before && before.avatar_url) chatFileForget(before.avatar_url);
+    chatBroadcast(await chatRoomMemberKeys(roomId), 'room', { roomId, room: data });
+    res.json(data);
+  });
+
   // Add members
   receiver.router.post(`${base}/rooms/:id/members`, guard, express.json(), async (req, res) => {
     const { key } = chatCallerIdentity(req);
@@ -172,6 +247,8 @@ function mountChatAdminRoutes(base, guard) {
     for (const roomId of huddles.keys()) {
       const members = await huddleRoomMembers(roomId);
       if (!huddleMaySignal(roomId, key, members)) continue;
+      // Removed by the host: not offered back to them while it runs.
+      if (huddleIsBanned(roomId, key)) continue;
       live.push({ roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
     }
     res.json(live);
@@ -181,9 +258,69 @@ function mountChatAdminRoutes(base, guard) {
     res.json(await huddleIceConfig());
   });
 
+  // ── Meeting threads ──
+  // Ahead of /huddle/:roomId, which would otherwise read "threads" as a room.
+  // Every huddle this person can read the thread of, newest first: the ones in their
+  // conversations, and the ones they were pulled into as a guest. ?room= narrows it
+  // to one conversation.
+  receiver.router.get(`${base}/huddle/threads`, guard, requirePerm('chat', 'view'), async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const roomId = req.query.room ? parseInt(req.query.room) : null;
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 30));
+    try {
+      res.json(await huddleThreadSummaries(await huddleThreadsFor(key, roomId, limit), key));
+    } catch (e) { huddleThreadsFail(res, e); }
+  });
+  receiver.router.get(`${base}/huddle/threads/:id`, guard, requirePerm('chat', 'view'), async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const acc = await huddleThreadAccess(parseInt(req.params.id), key);
+    if (acc.error) return huddleThreadsFail(res, acc.error);
+    if (acc.status) return res.status(acc.status).json({ error: acc.status === 404 ? 'Thread not found' : 'Not in this huddle' });
+    try { res.json(await huddleThreadPayload(acc.session, key)); }
+    catch (e) { huddleThreadsFail(res, e); }
+  });
+  receiver.router.post(`${base}/huddle/threads/:id/messages`, guard, requirePerm('chat', 'send'), express.json(), async (req, res) => {
+    const { key, name } = chatCallerIdentity(req);
+    const id = parseInt(req.params.id);
+    const body = String(req.body?.body || '').trim().slice(0, HUDDLE_THREAD_MAX);
+    if (!body) return res.status(400).json({ error: 'Write something first.' });
+    const acc = await huddleThreadAccess(id, key);
+    if (acc.error) return huddleThreadsFail(res, acc.error);
+    if (acc.status) return res.status(acc.status).json({ error: acc.status === 404 ? 'Thread not found' : 'Not in this huddle' });
+    const roomId = acc.session.room_id;
+    if (acc.live && huddleIsBanned(roomId, key)) return res.status(403).json({ error: HUDDLE_REMOVED, removed: true });
+    const { data: row, error } = await supabase.from('huddle_messages')
+      .insert({ session_id: id, room_id: roomId, sender_key: key, sender_name: name, body }).select().single();
+    if (error) return huddleThreadsFail(res, error);
+    const message = { ...row, sender_avatar: ((await chatProfileMap())[key] || {}).avatar || null };
+    // Everyone who may read it hears it at once: the conversation, whoever was in the
+    // call, and while it runs whoever is in it as a guest.
+    const { data: parts } = await supabase.from('huddle_participants').select('member_key').eq('session_id', id);
+    const audience = new Set([...acc.members, ...(parts || []).map(p => p.member_key)]);
+    if (acc.live) for (const g of huddleGuests.get(roomId) || []) audience.add(g);
+    ctx.huddleSignalSend([...audience], { type: 'thread', roomId, sessionId: id, message });
+    res.json(message);
+  });
+  // The thread of the huddle running in a room — what the panel in the call opens,
+  // before it knows which session that is.
+  receiver.router.get(`${base}/huddle/:roomId/thread`, guard, requirePerm('chat', 'huddle'), async (req, res) => {
+    const { key } = chatCallerIdentity(req);
+    const roomId = parseInt(req.params.roomId);
+    if (!huddleMaySignal(roomId, key, await huddleRoomMembers(roomId))) return res.status(403).json({ error: 'Not a member' });
+    const live = huddleSession.get(roomId);
+    if (!live) return res.status(404).json({ error: 'No huddle is running here.' });
+    const id = await live.ready;
+    if (!id) return huddleThreadsFail(res, live.error || new Error('The huddle could not be recorded.'));
+    const { data: session, error } = await supabase.from('huddle_sessions').select('*').eq('id', id).maybeSingle();
+    if (error || !session) return huddleThreadsFail(res, error || new Error('The huddle could not be recorded.'));
+    try { res.json(await huddleThreadPayload(session, key)); }
+    catch (e) { huddleThreadsFail(res, e); }
+  });
+
   receiver.router.get(`${base}/huddle/:roomId`, guard, requirePerm('chat', 'huddle'), async (req, res) => {
     const { key } = chatCallerIdentity(req);
     const roomId = parseInt(req.params.roomId);
+    if (huddleIsBanned(roomId, key)) return res.status(403).json({ error: HUDDLE_REMOVED, removed: true });
     if (!huddleMaySignal(roomId, key, await huddleRoomMembers(roomId))) return res.status(403).json({ error: 'Not a member' });
     res.json({ boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId) });
   });
@@ -193,6 +330,11 @@ function mountChatAdminRoutes(base, guard) {
     const roomId = parseInt(req.body?.roomId);
     const type = String(req.body?.type || '');
     if (!roomId || !HUDDLE_TYPES.includes(type)) return res.status(400).json({ error: 'bad signal' });
+    // Removed by the host: out until the huddle ends or the host asks them back. Nothing
+    // from them reaches the call — no rejoining, no ping that would put them back, no
+    // offer that would reconnect a pair behind everyone's back. Ahead of the membership
+    // check, because a removed guest has lost their grant and should still be told why.
+    if (huddleIsBanned(roomId, key) && type !== 'leave') return res.status(403).json({ error: HUDDLE_REMOVED, removed: true });
     const members = await huddleRoomMembers(roomId);
     if (!huddleMaySignal(roomId, key, members)) return res.status(403).json({ error: 'Not a member' });
 
@@ -230,11 +372,16 @@ function mountChatAdminRoutes(base, guard) {
         const without = [...set.entries()].filter(([k]) => k !== key).map(([k, n]) => ({ key: k, name: n }));
         chatBroadcast(huddleAudience(roomId, members), 'huddle', { type: 'roster', roomId, participants: without, started_at: huddleStartedAt(roomId), left: key });
       }
+      // The first one in started it, and is its host (see huddleHostOf).
+      const fresh = !set.size;
       set.set(key, name);
       huddles.set(roomId, set);
+      if (fresh) huddleOwner.set(roomId, key);
       if (!huddleStarted.has(roomId)) huddleStarted.set(roomId, Date.now());
       huddleEnroll(roomId, key, sid);
       huddleNoteJoin(roomId, key, sid ? null : tag, same);
+      if (fresh) huddleSessionOpen(roomId, key, name, afterRestart);
+      huddleSessionJoin(roomId, key, name);
       // displaced: the page this join took the place of. A tab on the previous bundle
       // takes it without a sid, which the page's own superseded check can't see.
       const frame = { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), joined: key, ...(existed && !same && prevSid ? { displaced: prevSid } : {}) };
@@ -258,6 +405,42 @@ function mountChatAdminRoutes(base, guard) {
     }
     const inCall = (huddles.get(roomId) || new Map()).has(key);
     if (inCall) huddleTouch(roomId, key);
+
+    // The host takes someone out of the call. They are told, everyone else's roster
+    // drops them at once, and they stay out until the huddle ends or the host invites
+    // them back. A member keeps the conversation; only the call is closed to them.
+    if (type === 'remove') {
+      const target = String(req.body?.to || '');
+      if (!inCall || huddleHostOf(roomId) !== key) return res.status(403).json({ error: 'Only the host can remove someone from the huddle.' });
+      if (!target || target === key) return res.status(400).json({ error: 'Choose someone else in the call.' });
+      if (!huddles.get(roomId).has(target)) return res.status(404).json({ error: 'They are not in the huddle.' });
+      if (!huddleBanned.has(roomId)) huddleBanned.set(roomId, new Set());
+      huddleBanned.get(roomId).add(target);
+      huddleRemove(roomId, target);
+      const dropped = huddleDroppedLegacy.get(roomId);
+      if (dropped) dropped.delete(target);
+      // A guest's grant goes with them.
+      const guests = huddleGuests.get(roomId);
+      if (guests) guests.delete(target);
+      // Told directly, so their page hangs up instead of reading the roster as a network
+      // problem and rejoining. Kept for a reconnecting stream, like any other frame.
+      ctx.huddleSignalSend([target], { type: 'removed', roomId, from: key, fromName: name });
+      huddleEmit(huddleAudience(roomId, members), { type: 'roster', roomId, boot: HUDDLE_BOOT, participants: huddleRoster(roomId), started_at: huddleStartedAt(roomId), left: target, removed: true });
+      console.log('[huddle]', key, 'removed', target, 'from the huddle in room', roomId);
+      return res.json({ ok: true });
+    }
+
+    // A reaction, shown to everyone in the call over whoever sent it. Only to people in
+    // the call — the rest of the room never hears it — and never replayed late.
+    if (type === 'reaction') {
+      if (!inCall) return res.status(409).json({ error: 'Join the huddle to react.' });
+      const emoji = String((req.body?.data || {}).emoji || '');
+      if (!HUDDLE_REACTIONS.includes(emoji)) return res.status(400).json({ error: 'Unknown reaction' });
+      if (!huddleReactAllowed(roomId, key)) return res.status(429).json({ error: 'Too many reactions — give it a moment.' });
+      const others = [...huddles.get(roomId).keys()].filter(k => k !== key);
+      ctx.huddleSignalLive(others, { type: 'reaction', roomId, from: key, fromName: name, emoji });
+      return res.json({ ok: true });
+    }
     // Who this participant has a working connection to. It is how a participant on
     // the previous bundle, which can't speak for itself, is known to be really there.
     if (type === 'alive' && inCall && Array.isArray(req.body?.data?.connected)) {
@@ -271,6 +454,14 @@ function mountChatAdminRoutes(base, guard) {
     if (type === 'alive') return res.json({ ok: true, inCall, boot: HUDDLE_BOOT, sid: (huddleSids.get(roomId) || new Map()).get(key) || (inCall ? HUDDLE_ELSEWHERE : null) });
     // invite/offer/answer/ice/decline/media/restart are point-to-point
     const to = String(req.body?.to || '');
+    // Someone the host removed. Only the host can ask them back — an invite from the
+    // host lifts the removal; from anyone else it is refused and says why. Nothing
+    // else is passed to them while they are out.
+    if (huddleIsBanned(roomId, to)) {
+      if (type !== 'invite') return res.status(400).json({ error: 'target not in this huddle' });
+      if (huddleHostOf(roomId) !== key) return res.status(403).json({ error: 'The host removed them from this huddle.' });
+      huddleBanned.get(roomId).delete(to);
+    }
     // Nobody already in the call needs ringing — it used to push them a "started a
     // huddle" notification every time anyone joined or rejoined. Only someone known to
     // be there, though: an entry from the previous bundle has no sid, is never swept,
@@ -373,7 +564,9 @@ const HUDDLE_MAX = 6;   // mesh topology: every peer connects to every other
 // 'restart': the answering side asks the offering side to restart ICE (only the
 // lexicographically smaller key ever offers — the glare rule in huddle.js).
 // 'alive': a participant's periodic "still here" (see huddleSweep).
-const HUDDLE_TYPES = ['join', 'leave', 'invite', 'decline', 'offer', 'answer', 'ice', 'media', 'restart', 'alive'];
+// 'remove': the host takes someone out of the call. 'reaction': an emoji everyone
+// in the call sees.
+const HUDDLE_TYPES = ['join', 'leave', 'invite', 'decline', 'offer', 'answer', 'ice', 'media', 'restart', 'alive', 'remove', 'reaction'];
 // Which server process this is. A restart forgets every roster while the calls
 // themselves, peer to peer, carry on. A client that sees a different boot rejoins
 // instead of reading the empty roster as "everyone left" and hanging up on them.
@@ -384,6 +577,16 @@ const huddles = new Map();   // roomId -> Map<memberKey, name>
 // reloads has to be able to say how long the thing it is offering to rejoin has
 // been going. Cleared with the roster.
 const huddleStarted = new Map();   // roomId -> epoch ms
+// Who started each huddle — its host whenever they are in it (see huddleHostOf).
+const huddleOwner = new Map();    // roomId -> memberKey
+// Who the host took out of the call. They stay out — no rejoining, no signalling —
+// until the huddle ends or the host invites them back.
+const huddleBanned = new Map();   // roomId -> Set<memberKey>
+// Each participant's recent reactions, for the rate limit (see huddleReactAllowed).
+const huddleReacts = new Map();   // roomId -> Map<memberKey, [epoch ms]>
+// The huddle_sessions row of each running huddle — the meeting its thread belongs to.
+// Written in the background, so `id` arrives after the first join; wait on `ready`.
+const huddleSession = new Map();  // roomId -> { id, ready: Promise<id|null>, error, keys: Set }
 // Anyone in the workspace can be pulled into a call by someone already in it.
 // The grant lives only as long as the huddle and never touches chat_room_members,
 // so a guest joins the call without gaining the room's message history.
@@ -394,12 +597,17 @@ function huddleAudience(roomId, members) {
 function huddleMaySignal(roomId, key, members) {
   return members.includes(key) || (huddleGuests.get(roomId) || new Set()).has(key);
 }
+// Each entry says who is the host, so every roster, live list and join answer
+// carries it without a field of its own to keep in step.
 function huddleRoster(roomId) {
   const set = huddles.get(roomId);
   const sids = huddleSids.get(roomId);
+  const host = huddleHostOf(roomId);
   return set ? [...set.entries()].map(([key, name]) => {
     const sid = sids && sids.get(key);
-    return sid ? { key, name, sid } : { key, name };
+    const p = sid ? { key, name, sid } : { key, name };
+    if (key === host) p.host = true;
+    return p;
   }) : [];
 }
 function huddleStartedAt(roomId) { return huddleStarted.get(roomId) || null; }
@@ -483,7 +691,7 @@ function huddleVouch(roomId, keys) {
   const now = Date.now(), back = [];
   const dropped = huddleDroppedLegacy.get(roomId) || new Map();
   for (const k of keys.slice(0, HUDDLE_MAX)) {
-    if (typeof k !== 'string') continue;
+    if (typeof k !== 'string' || huddleIsBanned(roomId, k)) continue;
     const d = dropped.get(k);
     if (!set.has(k) && d && now - d.at <= HUDDLE_READMIT_MS && set.size < HUDDLE_MAX) {
       set.set(k, d.name);
@@ -512,7 +720,10 @@ function huddleRemove(roomId, key) {
   if (set) {
     set.delete(key);
     if (!set.size) {
-      for (const m of [huddles, huddleGuests, huddleStarted, huddleDroppedLegacy, huddleDisplaced, ...HUDDLE_PER_KEY]) m.delete(roomId);
+      // The last one out ends the huddle: its meeting is over, and whoever the host
+      // removed may be in the next one.
+      huddleSessionClose(roomId);
+      for (const m of [huddles, huddleGuests, huddleStarted, huddleDroppedLegacy, huddleDisplaced, huddleOwner, huddleBanned, huddleReacts, ...HUDDLE_PER_KEY]) m.delete(roomId);
       return;
     }
   }
@@ -604,6 +815,244 @@ async function huddleSweep(now = Date.now()) {
 }
 setInterval(() => { huddleSweep().catch(e => console.warn('[huddle] sweep failed:', e.message)); }, 15_000).unref();
 ctx.huddleSweep = huddleSweep;   // tests drive it with a clock of their own
+
+// ── The host ──────────────────────────────────────────────────────────────────
+// Whoever started the huddle runs it while they are in it. When they are not — they
+// left, reloaded, or the sweep dropped them — it is whoever has been in the call the
+// longest (the roster keeps join order), and it comes back to them when they return:
+// starting a call and stepping out for a minute must not hand it over for good.
+function huddleHostOf(roomId) {
+  const set = huddles.get(roomId);
+  if (!set || !set.size) return null;
+  const owner = huddleOwner.get(roomId);
+  return owner && set.has(owner) ? owner : set.keys().next().value;
+}
+function huddleIsBanned(roomId, key) { return !!key && (huddleBanned.get(roomId) || new Set()).has(key); }
+const HUDDLE_REMOVED = 'The host removed you from this huddle.';
+
+// ── Reactions ─────────────────────────────────────────────────────────────────
+// A fixed set, the same one the call's picker offers: anything else is refused, so
+// a reaction can't be made to carry text. Limited per person, so a held-down button
+// can't fill everyone's screen.
+const HUDDLE_REACTIONS = ['👍', '👏', '❤️', '😂', '🎉', '😮', '🙌', '✋'];
+const HUDDLE_REACT_WINDOW_MS = 5000;
+const HUDDLE_REACT_MAX = 8;
+function huddleReactAllowed(roomId, key, now = Date.now()) {
+  if (!huddleReacts.has(roomId)) huddleReacts.set(roomId, new Map());
+  const per = huddleReacts.get(roomId);
+  const recent = (per.get(key) || []).filter(t => now - t < HUDDLE_REACT_WINDOW_MS);
+  const ok = recent.length < HUDDLE_REACT_MAX;
+  if (ok) recent.push(now);
+  per.set(key, recent);
+  return ok;
+}
+
+// ── Meeting threads ───────────────────────────────────────────────────────────
+// Every huddle is a session — from its first join to its last leave — and carries a
+// thread: text the people in the call write to each other, kept after it ends
+// (migration 024). Whoever is in the conversation can read and add to it, and so can
+// anyone who was in the call; a guest pulled in from outside keeps the thread of the
+// meeting they were in, never the room's messages.
+const HUDDLE_THREAD_MAX = 4000;   // characters in one thread message
+let huddleThreadsWarned = false;
+function huddleThreadsMissing(e) {
+  if (!e || !isMissingRelation(e)) return false;
+  if (!huddleThreadsWarned) {
+    huddleThreadsWarned = true;
+    console.warn('[huddle] meeting threads are off until migrations/024_huddles_and_group_pictures.sql is applied');
+  }
+  return true;
+}
+function huddleThreadsFail(res, e) {
+  if (huddleThreadsMissing(e)) {
+    return res.status(503).json({ error: 'Meeting threads need migrations/024_huddles_and_group_pictures.sql applied first.', migration: '024' });
+  }
+  console.warn('[huddle] thread request failed:', e && e.message);
+  return res.status(500).json({ error: (e && e.message) || 'Could not read the thread.' });
+}
+
+// Sessions this process is closing right now. A huddle started in the same room in
+// that moment must not take one for a session a crash left open (see below).
+const huddleClosing = new Set();
+
+// The row is written in the background: the first join must not wait on the database,
+// and a database without the tables still gets its call.
+function huddleSessionOpen(roomId, key, name, afterRestart) {
+  const entry = { id: null, error: null, keys: new Set() };
+  const startedAt = huddleStartedAt(roomId) || Date.now();
+  entry.ready = (async () => {
+    try {
+      // A restart forgot the call, not the meeting: pick its open session back up, and
+      // with it who started it and when.
+      if (afterRestart) {
+        const { data, error } = await supabase.from('huddle_sessions').select('id,host_key,started_at')
+          .eq('room_id', roomId).is('ended_at', null).order('started_at', { ascending: false }).limit(1);
+        if (error) throw error;
+        const row = data && data[0];
+        if (row) {
+          entry.id = row.id;
+          if (huddleSession.get(roomId) === entry) {
+            huddleOwner.set(roomId, row.host_key);
+            const t = Date.parse(row.started_at);
+            if (!isNaN(t)) huddleStarted.set(roomId, Math.min(t, huddleStarted.get(roomId) || t));
+          }
+          await huddleSessionsSettle(roomId, row.id);
+          return entry.id;
+        }
+      }
+      await huddleSessionsSettle(roomId, null);
+      const { data, error } = await supabase.from('huddle_sessions')
+        .insert({ room_id: roomId, host_key: key, host_name: name, started_at: new Date(startedAt).toISOString() })
+        .select('id').single();
+      if (error) throw error;
+      entry.id = data.id;
+      return entry.id;
+    } catch (e) {
+      entry.error = e;
+      if (!huddleThreadsMissing(e)) console.warn('[huddle] could not record the huddle in room', roomId, '-', e.message);
+      return null;
+    }
+  })();
+  huddleSession.set(roomId, entry);
+  return entry;
+}
+// Sessions a crash left open in this room, but the one being carried on. Each is
+// ended when it was last written in, or as it started — not now, which would make a
+// call that died yesterday look a day long.
+async function huddleSessionsSettle(roomId, keepId) {
+  const { data, error } = await supabase.from('huddle_sessions').select('id,started_at').eq('room_id', roomId).is('ended_at', null);
+  if (error) throw error;
+  for (const s of data || []) {
+    if (s.id === keepId || huddleClosing.has(s.id)) continue;
+    const { data: last } = await supabase.from('huddle_messages').select('created_at')
+      .eq('session_id', s.id).order('created_at', { ascending: false }).limit(1);
+    await supabase.from('huddle_sessions').update({ ended_at: (last && last[0] && last[0].created_at) || s.started_at }).eq('id', s.id);
+  }
+}
+// Everyone who was ever in the call, once each — the record a guest's access rests on.
+function huddleSessionJoin(roomId, key, name) {
+  const entry = huddleSession.get(roomId);
+  if (!entry || entry.keys.has(key)) return;
+  entry.keys.add(key);
+  entry.ready.then(async id => {
+    if (!id) return;
+    const { error } = await supabase.from('huddle_participants')
+      .upsert({ session_id: id, member_key: key, member_name: name }, { onConflict: 'session_id,member_key' });
+    if (error && !huddleThreadsMissing(error)) console.warn('[huddle] could not record a participant:', error.message);
+  }).catch(() => {});
+}
+function huddleSessionClose(roomId) {
+  const entry = huddleSession.get(roomId);
+  if (!entry) return;
+  huddleSession.delete(roomId);
+  const endedAt = new Date().toISOString();
+  entry.ready.then(async id => {
+    if (!id) return;
+    huddleClosing.add(id);
+    try {
+      const { error } = await supabase.from('huddle_sessions').update({ ended_at: endedAt }).eq('id', id);
+      if (error && !huddleThreadsMissing(error)) console.warn('[huddle] could not close the huddle record:', error.message);
+    } finally { huddleClosing.delete(id); }
+  }).catch(() => {});
+}
+
+// May this person read and write a session's thread? { session, members, live } if
+// so, { status } if not, { error } when the database could not say.
+async function huddleThreadAccess(sessionId, key) {
+  if (!sessionId) return { status: 404 };
+  const { data: session, error } = await supabase.from('huddle_sessions').select('*').eq('id', sessionId).maybeSingle();
+  if (error) return { error };
+  if (!session) return { status: 404 };
+  const members = await huddleRoomMembers(session.room_id);
+  const running = huddleSession.get(session.room_id);
+  const live = !!(running && running.id === session.id);
+  if (members.includes(key) || (live && huddleMaySignal(session.room_id, key, members))) return { session, members, live };
+  const { data: was, error: e2 } = await supabase.from('huddle_participants').select('member_key')
+    .eq('session_id', session.id).eq('member_key', key).maybeSingle();
+  if (e2) return { error: e2 };
+  return was ? { session, members, live } : { status: 403 };
+}
+
+// The sessions behind the history list: those in this person's conversations, and
+// those they were in as a guest.
+async function huddleThreadsFor(key, roomId, limit) {
+  const [{ data: mine, error: e1 }, { data: took, error: e2 }] = await Promise.all([
+    supabase.from('chat_room_members').select('room_id').eq('member_key', key),
+    supabase.from('huddle_participants').select('session_id').eq('member_key', key)
+      .order('session_id', { ascending: false }).limit(200),
+  ]);
+  if (e2) throw e2;
+  if (e1) throw e1;
+  const rooms = (mine || []).map(m => m.room_id).filter(r => !roomId || r === roomId);
+  const ids = (took || []).map(p => p.session_id);
+  const reads = [];
+  if (rooms.length) reads.push(supabase.from('huddle_sessions').select('*').in('room_id', rooms).order('started_at', { ascending: false }).limit(limit));
+  if (ids.length) {
+    let q = supabase.from('huddle_sessions').select('*').in('id', ids);
+    if (roomId) q = q.eq('room_id', roomId);
+    reads.push(q.order('started_at', { ascending: false }).limit(limit));
+  }
+  const byId = new Map();
+  for (const { data, error } of await Promise.all(reads)) {
+    if (error) throw error;
+    for (const s of data || []) byId.set(s.id, s);
+  }
+  return [...byId.values()].sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at)).slice(0, limit);
+}
+
+// What a conversation is called for this person: a group's name, or the other people
+// in a direct one.
+function huddleThreadTitle(room, members, key) {
+  if (!room) return 'Huddle';
+  if (room.type === 'group') return room.name || 'Group';
+  const others = members.filter(m => m.member_key !== key).map(m => m.member_name);
+  return others.join(' & ') || 'Direct message';
+}
+async function huddleThreadSummaries(sessions, key) {
+  if (!sessions.length) return [];
+  const ids = sessions.map(s => s.id);
+  const roomIds = [...new Set(sessions.map(s => s.room_id))];
+  const [parts, msgs, rooms, mems] = await Promise.all([
+    supabase.from('huddle_participants').select('session_id,member_key,member_name').in('session_id', ids),
+    fetchAll(() => supabase.from('huddle_messages').select('id,session_id').in('session_id', ids)),
+    supabase.from('chat_rooms').select('*').in('id', roomIds),
+    supabase.from('chat_room_members').select('room_id,member_key,member_name').in('room_id', roomIds),
+  ]);
+  for (const r of [parts, msgs]) if (r.error) throw r.error;
+  const count = new Map();
+  for (const m of msgs.data || []) count.set(m.session_id, (count.get(m.session_id) || 0) + 1);
+  const roomOf = new Map((rooms.data || []).map(r => [r.id, r]));
+  const membersOf = new Map();
+  for (const m of mems.data || []) {
+    if (!membersOf.has(m.room_id)) membersOf.set(m.room_id, []);
+    membersOf.get(m.room_id).push(m);
+  }
+  return sessions.map(s => {
+    const room = roomOf.get(s.room_id) || null;
+    const running = huddleSession.get(s.room_id);
+    return {
+      id: s.id, room_id: s.room_id,
+      title: huddleThreadTitle(room, membersOf.get(s.room_id) || [], key),
+      room: room ? { id: room.id, type: room.type, name: room.name || '', avatar_url: room.avatar_url || '', icon: room.icon || '' } : null,
+      host_key: s.host_key, host_name: s.host_name || '',
+      started_at: s.started_at, ended_at: s.ended_at || null,
+      live: !!(running && running.id === s.id),
+      participants: (parts.data || []).filter(p => p.session_id === s.id).map(p => ({ key: p.member_key, name: p.member_name })),
+      message_count: count.get(s.id) || 0,
+    };
+  });
+}
+// One thread, ready to show: the session and its newest 500 messages, oldest first.
+async function huddleThreadPayload(session, key) {
+  const [[summary], msgs, profiles] = await Promise.all([
+    huddleThreadSummaries([session], key),
+    supabase.from('huddle_messages').select('*').eq('session_id', session.id).order('created_at', { ascending: false }).limit(500),
+    chatProfileMap(),
+  ]);
+  if (msgs.error) throw msgs.error;
+  const messages = (msgs.data || []).reverse().map(m => ({ ...m, sender_avatar: (profiles[m.sender_key] || {}).avatar || null }));
+  return { session: summary, messages };
+}
 
 // Rooms — group (admin only)
 // Delete a group for everyone. Direct conversations are never deleted this way —

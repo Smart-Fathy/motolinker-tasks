@@ -1119,3 +1119,45 @@ CREATE TABLE IF NOT EXISTS public.account_security (
 -- role the server uses can read or write them.
 ALTER TABLE IF EXISTS public.login_events     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.account_security ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================
+--  Huddle meeting threads, and group pictures
+--  (migrations/024_huddles_and_group_pictures.sql — kept in step with it)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.huddle_sessions (
+  id          BIGSERIAL PRIMARY KEY,
+  room_id     BIGINT NOT NULL REFERENCES public.chat_rooms(id) ON DELETE CASCADE,
+  host_key    TEXT NOT NULL,                       -- who started it: 'admin' | 'employee_<id>'
+  host_name   TEXT NOT NULL DEFAULT '',
+  started_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ended_at    TIMESTAMPTZ                          -- NULL while it runs
+);
+CREATE INDEX IF NOT EXISTS idx_huddle_sessions_room ON public.huddle_sessions (room_id, started_at DESC);
+
+-- Everyone who was ever in the call, once each: how a guest keeps the thread.
+CREATE TABLE IF NOT EXISTS public.huddle_participants (
+  session_id  BIGINT NOT NULL REFERENCES public.huddle_sessions(id) ON DELETE CASCADE,
+  member_key  TEXT NOT NULL,
+  member_name TEXT NOT NULL DEFAULT '',
+  joined_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (session_id, member_key)
+);
+CREATE INDEX IF NOT EXISTS idx_huddle_participants_member ON public.huddle_participants (member_key, session_id DESC);
+
+CREATE TABLE IF NOT EXISTS public.huddle_messages (
+  id          BIGSERIAL PRIMARY KEY,
+  session_id  BIGINT NOT NULL REFERENCES public.huddle_sessions(id) ON DELETE CASCADE,
+  room_id     BIGINT NOT NULL,
+  sender_key  TEXT NOT NULL,
+  sender_name TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_huddle_messages_session ON public.huddle_messages (session_id, created_at);
+
+-- The group's picture; replaces the emoji icon wherever both exist.
+ALTER TABLE IF EXISTS public.chat_rooms ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT '';
+
+ALTER TABLE IF EXISTS public.huddle_sessions     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.huddle_participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.huddle_messages     ENABLE ROW LEVEL SECURITY;
