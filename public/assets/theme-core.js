@@ -66,10 +66,13 @@
   // The nearest colour to `fg` — same hue and saturation, only lightness moved, away from
   // the background — that reaches `min` contrast against it. A colour that already does is
   // returned as it is; one that cannot reaches pure black or white.
-  function ensure(fg, bg, min) {
+  // `toward` ('lighter' | 'darker') says which way to move when the caller knows better than
+  // the ground does: a wash of the colour itself is mid-toned, and the text on it is always
+  // being sunk on a light page whatever the wash's own lightness comes out as.
+  function ensure(fg, bg, min, toward) {
     if (contrast(fg, bg) >= min) return fg;
     const [h, s, l] = toHsl(fg);
-    const lighter = luminance(bg) < 0.4;   // dark ground: lift the colour; light ground: sink it
+    const lighter = toward ? toward === 'lighter' : luminance(bg) < 0.4;   // dark ground: lift the colour; light ground: sink it
     for (let i = 1; i <= 100; i++) {
       const cand = fromHsl(h, s, clamp(l + (lighter ? i : -i) * 0.01, 0, 1));
       if (contrast(cand, bg) >= min) return cand;
@@ -103,13 +106,13 @@
       dark:  { bg: '#0c0c0e', panel: '#141416', sidebar: '#0f0f12', text: '#f3efe7', text2: '#b9b3a4', muted: '#8d897f', accent: '#c9a35e', accent2: '#e8cd93',
                card: '#18181b', field: '#0e0e10', field2: '#101013', thead: '#101012', auth1: '#15130e', auth2: '#0b0b0c', avatar1: '#1c1a14', ink2: '#1b1608',
                soft: '#d9bd7f', deep: '#a07e3f', lite: '#e8cd93', dim: '#8a6a30', muted2: '#a5a29a', placeholder: '#6f6b63' },
-      light: { bg: '#f7f4ee', panel: '#ffffff', sidebar: '#ffffff', text: '#1f1c17', muted: '#6b6558', accent: '#a8802f', accent2: '#b78c3d' },
+      light: { bg: '#f7f4ee', panel: '#ffffff', sidebar: '#ffffff', text: '#1f1c17', muted: '#655f54', accent: '#a8802f', accent2: '#b78c3d' },
     },
     'moto': {
       name: 'Moto Palette', blurb: 'The MotoLinker brand: forest green, road green and lime.',
       font: { heading: 'poppins', body: 'poppins' }, shape: { radius: 3, density: 1 }, glow: 'off', mode: 'light',
       dark:  { bg: '#04140e', panel: '#0a231a', sidebar: '#04140e', text: '#eaf4e5', muted: '#8fb09a', accent: '#7ec842', accent2: '#3a8e0e', hover: '#5fa52f' },
-      light: { bg: '#f5f9f3', panel: '#ffffff', sidebar: '#043627', text: '#16271f', muted: '#5a6d62', accent: '#328008', accent2: '#3a8e0e' },
+      light: { bg: '#f5f9f3', panel: '#ffffff', sidebar: '#043627', text: '#16271f', muted: '#56675d', accent: '#328008', accent2: '#3a8e0e' },
     },
     'cyberpunk': {
       name: 'Cyberpunk Tech', blurb: 'Night-city blue-black with electric cyan and hot magenta.',
@@ -127,19 +130,19 @@
       name: 'Synthwave', blurb: 'Purple dusk, pink neon, a sunset-grid mood.',
       font: { heading: 'syne', body: 'dm-sans' }, shape: { radius: 3, density: 1 }, glow: 'strong', mode: 'dark',
       dark:  { bg: '#120a24', panel: '#1c1236', sidebar: '#0e071c', text: '#f4eaff', muted: '#a592c8', accent: '#ff4fd8', accent2: '#7c5cff' },
-      light: { bg: '#f8f1ff', panel: '#ffffff', sidebar: '#2a1650', text: '#24103f', muted: '#6b5a8c', accent: '#b0148f', accent2: '#7c5cff' },
+      light: { bg: '#f8f1ff', panel: '#ffffff', sidebar: '#2a1650', text: '#24103f', muted: '#695889', accent: '#b0148f', accent2: '#7c5cff' },
     },
     'matrix': {
       name: 'Matrix', blurb: 'Terminal green on black, set in a monospace.',
       font: { heading: 'jetbrains-mono', body: 'jetbrains-mono' }, shape: { radius: 0, density: 0 }, glow: 'subtle', mode: 'dark',
       dark:  { bg: '#020a05', panel: '#07160c', sidebar: '#010603', text: '#d6ffe4', muted: '#6fae86', accent: '#00ff6a', accent2: '#00b34a' },
-      light: { bg: '#f1fbf4', panel: '#ffffff', sidebar: '#062313', text: '#0b2415', muted: '#4f6f5b', accent: '#007a36', accent2: '#00a946' },
+      light: { bg: '#f1fbf4', panel: '#ffffff', sidebar: '#062313', text: '#0b2415', muted: '#4b6957', accent: '#007a36', accent2: '#00a946' },
     },
     'deep-ocean': {
       name: 'Deep Ocean', blurb: 'Navy depths, sky-blue light.',
       font: { heading: 'plus-jakarta', body: 'plus-jakarta' }, shape: { radius: 3, density: 1 }, glow: 'off', mode: 'dark',
       dark:  { bg: '#07111f', panel: '#0d1b2f', sidebar: '#050d19', text: '#e6f1ff', muted: '#8ba5c4', accent: '#38bdf8', accent2: '#818cf8' },
-      light: { bg: '#f2f7fc', panel: '#ffffff', sidebar: '#0b2545', text: '#0d2038', muted: '#516a85', accent: '#0369a1', accent2: '#6366f1' },
+      light: { bg: '#f2f7fc', panel: '#ffffff', sidebar: '#0b2545', text: '#0d2038', muted: '#4d647f', accent: '#0369a1', accent2: '#6366f1' },
     },
     'ember': {
       name: 'Ember', blurb: 'Warm charcoal lit by orange coals.',
@@ -154,6 +157,8 @@
   // wash is dim and the accent bright, so 14% (the active nav row) is the hard case; on a light
   // page the sheets put up to 30% behind it (a badge, a calendar cell) and it has to be dark.
   const accentTint = dark => (dark ? 0.14 : 0.3);
+  // The alpha of the hairlines (borders, grid gaps) the sheets draw in the ink colour.
+  const hairAlpha = dark => (dark ? 0.09 : 0.14);
 
   // ── Fonts ───────────────────────────────────────────────────────────────────
   // An allow-list: the id is what is stored, the family and stack are what reach the page.
@@ -311,12 +316,23 @@
     // the twin is the accent itself. (The wash is made of the accent, so as the twin moves the
     // wash moves with it: settle.)
     const fill = ensure(P.accent, P.panel, 3);
-    let text = fill;
-    for (let i = 0; i < 6; i++) {
-      const next = ensure(text, over(text, P.panel, accentTint(dark)), 4.5);
-      if (next === text) break;
-      text = next;
-    }
+    const ink = dark ? '#ffffff' : P.text;          // what translucent overlays are made of
+    // A wash sits on a panel or on the page itself, which on a light look is a little darker.
+    // A coloured text is sunk until it reads on a wash of itself over each. (On a dark page the
+    // panel is the case that matters, and the dark look is pinned to what it has always been.)
+    const grounds = dark ? [P.panel] : [P.panel, P.bg];
+    const way = dark ? 'lighter' : 'darker';
+    const sink = (hex, tint) => {
+      let t = hex;
+      for (let i = 0; i < 8; i++) {
+        let next = t;
+        for (const g of grounds) next = ensure(next, over(next, g, tint), 4.5, way);
+        if (next === t) break;
+        t = next;
+      }
+      return t;
+    };
+    const text = sink(fill, accentTint(dark));
     const fill2 = ensure(P.accent2 || fill, P.panel, 3);
 
     // The sidebar is its own surface: a forest-green one beside a white page, a white one
@@ -324,7 +340,9 @@
     // stays in the family) and its own accent, starting from the vivid one.
     const sbCandidates = [preset.dark.text, preset.light.text, '#f4f1ea', '#15171c'];
     const sbText = sbCandidates.find(c => contrast(c, P.sidebar) >= 7) || sbCandidates.slice().sort((a, b) => contrast(b, P.sidebar) - contrast(a, P.sidebar))[0];
-    const sbMuted = ensure(mix(sbText, P.sidebar, 0.42), P.sidebar, 4.5);
+    const sbField = mix(P.sidebar, sbText, 0.08);   // the search box and other inset things, a step off the rail
+    const sbMuted = ensure(ensure(mix(sbText, P.sidebar, 0.42), P.sidebar, 4.5), sbField, 4.5);
+    const sbText2 = ensure(mix(sbText, P.sidebar, 0.2), P.sidebar, 7);
     const sbBase = n.theme.accent || preset.dark.accent, sbTint = accentTint(luminance(P.sidebar) < 0.4);
     let sbAccent = sbBase;
     for (let i = 0; i < 6; i++) {
@@ -333,7 +351,6 @@
       sbAccent = next;
     }
 
-    const ink = dark ? '#ffffff' : P.text;          // what translucent overlays are made of
     const text2 = P.text2 || mix(P.text, P.muted, 0.5);
     const field = P.field || (dark ? mix(P.bg, P.panel, 0.45) : P.panel);
     return {
@@ -355,7 +372,7 @@
       soft: P.soft || lift(fill, dark ? 0.28 : 0.35, onFill(fill)),
       lite: P.lite || lift(fill, dark ? 0.5 : 0.55, onFill(fill)),
       dim: P.dim || mix(fill, '#000000', dark ? 0.4 : 0.32),
-      sbText, sbMuted, sbAccent,
+      sbText, sbText2, sbMuted, sbAccent, sbField, sink,
     };
   }
 
@@ -377,6 +394,18 @@
     '--danger-text': '#f87171', '--cal-task': '#60a5fa', '--cal-task-text': '#8ec0ff', '--notice-text': '#e9c98a', '--notice-strong': '#f8dfae',
     '--warning-soft': '#fbbf24', '--success-soft': '#34d399', '--success-text': '#9fb59a', '--error-text': '#ff8888',
   };
+
+  // The hues the scripts and sheets spell out as hex — a KPI tile, a pill, a chip's text — each
+  // read as text on a wash of itself. Every one has a token, --h-<hex>, and every use is
+  // var(--h-<hex>,<hex>): on a dark page the token is simply not defined and the hex is what
+  // paints; on a light page it is the same hue sunk until it reads. OLD_ACCENT is the colour the
+  // app was first drawn in: wherever a script still says it, it follows the workspace's accent.
+  const OLD_ACCENT = '#c9a35e';
+  const HUES = ['#6dd8a4', '#e57373', '#e6a850', '#9fb0bd', '#a78bfa', '#c98b5e', '#8a9a86', '#f59e0b', '#ef4444', '#10b981',
+    '#38bdf8', '#f87171', '#f472b6', '#e69650', '#5ab478', '#7fce9a', '#7cc4ff', '#7c6aff', '#5a78c8', '#64b478', '#8aa4e0'];
+  const hueToken = hex => '--h-' + hex.slice(1);
+  // Tokens the stylesheets leave undefined (each use carries its own fallback) and a look may define.
+  const LIGHT_ONLY = ['--alt-rgb', '--t-dim', '--t-soft', '--glow', '--chev-select', '--cal-today', '--sh-k'].concat(HUES.concat(OLD_ACCENT).map(hueToken));
 
   // ── What the sheets already say ─────────────────────────────────────────────
   // The new tokens' values as the stylesheets carry them today — written into both :root
@@ -409,7 +438,7 @@
     const c = palette(n, mode);
     const preset = PRESETS[n.theme.preset];
     const glow = n.theme.glow || preset.glow;
-    const ovA = c.dark ? 0.09 : 0.14;
+    const ovA = hairAlpha(c.dark);
     const v = {};
     // Surfaces and text
     v['--bg'] = c.bg;
@@ -450,7 +479,7 @@
     v['--gold'] = c.accent;
     v['--gold-soft'] = c.soft;
     v['--gold-deep'] = c.deep;
-    v['--gold-lite'] = c.lite;
+    v['--gold-lite'] = c.dark ? c.lite : c.accentText;   // it is only ever a text colour (an active chip), so on a light page it is the accent's text shade
     v['--gold-dim'] = c.dim;
     v['--hair-gold'] = rgba(c.accent, c.dark ? 0.22 : 0.3);
     v['--accent-2'] = c.accent2;
@@ -458,11 +487,13 @@
     // Tints the sheets still write in an older purple: they follow the second colour
     v['--alt-rgb'] = triplet(c.accent2);
     // The widgets and the pipeline's first stage wear the accent
-    v['--w-gold'] = c.accent;
-    v['--stage-lead'] = c.accent;
+    v['--w-gold'] = c.accentText;
+    v['--stage-lead'] = c.accentText;
     // The sidebar's own: the sheets put these in place of the page's inside .sidebar
     v['--sb-text'] = c.sbText;
+    v['--sb-text-2'] = c.sbText2;
     v['--sb-muted'] = c.sbMuted;
+    v['--sb-field'] = c.sbField;
     v['--sb-ov'] = triplet(c.sbText);
     v['--sb-strong'] = contrast('#ffffff', c.sidebar) >= 7 ? '#ffffff' : c.sbText;
     v['--sb-accent'] = c.sbAccent;
@@ -487,11 +518,14 @@
     v['--color-scheme'] = c.dark ? 'dark' : 'light';
     // A status hue is read as text on a wash of itself (a badge is the hue at 12-25% behind the
     // hue), which is darker than the panel: sink it until it reads there.
-    if (!c.dark) for (const [k, hex] of Object.entries(STATUS)) {
-      let h = hex;
-      for (let i = 0; i < 6; i++) { const next = ensure(h, over(h, c.panel, 0.25), 4.5); if (next === h) break; h = next; }
-      v[k] = h;
-    }
+    if (!c.dark) for (const [k, hex] of Object.entries(STATUS)) v[k] = c.sink(hex, 0.25);
+    // A calendar's today-cell is a wash of the accent that the grid shows through. On a dark page
+    // that lightens it; on a light one it would be muddier than its neighbours, so it is solid.
+    if (!c.dark) v['--cal-today'] = over(c.accent, c.bg, 0.1);
+    // Shadows are black at some opacity, drawn for a dark page; on a light one they are softened.
+    if (!c.dark) v['--sh-k'] = '0.4';
+    v[hueToken(OLD_ACCENT)] = c.accentText;
+    if (!c.dark) for (const h of HUES) v[hueToken(h)] = c.sink(h, 0.25);
     return v;
   }
 
@@ -538,9 +572,17 @@
     const root = Object.assign({}, cu.colors ? deriveVars(n, 'dark') : {}, extra);
     if (Object.keys(root).length) css += ':root{' + decl(root) + '}';
     // Parts of the page that are always dark (the huddle widget, toasts) put the dark
-    // values back for themselves, so a light page does not turn them pale.
-    if (cu.colors) css += '.on-dark{' + decl(deriveVars(n, 'dark')) + '}';
+    // values back for themselves, so a light page does not turn them pale. The sheets already
+    // declare most tokens on .on-dark; the ones a light page defines and the sheets do not
+    // (they are "not defined" until a look says so) would be inherited from <html>, so they
+    // are put back to not-defined here, which sends every var() to its own fallback.
+    const reset = {};
+    for (const k of LIGHT_ONLY) reset[k] = 'initial';
+    if (cu.colors) css += '.on-dark{' + decl(Object.assign(reset, deriveVars(n, 'dark'))) + '}';
     css += 'html[data-mode="light"]{' + decl(Object.assign({ 'color-scheme': 'light' }, deriveVars(n, 'light'), extra)) + '}';
+    // (a workspace that keeps the original dark look has no .on-dark block to say it in, and
+    // needs none until the page is light)
+    if (!cu.colors) css += 'html[data-mode="light"] .on-dark{' + decl(reset) + '}';
     return css;
   }
 
@@ -615,7 +657,7 @@
   return {
     VERSION: 1,
     PRESETS, PRESET_ORDER, DEFAULT_PRESET, FONTS, FONT_ORDER, DEFAULT_FONTS, DEFAULT_SHAPE, RADIUS_K, DENSITY_K, GLOWS, MODES, NEUTRAL_KEYS, TEXT_KEYS, STATUS, BASE,
-    normalize, validate, custom, inputs, palette, deriveVars, fontVars, shapeVars, renderThemeCss, fontsHref, bootScript, defaultMode, themeColor, report, problems,
+    HUES, OLD_ACCENT, hueToken, normalize, validate, custom, inputs, palette, deriveVars, fontVars, shapeVars, renderThemeCss, fontsHref, bootScript, defaultMode, themeColor, report, problems,
     color: { isHex, normHex, rgb, toHex, triplet, rgba, luminance, contrast, mix, over, toHsl, fromHsl, ensure, onFill },
   };
 });

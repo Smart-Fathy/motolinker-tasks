@@ -158,7 +158,7 @@
         <tbody>${_contractsCache.map(c => `
           <tr style="border-bottom:1px solid var(--border)">
             <td style="padding:8px 10px;font-family:monospace;font-weight:600">${esc(c.contract_no)}</td>
-            <td style="padding:8px 10px">${esc(c.title || '—')}${c.created_by === 'auto_won' ? ' <span style="font-size:10.5px;color:var(--primary);border:1px solid var(--primary);border-radius:8px;padding:1px 6px">auto</span>' : ''}</td>
+            <td style="padding:8px 10px">${esc(c.title || '—')}${c.created_by === 'auto_won' ? ' <span style="font-size:10.5px;color:var(--primary-text,var(--primary));border:1px solid var(--primary);border-radius:8px;padding:1px 6px">auto</span>' : ''}</td>
             <td style="padding:8px 10px">${docStatusBadge('contracts', c.status)}</td>
             <td style="padding:8px 10px;color:var(--muted)">${c.created_at ? new Date(c.created_at).toLocaleDateString() : ''}</td>
             <td style="padding:8px 10px;text-align:right;white-space:nowrap">
@@ -1505,8 +1505,8 @@
             <tbody>${data.map(s => `
               <tr style="border-bottom:1px solid var(--border)">
                 <td style="padding:12px 16px;font-size:13px;font-weight:600">${esc(s.name)}</td>
-                <td style="padding:12px 16px;font-size:12px">${s.customer_id ? `<span onclick="openLeadProfile(${s.customer_id})" title="Open lead profile" style="cursor:pointer;color:var(--primary);background:rgba(230,150,80,.12);padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap">→ ${esc(s.lead_name || 'lead')}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
-                <td style="padding:12px 16px;font-size:13px"><a href="mailto:${esc(s.email)}" style="color:var(--primary)">${esc(s.email)}</a></td>
+                <td style="padding:12px 16px;font-size:12px">${s.customer_id ? `<span onclick="openLeadProfile(${s.customer_id})" title="Open lead profile" style="cursor:pointer;color:var(--primary-text,var(--primary));background:rgba(230,150,80,.12);padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap">→ ${esc(s.lead_name || 'lead')}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
+                <td style="padding:12px 16px;font-size:13px"><a href="mailto:${esc(s.email)}" style="color:var(--primary-text,var(--primary))">${esc(s.email)}</a></td>
                 <td style="padding:12px 16px;font-size:13px;color:var(--muted)">${esc(s.phone || '—')}</td>
                 <td style="padding:12px 16px;font-size:13px">${esc(s.car_interest || '—')}</td>
                 <td style="padding:12px 16px;font-size:13px;color:var(--muted);max-width:240px;white-space:pre-wrap;word-break:break-word">${esc(s.message || '—')}</td>
@@ -2166,7 +2166,7 @@
               // status or recoloring it in the field editor shows up here.
               if (c.type === 'select' || c.type === 'radio') return `<td style="padding:8px 10px">${eng.badgeHtml(c, x[k])}</td>`;
               if (SALE_NUM_KEYS.includes(k)) return `<td style="padding:8px 10px;text-align:right">${Number(x[k]) ? Number(x[k]).toLocaleString() : '—'}</td>`;
-              if (k === 'client_file' && ceLinkUrl(x[k])) return `<td style="padding:8px 10px"><a href="${esc(ceLinkUrl(x[k]))}" target="_blank" rel="noopener" style="color:var(--primary)">file</a></td>`;
+              if (k === 'client_file' && ceLinkUrl(x[k])) return `<td style="padding:8px 10px"><a href="${esc(ceLinkUrl(x[k]))}" target="_blank" rel="noopener" style="color:var(--primary-text,var(--primary))">file</a></td>`;
               return `<td style="padding:8px 10px">${esc(x[k] || '')}</td>`;
             }).join('')}
             <td style="padding:8px 10px;text-align:right;white-space:nowrap">

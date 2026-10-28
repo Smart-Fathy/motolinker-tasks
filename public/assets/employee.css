@@ -460,9 +460,10 @@
      sidebar's own (--sb-*, from theme-core), so every rule in here that reads --text,
      --muted, --gold or an rgba(var(--ov),a) overlay follows without being rewritten. */
   .sidebar{
-    --ov:var(--sb-ov,255,255,255); --strong:var(--sb-strong,#fff); --text:var(--sb-text,#f3efe7); --muted:var(--sb-muted,#8d897f);
+    --ov:var(--sb-ov,255,255,255); --strong:var(--sb-strong,#fff); --text:var(--sb-text,#f3efe7); --text-2:var(--sb-text-2,#b9b3a4); --muted:var(--sb-muted,#8d897f);
     --gold:var(--sb-accent,#c9a35e); --primary:var(--sb-accent,#c9a35e); --primary-text:var(--sb-accent,#c9a35e); --primary-rgb:var(--sb-accent-rgb,201,163,94);
     --t-dim:var(--sb-t-dim); --t-soft:var(--sb-t-soft);
+    color:var(--text,#f3efe7);
     --hair:var(--sb-hair,rgba(255,255,255,.09)); --hair-gold:var(--sb-hair-gold,rgba(201,163,94,.22));
     --border:var(--sb-hair,rgba(255,255,255,.09)); --glass-border:var(--sb-glass-border,rgba(255,255,255,.07));
   }
@@ -571,8 +572,8 @@
   /* ── Lead 360° drawer ── */
   .lead-drawer-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9998; opacity:0; pointer-events:none; transition:opacity .25s; }
   .lead-drawer-overlay.open{ opacity:1; pointer-events:auto; }
-  .lead-drawer{ position:fixed; top:0; right:0; bottom:0; width:580px; max-width:96vw; background:var(--surface); border-left:1px solid rgba(var(--primary-rgb,201,163,94),.25); z-index:9999; display:flex; flex-direction:column; transform:translateX(100%); transition:transform .3s cubic-bezier(.16,1,.3,1); box-shadow:-16px 0 48px rgba(0,0,0,.5); }
-  .lead-drawer.open{ transform:translateX(0); }
+  .lead-drawer{ position:fixed; top:0; right:0; bottom:0; width:580px; max-width:96vw; background:var(--surface); border-left:1px solid rgba(var(--primary-rgb,201,163,94),.25); z-index:9999; display:flex; flex-direction:column; transform:translateX(100%); transition:transform .3s cubic-bezier(.16,1,.3,1), box-shadow 0s .3s; box-shadow:none; }
+  .lead-drawer.open{ transform:translateX(0); transition:transform .3s cubic-bezier(.16,1,.3,1); box-shadow:-16px 0 48px rgba(0,0,0,.5); }
   .lead-drawer-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:20px 22px 12px; border-bottom:1px solid var(--border); flex-shrink:0; }
   .ld-avatar{ width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,var(--primary),var(--gold-dim,#8a6a30)); color:var(--on-primary,#0c0c0e); display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:800; flex-shrink:0; }
   .ld-status-badge{ padding:2px 10px; border-radius:calc(20px * var(--r-k,1)); font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; }
@@ -1048,7 +1049,7 @@
   .cal-day { background:var(--bg); min-height:104px; padding:6px 7px; display:flex; flex-direction:column; gap:4px; }
   .cal-grid.week .cal-day { min-height:220px; }
   .cal-day.other { opacity:.42; }
-  .cal-day.today { background:rgba(var(--primary-rgb,201,163,94),.07); box-shadow:inset 0 0 0 1px rgba(var(--primary-rgb,201,163,94),.35); }
+  .cal-day.today { background:var(--cal-today,rgba(var(--primary-rgb,201,163,94),.07)); box-shadow:inset 0 0 0 1px rgba(var(--primary-rgb,201,163,94),.35); }
   .cal-daynum { font-size:12px; font-weight:700; color:var(--muted); }
   .cal-day.today .cal-daynum { color:var(--primary-text,var(--primary)); }
   .cal-items { display:flex; flex-direction:column; gap:3px; min-width:0; }

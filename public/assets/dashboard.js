@@ -422,11 +422,11 @@ function renderReportStats(s) {
     || ((Number(s.totalPipeline) || 0) + (Number(s.revenueWon) || 0));
   const pct = (a, b) => (Number(b) ? Math.round((Number(a) / Number(b)) * 100) : 0);
   const tiles = [
-    { label: 'Open pipeline',   value: egp(s.totalPipeline),      c: 'var(--gold)',     share: pct(s.totalPipeline, totalValue), sub: 'of all deal value' },
+    { label: 'Open pipeline',   value: egp(s.totalPipeline),      c: 'var(--primary-text,var(--gold))',     share: pct(s.totalPipeline, totalValue), sub: 'of all deal value' },
     { label: 'Weighted pipeline', value: egp(s.weightedPipeline), c: 'var(--st-todo)',  share: pct(s.weightedPipeline, s.totalPipeline), sub: 'of open pipeline · probability-adjusted' },
     { label: 'Revenue won',     value: egp(s.revenueWon),         c: 'var(--success)',  share: pct(s.revenueWon, totalValue), sub: `${s.wonCount} deal${s.wonCount === 1 ? '' : 's'}` },
     { label: 'Win rate',        value: s.winRate + '%',           c: 'var(--st-progress)', share: Number(s.winRate) || 0, sub: 'closed deals won' },
-    { label: 'Avg deal',        value: egp(s.avgDeal),            c: 'var(--gold)',     share: null, sub: 'per won deal' },
+    { label: 'Avg deal',        value: egp(s.avgDeal),            c: 'var(--primary-text,var(--gold))',     share: null, sub: 'per won deal' },
     { label: 'Quotes generated', value: String(s.quotesCount),    c: 'var(--stage-inquiry)', share: null, sub: 'in range' },
   ];
   document.getElementById('reports-stats').innerHTML = tiles.map(t => `
@@ -624,7 +624,7 @@ function lrFmt(d, v) { return d.measure === 'count' ? Number(v).toLocaleString()
 function renderLeadsReport(d) {
   const hotPct = d.totals.count ? Math.round(d.hotCount / d.totals.count * 100) : 0;
   const tiles = [
-    { label: 'Total leads', value: d.totals.count.toLocaleString(), c: 'var(--gold)',    share: null,   sub: lrRangeLabel(d) },
+    { label: 'Total leads', value: d.totals.count.toLocaleString(), c: 'var(--primary-text,var(--gold))',    share: null,   sub: lrRangeLabel(d) },
     { label: 'Hot leads',   value: d.hotCount.toLocaleString(),     c: 'var(--danger)',  share: hotPct, sub: 'ready to buy now' },
     { label: 'Avg budget',  value: egp(d.totals.avg),               c: 'var(--st-todo)', share: null,   sub: 'per lead' },
   ];
@@ -2980,7 +2980,7 @@ async function gchatOpen(space, keepPoll) {
         <button class="chat-send-btn" id="gchat-send" onclick="gchatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
       </div>`
       : `<div class="chat-composer" style="justify-content:center;color:var(--muted);font-size:12px">
-          Read-only — you didn't grant permission to send. <a href="#" onclick="gchatConnect();return false" style="color:var(--primary);margin-left:4px">Reconnect</a>
+          Read-only — you didn't grant permission to send. <a href="#" onclick="gchatConnect();return false" style="color:var(--primary-text,var(--primary));margin-left:4px">Reconnect</a>
         </div>`}`;
   await gchatLoadMessages();
   if (!keepPoll) gchatStartPoll();
@@ -3912,7 +3912,7 @@ function renderRequestsTable() {
     <tbody>${allRequests.map(r => `<tr>
       <td class="task-id">#${r.id}</td>
       <td><div class="task-title">${esc(r.title)}</div>${r.description ? `<div class="task-desc">${esc(r.description)}</div>` : ''}${r.category ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(r.category)}</div>` : ''}</td>
-      <td style="font-size:13px"><span style="background:rgba(99,102,241,.12);color:var(--primary);padding:3px 8px;border-radius:6px;font-size:12px;font-weight:600">${esc(r.created_by || '—')}</span></td>
+      <td style="font-size:13px"><span style="background:rgba(99,102,241,.12);color:var(--primary-text,var(--primary));padding:3px 8px;border-radius:6px;font-size:12px;font-weight:600">${esc(r.created_by || '—')}</span></td>
       <td>${priorityBadge(r.priority)}</td>
       <td><span class="badge ${reqStatusColors[r.status] || 'badge-pending'}">${reqStatusLabels[r.status] || r.status}</span></td>
       <td style="font-size:12px;color:var(--muted)">${esc(reqAssigneeName(r) || '—')}</td>
@@ -4344,7 +4344,7 @@ async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, co
         </div>
         ${status.canUpload === false ? `<div class="error-msg" style="display:block;margin-bottom:16px">
           This connection was authorised before uploads were supported, so attaching a client
-          file will fail. <a href="#" onclick="${connectFn}();return false" style="color:var(--primary)">Reconnect</a> to fix it.
+          file will fail. <a href="#" onclick="${connectFn}();return false" style="color:var(--primary-text,var(--primary))">Reconnect</a> to fix it.
         </div>` : ''}
         <div class="table-card">
           <div class="table-header"><span class="table-title">${icon} ${title}</span><span style="font-size:12px;color:var(--muted)">${files.length} file${files.length!==1?'s':''}</span></div>
@@ -6645,7 +6645,7 @@ function attachVehicleSearch(inputId, priceId, resultsId, endpoint, hintId, imag
         <div class="veh-opt" data-i="${i}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(var(--ov,255,255,255),.05);display:flex;justify-content:space-between;gap:10px;align-items:center"
              onmouseover="this.style.background='rgba(201,163,94,.12)'" onmouseout="this.style.background='none'">
           <div style="min-width:0"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</div>${it.subtitle ? `<div style="font-size:11px;color:var(--muted)">${esc(it.subtitle)}</div>` : ''}</div>
-          ${it.price ? `<div style="font-size:12px;color:var(--primary);white-space:nowrap;font-weight:600">${money(it.price)}</div>` : ''}
+          ${it.price ? `<div style="font-size:12px;color:var(--primary-text,var(--primary));white-space:nowrap;font-weight:600">${money(it.price)}</div>` : ''}
         </div>`).join('');
       results._items = items;
       [...results.querySelectorAll('.veh-opt')].forEach(el => el.addEventListener('mousedown', ev => {
@@ -6911,8 +6911,9 @@ const DEAL_STAGE_LABELS = { lead:'Lead', inquiry:'Inquiry', quoted:'Quoted', neg
 const DEAL_STAGE_HEX = { lead:'#c9a35e', inquiry:'#7c6aff', quoted:'#5a78c8', negotiating:'#e69650', won:'#64b478', lost:'#ef4444' };
 // #5a78c8 is 4.34:1 on the panel: fine as an 8px dot or a 3px bar, not as 10.5px
 // type. The label takes a lighter tone of the same hue; the dot and bar keep the
-// declared value.
-const DEAL_STAGE_TEXT = { quoted:'#8aa4e0' };
+// declared value. Every stage's label reads the token the theme can sink on a light page
+// (the fallbacks are the values the sheets declare for them, so a dark page is unchanged).
+const DEAL_STAGE_TEXT = { lead:'var(--stage-lead,#c9a35e)', inquiry:'var(--stage-inquiry,#7c6aff)', quoted:'var(--stage-quoted-text,#8aa4e0)', negotiating:'var(--stage-negotiating,#e69650)', won:'var(--stage-won,#64b478)', lost:'var(--stage-lost,#ef4444)' };
 const DEAL_STAGE_COLORS = { lead:'rgba(201,163,94,.15)', inquiry:'rgba(124,106,255,.15)', quoted:'rgba(90,120,200,.15)', negotiating:'rgba(230,150,80,.15)', won:'rgba(100,180,120,.15)', lost:'rgba(239,68,68,.1)' };
 let _allDeals = [];
 let _dealsCustomerFilter = null;
@@ -7017,10 +7018,10 @@ function dealCard(d) {
       onclick="dealCardClick(${d.id})">
     <div style="font-size:13px;font-weight:600;margin-bottom:6px;line-height:1.3">${esc(d.title)}</div>
     ${customer && d.customer_id
-      ? `<div onclick="dealOpenLead(event, ${d.customer_id})" title="View lead profile" style="font-size:11px;color:var(--primary);margin-bottom:4px;cursor:pointer;display:inline-flex;align-items:center;gap:3px"><i data-lucide="user" style="width:10px;height:10px"></i> ${esc(customer.name)}</div>`
+      ? `<div onclick="dealOpenLead(event, ${d.customer_id})" title="View lead profile" style="font-size:11px;color:var(--primary-text,var(--primary));margin-bottom:4px;cursor:pointer;display:inline-flex;align-items:center;gap:3px"><i data-lucide="user" style="width:10px;height:10px"></i> ${esc(customer.name)}</div>`
       : (customer ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px"><i data-lucide="user" style="width:10px;height:10px"></i> ${esc(customer.name)}</div>` : '')}
     ${d.car_model ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px"><i data-lucide="car" style="width:10px;height:10px"></i> ${esc(d.car_model)}</div>` : ''}
-    ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
+    ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary-text,var(--primary));margin-bottom:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
       ${d.assigned_to ? `<div style="font-size:10px;color:var(--muted)">${esc(d.assigned_to)}</div>` : '<div></div>'}
       <div style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;${daysOpen > 20 ? 'background:rgba(239,68,68,.12);color:#ef4444' : daysOpen > 10 ? 'background:rgba(245,158,11,.12);color:#f59e0b' : 'color:var(--muted)'}">${daysOpen}d</div>

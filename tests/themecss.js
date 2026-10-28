@@ -150,7 +150,17 @@ for (const [portal, file] of [['admin', 'dashboard.css'], ['team', 'employee.css
   const m = blank(sheets[file]).match(/\n\s*\.sidebar\s*\{([^{}]*--ov[^{}]*)\}/);
   const wrong = [];
   const found = [];
+  let ownColour = false;
   if (m) for (const decl of m[1].split(';').map(x => x.trim()).filter(Boolean)) {
+    // What the sidebar draws without naming a colour is its own text, not the page's (colour is
+    // inherited as a value, so the remapped --text has to be read here, once, to take effect).
+    if (/^color\s*:/.test(decl)) {
+      const c = decl.match(/^color\s*:\s*var\(\s*--text\s*,([\s\S]*)\)$/);
+      if (!c) wrong.push(`${decl} is not var(--text, <the page's text>)`);
+      else if (norm(c[1]) !== roots[portal]['--text']) wrong.push(`color falls back to ${norm(c[1])}, page text is ${roots[portal]['--text']}`);
+      ownColour = true;
+      continue;
+    }
     // --t-dim: var(--sb-t-dim) has no fallback because the page has no default for it either: the
     // sheets keep each caption's own opacity until a look defines them.
     const bare = decl.match(/^(--[\w-]+)\s*:\s*var\(\s*(--sb-[\w-]+)\s*\)$/);
@@ -167,7 +177,7 @@ for (const [portal, file] of [['admin', 'dashboard.css'], ['team', 'employee.css
     if (norm(d[3]) !== want) wrong.push(`${d[1]}: falls back to ${norm(d[3])}, page has ${want}`);
     if (!(d[2] in T.deriveVars({}, 'dark'))) wrong.push(`${d[2]} is not a token theme-core writes`);
   }
-  check(`${portal}: the sidebar scope exists and falls back to the page\'s own values`, !!m && found.length >= 8 && wrong.length === 0, wrong.concat(m ? [] : ['no .sidebar scope']).slice(0, 4).join('; '));
+  check(`${portal}: the sidebar scope exists and falls back to the page\'s own values`, !!m && found.length >= 8 && ownColour && wrong.length === 0, wrong.concat(m ? [] : ['no .sidebar scope']).concat(ownColour ? [] : ['the scope does not set its own colour']).slice(0, 4).join('; '));
 }
 
 // A theme overrides tokens by being later in the cascade; an !important on one would

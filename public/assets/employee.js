@@ -1156,7 +1156,7 @@ async function loadMyHours() {
         return `<tr>
           <td style="white-space:nowrap;color:var(--muted);font-size:12px">${h.log_date || new Date(h.logged_at).toLocaleDateString()}</td>
           <td><div>${taskName}</div>${channel}</td>
-          <td><strong style="color:var(--primary)">${parseFloat(h.hours).toFixed(1)}h</strong></td>
+          <td><strong style="color:var(--primary-text,var(--primary))">${parseFloat(h.hours).toFixed(1)}h</strong></td>
           <td style="font-size:12px;color:var(--muted)">${h.description || '—'}</td>
         </tr>`;
       }).join('')}</tbody>
@@ -1470,7 +1470,7 @@ function driveIcon(m) {
   if (m === 'application/vnd.google-apps.document') return '<i data-lucide="file-text" style="width:16px;height:16px;vertical-align:middle;color:var(--info)"></i>';
   if (m === 'application/vnd.google-apps.presentation') return '<i data-lucide="presentation" style="width:16px;height:16px;vertical-align:middle;color:var(--warning)"></i>';
   if (m === 'application/pdf') return '<i data-lucide="file-type" style="width:16px;height:16px;vertical-align:middle;color:var(--danger)"></i>';
-  if (m.startsWith('image/')) return '<i data-lucide="image" style="width:16px;height:16px;vertical-align:middle;color:var(--primary)"></i>';
+  if (m.startsWith('image/')) return '<i data-lucide="image" style="width:16px;height:16px;vertical-align:middle;color:var(--primary-text,var(--primary))"></i>';
   if (m.startsWith('video/')) return '<i data-lucide="video" style="width:16px;height:16px;vertical-align:middle;color:var(--warning)"></i>';
   return '<i data-lucide="paperclip" style="width:16px;height:16px;vertical-align:middle"></i>';
 }
@@ -1663,7 +1663,7 @@ function leadHeaderClick(e, key) {
 }
 function leadSortArrow(key) {
   if (!_leadSort || _leadSort.key !== key) return '';
-  return `<span class="lead-sort-arrow" style="color:var(--primary);margin-left:3px;font-size:10px">${_leadSort.dir === 'desc' ? '▼' : '▲'}</span>`;
+  return `<span class="lead-sort-arrow" style="color:var(--primary-text,var(--primary));margin-left:3px;font-size:10px">${_leadSort.dir === 'desc' ? '▼' : '▲'}</span>`;
 }
 
 // Filter engine shared with the admin dashboard — public/assets/lead-filters.js.
@@ -1931,7 +1931,7 @@ function leadCellHtml(c, col) {
   const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
   const base = 'padding:10px 14px;font-size:12px';
   const attrs = `class="lead-cell" style="${base}" onclick="leadCellClick(event, ${c.id}, '${esc(col.key)}')"`;
-  if (col.key === 'name') return `<td class="lead-cell" style="${base};font-size:13px" onclick="leadCellClick(event, ${c.id}, 'name')" title="Open profile"><strong style="color:var(--primary);cursor:pointer">${esc(raw || '—')}</strong></td>`;
+  if (col.key === 'name') return `<td class="lead-cell" style="${base};font-size:13px" onclick="leadCellClick(event, ${c.id}, 'name')" title="Open profile"><strong style="color:var(--primary-text,var(--primary));cursor:pointer">${esc(raw || '—')}</strong></td>`;
   if (col.key === 'next_followup') {
     const due = _pendingFollowups[c.id];
     if (!due) return `<td class="lead-cell" style="${base};color:var(--muted)" onclick="leadCellClick(event, ${c.id}, 'next_followup')">—</td>`;
@@ -2228,7 +2228,7 @@ function empAttachVehicleSearch(inputId = 'eml-car', priceId = 'eml-car-price', 
         <div class="veh-opt" data-i="${i}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;gap:10px;align-items:center"
              onmouseover="this.style.background='rgba(201,163,94,.12)'" onmouseout="this.style.background='none'">
           <div style="min-width:0"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</div>${it.subtitle ? `<div style="font-size:11px;color:var(--muted)">${esc(it.subtitle)}</div>` : ''}</div>
-          ${it.price ? `<div style="font-size:12px;color:var(--primary);white-space:nowrap;font-weight:600">${money(it.price)}</div>` : ''}
+          ${it.price ? `<div style="font-size:12px;color:var(--primary-text,var(--primary));white-space:nowrap;font-weight:600">${money(it.price)}</div>` : ''}
         </div>`).join('');
       results._items = items;
       [...results.querySelectorAll('.veh-opt')].forEach(el => el.addEventListener('mousedown', ev => {
@@ -2512,7 +2512,7 @@ async function gchatOpen(space, keepPoll) {
         <button class="chat-send-btn" id="gchat-send" onclick="gchatSend()" title="Send"><i data-lucide="send" style="width:15px;height:15px"></i></button>
       </div>`
       : `<div class="chat-composer" style="justify-content:center;color:var(--muted);font-size:12px">
-          ${empCan('gchat', 'send') ? `Read-only — you didn't grant permission to send. <a href="#" onclick="gchatConnect();return false" style="color:var(--primary);margin-left:4px">Reconnect</a>` : 'Read-only — your admin has not granted sending.'}
+          ${empCan('gchat', 'send') ? `Read-only — you didn't grant permission to send. <a href="#" onclick="gchatConnect();return false" style="color:var(--primary-text,var(--primary));margin-left:4px">Reconnect</a>` : 'Read-only — your admin has not granted sending.'}
         </div>`}`;
   await gchatLoadMessages();
   if (!keepPoll) gchatStartPoll();
@@ -2879,7 +2879,7 @@ function empDealCard(d) {
     </div>
     ${cust ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${esc(cust.name)}</div>` : ''}
     ${d.car_model ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(d.car_model)}</div>` : ''}
-    ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary);margin-top:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
+    ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary-text,var(--primary));margin-top:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
   </div>`;
 }
 
@@ -3172,7 +3172,7 @@ async function empScrapeUrl() {
   if (!url) { alert('Please enter a URL'); return; }
   res.style.display  = 'none';
   stat.style.display = 'block';
-  stat.style.cssText = 'display:block;padding:12px 16px;border-radius:8px;font-size:13px;background:rgba(124,106,255,.08);border:1px solid rgba(124,106,255,.2);color:var(--primary)';
+  stat.style.cssText = 'display:block;padding:12px 16px;border-radius:8px;font-size:13px;background:rgba(124,106,255,.08);border:1px solid rgba(124,106,255,.2);color:var(--primary-text,var(--primary))';
   stat.textContent   = 'Scraping… this may take 20–30 seconds';
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Scraping…';
   try {

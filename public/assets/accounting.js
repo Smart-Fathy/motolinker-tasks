@@ -504,7 +504,7 @@
         ${rows.length ? `<div class="acct-table-wrap"><table class="acct-table"><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Vendor</th><th class="n">Amount</th><th class="n">EGP</th><th>Method</th><th>Receipt</th>${can('accounting', 'edit') ? '<th></th>' : ''}</tr></thead><tbody>
           ${rows.map(e => `<tr><td>${fmtDate(e.spent_on)}</td><td><span class="acct-pill mut">${h((cats.find(c => c.key === e.category) || {}).label || e.category)}</span></td><td>${h(e.description || '—')}</td><td>${h(e.vendor || '—')}</td>
             <td class="n">${h(e.currency)} ${money(e.amount)}${e.currency !== 'EGP' ? ` <span class="mt" style="color:var(--muted);font-size:10.5px">@${N(e.fx_rate)}</span>` : ''}</td><td class="n"><b>${money(e.amount_base)}</b></td><td>${h(e.method || '—')}</td>
-            <td>${e.receipt && e.receipt.url ? `<a href="${h(e.receipt.url)}" target="_blank" rel="noopener" style="color:var(--gold)">${h(e.receipt.name || 'file')}</a>` : '—'}</td>
+            <td>${e.receipt && e.receipt.url ? `<a href="${h(e.receipt.url)}" target="_blank" rel="noopener" style="color:var(--primary-text,var(--gold))">${h(e.receipt.name || 'file')}</a>` : '—'}</td>
             ${can('accounting', 'edit') ? `<td style="white-space:nowrap"><button class="acct-mini" onclick="openExpenseForm(${N(e.id)})">Edit</button> <button class="acct-mini" style="color:#e57373" onclick="deleteExpense(${N(e.id)})">Delete</button></td>` : ''}</tr>`).join('')}
           </tbody></table></div>` : '<div class="acct-empty">No expenses recorded in range.' + (can('accounting', 'edit') ? ' Add the first one with + Expense.' : '') + '</div>'}
       </div>`;

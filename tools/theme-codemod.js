@@ -238,6 +238,43 @@ PASSES['ptext'] = {
   },
 };
 
+// A hue the sheets and scripts spell as hex and read as text (a pill, a KPI label, a chip): the
+// theme keeps a token for each (theme-core's HUES) that a light page sinks until it reads on a
+// wash of itself. On a dark page the token is not defined, so the hex is what paints.
+const ThemeCore = require('../public/assets/theme-core.js');
+const HUE_SET = new Set(ThemeCore.HUES.concat(ThemeCore.OLD_ACCENT));
+const hueSite = value => {
+  const m = /^(\s*)(#[0-9a-fA-F]{6})(\s*)$/.exec(value);
+  if (!m || !HUE_SET.has(m[2].toLowerCase())) return null;
+  return m[1] + 'var(' + ThemeCore.hueToken(m[2].toLowerCase()) + ',' + m[2] + ')' + m[3];
+};
+PASSES['hue'] = {
+  about: 'a hue spelled as hex and used as text → var(--h-<hex>, <the hex>), which a light page sinks',
+  forward(value, d) {
+    if (!/^(color|-webkit-text-fill-color|text-decoration-color|caret-color)$/.test(d.prop)) return null;
+    return hueSite(value);
+  },
+};
+PASSES['hue-var'] = {
+  about: '--c: <a hue as hex> → var(--h-<hex>, <the hex>) (the tile or chip draws its text and washes from it)',
+  custom: true,
+  forward(value, d) { return d.prop === '--c' ? hueSite(value) : null; },
+};
+
+// A shadow is black at some opacity: --sh-k scales it (a light page softens every one at
+// once; it is not defined on a dark page, so each keeps its own).
+const shadowSite = value => sub(value, [], /rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*(0?\.\d+)\s*\)/g,
+  m => m[0].replace(/(,\s*)(0?\.\d+)(\s*\))$/, (x, a, al, c) => a + 'calc(' + al + ' * var(--sh-k,1))' + c));
+PASSES['shadow'] = {
+  about: 'rgba(0,0,0,a) in a shadow → rgba(0,0,0,calc(a * var(--sh-k,1))): a light page softens them',
+  forward(value, d) { return /^(box-shadow|text-shadow|filter|-webkit-filter)$/.test(d.prop) ? shadowSite(value) : null; },
+};
+PASSES['shadow-vars'] = {
+  about: 'the same, in the --shadow tokens',
+  custom: true,
+  forward(value, d) { return /^--shadow/.test(d.prop) ? shadowSite(value) : null; },
+};
+
 // Secondary text made of the page's ink at 30–65%: each keeps its own opacity until a look is
 // chosen, then a caption is the least opacity that reads and a softer label a little more.
 PASSES['tdim'] = {

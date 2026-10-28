@@ -165,7 +165,7 @@ function lint(css) {
   let rest = css;
   const blocks = [];
   while (rest.length) {
-    const m = rest.match(/^(:root|\.on-dark|html\[data-mode="light"\])\{/);
+    const m = rest.match(/^(:root|\.on-dark|html\[data-mode="light"\] \.on-dark|html\[data-mode="light"\])\{/);
     if (!m) { bad.push('unexpected selector at: ' + rest.slice(0, 40)); break; }
     let i = m[0].length, inStr = false, body = '';
     for (; i < rest.length; i++) { const ch = rest[i]; if (ch === '"') inStr = !inStr; if (ch === '}' && !inStr) break; body += ch; }
@@ -193,8 +193,13 @@ function lint(css) {
 {
   const def = T.renderThemeCss({});
   const l = lint(def);
-  check('a workspace that has chosen nothing gets only the light block', l.bad.length === 0 && l.blocks.length === 1 && l.blocks[0][0] === 'html[data-mode="light"]', l.bad.join('; ') + ' | ' + l.blocks.map(b => b[0]));
+  check('a workspace that has chosen nothing gets only the light block (and what the always-dark parts put back in it)', l.bad.length === 0 && l.blocks.length === 2 && l.blocks[0][0] === 'html[data-mode="light"]' && l.blocks[1][0] === 'html[data-mode="light"] .on-dark', l.bad.join('; ') + ' | ' + l.blocks.map(b => b[0]));
   check('…which sets color-scheme to light', /^color-scheme:light;/.test(l.blocks[0][1]));
+  check('…and what the always-dark parts put back is only "not defined", for tokens the light block defines and the sheets do not', (() => {
+    const reset = l.blocks[1][1].split(';').filter(Boolean).map(x => x.split(':'));
+    const light = new Set(l.blocks[0][1].split(/;(?=--|color-scheme)/).map(x => x.split(':')[0]));
+    return reset.length > 20 && reset.every(([k, v]) => v === 'initial' && light.has(k));
+  })());
 }
 {
   const cust = T.renderThemeCss({ theme: { preset: 'cyberpunk' }, typography: { heading: 'orbitron' }, shape: { radius: 4, density: 0 } });

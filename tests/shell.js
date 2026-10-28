@@ -55,7 +55,7 @@ const stripped = html => html
     check('both pages open', a.r.status === 200 && t.r.status === 200 && /^text\/html; charset=utf-8/.test(a.r.headers.get('content-type')));
     check('the page is the file it always was, plus the mode script and the theme style — nothing else changed', stripped(a.text) === ADMIN_FILE && stripped(t.text) === TEAM_FILE);
     const style = a.text.match(/<style id="ws-theme">([^<]*)<\/style>/)[1];
-    check('what is added for a default workspace is only the light tokens', style.startsWith('html[data-mode="light"]{') && !/\.on-dark|:root/.test(style) && style === T.renderThemeCss({}));
+    check('what is added for a default workspace is only the light tokens (and the always-dark parts putting them back)', style.startsWith('html[data-mode="light"]{') && !/:root/.test(style) && !/(^|\})\.on-dark/.test(style) && style === T.renderThemeCss({}));
     check('the mode script runs before the stylesheets; the style comes after them', a.text.indexOf('data-mode') < a.text.indexOf('<link rel="stylesheet"') && a.text.indexOf('<style id="ws-theme">') > a.text.lastIndexOf('<link rel="stylesheet"'));
     check('the font link and the browser-bar colour are as they were', a.text.includes('<meta name="theme-color" content="#1e2130">') && a.text.includes(T.fontsHref({})) && !a.text.includes('ws-custom-logo'));
     check('/dashboard.html and /employee.html are the same pages, not the bare files', (await page('/dashboard.html')).text === a.text && (await page('/employee.html')).text === t.text);
