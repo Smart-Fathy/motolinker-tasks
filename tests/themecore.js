@@ -56,7 +56,9 @@ check('Black & Gold is the default, and Moto Palette is among them', T.DEFAULT_P
       ['text/bg ≥14', C.contrast(c.text, c.bg) >= 14], ['text/panel ≥14', C.contrast(c.text, c.panel) >= 14],
       ['muted/bg ≥5', C.contrast(c.muted, c.bg) >= 5], ['muted/panel ≥5', C.contrast(c.muted, c.panel) >= 5],
       ['accent/panel ≥3', C.contrast(c.accent, c.panel) >= 3], ['accent2/panel ≥3', C.contrast(c.accent2, c.panel) >= 3],
-      ['accent text ≥4.5', C.contrast(c.accentText, C.over(c.accent, c.panel, 0.14)) >= 4.5],
+      ['accent as text ≥4.5', C.contrast(c.accent, C.over(c.accent, c.panel, 0.14)) >= 4.5],
+      ['the preset\'s accent is already the readable one', c.accent === T.PRESETS[id][mode].accent],
+      ['sidebar accent ≥4.5', C.contrast(c.sbAccent, c.sidebar) >= 4.5],
       ['button ink ≥4.5', C.contrast(c.onAccent, c.accent) >= 4.5],
       ['sidebar text ≥7', C.contrast(c.sbText, c.sidebar) >= 7], ['sidebar muted ≥4.5', C.contrast(c.sbMuted, c.sidebar) >= 4.5],
     ];
@@ -70,8 +72,30 @@ check('Moto Palette in light has the forest sidebar with light text on it', (() 
   const c = T.palette({ theme: { preset: 'moto' } }, 'light');
   return c.sidebar === '#043627' && C.luminance(c.sbText) > 0.6 && C.luminance(c.bg) > 0.9;
 })());
-check('Moto Palette in light uses the nudged brand green, not the one that fails on white',
-  T.PRESETS['moto'].light.accent === '#328008' && C.contrast('#328008', '#ffffff') >= 4.5 && C.contrast('#3a8e0e', '#ffffff') < 4.5);
+check('Moto Palette in light uses a nudged brand green, not the exact one, which fails on white',
+  T.PRESETS['moto'].light.accent === '#2e7607' && C.contrast('#2e7607', '#ffffff') >= 4.5 && C.contrast('#3a8e0e', '#ffffff') < 4.5 && T.PRESETS['moto'].light.accent2 === '#3a8e0e');
+check('…and its sidebar accent is the lime, not that green, which would vanish on forest', (() => {
+  const c = T.palette({ theme: { preset: 'moto' } }, 'light');
+  return C.contrast(c.sbAccent, c.sidebar) >= 4.5 && C.luminance(c.sbAccent) > 0.3;
+})());
+
+// Black & Gold's dark is what the stylesheets already say. Choosing the preset and
+// changing only the accent must not move a neutral.
+{
+  const v = T.deriveVars({}, 'dark');
+  const norm = x => String(x).replace(/\b0\./g, '.');
+  const want = {
+    '--bg': '#0c0c0e', '--surface': '#141416', '--panel': '#141416', '--card': '#18181b', '--text': '#f3efe7', '--muted': '#8d897f',
+    '--border': 'rgba(255,255,255,.09)', '--hair': 'rgba(255,255,255,.09)', '--hair-gold': 'rgba(201,163,94,.22)',
+    '--glass': 'rgba(12,12,14,.85)', '--glass-border': 'rgba(255,255,255,.07)',
+    '--primary': '#c9a35e', '--primary-h': '#a07e3f', '--primary-glow': 'rgba(201,163,94,.15)', '--primary-glow-strong': 'rgba(201,163,94,.25)',
+    '--gold': '#c9a35e', '--gold-soft': '#d9bd7f', '--gold-deep': '#a07e3f', '--sidebar': '#0f0f12',
+  };
+  const wrong = Object.entries(want).filter(([k, x]) => norm(v[k]) !== x).map(([k, x]) => `${k}: ${v[k]} (sheets say ${x})`);
+  check('Black & Gold dark carries the sheets\' own values', wrong.length === 0, wrong.join('; '));
+  const wrongBase = Object.entries(T.BASE).filter(([k, x]) => k !== '--glow' && norm(v[k]) !== norm(x)).map(([k, x]) => `${k}: ${v[k]} (BASE ${x})`);
+  check('…and so does every token in BASE, the table the stylesheets are checked against', wrongBase.length === 0, wrongBase.join('; '));
+}
 
 // ── Choosing: overrides and the guard ─────────────────────────────────────────
 {
@@ -79,6 +103,7 @@ check('Moto Palette in light uses the nudged brand green, not the one that fails
   const dark = T.palette(p, 'dark'), light = T.palette(p, 'light');
   check('a chosen accent replaces the preset\'s in both modes, adjusted per mode',
     C.contrast(dark.accent, dark.panel) >= 3 && C.contrast(light.accent, light.panel) >= 3 && dark.accent !== light.accent);
+  check('a chosen accent brings its own shades, not the preset\'s', T.palette({ theme: { accent: '#3366ff' } }, 'dark').soft !== '#d9bd7f' && T.palette({}, 'dark').soft === '#d9bd7f');
   check('chosen neutrals apply to their mode only', dark.bg === '#101820' && light.bg === T.PRESETS['black-gold'].light.bg && light.text === '#202020');
 }
 {

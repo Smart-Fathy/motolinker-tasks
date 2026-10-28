@@ -10,6 +10,9 @@
 //
 //   node tools/theme-golden.js record out.json     record the stylesheets as they are now
 //   node tools/theme-golden.js check  out.json     compare the stylesheets as they are now
+//   … check out.json --effective                   compare what each selector resolves to, not
+//                                                  which rule says it: for a change that adds
+//                                                  or reorders rules (a new token block, say)
 //
 // To compare a branch against its base, record on the base checkout and check on the
 // branch. Not part of tests/run.sh: any intended style change moves the record, and a
@@ -95,6 +98,28 @@ async function recordRules(browser, origin) {
     await page.close();
   }
   return result;
+}
+
+// What every selector ends up with once its rules are merged in order (later wins, as in the
+// cascade): a property the old sheet gave a selector must resolve the same in the new one.
+// Rules are otherwise keyed by selector and occurrence, which shifts when a rule with the
+// same selector is inserted above; the merged map does not. ":root, .on-dark" counts as :root.
+function diffRulesEffective(a, b) {
+  const lines = [];
+  const norm = k => { const parts = k.split(' | '); const sel = parts[parts.length - 1].replace(/ #\d+$/, '').replace(/^:root, \.on-dark$/, ':root'); return parts.slice(0, -1).join(' | ') + ' | ' + sel; };
+  const merged = rules => { const m = new Map(); for (const [k, d] of Object.entries(rules)) { const key = norm(k); if (!m.has(key)) m.set(key, {}); Object.assign(m.get(key), d); } return m; };
+  let added = 0;
+  for (const which of Object.keys(a)) {
+    const A = merged(a[which]), B = merged(b[which] || {});
+    for (const [k, d] of A) {
+      const e = B.get(k);
+      if (!e) { lines.push(`- [${which}] selector gone: ${k}`); continue; }
+      for (const p of Object.keys(d)) if (d[p] !== e[p]) lines.push(`~ [${which}] ${k}\n    ${p}: ${JSON.stringify(d[p])} -> ${JSON.stringify(e[p])}`);
+      added += Object.keys(e).filter(p => !(p in d)).length;
+    }
+  }
+  diffRulesEffective.added = added;
+  return lines;
 }
 
 function diffRules(a, b) {
@@ -353,9 +378,10 @@ function diffPages(a, b) {
     console.log(`recorded ${nRules} rules, ${nKinds} kinds of element (${nLooks} looks) -> ${file}`);
   } else {
     const was = JSON.parse(fs.readFileSync(file, 'utf8'));
-    const diff = [...(now.rules && was.rules ? diffRules(was.rules, now.rules) : []), ...(now.pages && was.pages ? diffPages(was.pages, now.pages) : [])];
+    const effective = args.includes('--effective');
+    const diff = [...(now.rules && was.rules ? (effective ? diffRulesEffective : diffRules)(was.rules, now.rules) : []), ...(now.pages && was.pages ? diffPages(was.pages, now.pages) : [])];
     if (diff.length) { console.log(diff.slice(0, 80).join('\n')); console.log(`${diff.length} difference(s)`); process.exitCode = 1; }
-    else console.log(`identical: ${nRules} rules and ${nKinds} kinds of element (${nLooks} looks) resolve exactly as recorded`);
+    else console.log(`identical: ${nRules} rules and ${nKinds} kinds of element (${nLooks} looks) resolve exactly as recorded` + (effective ? `; ${diffRulesEffective.added} property(ies) added` : ''));
   }
   process.exit(process.exitCode || 0);
 })().catch(e => { console.error(e); process.exit(1); });

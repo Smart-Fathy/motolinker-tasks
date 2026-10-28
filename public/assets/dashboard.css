@@ -1,6 +1,6 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    :root {
+    :root,.on-dark {
       --bg:        #0c0c0e;
       --surface:   #141416;
       --card:      #18181b;
@@ -43,7 +43,7 @@
        turns the date and time pickers' indicator glyph from black to light. It
        was already being set on .form-input, .t-due-input and select individually;
        at the root it covers the fields those rules missed, scrollbars included. */
-    :root { color-scheme: dark; }
+    :root,.on-dark { color-scheme: dark; }
     button { color: inherit; }
 
     /* ── PWA standalone safe-area ── */
@@ -850,7 +850,33 @@
   }
 
   /* ════════════ LUXURY ATELIER — BLACK & GOLD ════════════ */
-  :root{ --gold:#c9a35e; --gold-soft:#d9bd7f; --gold-deep:#a07e3f; --panel:#141416; --hair:rgba(255,255,255,.09); --hair-gold:rgba(201,163,94,.22); }
+  :root,.on-dark{ --gold:#c9a35e; --gold-soft:#d9bd7f; --gold-deep:#a07e3f; --panel:#141416; --hair:rgba(255,255,255,.09); --hair-gold:rgba(201,163,94,.22); }
+  /* ════════════ THEME TOKENS ════════════
+     What the workspace's look redefines (assets/theme-core.js, written into the page by the
+     server). Every value is what this sheet has always painted with, and every use keeps
+     that as its var() fallback, so a page that never hears from a workspace looks exactly
+     as it always did. ".on-dark" marks the parts that stay dark in a light page (the huddle
+     widget, toasts): they take the dark values back for themselves. */
+  :root,.on-dark{
+    --primary-rgb:201,163,94; --primary-text:#c9a35e; --on-primary:#0c0c0e; --on-primary-2:#1b1608;
+    --ov:255,255,255; --surface-rgb:20,20,22; --text-2:#b9b3a4;
+    --gold-lite:#e8cd93; --gold-dim:#8a6a30; --accent-2:#e8cd93; --accent-2-rgb:232,205,147;
+    --field-bg:#0e0e10; --field-bg-2:#101013; --thead-bg:#101012; --option-bg:#141416;
+    --header-bg:rgba(12,12,14,.85); --topbar-bg:rgba(12,12,14,.9);
+    --auth-bg-1:#15130e; --auth-bg-2:#0b0b0c; --avatar-bg-1:#1c1a14;
+    --color-scheme:dark;
+    --sidebar:#0f0f12;
+  }
+  /* The sidebar is its own surface: a forest-green one can sit beside a white page, a
+     white one beside a dark page. Inside it the page's tokens are put back to the
+     sidebar's own (--sb-*, from theme-core), so every rule in here that reads --text,
+     --muted, --gold or an rgba(var(--ov),a) overlay follows without being rewritten. */
+  .sidebar{
+    --ov:var(--sb-ov,255,255,255); --text:var(--sb-text,#f3efe7); --muted:var(--sb-muted,#8d897f);
+    --gold:var(--sb-accent,#c9a35e); --primary:var(--sb-accent,#c9a35e); --primary-rgb:var(--sb-accent-rgb,201,163,94);
+    --hair:var(--sb-hair,rgba(255,255,255,.09)); --hair-gold:var(--sb-hair-gold,rgba(201,163,94,.22));
+    --border:var(--sb-hair,rgba(255,255,255,.09));
+  }
   body{ font-family:'Manrope',sans-serif; letter-spacing:.1px; }
   .header h1,.sidebar-logo-text,.page-title,.card-title,.table-title,.modal-title,.auth-title,.employee-name,.chat-header-name,.empty-title,.chat-rooms-title{ font-family:'Cormorant Garamond',serif; font-weight:500; letter-spacing:.3px; }
   .stat-value{ font-size:46px; font-weight:500; }
@@ -1626,7 +1652,7 @@
    * sheet with var(--primary,#c9a35e)-style fallbacks baked in, so a
    * rename would silently revert it to the old gold. */
 
-  :root{
+  :root,.on-dark{
     /* --warning was byte-identical to --primary, which is why every
      * "in progress / medium" badge read as gold. --success and --danger
      * were desaturated to the point of reading grey. */
@@ -2289,7 +2315,7 @@
    * on, given as the same gradient wash the Tasks groups and Deals columns
    * use — so a tile, a column head and a rail item read as one system.
    * Shared verbatim with the team portal. */
-  :root{
+  :root,.on-dark{
     --w-gold:#c9a35e; --w-mint:#6dd8a4; --w-blue:#9fb0bd; --w-slate:#94a3b8;
     --w-amber:#f59e0b; --w-orange:#c98b5e; --w-muted:#8d897f;
     --w-red:#ef4444;  --w-green:#10b981;

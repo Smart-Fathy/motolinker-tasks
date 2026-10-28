@@ -36,7 +36,7 @@
   const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
   const toHex = (r, g, b) => '#' + [r, g, b].map(v => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join('');
   const triplet = h => rgb(h).join(',');
-  const rgba = (h, a) => { const [r, g, b] = rgb(h); return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')'; };
+  const rgba = (h, a) => { const [r, g, b] = rgb(h); return 'rgba(' + r + ',' + g + ',' + b + ',' + String(a).replace(/^0\./, '.') + ')'; };
   const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
   function luminance(h) { const [r, g, b] = rgb(h); return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b); }
   function contrast(a, b) {
@@ -82,33 +82,38 @@
 
   // ── Presets ─────────────────────────────────────────────────────────────────
   // Per mode: bg (the page), panel (cards and panels), sidebar, text, muted, accent and
-  // accent2 (the second colour — decoration only, never text). Everything else is derived.
+  // accent2 (the second colour — decoration only, never text). Everything else is derived,
+  // unless a preset gives it outright (card, field, thead … — only Black & Gold's dark does).
   // The numbers are checked, not eyeballed: tests/themecore.js holds every one to
   // body text ≥ 14:1, muted text ≥ 5:1 and the accent readable as a fill and as text.
   const PRESETS = {
     'black-gold': {
       name: 'Black & Gold', blurb: 'The original: ink black, warm ivory text, brushed gold.',
       font: { heading: 'cormorant', body: 'manrope' }, shape: { radius: 2, density: 1 }, glow: 'off', mode: 'dark',
-      dark:  { bg: '#0c0c0e', panel: '#141416', sidebar: '#0c0c0e', text: '#f3efe7', muted: '#8d897f', accent: '#c9a35e', accent2: '#e8cd93' },
-      light: { bg: '#f7f4ee', panel: '#ffffff', sidebar: '#ffffff', text: '#1f1c17', muted: '#6b6558', accent: '#a8802f', accent2: '#c9a35e' },
+      // The dark one is the sheets' own palette, shade for shade: choosing this preset and only
+      // changing the accent must not move any neutral.
+      dark:  { bg: '#0c0c0e', panel: '#141416', sidebar: '#0f0f12', text: '#f3efe7', text2: '#b9b3a4', muted: '#8d897f', accent: '#c9a35e', accent2: '#e8cd93',
+               card: '#18181b', field: '#0e0e10', field2: '#101013', thead: '#101012', auth1: '#15130e', auth2: '#0b0b0c', avatar1: '#1c1a14', ink2: '#1b1608',
+               soft: '#d9bd7f', deep: '#a07e3f', lite: '#e8cd93', dim: '#8a6a30' },
+      light: { bg: '#f7f4ee', panel: '#ffffff', sidebar: '#ffffff', text: '#1f1c17', muted: '#6b6558', accent: '#806224', accent2: '#b78c3d' },
     },
     'moto': {
       name: 'Moto Palette', blurb: 'The MotoLinker brand: forest green, road green and lime.',
       font: { heading: 'poppins', body: 'poppins' }, shape: { radius: 3, density: 1 }, glow: 'off', mode: 'light',
       dark:  { bg: '#04140e', panel: '#0a231a', sidebar: '#04140e', text: '#eaf4e5', muted: '#8fb09a', accent: '#7ec842', accent2: '#3a8e0e', hover: '#5fa52f' },
-      light: { bg: '#f5f9f3', panel: '#ffffff', sidebar: '#043627', text: '#16271f', muted: '#5a6d62', accent: '#328008', accent2: '#3a8e0e', hover: '#2c6f09' },
+      light: { bg: '#f5f9f3', panel: '#ffffff', sidebar: '#043627', text: '#16271f', muted: '#5a6d62', accent: '#2e7607', accent2: '#3a8e0e' },
     },
     'cyberpunk': {
       name: 'Cyberpunk Tech', blurb: 'Night-city blue-black with electric cyan and hot magenta.',
       font: { heading: 'space-grotesk', body: 'inter' }, shape: { radius: 0, density: 1 }, glow: 'strong', mode: 'dark',
       dark:  { bg: '#0a0a12', panel: '#11111d', sidebar: '#08080f', text: '#e8f4ff', muted: '#8a93b0', accent: '#00e5ff', accent2: '#ff2bd6' },
-      light: { bg: '#eef2fb', panel: '#ffffff', sidebar: '#0f1226', text: '#10142a', muted: '#555d7e', accent: '#0095ab', accent2: '#d4009f' },
+      light: { bg: '#eef2fb', panel: '#ffffff', sidebar: '#0f1226', text: '#10142a', muted: '#555d7e', accent: '#007282', accent2: '#d4009f' },
     },
     'neon-minimal': {
       name: 'Neon Minimalist', blurb: 'Almost nothing but black, white and one acid-lime line.',
       font: { heading: 'inter', body: 'inter' }, shape: { radius: 1, density: 1 }, glow: 'subtle', mode: 'dark',
       dark:  { bg: '#050505', panel: '#0d0d0d', sidebar: '#050505', text: '#f2f2f2', muted: '#8f8f8f', accent: '#c6ff3d', accent2: '#ffffff' },
-      light: { bg: '#f6f6f4', panel: '#ffffff', sidebar: '#ffffff', text: '#0a0a0a', muted: '#5e5e5e', accent: '#5f8500', accent2: '#0a0a0a' },
+      light: { bg: '#f6f6f4', panel: '#ffffff', sidebar: '#ffffff', text: '#0a0a0a', muted: '#5e5e5e', accent: '#507100', accent2: '#0a0a0a' },
     },
     'synthwave': {
       name: 'Synthwave', blurb: 'Purple dusk, pink neon, a sunset-grid mood.',
@@ -120,7 +125,7 @@
       name: 'Matrix', blurb: 'Terminal green on black, set in a monospace.',
       font: { heading: 'jetbrains-mono', body: 'jetbrains-mono' }, shape: { radius: 0, density: 0 }, glow: 'subtle', mode: 'dark',
       dark:  { bg: '#020a05', panel: '#07160c', sidebar: '#010603', text: '#d6ffe4', muted: '#6fae86', accent: '#00ff6a', accent2: '#00b34a' },
-      light: { bg: '#f1fbf4', panel: '#ffffff', sidebar: '#062313', text: '#0b2415', muted: '#4f6f5b', accent: '#007a36', accent2: '#00b34a' },
+      light: { bg: '#f1fbf4', panel: '#ffffff', sidebar: '#062313', text: '#0b2415', muted: '#4f6f5b', accent: '#007534', accent2: '#00a946' },
     },
     'deep-ocean': {
       name: 'Deep Ocean', blurb: 'Navy depths, sky-blue light.',
@@ -132,7 +137,7 @@
       name: 'Ember', blurb: 'Warm charcoal lit by orange coals.',
       font: { heading: 'playfair', body: 'manrope' }, shape: { radius: 2, density: 1 }, glow: 'subtle', mode: 'dark',
       dark:  { bg: '#0f0b0a', panel: '#1a1311', sidebar: '#0b0706', text: '#fbeee7', muted: '#b39a8d', accent: '#ff6a3d', accent2: '#ffb020' },
-      light: { bg: '#fff6f1', panel: '#ffffff', sidebar: '#2b1510', text: '#2a1510', muted: '#7a5d52', accent: '#c2410c', accent2: '#d97706' },
+      light: { bg: '#fff6f1', panel: '#ffffff', sidebar: '#2b1510', text: '#2a1510', muted: '#7a5d52', accent: '#b83e0b', accent2: '#d97706' },
     },
   };
   const PRESET_ORDER = ['black-gold', 'moto', 'cyberpunk', 'neon-minimal', 'synthwave', 'matrix', 'deep-ocean', 'ember'];
@@ -274,7 +279,8 @@
     const over = plain(plain(n.theme.neutrals)[mode]);
     const p = Object.assign({}, base);
     for (const k of NEUTRAL_KEYS) if (over[k]) p[k] = over[k];
-    if (n.theme.accent) { p.accent = n.theme.accent; delete p.hover; }
+    // A chosen accent brings its own shades; the preset's were cut for its own.
+    if (n.theme.accent) { p.accent = n.theme.accent; for (const k of ['hover', 'deep', 'soft', 'lite', 'dim']) delete p[k]; }
     if (n.theme.accent2) p.accent2 = n.theme.accent2;
     return p;
   }
@@ -286,37 +292,48 @@
     const dark = mode === 'dark';
     const preset = PRESETS[n.theme.preset];
 
-    // Accent: a fill the eye can find on a panel, the same hue as text on the panel's
-    // accent-tinted rows (the active nav item), and the ink that sits on the fill.
-    const fill = ensure(P.accent, P.panel, 3);
-    const tint = over(fill, P.panel, 0.14);
-    const text = ensure(P.accent, tint, 4.5);
+    // One accent for fills and for text: a button, a border, an active nav item, a link.
+    // It is held to 4.5:1 on a panel's accent-tinted rows (the active nav item, a hovered
+    // row), the hardest place it has to read, so it needs no second "text" version — and a
+    // fill that reads as text always shows up against the page.
+    // (The tint is made of the accent itself, so moving the accent moves the tint: settle.)
+    let fill = P.accent;
+    for (let i = 0; i < 6; i++) {
+      const next = ensure(fill, over(fill, P.panel, 0.14), 4.5);
+      if (next === fill) break;
+      fill = next;
+    }
     const fill2 = ensure(P.accent2 || fill, P.panel, 3);
 
-    // The sidebar picks its own text: a forest-green sidebar beside a white page needs
-    // light text, a white one beside a dark page needs dark text.
-    // The preset's own two text colours first, so it stays in the family; the plain ones
-    // only if neither reads well on a sidebar colour someone has chosen.
+    // The sidebar is its own surface: a forest-green one beside a white page, a white one
+    // beside a dark page. It picks its own text (the preset's own colours first, so it
+    // stays in the family) and its own accent, starting from the vivid one.
     const sbCandidates = [preset.dark.text, preset.light.text, '#f4f1ea', '#15171c'];
     const sbText = sbCandidates.find(c => contrast(c, P.sidebar) >= 7) || sbCandidates.slice().sort((a, b) => contrast(b, P.sidebar) - contrast(a, P.sidebar))[0];
     const sbMuted = ensure(mix(sbText, P.sidebar, 0.42), P.sidebar, 4.5);
+    const sbAccent = ensure(n.theme.accent || preset.dark.accent, over(n.theme.accent || preset.dark.accent, P.sidebar, 0.14), 4.5);
 
     const ink = dark ? '#ffffff' : P.text;          // what translucent overlays are made of
     const text2 = P.text2 || mix(P.text, P.muted, 0.5);
+    const field = P.field || (dark ? mix(P.bg, P.panel, 0.45) : P.panel);
     return {
       mode, dark,
       bg: P.bg, panel: P.panel, sidebar: P.sidebar, text: P.text, text2, muted: P.muted,
-      card: dark ? mix(P.panel, '#ffffff', 0.02) : P.panel,
-      field: dark ? mix(P.bg, P.panel, 0.45) : P.panel,
-      thead: dark ? mix(P.bg, P.panel, 0.6) : mix(P.panel, P.bg, 0.6),
+      card: P.card || (dark ? mix(P.panel, '#ffffff', 0.02) : P.panel),
+      field, field2: P.field2 || field,
+      thead: P.thead || (dark ? mix(P.bg, P.panel, 0.6) : mix(P.panel, P.bg, 0.6)),
+      auth1: P.auth1 || (dark ? mix(P.bg, fill, 0.05) : mix(P.bg, P.panel, 0.4)),
+      auth2: P.auth2 || (dark ? mix(P.bg, '#000000', 0.2) : P.bg),
+      avatar1: P.avatar1 || (dark ? mix(P.panel, fill, 0.1) : mix(P.panel, fill, 0.12)),
       ink,
-      accent: fill, accentText: text, accent2: fill2,
+      accent: fill, accent2: fill2,
       onAccent: onFill(fill),
-      deep: P.hover || mix(fill, '#000000', dark ? 0.25 : 0.18),
-      soft: mix(fill, '#ffffff', dark ? 0.28 : 0.35),
-      lite: mix(fill, '#ffffff', dark ? 0.5 : 0.55),
-      dim: mix(fill, '#000000', dark ? 0.4 : 0.32),
-      sbText, sbMuted,
+      onAccent2: P.ink2 && contrast(P.ink2, fill) >= 4.5 ? P.ink2 : onFill(fill),
+      deep: P.deep || P.hover || mix(fill, '#000000', dark ? 0.25 : 0.18),
+      soft: P.soft || mix(fill, '#ffffff', dark ? 0.28 : 0.35),
+      lite: P.lite || mix(fill, '#ffffff', dark ? 0.5 : 0.55),
+      dim: P.dim || mix(fill, '#000000', dark ? 0.4 : 0.32),
+      sbText, sbMuted, sbAccent,
     };
   }
 
@@ -332,6 +349,21 @@
     '--stock-in': '#10b981', '--stock-transit': '#5a78c8', '--stock-reserved': '#f59e0b', '--stock-sold': '#8d897f',
   };
 
+  // ── What the sheets already say ─────────────────────────────────────────────
+  // The new tokens' values as the stylesheets carry them today — written into both :root
+  // blocks, and the fallback of every var() that reads them — so a page that never hears
+  // from a workspace paints exactly as it always did. tests/themecss.js checks the sheets
+  // against this table; the values are Black & Gold's dark, shade for shade.
+  const BASE = {
+    '--primary-rgb': '201,163,94', '--primary-text': '#c9a35e', '--on-primary': '#0c0c0e', '--on-primary-2': '#1b1608',
+    '--ov': '255,255,255', '--surface-rgb': '20,20,22', '--text-2': '#b9b3a4',
+    '--gold-lite': '#e8cd93', '--gold-dim': '#8a6a30', '--accent-2': '#e8cd93', '--accent-2-rgb': '232,205,147',
+    '--field-bg': '#0e0e10', '--field-bg-2': '#101013', '--thead-bg': '#101012', '--option-bg': '#141416',
+    '--header-bg': 'rgba(12,12,14,.85)', '--topbar-bg': 'rgba(12,12,14,.9)',
+    '--auth-bg-1': '#15130e', '--auth-bg-2': '#0b0b0c', '--avatar-bg-1': '#1c1a14',
+    '--color-scheme': 'dark',
+  };
+
   // ── Variables ───────────────────────────────────────────────────────────────
   // Ordered: what is emitted is deterministic, so two renders of one profile compare equal.
   function deriveVars(profile, mode) {
@@ -341,6 +373,7 @@
     const glow = n.theme.glow || preset.glow;
     const ovA = c.dark ? 0.09 : 0.14;
     const v = {};
+    // Surfaces and text
     v['--bg'] = c.bg;
     v['--surface'] = c.panel;
     v['--panel'] = c.panel;
@@ -354,19 +387,25 @@
     v['--hair'] = rgba(c.ink, ovA);
     v['--glass'] = rgba(c.bg, 0.85);
     v['--glass-border'] = rgba(c.ink, c.dark ? 0.07 : 0.1);
+    v['--header-bg'] = rgba(c.bg, 0.85);
+    v['--topbar-bg'] = rgba(c.bg, 0.9);
     v['--field-bg'] = c.field;
+    v['--field-bg-2'] = c.field2;
     v['--thead-bg'] = c.thead;
+    v['--option-bg'] = c.panel;
+    v['--auth-bg-1'] = c.auth1;
+    v['--auth-bg-2'] = c.auth2;
+    v['--avatar-bg-1'] = c.avatar1;
     v['--sidebar'] = c.sidebar;
-    v['--sb-text'] = c.sbText;
-    v['--sb-muted'] = c.sbMuted;
-    v['--sb-ov'] = triplet(c.sbText);
+    // The accent
     v['--primary'] = c.accent;
     v['--primary-h'] = c.deep;
     v['--primary-rgb'] = triplet(c.accent);
-    v['--primary-text'] = c.accentText;
+    v['--primary-text'] = c.accent;
     v['--primary-glow'] = rgba(c.accent, 0.15);
     v['--primary-glow-strong'] = rgba(c.accent, 0.25);
     v['--on-primary'] = c.onAccent;
+    v['--on-primary-2'] = c.onAccent2;
     v['--gold'] = c.accent;
     v['--gold-soft'] = c.soft;
     v['--gold-deep'] = c.deep;
@@ -375,10 +414,20 @@
     v['--hair-gold'] = rgba(c.accent, c.dark ? 0.22 : 0.3);
     v['--accent-2'] = c.accent2;
     v['--accent-2-rgb'] = triplet(c.accent2);
+    // The sidebar's own: the sheets put these in place of the page's inside .sidebar
+    v['--sb-text'] = c.sbText;
+    v['--sb-muted'] = c.sbMuted;
+    v['--sb-ov'] = triplet(c.sbText);
+    v['--sb-accent'] = c.sbAccent;
+    v['--sb-accent-rgb'] = triplet(c.sbAccent);
+    v['--sb-hair'] = rgba(c.sbText, 0.09);
+    v['--sb-hair-gold'] = rgba(c.sbAccent, 0.22);
+    v['--sb-glass-border'] = rgba(c.sbText, 0.07);
+    // Effects
     v['--glow'] = glow === 'off' ? 'none'
       : glow === 'subtle' ? '0 0 ' + (c.dark ? '12px ' + rgba(c.accent, 0.28) : '10px ' + rgba(c.accent, 0.18))
       : '0 0 ' + (c.dark ? '20px ' + rgba(c.accent, 0.5) + ',0 0 3px ' + rgba(c.accent, 0.7) : '16px ' + rgba(c.accent, 0.32));
-    v['--chev-select'] = 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23' + c.accentText.slice(1) + '\' stroke-width=\'2.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")';
+    v['--chev-select'] = 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23' + c.accent.slice(1) + '\' stroke-width=\'2.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")';
     v['--color-scheme'] = c.dark ? 'dark' : 'light';
     if (!c.dark) for (const [k, hex] of Object.entries(STATUS)) v[k] = ensure(hex, c.panel, 4.5);
     return v;
@@ -477,7 +526,7 @@
     { id: 'muted-panel', fg: 'muted', bg: 'panel', min: 3, warn: 4.5, label: 'Secondary text on panels' },
     { id: 'muted-bg', fg: 'muted', bg: 'bg', min: 3, warn: 4.5, label: 'Secondary text on the page' },
     { id: 'accent-panel', fg: 'accent', bg: 'panel', min: 3, label: 'Accent on panels' },
-    { id: 'accent-text', fg: 'accentText', bg: 'panel', min: 4.5, label: 'Accent used as text' },
+    { id: 'accent-text', fg: 'accent', bg: 'tint', min: 4.5, label: 'Accent used as text' },
     { id: 'on-accent', fg: 'onAccent', bg: 'accent', min: 4.5, label: 'Button text' },
     { id: 'sidebar-text', fg: 'sbText', bg: 'sidebar', min: 4.5, label: 'Sidebar text' },
   ];
@@ -486,6 +535,7 @@
     const rows = [];
     for (const mode of ['dark', 'light']) {
       const c = palette(n, mode);
+      c.tint = over(c.accent, c.panel, 0.14);
       for (const p of PAIRS) {
         const ratio = contrast(c[p.fg], c[p.bg]);
         const level = ratio < p.min ? 'error' : p.warn && ratio < p.warn ? 'warn' : 'ok';
@@ -502,7 +552,7 @@
 
   return {
     VERSION: 1,
-    PRESETS, PRESET_ORDER, DEFAULT_PRESET, FONTS, FONT_ORDER, DEFAULT_FONTS, DEFAULT_SHAPE, RADIUS_K, DENSITY_K, GLOWS, MODES, NEUTRAL_KEYS, TEXT_KEYS, STATUS,
+    PRESETS, PRESET_ORDER, DEFAULT_PRESET, FONTS, FONT_ORDER, DEFAULT_FONTS, DEFAULT_SHAPE, RADIUS_K, DENSITY_K, GLOWS, MODES, NEUTRAL_KEYS, TEXT_KEYS, STATUS, BASE,
     normalize, validate, custom, inputs, palette, deriveVars, fontVars, shapeVars, renderThemeCss, fontsHref, bootScript, defaultMode, themeColor, report, problems,
     color: { isHex, normHex, rgb, toHex, triplet, rgba, luminance, contrast, mix, over, toHsl, fromHsl, ensure, onFill },
   };

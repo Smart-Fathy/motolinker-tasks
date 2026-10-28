@@ -10,6 +10,7 @@
 // No browser here: a scanner that knows comments and strings, over the files as shipped.
 const fs = require('fs');
 const path = require('path');
+const T = require('../public/assets/theme-core.js');
 
 const results = [];
 const check = (n, ok, x) => { results.push(!!ok); console.log((ok ? '  ok  ' : ' FAIL ') + n + (x ? '  ' + x : '')); };
@@ -108,6 +109,55 @@ for (const [portal, html, own] of [['admin', 'public/dashboard.html', 'dashboard
     for (const m of body.matchAll(/var\(\s*(--[a-z][\w-]*)\s*\)/g)) if (!have.has(m[1])) missing.set(m[1], (missing.get(m[1]) || []).concat(path.basename(f) + ':' + lineOf(body, m.index)));
   }
   check(`${portal}: every var(--x) without a fallback has a token behind it`, missing.size === 0, [...missing].map(([k, v]) => `${k} (${v.slice(0, 3).join(', ')})`).join('; '));
+}
+
+// ── The sheets and theme-core agree ───────────────────────────────────────────
+// Every value the workspace can redefine has a default in the sheet; they must be the
+// ones theme-core says (BASE) and, for Black & Gold's dark, the ones it derives. Otherwise
+// "a workspace that has chosen nothing looks as it always did" quietly stops being true.
+const norm = v => String(v).replace(/\s+/g, '').replace(/\b0\./g, '.').toLowerCase();
+// name -> value, across every :root rule of a sheet (later wins, as in the cascade)
+function rootTokens(css) {
+  const out = {};
+  const s = blank(css);
+  for (const m of s.matchAll(/(?:^|[}\s])(:root\s*,\s*\.on-dark|:root)\s*\{([^{}]*)\}/g)) {
+    for (const d of m[2].matchAll(/(--[\w-]+)\s*:\s*([^;]+);?/g)) out[d[1]] = norm(d[2]);
+  }
+  return out;
+}
+const roots = { admin: rootTokens(sheets['dashboard.css']), team: rootTokens(sheets['employee.css']) };
+for (const [portal, tokens] of Object.entries(roots)) {
+  const wrong = Object.entries(T.BASE).filter(([k, v]) => tokens[k] !== norm(v)).map(([k, v]) => `${k}: sheet ${tokens[k]} vs ${norm(v)}`);
+  check(`${portal}: every default theme-core knows is in the sheet, unchanged`, wrong.length === 0, wrong.slice(0, 3).join('; '));
+}
+{
+  const derived = T.deriveVars({}, 'dark');
+  // The portals differ on a few neutrals (their own page and panel shades); the rest must match.
+  const own = new Set(['--bg', '--surface', '--sidebar', '--glass']);
+  const wrong = [];
+  for (const [k, v] of Object.entries(derived)) {
+    if (own.has(k) || !(k in roots.admin) || k.startsWith('--sb-')) continue;
+    if (roots.admin[k] !== norm(v)) wrong.push(`${k}: sheet ${roots.admin[k]} vs theme-core ${norm(v)}`);
+  }
+  check('the admin sheet\'s tokens are Black & Gold\'s dark, as theme-core derives it', wrong.length === 0, wrong.slice(0, 4).join('; '));
+  check('…and so is the team portal\'s, on the tokens it shares with it', Object.entries(derived).every(([k, v]) => own.has(k) || !(k in roots.team) || k.startsWith('--sb-') || ['--success', '--warning', '--danger'].includes(k) || roots.team[k] === norm(v)),
+    Object.entries(derived).filter(([k, v]) => !own.has(k) && (k in roots.team) && !k.startsWith('--sb-') && roots.team[k] !== norm(v)).map(([k, v]) => `${k}: ${roots.team[k]} vs ${norm(v)}`).join('; '));
+}
+// .sidebar puts the page's tokens back to the sidebar's own; with no --sb-* in play it must
+// put back exactly what the page had.
+for (const [portal, file] of [['admin', 'dashboard.css'], ['team', 'employee.css']]) {
+  const m = blank(sheets[file]).match(/\n\s*\.sidebar\s*\{([^{}]*--ov[^{}]*)\}/);
+  const wrong = [];
+  const found = [];
+  if (m) for (const decl of m[1].split(';').map(x => x.trim()).filter(Boolean)) {
+    const d = decl.match(/^(--[\w-]+)\s*:\s*var\(\s*(--sb-[\w-]+)\s*,([\s\S]*)\)$/);
+    if (!d) { wrong.push(`${decl} is not a --sb-* lookup with a fallback`); continue; }
+    found.push(d[1]);
+    const want = roots[portal][d[1]];
+    if (norm(d[3]) !== want) wrong.push(`${d[1]}: falls back to ${norm(d[3])}, page has ${want}`);
+    if (!(d[2] in T.deriveVars({}, 'dark'))) wrong.push(`${d[2]} is not a token theme-core writes`);
+  }
+  check(`${portal}: the sidebar scope exists and falls back to the page\'s own values`, !!m && found.length >= 8 && wrong.length === 0, wrong.concat(m ? [] : ['no .sidebar scope']).slice(0, 4).join('; '));
 }
 
 // A theme overrides tokens by being later in the cascade; an !important on one would
