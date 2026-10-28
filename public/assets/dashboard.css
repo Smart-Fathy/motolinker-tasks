@@ -3413,3 +3413,8 @@
   border: 1px solid var(--line, #2b2926); border-radius: calc(8px * var(--r-k,1)); padding: 0 5px; margin-left: 5px; }
 .logi-move-where { color: var(--muted, #8d897f); text-align: right; font-size: 10.5px; }
 .logi-move-est .logi-move-what, .logi-move-est .logi-move-at { opacity: .62; }
+
+/* A status colour somebody picked is data, not a theme token. A light page takes the label down
+   to a lightness that reads (same hue and chroma, so red stays red); the wash and border keep the
+   colour as chosen. A browser without relative colours skips the line and keeps the colour as chosen. */
+html[data-mode="light"] .ce-pill{ color:oklch(from var(--ce-c,#888888) min(l,.44) c h) !important; }

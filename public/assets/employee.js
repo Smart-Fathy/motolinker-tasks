@@ -696,7 +696,7 @@ function empcMentionHint(ta) {
   const q = m[1].toLowerCase();
   const hits = (_coworkers || []).filter(e => (e.name || '').toLowerCase().startsWith(q)).slice(0, 6);
   if (!hits.length) { box.style.display = 'none'; return; }
-  box.innerHTML = hits.map(e => `<button type="button" onclick="empcInsertMention('${esc(e.name)}')" style="display:block;width:100%;text-align:left;background:none;border:none;color:var(--text);font-size:12.5px;padding:7px 10px;border-radius:calc(6px * var(--r-k,1));cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='none'">@ ${esc(e.name)}</button>`).join('');
+  box.innerHTML = hits.map(e => `<button type="button" onclick="empcInsertMention('${esc(e.name)}')" style="display:block;width:100%;text-align:left;background:none;border:none;color:var(--text);font-size:12.5px;padding:7px 10px;border-radius:calc(6px * var(--r-k,1));cursor:pointer" onmouseover="this.style.background='rgba(var(--ov,255,255,255),.06)'" onmouseout="this.style.background='none'">@ ${esc(e.name)}</button>`).join('');
   box.style.display = 'block';
 }
 function empcInsertMention(name) {
@@ -1517,7 +1517,7 @@ async function loadDriveSection(statusUrl, filesUrl, connectUrl, disconnectUrl, 
             <th style="padding:9px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Modified</th>
             <th style="padding:9px 16px;border-bottom:1px solid var(--border)"></th>
           </tr></thead>
-          <tbody>${files.map((f, i) => `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+          <tbody>${files.map((f, i) => `<tr style="border-bottom:1px solid rgba(var(--ov,255,255,255),.04)">
             <td style="padding:11px 16px;font-size:13px">${driveIcon(f.mimeType)} ${esc(f.name)}</td>
             <td style="padding:11px 16px;font-size:12px;color:var(--muted);white-space:nowrap">${f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '—'}</td>
             <td style="padding:11px 16px;text-align:right;white-space:nowrap">
@@ -1759,7 +1759,7 @@ function empRenderLeads(list) {
   const span = vis.length + 2; // add-column + actions
   if (!list.length) { tbody.innerHTML = `<tr><td colspan="${span}" style="text-align:center;color:var(--muted);padding:28px">No leads found.</td></tr>`; return; }
   const shown = list.slice(0, _leadsShown);
-  tbody.innerHTML = shown.map(c => `<tr data-id="${c.id}" style="border-bottom:1px solid rgba(255,255,255,.04)">
+  tbody.innerHTML = shown.map(c => `<tr data-id="${c.id}" style="border-bottom:1px solid rgba(var(--ov,255,255,255),.04)">
       ${vis.map(col => leadCellHtml(c, col)).join('')}
       <td></td>
       <td style="padding:10px 14px;white-space:nowrap;text-align:right">
@@ -2034,8 +2034,11 @@ function renderLeadDrawer() {
   const badge = document.getElementById('ld-status');
   badge.textContent = (stMap[stKey] || c.lead_status || 'Cold') + ' ▾';
   const stHex = leadOptColor(leadCol('lead_status'), stKey);
-  badge.style.background = stHex ? hexA(stHex, 0.16) : 'rgba(255,255,255,.06)';
-  badge.style.color = stHex || '#b9b3a4';
+  badge.style.background = stHex ? hexA(stHex, 0.16) : 'rgba(var(--ov,255,255,255),.06)';
+  badge.style.color = stHex || 'var(--text-2,#b9b3a4)';
+  // A colour somebody picked is data: light mode mixes it toward the text colour (.ce-pill).
+  badge.classList.toggle('ce-pill', !!stHex);
+  if (stHex) badge.style.setProperty('--ce-c', stHex); else badge.style.removeProperty('--ce-c');
   document.getElementById('ld-phone').textContent = c.phone || '';
   document.getElementById('ld-call').href = c.phone ? 'tel:' + c.phone : '#';
   document.getElementById('ld-wa').href = c.phone ? 'https://wa.me/' + ldWaDigits(c.phone) : '#';
@@ -2074,8 +2077,8 @@ function renderLeadDrawer() {
     let bodyHtml = esc(a.body || '');
     if (a.type === 'status_change' && a.meta?.to) {
       const fk = normKey(a.meta.from, stMap), tk = normKey(a.meta.to, stMap);
-      const pill = k => { const h = leadOptColor(leadCol('lead_status'), k); return `background:${h ? hexA(h, 0.16) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
-      bodyHtml = `Status: <span class="ld-stage-pill" style="${pill(fk)}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="${pill(tk)}">${esc(stMap[tk] || a.meta.to)}</span>`;
+      const pill = (k, label) => { const h = leadOptColor(leadCol('lead_status'), k); return `<span class="ld-stage-pill${h ? ' ce-pill' : ''}" style="background:${h ? hexA(h, 0.16) : 'rgba(var(--ov,255,255,255),.06)'};color:${h || 'var(--text-2,#b9b3a4)'}${h ? ';--ce-c:' + h : ''}">${esc(label)}</span>`; };
+      bodyHtml = `Status: ${pill(fk, stMap[fk] || a.meta.from || '—')} → ${pill(tk, stMap[tk] || a.meta.to)}`;
     }
     return `<div class="ld-tl-item">
       <div class="ld-tl-icon"><i data-lucide="${LD_ACT_ICONS[a.type] || 'circle'}"></i></div>
@@ -2226,7 +2229,7 @@ function empAttachVehicleSearch(inputId = 'eml-car', priceId = 'eml-car-price', 
       const items = d.items || [];
       if (!items.length) { hide(); return; }
       results.innerHTML = items.map((it, i) => `
-        <div class="veh-opt" data-i="${i}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;gap:10px;align-items:center"
+        <div class="veh-opt" data-i="${i}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(var(--ov,255,255,255),.05);display:flex;justify-content:space-between;gap:10px;align-items:center"
              onmouseover="this.style.background='rgba(201,163,94,.12)'" onmouseout="this.style.background='none'">
           <div style="min-width:0"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</div>${it.subtitle ? `<div style="font-size:11px;color:var(--muted)">${esc(it.subtitle)}</div>` : ''}</div>
           ${it.price ? `<div style="font-size:12px;color:var(--primary-text,var(--primary));white-space:nowrap;font-weight:600">${money(it.price)}</div>` : ''}
@@ -3038,7 +3041,7 @@ function renderEmailList() {
   if (!list) return;
   if (!emailMessages.length) { list.innerHTML = '<div class="empty" style="padding:32px">No messages in inbox</div>'; return; }
   list.innerHTML = emailMessages.map(m => `
-    <div onclick="openEmail('${m.id}')" style="padding:14px 18px;border-bottom:1px solid rgba(var(--ov,255,255,255),.04);cursor:pointer;transition:background .15s;${activeEmailId===m.id?'background:var(--primary-glow);':''}" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background='${activeEmailId===m.id?'var(--primary-glow)':''}'" >
+    <div onclick="openEmail('${m.id}')" style="padding:14px 18px;border-bottom:1px solid rgba(var(--ov,255,255,255),.04);cursor:pointer;transition:background .15s;${activeEmailId===m.id?'background:var(--primary-glow);':''}" onmouseover="this.style.background='rgba(var(--ov,255,255,255),.03)'" onmouseout="this.style.background='${activeEmailId===m.id?'var(--primary-glow)':''}'" >
       <div style="display:flex;align-items:flex-start;gap:10px">
         ${m.unread ? '<div style="width:7px;height:7px;border-radius:50%;background:var(--primary);flex-shrink:0;margin-top:5px"></div>' : '<div style="width:7px;height:7px;flex-shrink:0;margin-top:5px"></div>'}
         <div style="flex:1;min-width:0">
@@ -3200,9 +3203,9 @@ function renderScrapeResults(data) {
   const trims  = data.trims  || [];
   const thead  = document.getElementById('emp-scrape-thead');
   const tbody  = document.getElementById('emp-scrape-tbody');
-  thead.innerHTML = `<tr style="background:rgba(255,255,255,.03)"><th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border)">Spec</th>${trims.map(t => `<th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border)">${esc(t.name)}</th>`).join('')}</tr>`;
+  thead.innerHTML = `<tr style="background:rgba(var(--ov,255,255,255),.03)"><th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border)">Spec</th>${trims.map(t => `<th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border)">${esc(t.name)}</th>`).join('')}</tr>`;
   tbody.innerHTML = specs.map(s =>
-    `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+    `<tr style="border-bottom:1px solid rgba(var(--ov,255,255,255),.04)">
       <td style="padding:9px 12px;font-size:12px;font-weight:500">${esc(s.name)}</td>
       ${(s.values || []).map(v => `<td style="padding:9px 12px;font-size:12px;color:var(--muted)">${esc(v||'—')}</td>`).join('')}
     </tr>`

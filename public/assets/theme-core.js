@@ -355,6 +355,12 @@
 
     const text2 = P.text2 || mix(P.text, P.muted, 0.5);
     const field = P.field || (dark ? mix(P.bg, P.panel, 0.45) : P.panel);
+    // The darker end of the accent's gradient (a lead's initials, say) carries the same ink as the
+    // fill does, so it is moved back toward the fill until that ink reads on it too.
+    let dimmed = mix(fill, '#000000', dark ? 0.4 : 0.32);
+    for (let i = 0; i < 12 && contrast(onFill(fill), dimmed) < 4.5; i++) dimmed = mix(dimmed, fill, 0.3);
+    if (contrast(onFill(fill), dimmed) < 4.5) dimmed = fill;   // (rounding to hex can stall one step short)
+
     return {
       mode, dark,
       bg: P.bg, panel: P.panel, sidebar: P.sidebar, text: P.text, text2, muted: P.muted,
@@ -373,7 +379,7 @@
       deep: P.deep || P.hover || mix(fill, '#000000', dark ? 0.25 : 0.18),
       soft: P.soft || lift(fill, dark ? 0.28 : 0.35, onFill(fill)),
       lite: P.lite || lift(fill, dark ? 0.5 : 0.55, onFill(fill)),
-      dim: P.dim || mix(fill, '#000000', dark ? 0.4 : 0.32),
+      dim: P.dim || dimmed,
       sbText, sbText2, sbMuted, sbAccent, sbField, sbHue, sink,
     };
   }

@@ -206,7 +206,7 @@
             return `<th style="padding:7px 8px;text-align:center">${n}<div style="font-weight:400;font-size:10px">${dd.getDate()}</div></th>`; }).join('')}
         </tr></thead>
         <tbody>${d.members.map(m => `
-          <tr style="border-bottom:1px solid rgba(255,255,255,.05)">
+          <tr style="border-bottom:1px solid rgba(var(--ov,255,255,255),.05)">
             <td style="padding:7px 8px;font-weight:600${m.me ? ';color:var(--primary-text,var(--primary))' : ''}">${esc(m.name)}${m.me ? ' · you' : ''}</td>
             ${DAY_NAMES.map((_, i) => cellHtml(m.days && m.days[i])).join('')}
           </tr>`).join('')}</tbody>

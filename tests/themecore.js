@@ -61,6 +61,7 @@ check('Black & Gold is the default, and Moto Palette is among them', T.DEFAULT_P
       ['on a dark page the text twin is the accent, or a lighter shade of it where a wash of the accent would swallow it', mode === 'light' || c.accentText === c.accent || (C.luminance(c.accentText) > C.luminance(c.accent) && C.contrast(c.accentText, C.over(c.accentText, c.panel, 0.25)) >= 4.5)],
       ['sidebar accent ≥4.5', C.contrast(c.sbAccent, c.sidebar) >= 4.5],
       ['button ink ≥4.5', C.contrast(c.onAccent, c.accent) >= 4.5],
+      ['the darker end of the accent gradient (a lead\'s initials) carries the same ink ≥4.5 (Black & Gold\'s dark keeps the shade it has always had)', (id === 'black-gold' && mode === 'dark') || C.contrast(c.onAccent, c.dim) >= 4.5],
       ['sidebar text ≥7', C.contrast(c.sbText, c.sidebar) >= 7], ['sidebar muted ≥4.5', C.contrast(c.sbMuted, c.sidebar) >= 4.5],
     ];
     for (const [what, ok] of rows) if (!ok) bad.push(`${id}/${mode}: ${what}`);

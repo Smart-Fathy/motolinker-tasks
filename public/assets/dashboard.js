@@ -472,7 +472,7 @@ function donutSvg(rows, centreValue, centreLabel) {
     return seg;
   }).join('');
   return `<svg viewBox="0 0 140 140" class="donut" role="img" aria-label="${esc(centreLabel)}">
-      <circle r="${R}" cx="70" cy="70" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="16"></circle>
+      <circle r="${R}" cx="70" cy="70" fill="none" style="stroke:rgba(var(--ov,255,255,255),.06)" stroke-width="16"></circle>
       ${arcs}
     </svg>
     <div class="donut-centre">
@@ -668,7 +668,7 @@ function renderLeadsSingle(d) {
         const barPct = Math.round((isCount ? r.count : (Number(r.value) || 0)) / maxV * 100);
         const right = isCount ? (d.totals.count ? Math.round(r.count / d.totals.count * 100) : 0) + '%' : egp(r.value);
         const rc = lrRowColor(d.groupBy, r.key, i);
-        return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+        return `<tr style="border-bottom:1px solid rgba(var(--ov,255,255,255),.04)">
           <td style="padding:6px 8px"><div class="lr-bar-cell"><i style="width:${barPct}%;background:${rc}"></i><span><b style="background:${rc}"></b>${esc(r.label)}</span></div></td>
           <td style="padding:6px 8px;text-align:right;font-weight:600">${r.count.toLocaleString()}</td>
           <td style="padding:6px 8px;text-align:right;color:var(--muted)">${right}</td></tr>`;
@@ -716,7 +716,7 @@ function renderLeadsCrossTab(d) {
         <th style="padding:6px 8px">${esc(gl)} \\ ${esc(sl)}</th>
         ${cats.map(c => `<th style="padding:6px 8px;text-align:right;white-space:nowrap">${esc(c.label)}</th>`).join('')}
         <th style="padding:6px 8px;text-align:right;font-weight:700">Total</th></tr></thead>
-      <tbody>${rows.map(r => `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+      <tbody>${rows.map(r => `<tr style="border-bottom:1px solid rgba(var(--ov,255,255,255),.04)">
         <td style="padding:6px 8px;font-weight:600">${esc(r.label)}</td>
         ${cats.map(c => { const v = r.cells[c.key] || 0; return `<td style="padding:6px 8px;text-align:right;color:${v ? 'inherit' : 'var(--muted)'}">${v ? lrFmt(d, v) : '·'}</td>`; }).join('')}
         <td style="padding:6px 8px;text-align:right;font-weight:700">${lrFmt(d, d.measure === 'count' ? r.count : r.value)}</td></tr>`).join('')}
@@ -4173,7 +4173,7 @@ function renderInboxList() {
   if (!inbox) return;
   if (!emailInboxCache.length) { inbox.innerHTML = '<div class="empty-state" style="padding:24px">No messages</div>'; return; }
   inbox.innerHTML = emailInboxCache.map(m => `
-    <div class="inbox-item" onclick="openEmail('${esc(m.id)}')" style="cursor:pointer;padding:14px 20px;border-bottom:1px solid rgba(var(--ov,255,255,255),.04);display:flex;gap:10px;align-items:flex-start;transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
+    <div class="inbox-item" onclick="openEmail('${esc(m.id)}')" style="cursor:pointer;padding:14px 20px;border-bottom:1px solid rgba(var(--ov,255,255,255),.04);display:flex;gap:10px;align-items:flex-start;transition:background .15s" onmouseover="this.style.background='rgba(var(--ov,255,255,255),.03)'" onmouseout="this.style.background=''">
       ${m.unread ? '<div class="unread-dot" style="width:8px;height:8px;background:var(--primary);border-radius:50%;flex-shrink:0;margin-top:5px"></div>' : '<div style="width:8px;flex-shrink:0"></div>'}
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px">
@@ -4356,7 +4356,7 @@ async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, co
               <th style="padding:10px 16px;border-bottom:1px solid var(--border)"></th>
             </tr></thead>
             <tbody>${files.map((f, i) => `
-              <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+              <tr style="border-bottom:1px solid rgba(var(--ov,255,255,255),.04)">
                 <td style="padding:12px 16px;font-size:13px">${driveFileIcon(f.mimeType)} ${esc(f.name)}</td>
                 <td style="padding:12px 16px;font-size:12px;color:var(--muted)">${f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '—'}</td>
                 <td style="padding:12px 16px;text-align:right;white-space:nowrap">
@@ -6323,8 +6323,11 @@ function renderLeadDrawer() {
   const badge = document.getElementById('ld-status');
   badge.textContent = (stMap[stKey] || c.lead_status || 'Cold') + ' ▾';
   const stHex = leadOptColor(stCol, stKey);
-  badge.style.background = stHex ? hexA(stHex, 0.12) : 'rgba(255,255,255,.06)';
-  badge.style.color = stHex || '#b9b3a4';
+  badge.style.background = stHex ? hexA(stHex, 0.12) : 'rgba(var(--ov,255,255,255),.06)';
+  badge.style.color = stHex || 'var(--text-2,#b9b3a4)';
+  // A colour somebody picked is data: light mode mixes it toward the text colour (.ce-pill).
+  badge.classList.toggle('ce-pill', !!stHex);
+  if (stHex) badge.style.setProperty('--ce-c', stHex); else badge.style.removeProperty('--ce-c');
   document.getElementById('ld-phone').textContent = c.phone || '';
   document.getElementById('ld-call').href = c.phone ? 'tel:' + c.phone : '#';
   document.getElementById('ld-wa').href = c.phone ? 'https://wa.me/' + ldWaDigits(c.phone) : '#';
@@ -6366,8 +6369,8 @@ function renderLeadDrawer() {
     let bodyHtml = esc(a.body || '');
     if (a.type === 'status_change' && a.meta?.to) {
       const fk = normKey(a.meta.from, stMap), tk = normKey(a.meta.to, stMap);
-      const pill = k => { const h = leadOptColor(stCol, k); return `background:${h ? hexA(h, 0.12) : 'rgba(255,255,255,.06)'};color:${h || '#b9b3a4'}`; };
-      bodyHtml = `Status: <span class="ld-stage-pill" style="${pill(fk)}">${esc(stMap[fk] || a.meta.from || '—')}</span> → <span class="ld-stage-pill" style="${pill(tk)}">${esc(stMap[tk] || a.meta.to)}</span>`;
+      const pill = (k, label) => { const h = leadOptColor(stCol, k); return `<span class="ld-stage-pill${h ? ' ce-pill' : ''}" style="background:${h ? hexA(h, 0.12) : 'rgba(var(--ov,255,255,255),.06)'};color:${h || 'var(--text-2,#b9b3a4)'}${h ? ';--ce-c:' + h : ''}">${esc(label)}</span>`; };
+      bodyHtml = `Status: ${pill(fk, stMap[fk] || a.meta.from || '—')} → ${pill(tk, stMap[tk] || a.meta.to)}`;
     }
     return `<div class="ld-tl-item">
       <div class="ld-tl-icon"><i data-lucide="${LD_ACT_ICONS[a.type] || 'circle'}"></i></div>

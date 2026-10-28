@@ -35,7 +35,7 @@ const matrix = ONLY ? [ONLY.split(':')]
   : FULL ? T.PRESET_ORDER.flatMap(p => [[p, 'dark'], [p, 'light']]).filter(([p, m]) => !(p === 'black-gold' && m === 'dark'))
   : CHECKED;
 
-const ADMIN_PAGES = ['home', 'tasks', 'employees', 'requests', 'hours', 'calendar', 'quotation', 'customers', 'deals', 'suppliers', 'rfqs', 'stock', 'contracts', 'purchaseorders', 'reports', 'accounting', 'automations', 'chat', 'notif'];
+const ADMIN_PAGES = ['home', 'tasks', 'employees', 'requests', 'hours', 'calendar', 'quotation', 'customers', 'deals', 'suppliers', 'rfqs', 'stock', 'contracts', 'purchaseorders', 'reports', 'accounting', 'automations', 'chat', 'notif', 'workspace'];
 const TEAM_PAGES = ['home', 'tasks', 'hours', 'requests', 'leads', 'deals', 'stock', 'suppliers', 'rfq', 'purchaseorders', 'contracts', 'issues', 'calendar', 'accounting', 'reports', 'quotation', 'chat', 'notif'];
 
 // Text that is allowed to fall short, and why. Each entry is matched against the element's
@@ -45,16 +45,24 @@ const ALLOWED = [
 ];
 
 // The tab strips the pages use (a tab that is already showing is not another screen).
-const TAB_SELECTOR = '.page.active .tab, .page.active .task-view-tab, .page.active .deal-tab, .page.active .logi-tab, .page.active [role="tab"], .page.active .acct-tab, .page.active .rep-tab';
+const TAB_SELECTOR = '.page.active .tab, .page.active .task-view-tab, .page.active .deal-tab, .page.active .logi-tab, .page.active [role="tab"], .page.active .acct-tab, .page.active .rep-tab, .page.active .wsa-tab';
 const TABS = sel => [...document.querySelectorAll(sel)].filter(e => e.checkVisibility() && !e.classList.contains('active')).map(e => (e.textContent || '').trim().slice(0, 18));
 
 // Runs in the page: [{ sig, text, fg, bg, ratio, need }] for everything that shows text.
 function auditPage() {
   const parse = c => {
+    c = String(c).trim();
     let m = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+%?))?\s*\)$/.exec(c);
     if (m) return [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : (m[4].endsWith('%') ? parseFloat(m[4]) / 100 : +m[4])];
     m = /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+%?))?\s*\)$/.exec(c);
     if (m) return [m[1] * 255, m[2] * 255, m[3] * 255, m[4] === undefined ? 1 : (m[4].endsWith('%') ? parseFloat(m[4]) / 100 : +m[4])];
+    // oklch(), color-mix in another space, display-p3…: a canvas turns any colour into sRGB bytes
+    if (/^(oklch|oklab|lch|lab|hwb|hsl|color)\(/.test(c)) {
+      const x = (parse.cv = parse.cv || document.createElement('canvas').getContext('2d', { willReadFrequently: true }));
+      x.canvas.width = x.canvas.height = 1; x.fillStyle = '#ff00ff'; x.fillStyle = c; x.fillRect(0, 0, 1, 1);
+      const d = x.getImageData(0, 0, 1, 1).data;
+      return [d[0], d[1], d[2], d[3] / 255];
+    }
     return null;
   };
   const over = (top, under) => {
@@ -165,6 +173,33 @@ function auditPage() {
 (async () => {
   const db = createFakeSupabase(seedTables(parseSchema()));
   db.install();
+  // A conversation, so the chat screens have bubbles to draw: the admin and the team member talk in a group.
+  const at = m => new Date(Date.UTC(2026, 2, 4, 9, m)).toISOString();
+  db.tables.chat_rooms = [{ id: 1, type: 'group', name: 'Showroom', created_by: 'admin', created_at: at(0), updated_at: at(9) }];
+  db.tables.chat_room_members = [{ room_id: 1, member_key: 'admin', member_name: 'Admin', joined_at: at(0) }, { room_id: 1, member_key: 'employee_1', member_name: 'Admin Person', joined_at: at(0) }];
+  db.tables.chat_messages = [
+    { id: 1, room_id: 1, sender_key: 'admin', sender_name: 'Admin', body: 'Morning team — the new stock arrives today.', created_at: at(1) },
+    { id: 2, room_id: 1, sender_key: 'employee_1', sender_name: 'Admin Person', body: 'Great. I will check the paperwork: https://example.com/shipment/42', created_at: at(2) },
+    { id: 3, room_id: 1, sender_key: 'admin', sender_name: 'Admin', body: 'Thanks! Please tell me if anything is missing.', created_at: at(3) },
+  ];
+  // The leads, in the six statuses the product ships and in a few a person might choose: the colour of
+  // a status is data (public/assets/columns.js), and the pill it draws is held to the same bar. The
+  // last five are the awkward ones — white, pale yellow, cyan, lime, hot pink.
+  const STATUSES = [['cold', 'Cold', '#b9b3a4'], ['warm', 'Warm', '#e69650'], ['hot', 'Hot', '#f87171'], ['immediate_delivery', 'Immediate Delivery', '#6dd8a4'],
+    ['not_interested', 'Not Interested', '#888888'], ['blacklist', 'Blacklist', '#dc2626'],
+    ['vip', 'VIP', '#ffffff'], ['sunny', 'Sunny', '#ffe066'], ['ice', 'Ice', '#00e5ff'], ['lime', 'Lime', '#c6ff3d'], ['pink', 'Pink', '#ff2bd6']];
+  db.tables.quotation_settings = (db.tables.quotation_settings || []).filter(r => r.key !== 'leads_columns_config').concat([{
+    key: 'leads_columns_config',
+    value: JSON.stringify([{ key: 'lead_status', label: 'Status', type: 'select', builtin: true, visible: true, options: STATUSES.map(([key, label, color]) => ({ key, label, color })) }]),
+  }]);
+  const first = db.tables.customers[0];
+  db.tables.customers = STATUSES.map(([key], i) => ({ ...first, id: i + 1, name: 'Lead ' + (i + 1), phone: '+97155000' + String(i + 10), phone_norm: '+97155000' + String(i + 10), lead_status: key }));
+  db.tables.lead_activities = [
+    { id: 1, customer_id: 1, type: 'status_change', body: 'Status changed', meta: { from: 'cold', to: 'vip' }, author_key: 'admin', author_name: 'Admin', created_at: at(5) },
+    { id: 2, customer_id: 1, type: 'status_change', body: 'Status changed', meta: { from: 'vip', to: 'sunny' }, author_key: 'admin', author_name: 'Admin', created_at: at(6) },
+    { id: 3, customer_id: 1, type: 'status_change', body: 'Status changed', meta: { from: 'sunny', to: 'ice' }, author_key: 'admin', author_name: 'Admin', created_at: at(7) },
+    { id: 4, customer_id: 1, type: 'status_change', body: 'Status changed', meta: { from: 'ice', to: 'hot' }, author_key: 'admin', author_name: 'Admin', created_at: at(8) },
+  ];
   const base = await bootApp({ port: process.env.PORT || 3965 });
   const ctx = require(path.join(__dirname, '..', 'src', 'ctx'));
   const { normEmpPerms, PERM_ACTIONS } = require(path.join(__dirname, '..', 'src', 'routes', 'employee-portal.js'));
@@ -232,6 +267,19 @@ function auditPage() {
         await page.evaluate(n => { try { navigate(n); } catch (e) {} }, pg);
         await sleep(450);
         await measure(pg);
+        // A lead open: its status in the header and the changes in the timeline.
+        if ((p.who === 'admin' && pg === 'customers') || (p.who === 'team' && pg === 'leads')) {
+          await page.evaluate(() => { try { openLeadProfile(1); } catch (e) {} });
+          await sleep(900);
+          await measure(pg + '→profile');
+          await page.evaluate(() => { try { closeLeadProfile(); } catch (e) {} });
+        }
+        // A conversation open, for the chat screens.
+        if (pg === 'chat') {
+          await page.evaluate(w => { try { w === 'admin' ? adminChatOpenRoom(1) : chatOpenRoom(1); } catch (e) {} }, p.who);
+          await sleep(700);
+          await measure('chat→room');
+        }
         // …and every tab the page has, one at a time (a tab is another screen).
         const tabs = await page.evaluate(TABS, TAB_SELECTOR);
         for (let i = 0; i < Math.min(tabs.length, 8); i++) {
