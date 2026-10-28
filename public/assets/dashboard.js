@@ -25,6 +25,10 @@ async function checkAuth() {
   try {
     const r = await apiFetch('/api/auth/check');
     if (r.status === 401) { showAuthScreen(); return false; }
+    // The server is up but could not reach its database, so it cannot say whether this
+    // login is still good. Keep the token and wait: treating it as signed out sent
+    // everyone to a login form that cannot work until the database is back.
+    if (r.status === 503) { bootRetryScreen('The database is not answering. Retrying automatically…'); return false; }
   } catch (_) {
     // Network down or server restarting. Showing the app anyway — the old
     // behaviour — meant every panel silently failed and the page looked blank.
@@ -62,7 +66,8 @@ function bootRetryScreen(message) {
   bootRetryScreen._t = setTimeout(async () => {
     try {
       const r = await fetch('/api/auth/check', { headers: authToken ? { Authorization: 'Bearer ' + authToken } : {} });
-      if (r.status > 0) location.reload();   // any HTTP answer means the server is back
+      // Any other HTTP answer means the server can tell now; 503 is its database still down.
+      if (r.status > 0 && r.status !== 503) location.reload(); else bootRetryScreen();
     } catch (_) { bootRetryScreen(); }       // still down — keep waiting
   }, 5000);
 }

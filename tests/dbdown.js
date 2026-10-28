@@ -56,14 +56,27 @@ async function outage() {
     asked.push({ method: String((init && init.method) || 'GET').toUpperCase(), url });
     if (mode === 'healthy') return viaDb(input, init);
     if (mode === 'gateway') return Promise.resolve(gatewayTimeout());
-    return new Promise(resolve => held.push(() => resolve(mode === 'healthy' ? viaDb(input, init) : gatewayTimeout())));
+    return new Promise((resolve, reject) => {
+      held.push(() => resolve(mode === 'healthy' ? viaDb(input, init) : gatewayTimeout()));
+      // As a real fetch does: a request its caller gives up on rejects at once.
+      const signal = init && init.signal;
+      if (signal) signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
   };
   const vapidReads = () => asked.filter(a => a.method === 'GET' && /google_tokens.*user_key=eq\.vapid/.test(a.url)).length;
   const tokenWrites = () => asked.filter(a => a.method !== 'GET' && /\/google_tokens/.test(a.url)).length;
+  // With its own deadline: a guard that waits on the stalled database never answers at
+  // all, and a test that hangs is no use to anyone. No answer reads as status 0.
+  const whoAmI = (p, token) => fetch(base + p, { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(5000) })
+    .catch(() => ({ status: 0 }));
 
   const started = Date.now();
   require(process.cwd() + '/index.js');
   const ctx = require(process.cwd() + '/src/ctx');
+  // Two sign-ins made before the outage, which this fresh container has never seen.
+  db.tables.sessions.push(
+    { token: 'stored-admin', kind: 'admin', payload: { username: 'admin', pwv: ctx.ADMIN_PW_VERSION }, created_at: new Date().toISOString() },
+    { token: 'stored-emp', kind: 'employee', payload: { id: 7, name: 'Rep', username: 'rep', permissions: {} }, created_at: new Date().toISOString() });
 
   // ── The database holds every query: the site still opens ─────────────────────
   let page = null;
@@ -77,6 +90,17 @@ async function outage() {
   if (!page) return done();   // nothing below can be asked of a server that is not there
   c('the push key is empty meanwhile, which the browser takes as "not yet"', (await pushKey()) === '');
 
+  // A sign-in the Map does not hold — every one, on a fresh container — is looked up in
+  // the sessions table. A stalled read is given up on, and the answer is 503, which the
+  // portals wait out with the token kept: not the 401 that signed everyone out.
+  ctx.SESSION_READ_TIMEOUT_MS = 300;
+  const asking = Date.now();
+  const adminStalled = await whoAmI('/api/auth/check', 'stored-admin');
+  const tookMs = Date.now() - asking;
+  c('a sign-in the database cannot confirm is a 503, not a 401', adminStalled.status === 503, `HTTP ${adminStalled.status}`);
+  c('…answered once the read is given up on, not when the gateway gives up', tookMs < 5000, `${tookMs} ms`);
+  c('…for the team portal too', (await whoAmI('/api/employee/check', 'stored-emp')).status === 503);
+
   // ── The gateway gives up: every held query, and every new one, is a 504 ───────
   ctx.BOOT_RETRY_MS = 200;
   mode = 'gateway';
@@ -86,6 +110,7 @@ async function outage() {
   c('…and nothing is written over the stored pair', tokenWrites() === 0, `${tokenWrites()} write(s) to google_tokens`);
   c('the read is tried again while the database is down', vapidReads() >= 2, `${vapidReads()} reads`);
   c('the Google tokens are not loaded yet either', !ctx.driveTokens);
+  c('a 504 from the gateway is a 503 to the portals as well', (await whoAmI('/api/auth/check', 'stored-admin')).status === 503);
 
   // ── The database recovers ────────────────────────────────────────────────────
   mode = 'healthy';
@@ -100,6 +125,10 @@ async function outage() {
   const settled = vapidReads();
   await sleep(800);
   c('the retries stop once a read succeeds', vapidReads() === settled, `${settled} → ${vapidReads()}`);
+  const [adminBack, empBack] = [await whoAmI('/api/auth/check', 'stored-admin'), await whoAmI('/api/employee/check', 'stored-emp')];
+  c('once it answers, both sign-ins are good: the 503s kept them instead of ending them',
+    adminBack.status === 200 && empBack.status === 200, `admin ${adminBack.status}, team ${empBack.status}`);
+  c('…and a token the database has never heard of is still a 401', (await whoAmI('/api/auth/check', 'no-such-token')).status === 401);
 
   // ── A first boot still makes, saves and serves a pair ─────────────────────────
   const child = spawnSync(process.execPath, [__filename, '--first-boot'], { encoding: 'utf8', timeout: 30_000 });
