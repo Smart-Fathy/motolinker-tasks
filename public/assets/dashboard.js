@@ -282,13 +282,13 @@ function renderTopPerformers(byEmployee) {
     c.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:12px">No assigned tasks yet</div>';
     return;
   }
-  const medalColors = ['#d4af37', '#b9bcc2', '#c58a4a'];   // gold, silver, bronze
+  const medalColors = ['var(--h-d4af37,#d4af37)', 'var(--h-b9bcc2,#b9bcc2)', 'var(--h-c58a4a,#c58a4a)'];   // gold, silver, bronze
   c.innerHTML = list.slice(0, 8).map((e, i) => {
     const pct = e.total ? Math.round((e.done / e.total) * 100) : 0;
     const initials = (e.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
     const avatar = e.avatar_url
       ? `<img src="${esc(e.avatar_url)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0">`
-      : `<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;font-size:10px;font-weight:700;flex-shrink:0">${initials}</span>`;
+      : `<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--primary);color:var(--on-primary-w,#fff);font-size:10px;font-weight:700;flex-shrink:0">${initials}</span>`;
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border)">
       <span style="width:26px;display:flex;align-items:center;justify-content:center;font-size:11px;color:${i < 3 ? medalColors[i] : 'var(--muted)'};flex-shrink:0">${i < 3 ? '<i data-lucide="award" style="width:15px;height:15px"></i>' : '#' + (i + 1)}</span>
       ${avatar}
@@ -3404,7 +3404,7 @@ async function loadEmployees() {
           const scoped = !!(sc.assignedOnly || (sc.dealStages && sc.dealStages.length) || (sc.leadStatuses && sc.leadStatuses.length));
           const badges = empPermsCell(p, scoped);
           const initials = (e.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-          const avatar = e.avatar_url ? `<img src="${esc(e.avatar_url)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;font-size:10px;font-weight:700;vertical-align:middle;margin-right:8px">${initials}</span>`;
+          const avatar = e.avatar_url ? `<img src="${esc(e.avatar_url)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--primary);color:var(--on-primary-w,#fff);font-size:10px;font-weight:700;vertical-align:middle;margin-right:8px">${initials}</span>`;
           const statusStr = (e.status_emoji || e.status_text) ? `${esc(e.status_emoji||'')} ${esc(e.status_text||'')}`.trim() : '—';
           return `<tr>
             <td><input type="checkbox" class="emp-pick" value="${e.id}" ${_empPicked.has(e.id) ? 'checked' : ''} onchange="empTogglePick(${e.id})"></td>
@@ -4138,7 +4138,7 @@ async function loadEmail() {
     c.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:36px;height:36px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px">${esc(status.name?.[0]||'?')}</div>
+          <div style="width:36px;height:36px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--on-primary-w,#fff);font-size:15px">${esc(status.name?.[0]||'?')}</div>
           <div><div style="font-weight:600;font-size:14px">${esc(status.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(status.email)}</div></div>
         </div>
         <div style="display:flex;gap:8px">
@@ -4337,7 +4337,7 @@ async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, co
       <div class="page-body">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
           <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:36px;height:36px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px">${esc(status.name?.[0]||'?')}</div>
+            <div style="width:36px;height:36px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--on-primary-w,#fff);font-size:15px">${esc(status.name?.[0]||'?')}</div>
             <div><div style="font-weight:600;font-size:14px">${esc(status.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(status.email)}</div></div>
           </div>
           <button class="btn btn-outline" onclick="${disconnectFn}()" style="font-size:12px">Disconnect</button>

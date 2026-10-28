@@ -124,6 +124,34 @@ function auditPage() {
     seen.add(key);
     out.push({ sig, parent, text: text.slice(0, 28), fg: hex(fg), bg: hex(worstBg), ratio: Math.round(worst * 100) / 100, need });
   }
+  // Icons: a graphic that carries meaning is held to 3:1 (WCAG 1.4.11), drawn in the colour it inherits.
+  for (const el of document.body.querySelectorAll('svg.lucide')) {
+    if (!el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 8 || r.height < 8) continue;
+    if (el.closest('[disabled], [aria-disabled="true"], .disabled')) continue;
+    const cs = getComputedStyle(el);
+    const fg = parse(cs.color);
+    if (!fg) continue;
+    const cand = ground(el);
+    if (!cand) continue;
+    let worst = 99, worstBg = null;
+    for (const bg of cand) {
+      const solidBg = bg[3] < 1 ? over(bg, [255, 255, 255, 1]) : bg;
+      const ink = fg[3] < 1 ? over(fg, solidBg) : fg;
+      const rr = ratio(ink, solidBg);
+      if (rr < worst) { worst = rr; worstBg = solidBg; }
+    }
+    if (worst >= 3) continue;
+    const name = (el.getAttribute('class') || '').match(/lucide-([a-z0-9-]+)/);
+    const sig = 'icon ' + (name ? name[1] : '?');
+    const p = el.parentElement;
+    const parent = p ? p.localName + (p.getAttribute('class') ? '.' + p.getAttribute('class').trim().split(/\s+/)[0] : '') : '';
+    const key = sig + '|' + parent + '|' + hex(fg) + '|' + hex(worstBg);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ sig, parent, text: '', fg: hex(fg), bg: hex(worstBg), ratio: Math.round(worst * 100) / 100, need: 3 });
+  }
   return out;
 }
 
@@ -159,7 +187,20 @@ function auditPage() {
       await page.setRequestInterception(true);
       page.on('request', req => { if (/unpkg|jsdelivr|fonts\.g|gstatic/.test(req.url())) return req.respond({ status: 200, contentType: 'text/plain', body: '' }); req.continue(); });
       await page.evaluateOnNewDocument((key, token, mode) => {
-        window.lucide = { createIcons() {} };
+        // Draws what lucide draws (an <svg class="lucide …"> in the <i>'s place, with its class and style),
+        // minus the glyph: the page lays out and colours its icons as it would, and they can be measured.
+        window.lucide = { createIcons() {
+          for (const i of document.querySelectorAll('i[data-lucide]')) {
+            const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            for (const a of i.attributes) if (a.name !== 'data-lucide') s.setAttribute(a.name, a.value);
+            s.setAttribute('class', ('lucide lucide-' + i.getAttribute('data-lucide') + ' ' + (i.getAttribute('class') || '')).trim());
+            if (!s.getAttribute('width')) s.setAttribute('width', '24');
+            if (!s.getAttribute('height')) s.setAttribute('height', '24');
+            s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '2');
+            s.innerHTML = '<rect x="4" y="4" width="16" height="16" rx="3"/>';
+            i.replaceWith(s);
+          }
+        } };
         window.Chart = function () { return { destroy() {}, update() {} }; };
         localStorage.setItem(key, token);
         localStorage.setItem('ml_mode', mode);

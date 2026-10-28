@@ -1500,7 +1500,7 @@ async function loadDriveSection(statusUrl, filesUrl, connectUrl, disconnectUrl, 
     c.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:34px;height:34px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff">${esc(status.name?.[0]||'?')}</div>
+          <div style="width:34px;height:34px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--on-primary-w,#fff)">${esc(status.name?.[0]||'?')}</div>
           <div><div style="font-weight:600;font-size:14px">${esc(status.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(status.email)}</div></div>
         </div>
         <button class="btn btn-outline" style="font-size:12px" onclick="disconnectDrive('${disconnectUrl}','${contentId}','${title}','${icon}')">Disconnect</button>
@@ -2995,7 +2995,7 @@ async function renderEmailInbox(status) {
   c.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
       <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:34px;height:34px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff">${esc(status.name?.[0]||'?')}</div>
+        <div style="width:34px;height:34px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--on-primary-w,#fff)">${esc(status.name?.[0]||'?')}</div>
         <div><div style="font-weight:600;font-size:14px">${esc(status.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(status.email)}</div></div>
       </div>
       <button class="btn btn-outline" style="font-size:12px" onclick="empEmailDisconnect()">Disconnect</button>

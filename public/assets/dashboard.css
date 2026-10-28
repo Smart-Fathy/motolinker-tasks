@@ -879,6 +879,8 @@
     --gold:var(--sb-accent,#c9a35e); --primary:var(--sb-accent,#c9a35e); --primary-text:var(--sb-accent,#c9a35e); --primary-rgb:var(--sb-accent-rgb,201,163,94);
     --t-dim:var(--sb-t-dim); --t-soft:var(--sb-t-soft);
     color:var(--text,#f3efe7);
+    --h-c9a35e:var(--sb-accent); --h-6dd8a4:var(--sb-h-6dd8a4); --h-9fb0bd:var(--sb-h-9fb0bd); --h-94a3b8:var(--sb-h-94a3b8);
+    --h-f59e0b:var(--sb-h-f59e0b); --h-c98b5e:var(--sb-h-c98b5e); --h-a78bfa:var(--sb-h-a78bfa);
     --hair:var(--sb-hair,rgba(255,255,255,.09)); --hair-gold:var(--sb-hair-gold,rgba(201,163,94,.22));
     --border:var(--sb-hair,rgba(255,255,255,.09));
   }
@@ -1806,20 +1808,20 @@
    * accent reaches a rail item, a favourite and a picker row alike without the
    * consumer's specificity deciding the winner — .nav-fav .nav-item .nav-icon
    * is (0,3,0) and would beat any [data-group] selector on its own. */
-  [data-group="management"]  { --nav-c:#c9a35e; }
-  [data-group="crm"]         { --nav-c:#6dd8a4; }
-  [data-group="logistics"]   { --nav-c:#9fb0bd; }
-  [data-group="integrations"]{ --nav-c:#94a3b8; }
-  [data-group="chat"]        { --nav-c:#f59e0b; }
-  [data-group="google"]      { --nav-c:#c98b5e; }
-  [data-group="system"]      { --nav-c:#8d897f; }
-  [data-group="operations"]  { --nav-c:#9fb0bd; }
+  [data-group="management"]  { --nav-c:var(--h-c9a35e,#c9a35e); }
+  [data-group="crm"]         { --nav-c:var(--h-6dd8a4,#6dd8a4); }
+  [data-group="logistics"]   { --nav-c:var(--h-9fb0bd,#9fb0bd); }
+  [data-group="integrations"]{ --nav-c:var(--h-94a3b8,#94a3b8); }
+  [data-group="chat"]        { --nav-c:var(--h-f59e0b,#f59e0b); }
+  [data-group="google"]      { --nav-c:var(--h-c98b5e,#c98b5e); }
+  [data-group="system"]      { --nav-c:var(--muted,#8d897f); }
+  [data-group="operations"]  { --nav-c:var(--h-9fb0bd,#9fb0bd); }
 
   /* The Accounting item: one colourful brain among monochrome chips, on purpose.
    * The gradient stroke lives on the inline SVG (#ml-ai-grad in the markup);
    * this is the chip behind it. :has() carries it into the favourites row and
    * the shortcut picker, whose clones copy the icon but not the class. */
-  [data-group="finance"]      { --nav-c:#a78bfa; }
+  [data-group="finance"]      { --nav-c:var(--h-a78bfa,#a78bfa); }
   .nav-item .nav-icon.nav-icon-ai, .nav-icon:has(> .ml-brain){
     background:linear-gradient(135deg, rgba(244,114,182,.22), rgba(167,139,250,.22) 40%, rgba(56,189,248,.22) 75%, rgba(52,211,153,.22));
   }

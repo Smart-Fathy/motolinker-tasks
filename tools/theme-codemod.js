@@ -256,9 +256,9 @@ PASSES['hue'] = {
   },
 };
 PASSES['hue-var'] = {
-  about: '--c: <a hue as hex> → var(--h-<hex>, <the hex>) (the tile or chip draws its text and washes from it)',
+  about: '--c / --nav-c: <a hue as hex> → var(--h-<hex>, <the hex>) (the tile or chip draws its text and washes from it)',
   custom: true,
-  forward(value, d) { return d.prop === '--c' ? hueSite(value) : null; },
+  forward(value, d) { return d.prop === '--c' || d.prop === '--nav-c' ? hueSite(value) : null; },
 };
 
 // A shadow is black at some opacity: --sh-k scales it (a light page softens every one at
@@ -273,6 +273,21 @@ PASSES['shadow-vars'] = {
   about: 'the same, in the --shadow tokens',
   custom: true,
   forward(value, d) { return /^--shadow/.test(d.prop) ? shadowSite(value) : null; },
+};
+
+// A status colour that carries white text (a Delete button, a count badge) is a fill, not text,
+// and wants a different shade from the same hue read as text: a chosen dark look lifts the
+// text and darkens the fill. Only rules that say color:#fff are touched, so dots and bars,
+// which have no text on them, keep the colour they have.
+PASSES['dfill'] = {
+  about: 'a status colour under white text → var(--danger-fill|--success-fill|--warning-fill, <the status colour>)',
+  forward(value, d, ctx) {
+    if (!/^(background|background-color|border-color)$/.test(d.prop)) return null;
+    const m = /^(\s*)var\(--(danger|success|warning)\)(\s*)$/.exec(value);
+    if (!m) return null;
+    const white = d.rule.decls.some(x => x.prop === 'color' && /^\s*(#fff|#ffffff)\s*$/i.test(ctx.text.slice(x.valueStart, x.valueEnd)));
+    return white ? m[1] + 'var(--' + m[2] + '-fill,var(--' + m[2] + '))' + m[3] : null;
+  },
 };
 
 // Secondary text made of the page's ink at 30–65%: each keeps its own opacity until a look is
@@ -462,7 +477,7 @@ function apply(css, passNames, file, lineBase = 0) {
     for (const d of decls.reverse()) {
       const value = out.slice(d.valueStart, d.valueEnd);
       if (value.includes('\u0001')) continue;   // an interpolation is in it: not ours to read
-      const ctx = { file, line: lineBase + out.slice(0, d.start).split('\n').length, selector: d.rule.head.replace(/\s+/g, ' ').slice(0, 80), review };
+      const ctx = { file, line: lineBase + out.slice(0, d.start).split('\n').length, selector: d.rule.head.replace(/\s+/g, ' ').slice(0, 80), review, text: out };
       const next = pass.forward(value, d, ctx);
       if (next != null && next !== value) { out = out.slice(0, d.valueStart) + next + out.slice(d.valueEnd); count++; }
     }

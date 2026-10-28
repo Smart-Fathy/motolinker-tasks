@@ -343,6 +343,8 @@
     const sbField = mix(P.sidebar, sbText, 0.08);   // the search box and other inset things, a step off the rail
     const sbMuted = ensure(ensure(mix(sbText, P.sidebar, 0.42), P.sidebar, 4.5), sbField, 4.5);
     const sbText2 = ensure(mix(sbText, P.sidebar, 0.2), P.sidebar, 7);
+    // A hue the rail draws an icon chip in: held to 4.5:1 on a wash of itself over the rail
+    const sbHue = hex => ensure(hex, over(hex, P.sidebar, 0.15), 4.5, luminance(P.sidebar) < 0.4 ? 'lighter' : 'darker');
     const sbBase = n.theme.accent || preset.dark.accent, sbTint = accentTint(luminance(P.sidebar) < 0.4);
     let sbAccent = sbBase;
     for (let i = 0; i < 6; i++) {
@@ -372,7 +374,7 @@
       soft: P.soft || lift(fill, dark ? 0.28 : 0.35, onFill(fill)),
       lite: P.lite || lift(fill, dark ? 0.5 : 0.55, onFill(fill)),
       dim: P.dim || mix(fill, '#000000', dark ? 0.4 : 0.32),
-      sbText, sbText2, sbMuted, sbAccent, sbField, sink,
+      sbText, sbText2, sbMuted, sbAccent, sbField, sbHue, sink,
     };
   }
 
@@ -402,10 +404,14 @@
   // app was first drawn in: wherever a script still says it, it follows the workspace's accent.
   const OLD_ACCENT = '#c9a35e';
   const HUES = ['#6dd8a4', '#e57373', '#e6a850', '#9fb0bd', '#a78bfa', '#c98b5e', '#8a9a86', '#f59e0b', '#ef4444', '#10b981',
-    '#38bdf8', '#f87171', '#f472b6', '#e69650', '#5ab478', '#7fce9a', '#7cc4ff', '#7c6aff', '#5a78c8', '#64b478', '#8aa4e0'];
+    '#38bdf8', '#f87171', '#f472b6', '#e69650', '#5ab478', '#7fce9a', '#7cc4ff', '#7c6aff', '#5a78c8', '#64b478', '#8aa4e0', '#94a3b8',
+    '#d4af37', '#b9bcc2', '#c58a4a'];   // (the last three are the leaderboard's gold, silver and bronze)
+  // The hues the rail colours its group icons with. The rail is its own surface, so it gets its own
+  // copy of each (--sb-h-<hex>), sunk or lifted for the rail's colour rather than the page's.
+  const NAV_HUES = ['#6dd8a4', '#9fb0bd', '#94a3b8', '#f59e0b', '#c98b5e', '#a78bfa'];
   const hueToken = hex => '--h-' + hex.slice(1);
   // Tokens the stylesheets leave undefined (each use carries its own fallback) and a look may define.
-  const LIGHT_ONLY = ['--alt-rgb', '--t-dim', '--t-soft', '--glow', '--chev-select', '--cal-today', '--sh-k'].concat(HUES.concat(OLD_ACCENT).map(hueToken));
+  const LIGHT_ONLY = ['--on-primary-w', '--alt-rgb', '--t-dim', '--t-soft', '--glow', '--chev-select', '--cal-today', '--sh-k'].concat(HUES.concat(OLD_ACCENT).map(hueToken));
 
   // ── What the sheets already say ─────────────────────────────────────────────
   // The new tokens' values as the stylesheets carry them today — written into both :root
@@ -476,6 +482,7 @@
     v['--primary-glow-strong'] = rgba(c.accent, 0.25);
     v['--on-primary'] = c.onAccent;
     v['--on-primary-2'] = c.onAccent2;
+    v['--on-primary-w'] = c.onAccent;   // the older spots that wrote white on the accent: the ink that reads on it
     v['--gold'] = c.accent;
     v['--gold-soft'] = c.soft;
     v['--gold-deep'] = c.deep;
@@ -501,6 +508,7 @@
     v['--sb-hair'] = rgba(c.sbText, 0.09);
     v['--sb-hair-gold'] = rgba(c.sbAccent, 0.22);
     v['--sb-glass-border'] = rgba(c.sbText, 0.07);
+    for (const h of NAV_HUES) v['--sb-h-' + h.slice(1)] = c.sbHue(h);
     // Secondary text the sheets write as the ink at 30-65% — a caption, a hint, a muted label.
     // The sheets keep each one's own opacity until a look is chosen; then a caption is the
     // least that reads, and a softer label a little more.
@@ -657,7 +665,7 @@
   return {
     VERSION: 1,
     PRESETS, PRESET_ORDER, DEFAULT_PRESET, FONTS, FONT_ORDER, DEFAULT_FONTS, DEFAULT_SHAPE, RADIUS_K, DENSITY_K, GLOWS, MODES, NEUTRAL_KEYS, TEXT_KEYS, STATUS, BASE,
-    HUES, OLD_ACCENT, hueToken, normalize, validate, custom, inputs, palette, deriveVars, fontVars, shapeVars, renderThemeCss, fontsHref, bootScript, defaultMode, themeColor, report, problems,
+    HUES, NAV_HUES, OLD_ACCENT, hueToken, normalize, validate, custom, inputs, palette, deriveVars, fontVars, shapeVars, renderThemeCss, fontsHref, bootScript, defaultMode, themeColor, report, problems,
     color: { isHex, normHex, rgb, toHex, triplet, rgba, luminance, contrast, mix, over, toHsl, fromHsl, ensure, onFill },
   };
 });
