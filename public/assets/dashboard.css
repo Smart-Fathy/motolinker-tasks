@@ -1239,7 +1239,7 @@
   .hd-q[data-q="0"] { color:var(--muted,#8d897f); }
   .hd-q[data-q="1"] { color:var(--danger); }
   .hd-q[data-q="2"] { color:var(--primary-text,var(--gold,#c9a35e)); }
-  .hd-q[data-q="3"] { color:#8a9a86; }
+  .hd-q[data-q="3"] { color:var(--h-8a9a86,#8a9a86); }
   .hd-q[data-q="1"] i:nth-child(1),
   .hd-q[data-q="2"] i:nth-child(-n+2),
   .hd-q[data-q="3"] i { opacity:1; }

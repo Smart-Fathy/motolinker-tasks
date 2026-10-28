@@ -153,16 +153,16 @@
       .acct-table td{padding:8px 9px;border-bottom:1px solid rgba(var(--ov,255,255,255),.05);vertical-align:middle}
       .acct-table td.n,.acct-table th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
       .acct-pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700;white-space:nowrap}
-      .acct-pill.ok{background:rgba(109,216,164,.15);color:var(--w-mint,#6dd8a4)}.acct-pill.warn{background:rgba(230,168,80,.16);color:#e6a850}
-      .acct-pill.bad{background:rgba(229,115,115,.16);color:#e57373}.acct-pill.mut{background:rgba(var(--ov,255,255,255),.07);color:var(--muted,#9a958a)}
-      .acct-pill.in{background:rgba(109,216,164,.15);color:var(--w-mint,#6dd8a4)}.acct-pill.out{background:rgba(229,115,115,.16);color:#e57373}
+      .acct-pill.ok{background:rgba(109,216,164,.15);color:var(--w-mint,#6dd8a4)}.acct-pill.warn{background:rgba(230,168,80,.16);color:var(--h-e6a850,#e6a850)}
+      .acct-pill.bad{background:rgba(229,115,115,.16);color:var(--h-e57373,#e57373)}.acct-pill.mut{background:rgba(var(--ov,255,255,255),.07);color:var(--muted,#9a958a)}
+      .acct-pill.in{background:rgba(109,216,164,.15);color:var(--w-mint,#6dd8a4)}.acct-pill.out{background:rgba(229,115,115,.16);color:var(--h-e57373,#e57373)}
       .acct-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
       .acct-filters select,.acct-filters input{background:var(--surface,#141416);color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:calc(8px * var(--r-k,1));padding:6px 9px;font:inherit;font-size:12.5px}
       .acct-btn{padding:7px 13px;border-radius:calc(9px * var(--r-k,1));border:1px solid var(--border,#2a2a2e);background:none;color:var(--text,#e8e4da);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
       .acct-btn.pri{background:linear-gradient(135deg,var(--gold-soft,#d9bd7f),var(--primary,#c9a35e));color:var(--on-primary,#0c0c0e);border-color:transparent}
       .acct-btn.ai{border-color:rgba(167,139,250,.45);background:linear-gradient(135deg,rgba(244,114,182,.16),rgba(167,139,250,.16) 45%,rgba(56,189,248,.16));display:inline-flex;align-items:center;gap:7px}
       .acct-btn.ai .ml-brain{width:14px;height:14px}
-      .acct-btn.danger{color:#e57373;border-color:rgba(229,115,115,.35)}
+      .acct-btn.danger{color:var(--h-e57373,#e57373);border-color:rgba(229,115,115,.35)}
       .acct-btn:disabled{opacity:.5;cursor:default}
       .acct-ins{border:1px solid rgba(167,139,250,.35);background:linear-gradient(160deg,rgba(167,139,250,.08),rgba(56,189,248,.05) 60%,rgba(var(--surface-rgb,20,20,22),0));border-radius:calc(14px * var(--r-k,1));padding:14px 16px}
       .acct-ins-head{display:flex;align-items:center;gap:9px;margin-bottom:10px}
@@ -174,7 +174,7 @@
       .acct-ins ul{margin:0;padding-left:16px}.acct-ins li{font-size:12.5px;line-height:1.55;margin-bottom:5px}
       .acct-ins .ar{direction:rtl;text-align:right;padding-left:0;padding-right:16px}
       .acct-ins textarea{width:100%;min-height:74px;background:var(--field-bg-2,#101013);color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:calc(9px * var(--r-k,1));padding:8px 10px;font:inherit;font-size:12.5px;resize:vertical;box-sizing:border-box}
-      .acct-warn{font-size:11.5px;color:#e6a850;margin:0 0 12px}
+      .acct-warn{font-size:11.5px;color:var(--h-e6a850,#e6a850);margin:0 0 12px}
       .acct-narr h2{font-family:var(--font-head,'Cormorant Garamond',serif);font-size:20px;margin:16px 0 6px;color:var(--primary-text,var(--gold,#c9a35e))}
       .acct-narr p,.acct-narr li{font-size:13px;line-height:1.65}
       .acct-narr[dir="rtl"]{text-align:right}
@@ -204,9 +204,9 @@
       .acai-tag{font-size:9px;text-transform:uppercase;letter-spacing:.05em;opacity:.55;margin-top:5px}
       .acai-work{margin-top:7px;font-size:11px;color:var(--muted,#9a958a)}
       .acai-work summary{cursor:pointer}
-      .acai-work code{display:block;margin-top:4px;font-size:11px;white-space:pre-wrap;word-break:break-all;color:#a78bfa}
+      .acai-work code{display:block;margin-top:4px;font-size:11px;white-space:pre-wrap;word-break:break-all;color:var(--h-a78bfa,#a78bfa)}
       .acai-chip{display:inline-block;margin:4px 4px 0 0;padding:6px 10px;font-size:12px;border:1px solid var(--border,#2a2a2e);border-radius:calc(16px * var(--r-k,1));cursor:pointer;color:var(--muted,#9a958a);background:none}
-      .acai-chip:hover{border-color:#a78bfa;color:#a78bfa}
+      .acai-chip:hover{border-color:#a78bfa;color:var(--h-a78bfa,#a78bfa)}
       .acai-composer{display:flex;gap:8px;padding:12px;border-top:1px solid var(--border,#2a2a2e)}
       .acai-composer textarea{flex:1;resize:none;background:var(--field-bg-2,#101013);color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:calc(10px * var(--r-k,1));padding:9px 12px;font-size:13.5px;font-family:inherit;max-height:120px}
       .acai-send{background:linear-gradient(135deg,#f472b6,#a78bfa 45%,#38bdf8);color:var(--on-primary,#0c0c0e);border:none;border-radius:calc(10px * var(--r-k,1));padding:0 14px;cursor:pointer;font-weight:700}
@@ -403,7 +403,7 @@
       <div class="acct-kpis">
         ${kpi('Outstanding', d.outstanding, '#e6a850', `${rows.length} open sales · as of ${h(d.as_of || '')}`)}
         ${kpi('Overdue', d.overdue, '#e57373', `${N(d.overdue_count)} sales past due`)}
-        <div class="acct-kpi" style="--c:#6dd8a4"><span class="l">Settled</span><div class="v">${N(d.settled)}</div><div class="s">sales fully paid</div></div>
+        <div class="acct-kpi" style="--c:var(--h-6dd8a4,#6dd8a4)"><span class="l">Settled</span><div class="v">${N(d.settled)}</div><div class="s">sales fully paid</div></div>
       </div>
       <div class="acct-card" style="margin-bottom:14px"><div class="acct-card-head"><h3>Aging</h3><span>how old the money owed is</span><button class="acct-mini" onclick="acctExport('receivables')" ${can('accounting', 'export') ? '' : 'hidden'}>CSV</button></div>
         ${A(d.buckets).map(b => { const a = aging[b.key] || {}; return `<div class="acct-row"><span class="nm">${h(b.label)}</span><span class="mt">${N(a.count)} sale${N(a.count) === 1 ? '' : 's'}</span><span class="vl">EGP ${money(a.amount)}</span><span class="tr"><i style="width:${Math.round(N(a.amount) / tot * 100)}%;background:${b.key === 'current' ? '#9fb0bd' : b.key === '1_30' || b.key === '31_60' ? '#e6a850' : '#e57373'}"></i></span></div>`; }).join('')}
@@ -453,8 +453,8 @@
         ${kpi('Freight', cogs.freight, '#9fb0bd')}
         ${kpi('Customs', cogs.customs, '#9fb0bd')}
         ${kpi('Total vehicle cost', cogs.total, '#e57373', 'paid out in range')}
-        <div class="acct-kpi" style="--c:#c98b5e"><span class="l">POs in range</span><div class="v">${Object.keys(byCcy).length ? Object.entries(byCcy).map(([c, v]) => `${h(c)} ${shortM(v)}`).join(' · ') : '—'}</div><div class="s">${N(d.po_in_range)} purchase orders (PI totals)</div></div>
-        <div class="acct-kpi" style="--c:#a78bfa"><span class="l">Indicative USD rate</span><div class="v">${rate ? N(rate.rate).toFixed(2) : '—'}</div><div class="s">${rate ? 'last USD movement booked ' + h(rate.as_of) : 'no USD movement recorded yet'}</div></div>
+        <div class="acct-kpi" style="--c:var(--h-c98b5e,#c98b5e)"><span class="l">POs in range</span><div class="v">${Object.keys(byCcy).length ? Object.entries(byCcy).map(([c, v]) => `${h(c)} ${shortM(v)}`).join(' · ') : '—'}</div><div class="s">${N(d.po_in_range)} purchase orders (PI totals)</div></div>
+        <div class="acct-kpi" style="--c:var(--h-a78bfa,#a78bfa)"><span class="l">Indicative USD rate</span><div class="v">${rate ? N(rate.rate).toFixed(2) : '—'}</div><div class="s">${rate ? 'last USD movement booked ' + h(rate.as_of) : 'no USD movement recorded yet'}</div></div>
       </div>
       ${insCard('payables', 'AI cost analysis')}
       <div class="acct-grid" style="margin-top:14px">

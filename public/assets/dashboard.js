@@ -6871,7 +6871,7 @@ async function openDedupeModal() {
       _dedupeGroups.map((g, gi) => `
         <div style="border:1px solid var(--hair);border-radius:calc(8px * var(--r-k,1));padding:10px 12px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            <span style="font-size:12px;background:rgba(100,180,120,.15);color:#7fce9a;padding:2px 8px;border-radius:calc(6px * var(--r-k,1))">KEEP</span>
+            <span style="font-size:12px;background:rgba(100,180,120,.15);color:var(--h-7fce9a,#7fce9a);padding:2px 8px;border-radius:calc(6px * var(--r-k,1))">KEEP</span>
             <strong style="font-size:13px">${esc(g.keeper.name || '(no name)')}</strong>
             <span style="font-size:11px;color:var(--muted)">${esc(fmt(g.keeper))} · #${g.keeper.id}</span>
           </div>

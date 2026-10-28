@@ -77,12 +77,12 @@ function chatIcons() { try { if (window.lucide && lucide.createIcons) lucide.cre
     s.id = 'chat-extras-style';
     s.textContent = `
       .chat-msg-bubble{white-space:pre-wrap}
-      .chat-link{color:#7cc4ff;text-decoration:underline;text-underline-offset:2px}
+      .chat-link{color:var(--h-7cc4ff,#7cc4ff);text-decoration:underline;text-underline-offset:2px}
       .chat-msg.mine .chat-link{color:inherit}
-      .chat-mention{color:#a78bfa;font-weight:800}
+      .chat-mention{color:var(--h-a78bfa,#a78bfa);font-weight:800}
       .chat-msg.mine .chat-mention{color:inherit;text-decoration:underline;text-underline-offset:2px}
       .chat-msg.assistant .chat-msg-bubble{background:linear-gradient(160deg,rgba(167,139,250,.14),rgba(56,189,248,.08));border:1px solid rgba(167,139,250,.45)}
-      .chat-msg.assistant .chat-msg-sender{color:#a78bfa}
+      .chat-msg.assistant .chat-msg-sender{color:var(--h-a78bfa,#a78bfa)}
       .chat-msg.assistant .chat-msg-avatar{border:1px solid rgba(167,139,250,.5)}
       .chat-mention-box{position:fixed;z-index:9990;background:var(--surface,#141416);border:1px solid rgba(167,139,250,.45);border-radius:calc(10px * var(--r-k,1));padding:4px;box-shadow:0 10px 30px rgba(0,0,0,calc(.45 * var(--sh-k,1)));min-width:220px}
       .chat-mention-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:calc(8px * var(--r-k,1));cursor:pointer;font-size:13px;color:var(--text,#e8e4da)}
