@@ -294,6 +294,7 @@ POST /api/dashboard/tasks/upload
 POST /api/employee/tasks/upload
 GET /api/workspace
 PUT /api/dashboard/workspace
+PUT /api/dashboard/workspace/theme
 POST /api/dashboard/workspace/logo
 DELETE /api/dashboard/workspace/logo
 POST /api/dashboard/link-preview

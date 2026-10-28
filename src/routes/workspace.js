@@ -1,4 +1,4 @@
-// The workspace's name and picture. src/ctx.js explains the context object.
+// The workspace's name, picture and look. src/ctx.js explains the context object.
 //
 // Both portals called themselves "MotoLinker" in markup, and the round mark in the
 // corner was a stylesheet background — so changing either meant a deploy. They are a
@@ -6,10 +6,18 @@
 // the moment they change. Stored in the quotation_settings key/value table the rest
 // of the org-wide settings live in, so this needs no migration.
 //
-// Reading is public on purpose: the sign-in pages show the workspace's name and
-// picture before anyone has signed in, the way a chat workspace's own sign-in page
+// The look — colours, fonts, shape, the wording on the sign-in pages — lives in the
+// same record, as data: a preset id, hex colours, ids from an allow-list, small
+// integers, short plain text. public/assets/theme-core.js is the only thing that turns
+// it into CSS (custom properties and nothing else), and it is run here on every read
+// as well as every write, so a row that was edited by hand cannot put anything but a
+// colour into a page.
+//
+// Reading is public on purpose: the sign-in pages show the workspace's name, picture
+// and look before anyone has signed in, the way a chat workspace's own sign-in page
 // does. Nothing else is in the record.
 const ctx = require('../ctx');
+const ThemeCore = require('../../public/assets/theme-core.js');
 const { crypto, express, multer, receiver, requireAuth, supabase } = ctx.need('crypto', 'express', 'multer', 'receiver', 'requireAuth', 'supabase');
 
 const WORKSPACE_KEY = 'workspace_profile';
@@ -19,45 +27,62 @@ const WORKSPACE_NAME_MAX = 60;
 const WORKSPACE_TTL_MS = 60_000;
 let cached = null;   // { profile, at }
 
+// The picture is put into a stylesheet's url(), so only an address this app wrote is
+// believed: our own storage bucket, our own folder, a plain file name.
+const LOGO_URL = /^https?:\/\/[^\s"'()<>\\]+\/storage\/v1\/object\/public\/chat-files\/workspace\/[\w.-]+$/;
+// The four sections of the look, each saved whole.
+const LOOK_SECTIONS = ['theme', 'typography', 'shape', 'texts'];
+
 function workspaceShape(raw) {
-  const v = raw && typeof raw === 'object' ? raw : {};
-  const name = String(v.name || '').trim();
+  const v = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const name = workspaceCleanName(v.name).slice(0, WORKSPACE_NAME_MAX);
+  const look = ThemeCore.normalize(v);
   return {
     name: name || WORKSPACE_DEFAULT_NAME,
-    logo_url: typeof v.logo_url === 'string' ? v.logo_url : '',
-    updated_at: v.updated_at || null,
+    logo_url: typeof v.logo_url === 'string' && LOGO_URL.test(v.logo_url) ? v.logo_url : '',
+    updated_at: typeof v.updated_at === 'string' ? v.updated_at : null,
     custom_name: !!name,
+    theme: look.theme, typography: look.typography, shape: look.shape, texts: look.texts,
   };
+}
+
+// The stored record as it is, or null if there is none. Throws if the database can't answer.
+async function workspaceRaw() {
+  const { data, error } = await supabase.from('quotation_settings').select('value').eq('key', WORKSPACE_KEY).maybeSingle();
+  if (error) throw error;
+  if (!data || !data.value) return null;
+  try { const v = JSON.parse(data.value); return v && typeof v === 'object' && !Array.isArray(v) ? v : null; }
+  catch (_) { return null; }   // a row that isn't JSON is no profile, not a reason to call the database down
 }
 
 async function workspaceProfile({ fresh = false } = {}) {
   if (!fresh && cached && Date.now() - cached.at < WORKSPACE_TTL_MS) return cached.profile;
-  let raw = null;
-  try {
-    const { data, error } = await supabase.from('quotation_settings').select('value').eq('key', WORKSPACE_KEY).maybeSingle();
-    if (error) throw error;
-    if (data && data.value) raw = JSON.parse(data.value);
-  } catch (e) {
+  let raw;
+  try { raw = await workspaceRaw(); }
+  catch (e) {
     // A database that can't answer still gets a named workspace: the default, not an error page.
     console.warn('[workspace] could not read the workspace profile:', e.message);
     if (cached) return cached.profile;
-    return workspaceShape(null);
+    // Said out loud, so nobody mistakes it for the real thing: a page that gets this has
+    // not heard from the database, and must not forget the look it already has.
+    return { ...workspaceShape(null), degraded: true };
   }
   const profile = workspaceShape(raw);
   cached = { profile, at: Date.now() };
   return profile;
 }
 
+// Changes are merged onto the record as stored, not rebuilt from what this module
+// knows: a name change must not undo a colour change, and one made by a newer version
+// of the app must survive a save from an older one.
 async function workspaceSave(patch) {
-  const current = await workspaceProfile({ fresh: true });
-  const next = {
-    name: current.custom_name ? current.name : '',
-    logo_url: current.logo_url,
-    ...patch,
-    updated_at: new Date().toISOString(),
-  };
+  const raw = (await workspaceRaw()) || {};
+  // Strictly later than whatever was there, so pages can tell which of two profiles is newer.
+  const before = Date.parse(raw.updated_at);
+  const at = new Date(Number.isFinite(before) && before >= Date.now() ? before + 1 : Date.now()).toISOString();
+  const next = { ...raw, ...patch, updated_at: at };
   const { error } = await supabase.from('quotation_settings')
-    .upsert({ key: WORKSPACE_KEY, value: JSON.stringify(next), updated_at: next.updated_at }, { onConflict: 'key' });
+    .upsert({ key: WORKSPACE_KEY, value: JSON.stringify(next), updated_at: at }, { onConflict: 'key' });
   if (error) throw error;
   const profile = workspaceShape(next);
   cached = { profile, at: Date.now() };
@@ -109,6 +134,30 @@ receiver.router.put('/api/dashboard/workspace', requireAuth, express.json(), asy
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// The look. Each section sent replaces that section whole (so "no accent" is expressed by
+// leaving it out); a section left out of the body is untouched. { reset: true } puts all four
+// back to the original. Nothing is stored that theme-core would not draw: every field is
+// checked, and a combination nobody could read is refused with the pair that fails.
+receiver.router.put('/api/dashboard/workspace/theme', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const patch = {};
+  if (body.reset === true) {
+    for (const k of LOOK_SECTIONS) patch[k] = {};
+  } else {
+    const given = LOOK_SECTIONS.filter(k => k in body);
+    if (!given.length) return res.status(400).json({ error: 'Send at least one of: ' + LOOK_SECTIONS.join(', ') + '.' });
+    const { value, errors } = ThemeCore.validate(Object.fromEntries(given.map(k => [k, body[k] === null ? {} : body[k]])));
+    if (errors.length) return res.status(400).json({ error: errors[0], errors });
+    for (const k of given) patch[k] = value[k];
+  }
+  try {
+    const stored = (await workspaceRaw()) || {};
+    const problems = ThemeCore.problems({ ...stored, ...patch }).filter(p => p.level === 'error');
+    if (problems.length) return res.status(400).json({ error: problems[0].message, problems });
+    res.json(await workspaceSave(patch));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 receiver.router.post('/api/dashboard/workspace/logo', requireAuth, logoUpload, async (req, res) => {
   const ext = req.file && LOGO_TYPES[req.file.mimetype];
   if (!ext) return res.status(400).json({ error: 'Choose a PNG, JPEG, WebP or GIF picture.' });
@@ -136,4 +185,4 @@ receiver.router.delete('/api/dashboard/workspace/logo', requireAuth, async (_req
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-module.exports = { workspaceProfile };
+module.exports = { workspaceProfile, workspaceShape };
