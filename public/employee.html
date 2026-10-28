@@ -34,8 +34,8 @@
   <div class="auth-card">
     <div class="auth-logo">
       <div class="auth-logo-icon"></div>
-      <h1>Team Portal</h1>
-      <p><span data-ws-name>MotoLinker</span> · Log hours &amp; track tasks</p>
+      <h1 data-ws-text="team_title">Team Portal</h1>
+      <p data-ws-text="team_sub" data-ws-text-default="{ws} · Log hours &amp; track tasks">MotoLinker · Log hours &amp; track tasks</p>
     </div>
     <div class="auth-err" id="auth-err"></div>
 
@@ -249,7 +249,7 @@
         <div class="sidebar-icon"></div>
         <div class="sidebar-brand-textwrap">
           <div class="sidebar-brand-name" data-ws-name>MotoLinker</div>
-          <div class="sidebar-brand-sub">Team Portal</div>
+          <div class="sidebar-brand-sub" data-ws-text="team_role">Team Portal</div>
         </div>
         <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
         <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu" aria-label="Close menu">&times;</button>

@@ -44,6 +44,7 @@ run workspaceui node tests/workspaceui.js
 run workspaceapi node tests/workspaceapi.js
 run shell        node tests/shell.js
 run themeui     node tests/themeui.js
+run wsedit      node tests/wsedit.js
 run icontest    node tests/icontest.js
 run leadstest   node tests/leadstest.js
 run permstest   node tests/permstest.js

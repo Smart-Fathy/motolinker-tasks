@@ -3097,12 +3097,13 @@ async function calendarSyncToggle() {
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 let currentPage = 'tasks';
-const pageLoaders = { home: loadHome, tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: () => initQuotationPage(), calendar: () => { loadCalendarSync(); loadCalendar(); }, gchat: loadGChat, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, meet: () => loadMeetings(), reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests, accounting: () => loadAccounting() };
+const pageLoaders = { home: loadHome, tasks: loadDashboard, employees: loadEmployees, requests: loadRequests, submissions: loadSubmissions, hours: loadHours, email: loadEmail, drive: loadDrive, sheets: loadSheets, quotation: () => initQuotationPage(), calendar: () => { loadCalendarSync(); loadCalendar(); }, gchat: loadGChat, chat: loadAdminChat, customers: loadCustomers, deals: loadDeals, stock: loadStock, suppliers: loadSuppliers, rfqs: loadRfqs, contracts: loadContracts, purchaseorders: loadPurchaseOrders, whatsapp: loadWhatsApp, notif: loadNotifPage, meet: () => loadMeetings(), reports: loadReports, automations: loadAutomations, deletions: loadDeletionRequests, accounting: () => loadAccounting(), workspace: () => wsAdminLoad() };
 
 function navigate(page) {
   if (currentPage === 'chat' && page !== 'chat') adminCloseChatSse();
   if (currentPage === 'whatsapp' && page !== 'whatsapp') waCloseSse();
   if (currentPage === 'gchat' && page !== 'gchat') gchatStopPoll();
+  if (currentPage === 'workspace' && page !== 'workspace' && typeof wsAdminLeave === 'function') wsAdminLeave();
   // A page id that doesn't exist — a stale hash, or a cached bundle whose page
   // list disagrees with the HTML mid-deploy — used to throw here, which killed
   // init and left the whole app blank. Fall back to home like the team portal.
@@ -5310,67 +5311,7 @@ async function adminCreateGroup() {
   if (picture) await chatRoomPictureUpload(room.id, picture);
 }
 
-// ── Workspace: its name and picture ───────────────────────────────────────────
-// Everyone sees them — the sidebar and header of both portals, the sign-in page, the
-// browser tab — and every open page updates the moment they change (assets/workspace.js).
-function openWorkspaceSettings() {
-  const ws = wsCurrent();
-  showModal('Workspace', `
-    <div class="ws-edit-pic">
-      <div class="logo ws-edit-face" aria-hidden="true"></div>
-      <div style="min-width:0">
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-outline btn-sm" type="button" onclick="document.getElementById('ws-logo-input').click()">
-            <i data-lucide="image-up" style="width:13px;height:13px"></i> ${ws.logo_url ? 'Change picture' : 'Upload a picture'}</button>
-          ${ws.logo_url ? `<button class="btn btn-outline btn-sm" type="button" onclick="wsRemoveLogo()">Use the default</button>` : ''}
-        </div>
-        <div class="ws-edit-hint">The workspace's profile picture. A square image works best — PNG, JPEG, WebP or GIF, up to 5 MB.</div>
-        <input type="file" id="ws-logo-input" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" onchange="wsUploadLogo(this)">
-      </div>
-    </div>
-    <div class="form-group" style="margin-top:16px">
-      <label class="form-label" for="ws-name">Workspace name</label>
-      <input class="form-control" id="ws-name" maxlength="60" value="${esc(ws.name)}" onkeydown="if(event.key==='Enter')wsSaveName()">
-      <div class="ws-edit-hint">Shown in the sidebar and header of both portals, the team's sign-in page and the browser tab.</div>
-    </div>`,
-    `<button class="btn btn-outline" onclick="hideModal()">Close</button>
-     <button class="btn btn-primary" id="ws-save-btn" onclick="wsSaveName()">Save name</button>`);
-  requestAnimationFrame(() => lucide.createIcons());
-}
-async function wsSaveName() {
-  const input = document.getElementById('ws-name');
-  const name = (input && input.value || '').trim();
-  if (!name) { showAdminToast('Give the workspace a name.'); return; }
-  const r = await apiFetch('/api/dashboard/workspace', { method: 'PUT', body: JSON.stringify({ name }) });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) { showAdminToast(d.error || 'Could not rename the workspace.'); return; }
-  wsApply(d);
-  showAdminToast('Workspace renamed to ' + d.name + '.');
-}
-async function wsUploadLogo(input) {
-  const f = input.files && input.files[0];
-  input.value = '';
-  if (!f) return;
-  if (!/^image\/(png|jpeg|webp|gif)$/.test(f.type || '')) { showAdminToast('Choose a PNG, JPEG, WebP or GIF picture.'); return; }
-  if (f.size > 5 * 1024 * 1024) { showAdminToast('The picture must be under 5 MB.'); return; }
-  const pic = await chatSquarePicture(f, 512);
-  const fd = new FormData();
-  fd.append('file', pic.blob, pic.name);
-  const r = await apiFetch('/api/dashboard/workspace/logo', { method: 'POST', body: fd });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) { showAdminToast(d.error || 'Could not set the picture.'); return; }
-  wsApply(d);
-  showAdminToast('Workspace picture updated.');
-  openWorkspaceSettings();
-}
-async function wsRemoveLogo() {
-  const r = await apiFetch('/api/dashboard/workspace/logo', { method: 'DELETE' });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) { showAdminToast(d.error || 'Could not remove the picture.'); return; }
-  wsApply(d);
-  showAdminToast('Back to the default picture.');
-  openWorkspaceSettings();
-}
+// ── Workspace: its name, picture and look → assets/workspace-admin.js ──────────
 
 // ── Approvals (employee-requested lead/deal deletions awaiting sign-off) ────────
 async function loadDeletionRequests() {

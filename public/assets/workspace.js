@@ -90,8 +90,7 @@ function wsApplyTexts() {
   const texts = (_wsLook && _wsLook.texts) || {};
   document.querySelectorAll('[data-ws-text]').forEach(el => {
     if (el.getAttribute('data-ws-text-default') === null) el.setAttribute('data-ws-text-default', el.textContent);
-    const t = texts[el.getAttribute('data-ws-text')];
-    const want = t ? t.replace(/\{ws\}/g, wsName()) : el.getAttribute('data-ws-text-default');
+    const want = (texts[el.getAttribute('data-ws-text')] || el.getAttribute('data-ws-text-default')).replace(/\{ws\}/g, wsName());
     if (el.textContent !== want) el.textContent = want;
   });
 }
@@ -230,8 +229,8 @@ async function wsLoad() {
   // This runs where its script tag sits, before the end of the page is parsed: once it is,
   // the name (and the wording, and the colour-mode button) goes on whatever came after too
   // (an install banner, say), even if the server never answers.
-  const late = () => { wsApply(Object.assign({}, _ws, _wsLook ? { theme: _wsLook.theme, typography: _wsLook.typography, shape: _wsLook.shape, texts: _wsLook.texts, updated_at: _wsStamp } : {})); mlPaintToggle(); };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', late); else mlPaintToggle();
+  const late = () => { if (WS_SAFE) { const b = document.getElementById('ml-mode-toggle'); if (b) b.style.display = 'none'; } wsApply(Object.assign({}, _ws, _wsLook ? { theme: _wsLook.theme, typography: _wsLook.typography, shape: _wsLook.shape, texts: _wsLook.texts, updated_at: _wsStamp } : {})); mlPaintToggle(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', late); else late();
   // Automatic follows the device while the page is open.
   try { matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if (mlMode() === 'auto') mlApplyMode(); }); } catch (_) {}
   // Another tab of this browser changed the colour mode: this one follows.

@@ -40,8 +40,8 @@
 <div id="auth-screen" class="auth-screen" style="display:none">
   <div class="auth-card">
     <div class="auth-icon"><i data-lucide="shield-check" style="width:28px;height:28px;color:var(--strong,#fff)"></i></div>
-    <h2 class="auth-title">Admin Access</h2>
-    <p class="auth-sub">Sign in with your admin credentials</p>
+    <h2 class="auth-title" data-ws-text="admin_title">Admin Access</h2>
+    <p class="auth-sub" data-ws-text="admin_sub">Sign in with your admin credentials</p>
     <input type="text"     id="login-username" class="auth-input" placeholder="Username" autocomplete="username">
     <input type="password" id="login-password" class="auth-input" placeholder="Password" autocomplete="current-password">
     <p id="auth-error" class="auth-error">Invalid username or password.</p>
@@ -94,7 +94,7 @@
       <div class="sidebar-logo-icon"></div>
       <div class="sidebar-logo-textwrap">
         <div class="sidebar-logo-text" data-ws-name>MotoLinker</div>
-        <div class="sidebar-logo-sub">Super Admin</div>
+        <div class="sidebar-logo-sub" data-ws-text="admin_role">Super Admin</div>
       </div>
       <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
       <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu" aria-label="Close menu">&times;</button>
@@ -185,6 +185,7 @@
         <div class="nav-group-head" onclick="toggleNavGroup(this)"><span class="nav-group-label">System</span><i class="nav-group-chevron" data-lucide="chevron-down"></i></div>
         <div class="nav-group-items">
           <div class="nav-item"        onclick="navigate('notif')"     id="nav-notif">    <span class="nav-icon"><i data-lucide="bell"></i></span> Notifications<span id="notif-nav-badge" style="display:none;margin-left:auto;background:var(--danger-fill,var(--danger));color:#fff;border-radius:calc(9px * var(--r-k,1));font-size:10px;font-weight:700;padding:1px 6px;line-height:1.4">0</span></div>
+          <div class="nav-item"        onclick="navigate('workspace')" id="nav-workspace"><span class="nav-icon"><i data-lucide="palette"></i></span> Workspace</div>
           <div class="nav-item"        onclick="helpOpen()"            id="nav-help">     <span class="nav-icon"><i data-lucide="help-circle"></i></span> Help</div>
         </div>
       </div>
@@ -217,7 +218,7 @@
       <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu"><i data-lucide="menu" style="width:22px;height:22px"></i></button>
       <div class="logo"></div>
       <h1 data-ws-name>MotoLinker</h1>
-      <span class="header-badge">Admin Dashboard</span>
+      <span class="header-badge" data-ws-text="admin_badge">Admin Dashboard</span>
     </div>
     <div class="header-right">
       <div class="refresh-indicator">
@@ -1457,6 +1458,11 @@
     </div>
   </div>
 
+  <!-- ── Workspace: name, picture and look (assets/workspace-admin.js draws it) ── -->
+  <div id="page-workspace" class="page">
+    <div class="page-body wsa-body" id="wsa-root"></div>
+  </div>
+
   <!-- ── Notifications Page ── -->
   <div id="page-notif" class="page">
     <div class="page-body" style="max-width:720px">
@@ -1556,6 +1562,7 @@
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
 <script src="/assets/theme-core.js?v=150"></script>
 <script src="/assets/workspace.js?v=150"></script>
+<script src="/assets/workspace-admin.js?v=150"></script>
 <script src="/assets/mobile.js?v=150"></script>
 <script src="/assets/columns.js?v=150"></script>
 <script src="/assets/client-folder.js?v=150"></script>

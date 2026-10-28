@@ -196,6 +196,12 @@
 
   // The sign-in and portal wording an admin may replace, and how long each may be.
   const TEXT_KEYS = { admin_title: 60, admin_sub: 120, admin_badge: 24, admin_role: 40, team_title: 60, team_sub: 120, team_role: 40 };
+  // What the pages say when nothing has been replaced (tests/themeui.js holds the markup to it).
+  // {ws} is the workspace's name.
+  const TEXT_DEFAULTS = {
+    admin_title: 'Admin Access', admin_sub: 'Sign in with your admin credentials', admin_badge: 'Admin Dashboard', admin_role: 'Super Admin',
+    team_title: 'Team Portal', team_sub: '{ws} · Log hours & track tasks', team_role: 'Team Portal',
+  };
 
   // ── Normalising ─────────────────────────────────────────────────────────────
   const plain = v => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
@@ -682,7 +688,7 @@
   return {
     VERSION: 1,
     PRESETS, PRESET_ORDER, DEFAULT_PRESET, FONTS, FONT_ORDER, DEFAULT_FONTS, DEFAULT_SHAPE, RADIUS_K, DENSITY_K, GLOWS, MODES, NEUTRAL_KEYS, TEXT_KEYS, STATUS, BASE,
-    HUES, NAV_HUES, OLD_ACCENT, hueToken, normalize, validate, custom, inputs, palette, deriveVars, fontVars, shapeVars, renderThemeCss, fontsHref, bootScript, defaultMode, themeColor, report, problems,
+    TEXT_DEFAULTS, HUES, NAV_HUES, OLD_ACCENT, hueToken, normalize, validate, custom, inputs, palette, deriveVars, fontVars, shapeVars, renderThemeCss, fontsHref, bootScript, defaultMode, themeColor, report, problems,
     color: { isHex, normHex, rgb, toHex, triplet, rgba, luminance, contrast, mix, over, toHsl, fromHsl, ensure, onFill },
   };
 });

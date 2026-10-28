@@ -84,7 +84,9 @@ const stripped = html => html
     check('the mode script opens the page light', a.text.includes('m="light"'));
     check('the name is in the title, the sidebar and the headings — escaped', a.text.includes('<title data-ws-title="{ws} · Admin Dashboard">Moto &amp; &quot;Co&quot; &lt;Group&gt; · Admin Dashboard</title>')
       && a.text.includes('<div class="sidebar-logo-text" data-ws-name>Moto &amp; &quot;Co&quot; &lt;Group&gt;</div>') && !a.text.includes('<Group>') && (a.text.match(/data-ws-name>Moto/g) || []).length === 2, (a.text.match(/data-ws-name>[^<]*/g) || []).join(' | '));
-    check('…on the team page too, in the sign-in line and the install banner', (t.text.match(/data-ws-name>Moto &amp;/g) || []).length === 4);
+    check('…on the team page too, in the sidebar and the install banner', (t.text.match(/data-ws-name>Moto &amp;/g) || []).length === 3);
+    check('…and the sign-in line is the default wording with the escaped name in it', t.text.includes('<p data-ws-text="team_sub" data-ws-text-default="{ws} · Log hours &amp; track tasks">Moto &amp; &quot;Co&quot; &lt;Group&gt; · Log hours &amp; track tasks</p>'),
+      (t.text.match(/<p data-ws-text="team_sub"[^\n]*/) || [''])[0]);
     check('the picture is on the page before any script runs: the mark, and the tab icon with the original kept', /<html lang="en" data-ws-stamp="[^"]+" class="ws-custom-logo" style="--ws-logo:url\(&quot;/.test(a.text) && a.text.includes('style="--ws-logo:url(&quot;' + LOGO + '&quot;)">')
       && a.text.includes('<link rel="icon" type="image/png" href="' + LOGO + '" data-default-href="/icons/favicon.png">'));
     check('a changed workspace is a different page (new ETag)', a.r.headers.get('etag') !== adminDefault.r.headers.get('etag'));

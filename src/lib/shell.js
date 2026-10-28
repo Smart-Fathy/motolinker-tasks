@@ -57,12 +57,18 @@ function renderShell(html, ws, { safe = false } = {}) {
   // A light page under a translucent dark status bar is unreadable on a phone.
   if (mode === 'light') out = out.replace(/<meta name="apple-mobile-web-app-status-bar-style" content="[^"]*">/i, '<meta name="apple-mobile-web-app-status-bar-style" content="default">');
 
-  // ── The wording an admin replaced ─────────────────────────────────────────────
-  if (Object.keys(look.texts).length) {
+  // ── The wording an admin replaced (and a default that names the workspace) ────
+  // A line whose own wording has {ws} in it (the team sign-in's subtitle) says the workspace's name
+  // even when nobody has replaced it, so a renamed workspace never shows the old one there.
+  const decode = t => t.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  if (Object.keys(look.texts).length || (ws.custom_name && /data-ws-text-default="[^"]*\{ws\}/.test(out))) {
     out = out.replace(/(<([a-z][a-z0-9]*)\b[^>]*\bdata-ws-text="(\w+)"[^>]*>)([^<]*)(<\/\2>)/gi, (m, open, _tag, key, inner, close) => {
-      const t = look.texts[key];
+      let t = look.texts[key];
+      const given = /\bdata-ws-text-default="([^"]*)"/.exec(open);
+      if (!t && ws.custom_name && given && decode(given[1]).includes('{ws}')) t = decode(given[1]);
+      if (!t) return m;
       // the wording the page has by default is kept beside it, so putting it back needs no memory of it
-      return t ? open.replace(/>$/, ' data-ws-text-default="' + esc(inner) + '">') + esc(t.replace(/\{ws\}/g, name)) + close : m;
+      return (given ? open : open.replace(/>$/, ' data-ws-text-default="' + esc(inner) + '">')) + esc(t.replace(/\{ws\}/g, name)) + close;
     });
   }
 
