@@ -4182,18 +4182,33 @@ function emailGoBack() {
   if (split) split.classList.remove('show-detail');
 }
 
+// The message on screen. Everything in it — body, subject, sender — was written by
+// whoever sent the email, so none of it may run. Reply and Forward read it from here
+// instead of carrying the subject and sender inside their onclick text, where a quote
+// in a subject closed the string and ran the rest; and the body is drawn in a
+// sandboxed frame, without which its scripts ran with this page's origin — and with
+// it, the admin's session. Same as the team portal's viewer.
+let _openEmail = null;
+function replyToOpenEmail() {
+  const m = _openEmail;
+  if (m) openReply(m.id, m.threadId, m.fromEmail, m.subject || '', m.messageId || '');
+}
+function forwardOpenEmail() { if (_openEmail) openCompose(_openEmail.fromEmail); }
+
 async function openEmail(id) {
   const panel = document.getElementById('email-view-panel');
   if (!panel) return;
   const split = document.getElementById('email-split');
   if (split) split.classList.add('show-detail');
   panel.innerHTML = '<div class="loading" style="padding:40px"><div class="spinner"></div></div>';
+  _openEmail = null;
   try {
     const msg = await apiFetch(`/api/email/messages/${id}`).then(r => r.json());
     if (msg.error) throw new Error(msg.error);
     const fromEmail = msg.from.match(/<(.+)>/)?.[1] || msg.from;
+    _openEmail = { ...msg, fromEmail };
     const bodyHtml = msg.isHtml
-      ? `<iframe srcdoc="${esc(msg.body)}" style="width:100%;border:none;min-height:400px;background:#fff;border-radius:0 0 var(--radius) var(--radius)" onload="this.style.height=this.contentDocument.body.scrollHeight+40+'px'"></iframe>`
+      ? `<iframe sandbox="allow-same-origin" srcdoc="${esc(msg.body)}" style="width:100%;border:none;min-height:400px;background:#fff;border-radius:0 0 var(--radius) var(--radius)" onload="this.style.height=this.contentDocument.body.scrollHeight+40+'px'"></iframe>`
       : `<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;color:var(--text);line-height:1.6">${esc(msg.body||'(empty)')}</pre>`;
     panel.innerHTML = `
       <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
@@ -4207,8 +4222,8 @@ async function openEmail(id) {
               <div style="color:var(--muted);font-size:12px;margin-top:4px">${new Date(msg.date).toLocaleString()}</div>
             </div>
             <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
-              <button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="openReply('${esc(msg.id)}','${esc(msg.threadId)}','${esc(fromEmail)}','${esc(msg.subject||'')}','${esc(msg.messageId||'')}')">Reply</button>
-              <button class="btn btn-outline" style="font-size:12px;padding:6px 14px" onclick="openCompose('${esc(fromEmail)}')">Forward</button>
+              <button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="replyToOpenEmail()">Reply</button>
+              <button class="btn btn-outline" style="font-size:12px;padding:6px 14px" onclick="forwardOpenEmail()">Forward</button>
             </div>
           </div>
         </div>
