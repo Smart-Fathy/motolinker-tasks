@@ -88,7 +88,7 @@ function ColumnsEngine(entity, cfg) {
   E.optMap = col => { const m = {}; ((col && col.options) || []).forEach(o => { m[o.key] = o.label; }); return m; };
   E.optionColor = (col, key) => {
     const o = ((col && col.options) || []).find(x => x.key === key);
-    return (o && o.color) || null;
+    return ceSafeHex(o && o.color);
   };
   // A colored pill for any select/radio value. This replaces the hardcoded
   // LEAD_STATUS_COLORS maps — status was the only column with badges because it
@@ -546,6 +546,13 @@ function ceParseOptLines(text, existing) {
 function hexA(hex, a) {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+// An option colour as it may be drawn: #rrggbb or nothing. Colours go straight into
+// style="…", so a stored value with a quote in it would close the attribute and add
+// markup. The server keeps only this shape on save; this holds even for a config
+// that reached the table another way.
+function ceSafeHex(v) {
+  return /^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? v : null;
 }
 
 // ── The editor's own modal layer ──────────────────────────────────────────────

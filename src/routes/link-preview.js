@@ -105,12 +105,72 @@ async function safeFetchHtml(startUrl) {
 }
 
 // ── Open Graph, with the ordinary tags as a fallback ──────────────────────────
-function metaContent(html, patterns) {
-  for (const re of patterns) {
-    const m = re.exec(html);
-    if (m && m[1] && m[1].trim()) return decodeEntities(m[1].trim());
+// The page is whatever the link points at, so this parses hostile input, on the one
+// thread every request shares. It used to run a regex per tag over the whole page
+// (`<meta[^>]+…[^>]+content=…`), and on a tag that never closes those backtrack
+// quadratically: one 512 KB page built that way held the event loop — every portal,
+// every stream — for nearly four minutes. So the tags are found by walking forward,
+// looking at each character once, and only a tag of ordinary size is taken apart.
+const MAX_TAG = 8192;   // a real <meta> is a few hundred bytes
+
+// property or name (lower case) → the first content on the page that says something
+function metaTags(html) {
+  const tags = new Map();
+  const open = /<meta[\s/]/gi;
+  let m;
+  while ((m = open.exec(html))) {
+    // The tag ends at the first '>' outside quotes: content="Home > Cars" is one tag.
+    const stop = Math.min(html.length, m.index + MAX_TAG);
+    let i = m.index + 5, quote = '';
+    for (; i < stop; i++) {
+      const c = html[i];
+      if (quote) { if (c === quote) quote = ''; }
+      else if (c === '"' || c === "'") quote = c;
+      else if (c === '>') break;
+    }
+    // Carry on from where the walk stopped, never from behind it — that is what
+    // keeps the whole page linear when a tag is unclosed or absurdly long.
+    open.lastIndex = i;
+    if (i >= stop) continue;
+    const a = attrsOf(html.slice(m.index + 5, i));
+    const content = (a.get('content') || '').trim();
+    if (!content) continue;
+    for (const k of [a.get('property'), a.get('name')]) {
+      if (k && !tags.has(k.toLowerCase())) tags.set(k.toLowerCase(), content);
+    }
+  }
+  return tags;
+}
+// One tag's attributes, in linear time too: a quoted value that never closes can be
+// searched for at most once per kind of quote, because once that search fails there
+// is no quote of that kind left to start another.
+function attrsOf(s) {
+  const out = new Map();
+  const re = /([^\s"'<>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  let m;
+  while ((m = re.exec(s))) {
+    const k = m[1].toLowerCase();
+    if (!out.has(k)) out.set(k, m[2] ?? m[3] ?? m[4] ?? '');   // the first wins, as in a browser
+  }
+  return out;
+}
+function metaContent(tags, names) {
+  for (const n of names) {
+    const v = tags.get(n);
+    if (v) return decodeEntities(v);
   }
   return '';
+}
+// The first <title>, read the same forward-only way, and only if it closes within
+// 300 characters.
+function titleText(html) {
+  const open = /<title[\s>]/i.exec(html);
+  if (!open) return '';
+  const start = html.indexOf('>', open.index);
+  if (start === -1) return '';
+  const head = html.slice(start + 1, start + 1 + 300 + '</title>'.length);
+  const end = head.search(/<\/title>/i);
+  return end === -1 ? '' : head.slice(0, end);
 }
 function decodeEntities(s) {
   return s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (whole, ent) => {
@@ -123,16 +183,12 @@ function decodeEntities(s) {
     return whole;
   });
 }
-const prop = name => [
-  new RegExp(`<meta[^>]+(?:property|name)=["']${name}["'][^>]+content=["']([^"']*)["']`, 'i'),
-  new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${name}["']`, 'i'),
-];
 
 function parsePreview(html, finalUrl) {
   const u = new URL(finalUrl);
-  const title = metaContent(html, [...prop('og:title'), ...prop('twitter:title')])
-    || (/<title[^>]*>([\s\S]{0,300}?)<\/title>/i.exec(html) || [])[1] || '';
-  let image = metaContent(html, [...prop('og:image'), ...prop('og:image:url'), ...prop('twitter:image')]);
+  const tags = metaTags(html);
+  const title = metaContent(tags, ['og:title', 'twitter:title']) || titleText(html);
+  let image = metaContent(tags, ['og:image', 'og:image:url', 'twitter:image']);
   if (image) { try { image = new URL(image, finalUrl).href; } catch (_) { image = ''; } }
   // Never hand back an image on a private host either — the browser would fetch it.
   if (image && !/^https?:$/.test(new URL(image).protocol)) image = '';
@@ -140,8 +196,8 @@ function parsePreview(html, finalUrl) {
     url: finalUrl,
     domain: u.hostname.replace(/^www\./, ''),
     title: decodeEntities(String(title).replace(/\s+/g, ' ').trim()).slice(0, 200),
-    description: metaContent(html, [...prop('og:description'), ...prop('description'), ...prop('twitter:description')]).slice(0, 300),
-    siteName: metaContent(html, prop('og:site_name')).slice(0, 100),
+    description: metaContent(tags, ['og:description', 'description', 'twitter:description']).slice(0, 300),
+    siteName: metaContent(tags, ['og:site_name']).slice(0, 100),
     image: image.slice(0, 1000),
   };
 }

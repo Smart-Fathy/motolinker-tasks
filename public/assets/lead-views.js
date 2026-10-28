@@ -65,7 +65,7 @@ function renderLeadMix(list) {
     if (k) counts.set(k, (counts.get(k) || 0) + 1);
   });
   const rows = opts
-    .map(o => ({ label: o.label || o.key, n: counts.get(o.key) || 0, c: o.color || 'var(--muted)' }))
+    .map(o => ({ label: o.label || o.key, n: counts.get(o.key) || 0, c: ceSafeHex(o.color) || 'var(--muted)' }))
     .filter(r => r.n > 0);
   if (!rows.length) { el.style.display = 'none'; return; }
   const total = rows.reduce((a, r) => a + r.n, 0) || 1;
@@ -123,7 +123,7 @@ function renderLeadBoard(list) {
     const rows = list.filter(c => normKey(c.lead_status || 'cold', m) === o.key);
     const value = rows.reduce((a, c) => a + (Number(c.budget_lead) || 0), 0);
     const pct = Math.round((rows.length / total) * 100);
-    const c0 = o.color || 'var(--muted)';
+    const c0 = ceSafeHex(o.color) || 'var(--muted)';
     return `<section class="lb-col" style="--c:${c0}">
       <div class="lb-head">
         <div class="lb-head-top">

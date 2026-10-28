@@ -1,6 +1,8 @@
 // Form Submissions
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
+const { createLimiter } = require('../lib/rate-limit');
+const { clientIp } = require('../lib/request-info');
 const { express, logLeadActivity, normalizePhone, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('express', 'logLeadActivity', 'normalizePhone', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
 // automation.js builds the automation payloads; resolved through the context
 // because feature modules do not have a fixed load order between them.
@@ -13,6 +15,7 @@ const runAutomations = (...a) => ctx.runAutomations(...a);
 const submissionCtx = (...a) => ctx.submissionCtx(...a);
 const requirePerm = (...a) => ctx.requirePerm(...a);
 const taskAssigneeList = (...a) => ctx.taskAssigneeList(...a);
+const tooMany = (...a) => ctx.tooMany(...a);
 // Reassigned at runtime (Drive connect/disconnect, VAPID boot), so these are
 // read from the context on use — capturing them here would pin the boot value.
 
@@ -28,29 +31,64 @@ function submissionCors(res) {
   res.set('Access-Control-Allow-Headers', 'Content-Type');
   res.set('Access-Control-Max-Age', '86400');
 }
+// Every post costs something real — a lead, a submission row, a push to the admin's
+// phone, the automation rules — so each address gets ten a quarter-hour; a person
+// sends this once or twice. The website forwards each lead from its Cloudflare Worker
+// (src/lib/crm/forwardLead.ts in Smart-Fathy/motolinkers). Sent to an origin outside
+// Cloudflare, as Railway is, that request carries the visitor's address in
+// CF-Connecting-IP, so this counts visitors, not the website. Put this app behind a
+// Cloudflare-proxied domain and every lead would carry the same Worker address instead,
+// making the ten the whole site's. The header is also the caller's word (see
+// request-info.js): this stops a script hammering the form, not someone forging a new
+// address on every post.
+const submissionLimiter = createLimiter({ max: 10, windowMs: 15 * 60_000 });
+// Longer than any real answer to the form, short enough that one post cannot fill a
+// lead, its timeline and the admin's notifications with pages of text.
+const SUBMISSION_FIELD_MAX = { name: 120, email: 200, phone: 40, car_interest: 120, message: 4000, source: 60 };
+// Trimmed, then cut to `max`. A cut that would split an emoji's surrogate pair stops one
+// short: half a pair is not text, and Postgres refuses the whole row over it.
+function clip(v, max) {
+  const s = v ? String(v).trim() : '';
+  if (s.length <= max) return s;
+  return s.slice(0, /[\uD800-\uDBFF]/.test(s[max - 1]) ? max - 1 : max).trim();
+}
+const isBlank = v => v == null || String(v).trim() === '';
+
 receiver.router.options('/api/submissions', (_req, res) => { submissionCors(res); res.sendStatus(204); });
-receiver.router.post('/api/submissions', express.json(), async (req, res) => {
+// Ahead of the body parser, so a flood is turned away before its bodies are read; and
+// after the CORS headers, so a browser can read the 429.
+function submissionGate(req, res, next) {
   submissionCors(res);
+  const ip = clientIp(req);
+  const wait = submissionLimiter.retryAfter(ip);
+  if (wait) return tooMany(res, wait);
+  submissionLimiter.fail(ip);   // every post counts, not just bad ones
+  next();
+}
+receiver.router.post('/api/submissions', submissionGate, express.json({ limit: '16kb' }), async (req, res) => {
   const { name, email, phone, message, car_interest, source } = req.body || {};
   if (!name || (!email && !phone)) return res.status(400).json({ error: 'Name and a phone or email are required' });
-  const cleanName = String(name).trim();
-  const cleanEmail = email ? String(email).trim() : '';
-  const cleanPhone = phone ? String(phone).trim() : '';
-  const cleanMsg = message ? String(message).trim() : '';
-  const cleanCar = car_interest ? String(car_interest).trim() : '';
-  const src = (source ? String(source).trim() : '') || 'website';
+  const cleanName = clip(name, SUBMISSION_FIELD_MAX.name);
+  const cleanEmail = clip(email, SUBMISSION_FIELD_MAX.email);
+  const cleanPhone = clip(phone, SUBMISSION_FIELD_MAX.phone);
+  const cleanMsg = clip(message, SUBMISSION_FIELD_MAX.message);
+  const cleanCar = clip(car_interest, SUBMISSION_FIELD_MAX.car_interest);
+  const src = clip(source, SUBMISSION_FIELD_MAX.source) || 'website';
   const phone_norm = normalizePhone(cleanPhone);
   try {
-    let customerId = null, isNew = false;
+    let customerId = null, known = null, isNew = false;
     if (phone_norm) {
-      const { data: existing } = await supabase.from('customers').select('id').eq('phone_norm', phone_norm).limit(1);
-      if (existing && existing.length) customerId = existing[0].id;
+      const { data: existing } = await supabase.from('customers').select('id,email,car_in_question').eq('phone_norm', phone_norm).limit(1);
+      if (existing && existing.length) { known = existing[0]; customerId = known.id; }
     }
     if (customerId) {
       // Known lead re-inquired — fill any blanks, then log it to the timeline (no duplicate lead).
+      // Blanks only: anyone who knows a customer's phone number can post this form, and
+      // staff send quotations and contracts to the email on file. What was submitted is
+      // still kept, in form_submissions below.
       const patch = {};
-      if (cleanEmail) patch.email = cleanEmail;
-      if (cleanCar) patch.car_in_question = cleanCar;
+      if (cleanEmail && isBlank(known.email)) patch.email = cleanEmail;
+      if (cleanCar && isBlank(known.car_in_question)) patch.car_in_question = cleanCar;
       if (Object.keys(patch).length) await supabase.from('customers').update(patch).eq('id', customerId);
       logLeadActivity(customerId, { type: 'system', body: `Re-inquiry via ${src}${cleanMsg ? ' — ' + cleanMsg : ''}`, meta: { source: src }, authorKey: 'system', authorName: 'System' });
     } else {
@@ -76,7 +114,10 @@ receiver.router.post('/api/submissions', express.json(), async (req, res) => {
       url: customerId ? '/dashboard#customers' : '/dashboard#submissions',
     }, 'always').catch(() => {});
     if (sub) runAutomations('submission.created', submissionCtx(sub, customerId));
-    res.json({ ok: true, id: sub?.id, customer_id: customerId, lead_created: isNew });
+    // Success and nothing else. Echoing the customer id and whether a lead was created
+    // told anyone holding a phone number whether its owner is a customer. The website
+    // reads only the status.
+    res.json({ ok: true });
   } catch (e) {
     console.error('[submissions]', e);
     res.status(500).json({ error: e.message });

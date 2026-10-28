@@ -1,7 +1,7 @@
 // Employee Portal
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
-const { sanitizeAttachments } = require('../lib/constants');
+const { LEADS_ENUM_DEFAULTS, sanitizeAttachments } = require('../lib/constants');
 const { fetchAll } = require('../lib/fetch-all');
 const { createLimiter } = require('../lib/rate-limit');
 const { requestMeta } = require('../lib/request-info');
@@ -756,6 +756,15 @@ receiver.router.put('/api/dashboard/employees/:id', requireAuth, express.json(),
   const { data, error } = await supabase.from('employees').update(updates).eq('id', req.params.id)
     .select('id, name, username, email, job_title, slack_user_id, permissions, created_at, avatar_url, status_text, status_emoji').single();
   if (error) return res.status(500).json({ error: error.message });
+  // Open sessions carry the permissions, scope and title they signed in with, and
+  // requirePerm reads the session, not this table. Bring them in line now, as the
+  // bulk editor above does — otherwise a demoted employee kept their old rights for
+  // as long as they did not reload the page, up to the session's 30 days.
+  if (data && data.id != null) {
+    for (const [token, sess] of employeeSessions) {
+      if (String(sess.id) === String(data.id)) employeeSessions.set(token, { ...sess, ...employeeSessionPayload(data) });
+    }
+  }
   // An administrator setting a new password is the other way a login ends: if it was
   // set because the old one leaked, the person holding it must not stay signed in.
   if (password) {
@@ -1359,7 +1368,8 @@ receiver.router.get('/api/dashboard/followups/pending', requireAuth, async (_req
 receiver.router.get('/api/dashboard/leads/columns', requireAuth, async (_req, res) => {
   const { data } = await supabase.from('quotation_settings').select('value').eq('key', 'leads_columns_config').single();
   let columns = null;
-  try { if (data?.value) columns = JSON.parse(data.value); } catch (_) {}
+  // Sanitised on read too, like readColumns in src/routes/columns.js.
+  try { if (data?.value) columns = ctx.sanitizeColumns(JSON.parse(data.value)); } catch (_) {}
   res.json({ columns });
 });
 

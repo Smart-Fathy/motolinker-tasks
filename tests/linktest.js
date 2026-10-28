@@ -1,5 +1,6 @@
 // Links in chat: linkifying without opening an XSS hole, and previewing without
-// turning the server into a proxy for the private network.
+// turning the server into a proxy for the private network — or letting the page it
+// fetches freeze the server.
 //
 // The SSRF assertions are the point. This process can reach 127.0.0.1 and the cloud
 // metadata service; the browser that pasted the link cannot. Anything that lets a
@@ -10,6 +11,20 @@ process.env.SUPABASE_SERVICE_KEY = process.env.SUPABASE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'stub';
 process.env.ADMIN_PASSWORD = 'pw';
 process.env.PORT = process.env.PORT || '3989';
+
+// The database is a stub. Since sign-in started refusing when it cannot read an
+// account's second factor, a stub that never answers meant no session, and every
+// route check below came back Unauthorized and passed without reaching the guard.
+// So it answers — with nothing — as it does in the other suites.
+const realFetch = global.fetch;
+global.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : (input && input.url) || '';
+  if (!url.includes('stub.supabase.co')) return realFetch(input, init);
+  const h = (init && init.headers) || {};
+  const accept = String(typeof h.get === 'function' ? (h.get('Accept') || '') : (h.Accept || h.accept || ''));
+  return new Response(accept.includes('pgrst.object') ? '{}' : '[]',
+    { status: 200, headers: { 'Content-Type': 'application/json' } });
+};
 
 const http = require('http');
 const fs = require('fs');
@@ -67,7 +82,7 @@ const { chatLinkify, chatPreviewSlot, chatNameForBlob } = sandbox.window.__x;
 
   // ── The guard, called directly ──
   require(process.cwd() + '/index.js');
-  const { isPrivateAddress, assertPublic, safeFetchHtml } =
+  const { isPrivateAddress, assertPublic, safeFetchHtml, parsePreview } =
     require(process.cwd() + '/src/routes/link-preview.js');
 
   const PRIVATE = ['127.0.0.1', '10.1.2.3', '172.16.0.1', '172.31.255.254', '192.168.1.1',
@@ -88,6 +103,45 @@ const { chatLinkify, chatPreviewSlot, chatNameForBlob } = sandbox.window.__x;
   try { await assertPublic('localhost'); } catch (_) { rejected = true; }
   check('assertPublic refuses a name that resolves to loopback', rejected);
 
+  // ── Reading the page ──
+  {
+    const U = 'https://www.example.com/cars/1';
+    const p = parsePreview(`<head><title>Fallback</title>
+      <meta property="og:title" content="Tom &amp; Jerry"><meta content="Home > Cars" property="og:description">
+      <meta property="og:image" content="/img/a.png"><meta name="twitter:title" content="TW"></head>`, U);
+    check('og:title wins over twitter and the title tag', p.title === 'Tom & Jerry', JSON.stringify(p));
+    check('content may come first, and a ">" inside it is text', p.description === 'Home > Cars', p.description);
+    check('a relative image is made absolute', p.image === 'https://www.example.com/img/a.png', p.image);
+    check('an apostrophe inside double quotes is kept',
+      parsePreview(`<meta property="og:title" content="Rock 'n' Roll">`, U).title === "Rock 'n' Roll");
+    check('the title tag is the fallback', parsePreview('<title>\n Hello  there </title>', U).title === 'Hello there');
+    check('an empty og:title falls through to twitter',
+      parsePreview('<meta property="og:title" content=" "><meta name="twitter:title" content="TW">', U).title === 'TW');
+    check('a javascript: image is never handed back',
+      parsePreview('<meta property="og:image" content="javascript:alert(1)">', U).image === '');
+  }
+  // The page is hostile input, parsed on the thread every request shares. The old
+  // one-regex-per-tag parser backtracked quadratically on every one of these: at the
+  // 512 KB fetch cap they froze the whole server for between 11 seconds and over ten
+  // minutes each. Read linearly, they take milliseconds.
+  {
+    const MAX = 512 * 1024;
+    const fill = (head, unit) => (head + unit.repeat(Math.ceil(MAX / unit.length))).slice(0, MAX);
+    const HOSTILE = {
+      'an unclosed <meta> repeating its property': fill('<meta ', 'name="og:title" '),
+      'an unclosed <meta> repeating content=': fill('<meta ', 'content="" '),
+      '<title over and over': fill('', '<title'),
+      '<meta over and over': fill('', '<meta '),
+      'an unclosed quote': fill('<meta content="', '<meta '),
+    };
+    for (const [name, html] of Object.entries(HOSTILE)) {
+      const t = Date.now();
+      parsePreview(html, 'https://example.com/');
+      const ms = Date.now() - t;
+      check(`${name} (512 KB) is read in linear time`, ms < 1000, `${ms} ms`);
+    }
+  }
+
   // ── End to end, through the route ──
   const base = 'http://127.0.0.1:' + process.env.PORT;
   // Wait for the app to bind rather than guessing at a sleep.
@@ -101,6 +155,8 @@ const { chatLinkify, chatPreviewSlot, chatNameForBlob } = sandbox.window.__x;
   const preview = async url => (await fetch(base + '/api/dashboard/link-preview', {
     method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }) })).json();
+  // Without a session every refusal below would be "Unauthorized", and pass.
+  check('signed in, so the route checks reach the guard', !!token);
 
   // A local server standing in for "somewhere the browser could not reach".
   let hits = 0;
@@ -109,11 +165,11 @@ const { chatLinkify, chatPreviewSlot, chatNameForBlob } = sandbox.window.__x;
   const secretPort = secret.address().port;
 
   const direct = await preview(`http://127.0.0.1:${secretPort}/`);
-  check('a link to the private network is refused', !direct.title && !!direct.error, JSON.stringify(direct));
+  check('a link to the private network is refused', !direct.title && /not reachable/.test(direct.error || ''), JSON.stringify(direct));
   check('and the private server was never contacted', hits === 0, `hits=${hits}`);
 
   const meta = await preview('http://169.254.169.254/latest/meta-data/');
-  check('the cloud metadata service is refused', !meta.title && !!meta.error, JSON.stringify(meta));
+  check('the cloud metadata service is refused', !meta.title && /not reachable/.test(meta.error || ''), JSON.stringify(meta));
 
   // A redirect from a public URL to a private one must be caught at the hop, not just
   // at the start. Testing that needs a first hop that genuinely looks public, so the
@@ -140,7 +196,7 @@ const { chatLinkify, chatPreviewSlot, chatNameForBlob } = sandbox.window.__x;
   }
 
   const bad = await preview('file:///etc/passwd');
-  check('a non-http scheme is refused', !!bad.error, JSON.stringify(bad));
+  check('a non-http scheme is refused', /http and https/.test(bad.error || ''), JSON.stringify(bad));
 
   secret.close();
   const pass = results.filter(Boolean).length;
