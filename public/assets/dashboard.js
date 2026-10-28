@@ -3400,7 +3400,7 @@ async function loadEmployees() {
           const badges = empPermsCell(p, scoped);
           const initials = (e.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
           const avatar = e.avatar_url ? `<img src="${esc(e.avatar_url)}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">` : `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;font-size:10px;font-weight:700;vertical-align:middle;margin-right:8px">${initials}</span>`;
-          const statusStr = (e.status_emoji || e.status_text) ? `${e.status_emoji||''} ${esc(e.status_text||'')}`.trim() : '—';
+          const statusStr = (e.status_emoji || e.status_text) ? `${esc(e.status_emoji||'')} ${esc(e.status_text||'')}`.trim() : '—';
           return `<tr>
             <td><input type="checkbox" class="emp-pick" value="${e.id}" ${_empPicked.has(e.id) ? 'checked' : ''} onchange="empTogglePick(${e.id})"></td>
             <td class="task-title">${avatar}${esc(e.name)}</td>
