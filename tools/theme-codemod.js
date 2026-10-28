@@ -471,13 +471,14 @@ function apply(css, passNames, file, lineBase = 0) {
   for (const name of passNames) {
     const pass = PASSES[name];
     if (!pass) throw new Error('no such pass: ' + name);
+    const snapshot = out;   // what the declarations' offsets are into, however much has been edited since
     const decls = parse(out).filter(d => pass.custom ? d.prop.startsWith('--') : !d.prop.startsWith('--'));
     // apply from the end so earlier offsets stay valid
     let count = 0;
     for (const d of decls.reverse()) {
       const value = out.slice(d.valueStart, d.valueEnd);
       if (value.includes('\u0001')) continue;   // an interpolation is in it: not ours to read
-      const ctx = { file, line: lineBase + out.slice(0, d.start).split('\n').length, selector: d.rule.head.replace(/\s+/g, ' ').slice(0, 80), review, text: out };
+      const ctx = { file, line: lineBase + out.slice(0, d.start).split('\n').length, selector: d.rule.head.replace(/\s+/g, ' ').slice(0, 80), review, text: snapshot };
       const next = pass.forward(value, d, ctx);
       if (next != null && next !== value) { out = out.slice(0, d.valueStart) + next + out.slice(d.valueEnd); count++; }
     }
