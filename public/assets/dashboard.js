@@ -49,7 +49,7 @@ function bootRetryScreen(message) {
     el.id = 'boot-retry';
     el.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;background:var(--bg,#0f1117);color:var(--text,#e7e3da);z-index:9998;text-align:center;padding:20px';
     el.innerHTML = `<div>
-      <div style="font-size:17px;font-weight:700;margin-bottom:8px">Can’t reach MotoLinker</div>
+      <div style="font-size:17px;font-weight:700;margin-bottom:8px">Can’t reach ${esc(typeof wsName === 'function' ? wsName() : 'MotoLinker')}</div>
       <div id="boot-retry-msg" style="font-size:13px;color:var(--muted,#889);margin-bottom:16px">Retrying automatically…</div>
       <button class="btn btn-primary" onclick="location.reload()">Retry now</button>
     </div>`;
@@ -4450,6 +4450,8 @@ function openNotifStream() {
   es.addEventListener('huddle-signal', huddleOnStreamFrame);
   // Back after a gap: the server replays what it kept; this re-reads the roster.
   es.addEventListener('open', () => { huddleOnStreamOpen(); });
+  // The workspace's name or picture changed (here, or in another of the admin's tabs).
+  es.addEventListener('workspace', wsOnStreamEvent);
   es.addEventListener('notification', e => {
     try {
       const n = JSON.parse(e.data);
@@ -4742,9 +4744,7 @@ function adminChatRenderRoomList() {
     const when   = room.lastMessage ? chatWhen(room.lastMessage.created_at) : '';
     return `<div class="chat-room-item${adminActiveChatRoom === room.id ? ' active' : ''}" onclick="adminChatOpenRoom(${room.id})" data-room="${room.id}">
       <div class="chat-room-avatar-wrap">
-        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${
-          room.type === 'group' && room.icon ? esc(room.icon)
-            : (other?.member_avatar ? `<img src="${esc(other.member_avatar)}" alt="">` : esc(init))}</div>
+        <div class="chat-room-avatar${room.type === 'group' ? ' grp' : ''}">${chatRoomFaceHtml(room, other, init)}</div>
         ${room.type === 'direct' ? `<div class="presence-dot" id="presence-dot-${room.id}"></div>` : ''}
       </div>
       <div class="chat-room-info">
@@ -4788,7 +4788,8 @@ async function adminChatOpenRoom(roomId) {
   document.querySelector(`[data-room="${roomId}"] .chat-unread-n`)?.remove();
 
   const room = adminChatRooms.find(r => r.id === roomId);
-  const name = room?.type === 'group' ? room.name : (room?.members || []).find(m => m.member_key !== 'admin')?.member_name || 'Chat';
+  const peer = room?.type === 'direct' ? (room.members || []).find(m => m.member_key !== 'admin') : null;
+  const name = room?.type === 'group' ? room.name : peer?.member_name || 'Chat';
 
   // Mobile: swap panels
   document.getElementById('admin-chat-rooms-panel')?.classList.remove('mob-show');
@@ -4797,7 +4798,7 @@ async function adminChatOpenRoom(roomId) {
   main.innerHTML = `
     <div class="chat-header">
       <button class="chat-back-btn" onclick="adminChatBackToRooms()" title="Back"><i data-lucide="arrow-left" style="width:18px;height:18px"></i></button>
-      <div class="chat-room-avatar chat-header-avatar${room?.type === 'group' ? ' grp' : ''}">${esc(name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}</div>
+      <div class="chat-room-avatar chat-header-avatar${room?.type === 'group' ? ' grp' : ''}">${chatRoomFaceHtml(room, peer, name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}</div>
       <div class="chat-header-id">
         <div class="chat-header-name">${esc(name)} ${chatHeaderStatus(room)}</div>
         <div class="chat-header-meta" id="admin-chat-header-meta">${room?.type === 'group' ? `${(room.members||[]).length} members` : 'Direct message'}</div>
@@ -5279,6 +5280,8 @@ async function adminShowGroupModal() {
   const sel = document.getElementById('admin-group-members');
   sel.innerHTML = adminChatPeople.map(p => `<option value="${esc(p.key)}">${esc(p.name)}</option>`).join('');
   document.getElementById('admin-group-name').value = '';
+  const pic = document.getElementById('admin-group-picture');
+  if (pic) pic.value = '';
   document.getElementById('admin-group-modal').style.display = 'flex';
 }
 
@@ -5288,6 +5291,8 @@ async function adminCreateGroup() {
   const sel = document.getElementById('admin-group-members');
   const memberKeys = [...sel.selectedOptions].map(o => o.value);
   if (!memberKeys.length) { alert('Select at least one member'); return; }
+  const picInput = document.getElementById('admin-group-picture');
+  const picture = picInput && picInput.files && picInput.files[0];
   document.getElementById('admin-group-modal').style.display = 'none';
   const r = await apiFetch('/api/dashboard/chat/rooms/group', { method:'POST', body:JSON.stringify({ name, memberKeys }) });
   if (!r.ok) { alert('Failed to create group'); return; }
@@ -5295,6 +5300,70 @@ async function adminCreateGroup() {
   adminChatRooms.unshift(room);
   adminChatRenderRoomList();
   adminChatOpenRoom(room.id);
+  // The picture goes up once the group exists; it is the same upload as changing it later.
+  if (picture) await chatRoomPictureUpload(room.id, picture);
+}
+
+// ── Workspace: its name and picture ───────────────────────────────────────────
+// Everyone sees them — the sidebar and header of both portals, the sign-in page, the
+// browser tab — and every open page updates the moment they change (assets/workspace.js).
+function openWorkspaceSettings() {
+  const ws = wsCurrent();
+  showModal('Workspace', `
+    <div class="ws-edit-pic">
+      <div class="logo ws-edit-face" aria-hidden="true"></div>
+      <div style="min-width:0">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" type="button" onclick="document.getElementById('ws-logo-input').click()">
+            <i data-lucide="image-up" style="width:13px;height:13px"></i> ${ws.logo_url ? 'Change picture' : 'Upload a picture'}</button>
+          ${ws.logo_url ? `<button class="btn btn-outline btn-sm" type="button" onclick="wsRemoveLogo()">Use the default</button>` : ''}
+        </div>
+        <div class="ws-edit-hint">The workspace's profile picture. A square image works best — PNG, JPEG, WebP or GIF, up to 5 MB.</div>
+        <input type="file" id="ws-logo-input" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" onchange="wsUploadLogo(this)">
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:16px">
+      <label class="form-label" for="ws-name">Workspace name</label>
+      <input class="form-control" id="ws-name" maxlength="60" value="${esc(ws.name)}" onkeydown="if(event.key==='Enter')wsSaveName()">
+      <div class="ws-edit-hint">Shown in the sidebar and header of both portals, the team's sign-in page and the browser tab.</div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="hideModal()">Close</button>
+     <button class="btn btn-primary" id="ws-save-btn" onclick="wsSaveName()">Save name</button>`);
+  requestAnimationFrame(() => lucide.createIcons());
+}
+async function wsSaveName() {
+  const input = document.getElementById('ws-name');
+  const name = (input && input.value || '').trim();
+  if (!name) { showAdminToast('Give the workspace a name.'); return; }
+  const r = await apiFetch('/api/dashboard/workspace', { method: 'PUT', body: JSON.stringify({ name }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { showAdminToast(d.error || 'Could not rename the workspace.'); return; }
+  wsApply(d);
+  showAdminToast('Workspace renamed to ' + d.name + '.');
+}
+async function wsUploadLogo(input) {
+  const f = input.files && input.files[0];
+  input.value = '';
+  if (!f) return;
+  if (!/^image\/(png|jpeg|webp|gif)$/.test(f.type || '')) { showAdminToast('Choose a PNG, JPEG, WebP or GIF picture.'); return; }
+  if (f.size > 5 * 1024 * 1024) { showAdminToast('The picture must be under 5 MB.'); return; }
+  const pic = await chatSquarePicture(f, 512);
+  const fd = new FormData();
+  fd.append('file', pic.blob, pic.name);
+  const r = await apiFetch('/api/dashboard/workspace/logo', { method: 'POST', body: fd });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { showAdminToast(d.error || 'Could not set the picture.'); return; }
+  wsApply(d);
+  showAdminToast('Workspace picture updated.');
+  openWorkspaceSettings();
+}
+async function wsRemoveLogo() {
+  const r = await apiFetch('/api/dashboard/workspace/logo', { method: 'DELETE' });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { showAdminToast(d.error || 'Could not remove the picture.'); return; }
+  wsApply(d);
+  showAdminToast('Back to the default picture.');
+  openWorkspaceSettings();
 }
 
 // ── Approvals (employee-requested lead/deal deletions awaiting sign-off) ────────

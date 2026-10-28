@@ -33,6 +33,9 @@ run scopewrite  node tests/scopewrite.js
 run pastetest   node tests/pastetest.js
 run invitetest  node tests/invitetest.js
 run hdsignal    node tests/hdsignal.js
+run hdmeeting   node tests/hdmeeting.js
+run hdextras    node tests/hdextras.js
+run workspaceui node tests/workspaceui.js
 run icontest    node tests/icontest.js
 run leadstest   node tests/leadstest.js
 run permstest   node tests/permstest.js

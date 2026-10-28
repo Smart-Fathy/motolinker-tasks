@@ -35,7 +35,7 @@
     <div class="auth-logo">
       <div class="auth-logo-icon"></div>
       <h1>Team Portal</h1>
-      <p>MotoLinker · Log hours &amp; track tasks</p>
+      <p><span data-ws-name>MotoLinker</span> · Log hours &amp; track tasks</p>
     </div>
     <div class="auth-err" id="auth-err"></div>
 
@@ -248,7 +248,7 @@
       <div class="sidebar-brand-row">
         <div class="sidebar-icon"></div>
         <div class="sidebar-brand-textwrap">
-          <div class="sidebar-brand-name">MotoLinker</div>
+          <div class="sidebar-brand-name" data-ws-name>MotoLinker</div>
           <div class="sidebar-brand-sub">Team Portal</div>
         </div>
         <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
@@ -1199,9 +1199,14 @@
         <div class="chat-rooms-panel" id="chat-rooms-panel">
           <div class="chat-rooms-header">
             <span class="chat-rooms-title">Messages</span>
-            <button class="btn btn-sm btn-outline" onclick="showNewDmModal()" title="New message" style="padding:5px 8px">
-              <i data-lucide="edit" style="width:13px;height:13px"></i>
-            </button>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-sm btn-outline" onclick="hdThreadHistory()" title="Huddle threads — what was written in past huddles" style="padding:5px 8px">
+                <i data-lucide="messages-square" style="width:13px;height:13px"></i>
+              </button>
+              <button class="btn btn-sm btn-outline" onclick="showNewDmModal()" title="New message" style="padding:5px 8px">
+                <i data-lucide="edit" style="width:13px;height:13px"></i>
+              </button>
+            </div>
           </div>
           <div class="chat-room-list" id="chat-room-list">
             <div class="loading"><span class="spinner"></span></div>
@@ -1325,6 +1330,7 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
+<script src="/assets/workspace.js?v=129"></script>
 <script src="/assets/mobile.js?v=129"></script>
 <script src="/assets/columns.js?v=129"></script>
 <script src="/assets/client-folder.js?v=129"></script>
@@ -1414,7 +1420,7 @@
 <div id="pwa-install-banner" style="display:none;position:fixed;bottom:calc(var(--bottomnav-h) + 12px);left:12px;right:12px;z-index:400;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
   <img src="/icons/icon-192.png" style="width:40px;height:40px;border-radius:10px;flex-shrink:0" alt="" onerror="this.style.display='none'">
   <div style="flex:1;min-width:0">
-    <div style="font-weight:700;font-size:14px">Install MotoLinker</div>
+    <div style="font-weight:700;font-size:14px">Install <span data-ws-name>MotoLinker</span></div>
     <div style="font-size:12px;color:var(--muted);margin-top:2px">Add to your home screen for the full app experience</div>
   </div>
   <button onclick="triggerInstall()" class="btn btn-primary" style="flex-shrink:0;padding:8px 16px;font-size:13px">Install</button>
@@ -1425,7 +1431,7 @@
 <div id="pwa-ios-hint" style="display:none;position:fixed;bottom:calc(var(--bottomnav-h) + 12px);left:12px;right:12px;z-index:400;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;align-items:flex-start;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
   <div style="flex-shrink:0;display:flex"><i data-lucide="smartphone" style="width:24px;height:24px"></i></div>
   <div style="flex:1;min-width:0">
-    <div style="font-weight:700;font-size:14px;margin-bottom:4px">Install MotoLinker</div>
+    <div style="font-weight:700;font-size:14px;margin-bottom:4px">Install <span data-ws-name>MotoLinker</span></div>
     <div style="font-size:12px;color:var(--muted);line-height:1.6">
       Tap the <strong>Share</strong> button <span style="font-size:13px">⎙</span> in Safari,
       then tap <strong>"Add to Home Screen"</strong>

@@ -282,6 +282,51 @@ members of the conversation into the call. Turning the camera or a screen share 
 mid-call is a track swap on a slot reserved before the first offer, so it takes
 effect without renegotiating.
 
+### The host
+
+Whoever starts a huddle is its host, and every roster marks them (`host: true` on their
+entry), so each tile can say so. The host can **remove** someone (the button on their
+tile): the server takes them out of the roster, revokes a guest's grant, tells them
+(`removed`) and drops them from everyone else's roster at once (`left`, `removed: true`).
+They then stay out until the huddle ends or **the host** invites them again: their joins,
+pings and offers are refused with `removed: true` (the page says why), nobody else's
+invite brings them back, and the live list does not offer them the call. A member keeps
+the conversation; only the call is closed to them.
+
+If the host leaves, or is swept as silent, whoever has been in the call longest is host
+until they return. The role comes back to whoever started it, so a reload doesn't hand
+the call over for good. After a server restart the host is read back from the huddle's
+session (below).
+
+### Reactions
+
+The smiley button offers eight reactions (👍 👏 ❤️ 😂 🎉 😮 🙌 ✋). The one picked floats up
+over the sender's tile on everyone's screen in the call, the sender's included. The server
+accepts only those eight, at most eight per person per five seconds, and passes them only
+to the people in the call. They are deliberately **not** kept for a stream that
+reconnects: replayed a minute late, a reaction is a reaction to nothing.
+
+### Meeting threads
+
+Every huddle is a session — from its first join to its last leave — with a **thread**:
+what the people in the call write to each other (links, notes, decisions). It arrives
+live for everyone in the call (the button counts what is new) and is kept after the call
+ends. The history is under the speech-bubble button above the conversation list, and a
+conversation's info panel lists its last few huddles.
+
+Who can read and add to a thread: everyone in the conversation, and everyone who was in
+the call — so a guest pulled in from outside keeps the thread of the meeting they were in,
+though never the room's messages. Someone the host removed can't write in the thread of
+the call they were removed from while it runs.
+
+Sessions survive a restart: a client that rejoins after one carries on the open session
+(and its host and start time) rather than starting another, and a session a crash left
+open is closed — as of its last message — when the next huddle starts in that room.
+
+Needs `migrations/024_huddles_and_group_pictures.sql` (also in `schema.sql`). Without it
+calls work exactly as before; the thread panel and the history say which migration is
+missing (`503`, `migration: "024"`).
+
 ### TURN (optional, but recommended)
 
 With no configuration, huddles use Google's public STUN servers and connect fine on
@@ -336,9 +381,11 @@ that won't connect.
 
 ### Things to know
 
-- **Roster is in-memory.** Nothing about a huddle is persisted. A server restart
-  forgets the roster but not the calls, which are peer to peer: clients see the new
-  boot id and rejoin by themselves.
+- **Roster is in-memory.** Who is in a call right now, the host's removals and the
+  reaction limits live only in the server's memory. A server restart forgets the roster
+  but not the calls, which are peer to peer: clients see the new boot id and rejoin by
+  themselves. What is persisted is the meeting — its session, who was in it and its
+  thread (above).
 - **Leaving is detected.** A closing tab sends a leave beacon, and every participant
   pings every 15 s; anyone silent for 90 s is dropped from the roster. Dropped pairs
   restart ICE (bounded, then the person is told), and a pair whose other end
@@ -360,10 +407,35 @@ that won't connect.
   reload, another device), old tabs are shown a roster without them first, so they
   drop their dead connection and dial the new page; a current page whose place an old
   tab takes is told, and steps aside.
-- Group administration lives next to it: the admin can rename any group, add and
-  remove members and browse everything shared in the room. An employee gets the
-  same controls for groups they created. The server enforces this, not just the UI.
+- Group administration lives next to it: the admin can rename any group, set its
+  picture, add and remove members and browse everything shared in the room. An employee
+  gets the same controls for groups they created. The server enforces this, not just the
+  UI.
+- **A group's face is a picture.** It is uploaded (PNG, JPEG, WebP or GIF, up to 5 MB —
+  never an SVG, which can carry script, and never an address someone typed), cropped to
+  its middle square and scaled down in the browser first, stored in Supabase Storage and
+  shown in the list, the conversation's header and the huddle history. Replacing or
+  removing it deletes the old file. The emoji icon it replaces is still drawn for a group
+  without a picture. The column (`chat_rooms.avatar_url`) arrives with migration 024;
+  until then setting one answers 409 saying so.
 
+
+## 🏷 The workspace's name and picture
+
+The admin renames the workspace and sets its profile picture under **Workspace** at the
+bottom of the admin sidebar. Both portals show them — the sidebar, the header, the
+team's sign-in page, the page title and the browser tab's icon — and every open page,
+in either portal, updates at once: the change is announced on the notification stream
+each of them keeps open (`event: workspace`). Each page remembers the last one it saw,
+so a renamed workspace doesn't flash its old name while loading.
+
+They are stored in `quotation_settings` (key `workspace_profile`), so this needs no
+migration. `GET /api/workspace` is public on purpose — the sign-in page reads it before
+anyone has signed in — and returns nothing but the name and the picture's address.
+Changing them is the admin's alone (`PUT /api/dashboard/workspace`,
+`POST`/`DELETE /api/dashboard/workspace/logo`). The picture follows the same rules as a
+group's. This is the app's own name: the company details printed on quotations and
+contracts are separate settings and are not changed by it.
 
 ## 📁 Where files are stored
 
@@ -371,7 +443,7 @@ Two stores, split by size rather than by feature:
 
 | What | Where | Why |
 | --- | --- | --- |
-| Chat attachments, avatars, issue screenshots | Supabase Storage | Small, already working, nowhere near the limit |
+| Chat attachments, avatars, group and workspace pictures, issue screenshots | Supabase Storage | Small, already working, nowhere near the limit |
 | Client files on a sale, supplier documents | **Google Drive** | Scans and shipping paperwork are large |
 
 The Supabase free tier is **1 GB total with capped egress** — a few hundred scanned

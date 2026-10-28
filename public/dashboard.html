@@ -93,7 +93,7 @@
     <div class="sidebar-logo">
       <div class="sidebar-logo-icon"></div>
       <div class="sidebar-logo-textwrap">
-        <div class="sidebar-logo-text">MotoLinker</div>
+        <div class="sidebar-logo-text" data-ws-name>MotoLinker</div>
         <div class="sidebar-logo-sub">Super Admin</div>
       </div>
       <button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
@@ -198,6 +198,9 @@
         <button class="btn btn-outline btn-sm" style="flex:1" onclick="navArrangeCancel()">Cancel</button>
         <button class="btn btn-outline btn-sm" title="Restore the default layout" onclick="navArrangeReset()">Reset</button>
       </div>
+      <div class="logout-btn" onclick="openWorkspaceSettings()" title="The workspace's name and picture, as everyone sees them">
+        <span><i data-lucide="building-2" style="width:16px;height:16px"></i></span> Workspace
+      </div>
       <div class="logout-btn" onclick="openSecurity()">
         <span><i data-lucide="shield-check" style="width:16px;height:16px"></i></span> Security
       </div>
@@ -213,7 +216,7 @@
     <div class="header-left">
       <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu"><i data-lucide="menu" style="width:22px;height:22px"></i></button>
       <div class="logo"></div>
-      <h1>MotoLinker</h1>
+      <h1 data-ws-name>MotoLinker</h1>
       <span class="header-badge">Admin Dashboard</span>
     </div>
     <div class="header-right">
@@ -1426,6 +1429,9 @@
         <div class="chat-rooms-header">
           <span class="chat-rooms-title">Messages</span>
           <div style="display:flex;gap:6px">
+            <button class="btn btn-sm btn-outline" onclick="hdThreadHistory()" title="Huddle threads — what was written in past huddles" style="padding:5px 8px">
+              <i data-lucide="messages-square" style="width:13px;height:13px"></i>
+            </button>
             <button class="btn btn-sm btn-outline" onclick="adminShowGroupModal()" title="New group" style="padding:5px 8px">
               <i data-lucide="users" style="width:13px;height:13px"></i>
             </button>
@@ -1522,6 +1528,11 @@
         <label class="form-label">Members (hold Ctrl/Cmd to select multiple)</label>
         <select class="form-control" id="admin-group-members" multiple style="height:150px"></select>
       </div>
+      <div class="form-group">
+        <label class="form-label">Group picture (optional)</label>
+        <input class="form-control" id="admin-group-picture" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Everyone in the group sees it. You can change it later from the group's ⋯ menu.</div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="document.getElementById('admin-group-modal').style.display='none'">Cancel</button>
@@ -1542,6 +1553,7 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
+<script src="/assets/workspace.js?v=149"></script>
 <script src="/assets/mobile.js?v=149"></script>
 <script src="/assets/columns.js?v=149"></script>
 <script src="/assets/client-folder.js?v=149"></script>

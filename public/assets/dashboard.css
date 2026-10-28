@@ -865,7 +865,14 @@
   .sidebar-logo-sub{ color:var(--gold); }
   .nav-item.active{ background:rgba(201,163,94,.12)!important; color:var(--gold)!important; box-shadow:inset 0 0 0 1px var(--hair-gold); }
   .nav-item:hover{ background:rgba(255,255,255,.05); color:#f3efe7; }
-  .logo,.sidebar-logo-icon{ background:#0f0f11 url('https://images.motolinkers.com/avatar-11-max-reev/05_logo_copy-1__1_-removebg-preview2.png') center/contain no-repeat; border:1px solid var(--gold); border-radius:50%; color:transparent; font-size:0; font-family:'Cormorant Garamond',serif; font-weight:600; }
+  .logo,.sidebar-logo-icon{ background:#0f0f11 var(--ws-logo, url('https://images.motolinkers.com/avatar-11-max-reev/05_logo_copy-1__1_-removebg-preview2.png')) center/contain no-repeat; border:1px solid var(--gold); border-radius:50%; color:transparent; font-size:0; font-family:'Cormorant Garamond',serif; font-weight:600; }
+  /* The workspace's own picture, when the admin has set one (assets/workspace.js): a
+     photo fills the circle rather than sitting inside it like the default mark. */
+  .ws-custom-logo .logo,.ws-custom-logo .sidebar-logo-icon{ background-size:cover; }
+  /* The workspace editor (Workspace, in the sidebar footer) */
+  .ws-edit-pic { display:flex; align-items:center; gap:16px; }
+  .ws-edit-face { width:64px; height:64px; flex-shrink:0; }
+  .ws-edit-hint { font-size:11.5px; color:var(--muted); margin-top:6px; line-height:1.45; }
   .chart-card,.card,.table-card,.stat-card,.hours-card,.employee-card,.progress-card,.email-connect-card,.auth-card{ background:var(--panel)!important; border:1px solid var(--hair)!important; box-shadow:none!important; border-radius:4px!important; }
   .stat-card{ border-top:1px solid var(--hair); }
   .stat-card.total .stat-value,.stat-card.done .stat-value,.stat-card.in-progress .stat-value,.stat-card.todo .stat-value,.stat-card.high-pri .stat-value,.stat-card.overdue .stat-value{ color:var(--text); }
@@ -1283,12 +1290,105 @@
   .status-emo { font-size:11px; margin-left:3px; }
   .status-chip { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:var(--muted); }
   .status-chip-txt { max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* The host's remove button, beside the full-screen one */
+  .hd-kick { position:absolute; top:4px; right:4px; z-index:3; align-items:center; justify-content:center;
+             width:22px; height:22px; padding:0; border:none; border-radius:6px; cursor:pointer;
+             background:rgba(0,0,0,.55); color:#f3efe7; opacity:.75; }
+  .hd-kick:hover { opacity:1; background:var(--danger); }
+  /* Reactions: a picker above the controls, and a layer the emoji float up through */
+  .hd-react-pop { display:flex; gap:2px; justify-content:center; flex-wrap:wrap; padding:4px;
+                  border:1px solid var(--border); border-radius:12px; background:var(--bg); }
+  .hd-react-pick { background:none; border:none; border-radius:9px; cursor:pointer; font-size:20px;
+                   line-height:1; padding:6px 7px; transition:transform .12s, background .12s; }
+  .hd-react-pick:hover { background:rgba(255,255,255,.08); transform:scale(1.18); }
+  #hd-bar.min .hd-react-pop { display:none !important; }
+  .hd-react-layer { position:absolute; inset:0; pointer-events:none; overflow:visible; z-index:6; }
+  .hd-react { position:absolute; display:flex; flex-direction:column; align-items:center; gap:3px;
+              transform:translate(-50%,-50%); animation:hd-react-rise 2.6s ease-out forwards; }
+  .hd-react-emo { font-size:36px; line-height:1; filter:drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
+  .hd-react-who { font-size:10.5px; font-weight:600; color:#f3efe7; background:rgba(0,0,0,.66);
+                  border-radius:999px; padding:1px 8px; white-space:nowrap; max-width:140px;
+                  overflow:hidden; text-overflow:ellipsis; }
+  @keyframes hd-react-rise {
+    0%   { opacity:0; transform:translate(-50%,-30%) scale(.5); }
+    12%  { opacity:1; transform:translate(-50%,-65%) scale(1.18); }
+    24%  { transform:translate(-50%,-75%) scale(1); }
+    78%  { opacity:1; }
+    100% { opacity:0; transform:translate(-50%,-240%) scale(1); }
+  }
+  .hd-tile.reacting { box-shadow:0 0 0 2px var(--primary); transition:box-shadow .2s; }
+  @media (prefers-reduced-motion: reduce) {
+    .hd-react { animation:hd-react-fade 2.6s ease-out forwards; }
+    @keyframes hd-react-fade { 0% { opacity:0; } 10% { opacity:1; } 80% { opacity:1; } 100% { opacity:0; } }
+  }
+  /* Unread thread messages: on the thread button, and by the title when minimised */
+  .hd-thread-btn { position:relative; }
+  .hd-badge { position:absolute; top:-6px; right:-6px; min-width:16px; height:16px; padding:0 4px;
+              border-radius:8px; background:var(--danger); color:#fff; font-size:10px; font-weight:700;
+              line-height:16px; text-align:center; }
+  .hd-head-thread { font-size:11px; font-weight:700; color:var(--primary); padding:2px 7px; }
+  /* The meeting thread: the call's own, or one opened from the history */
+  #hd-thread { display:none; position:fixed; right:18px; top:72px; z-index:1260; flex-direction:column;
+               width:min(380px, calc(100vw - 32px)); height:min(560px, calc(100vh - 100px));
+               background:var(--surface); border:1px solid var(--border); border-radius:14px;
+               box-shadow:0 18px 48px rgba(0,0,0,.45); overflow:hidden; }
+  .hd-th-head { display:flex; align-items:flex-start; gap:10px; padding:12px 14px 6px; }
+  .hd-th-titles { flex:1; min-width:0; }
+  .hd-th-title { font-size:14px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .hd-th-sub { font-size:11px; color:var(--muted); margin-top:2px; }
+  .hd-th-x { background:none; border:none; color:var(--muted); font-size:20px; line-height:1; cursor:pointer; padding:0 2px; }
+  .hd-th-x:hover { color:var(--text); }
+  .hd-th-who { font-size:11px; color:var(--muted); padding:0 14px 8px; border-bottom:1px solid var(--border);
+               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .hd-th-who:empty { display:none; }
+  .hd-th-list { flex:1; overflow-y:auto; padding:10px 14px; display:flex; flex-direction:column; gap:2px; }
+  .hd-th-empty { font-size:12px; color:var(--muted); padding:18px 6px; text-align:center; line-height:1.5; }
+  .hd-th-msg { padding:2px 0; }
+  .hd-th-msg:not(.grouped) { margin-top:8px; }
+  .hd-th-meta { display:flex; align-items:center; gap:7px; margin-bottom:2px; }
+  .hd-th-av { width:22px; height:22px; border-radius:50%; background:var(--border); color:var(--text);
+              display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:700;
+              overflow:hidden; flex-shrink:0; }
+  .hd-th-av img { width:100%; height:100%; object-fit:cover; display:block; }
+  .hd-th-name { font-size:12px; font-weight:700; }
+  .hd-th-msg.mine .hd-th-name { color:var(--primary); }
+  .hd-th-time { font-size:10px; color:var(--muted); }
+  .hd-th-body { font-size:13px; line-height:1.45; white-space:pre-wrap; overflow-wrap:anywhere; padding-left:29px; }
+  .hd-th-foot { display:flex; gap:8px; align-items:flex-end; padding:10px 12px; border-top:1px solid var(--border); margin:0; }
+  .hd-th-input { flex:1; min-width:0; resize:none; max-height:120px; background:var(--bg); border:1px solid var(--border);
+                 color:var(--text); border-radius:9px; padding:8px 11px; font-size:13px; font-family:inherit; line-height:1.35; }
+  .hd-th-input:focus { outline:none; border-color:var(--primary); }
+  .hd-th-send { background:var(--primary); color:#111; border:none; border-radius:9px; padding:8px 14px;
+                font-size:12.5px; font-weight:700; cursor:pointer; }
+  .hd-th-send:disabled, .hd-th-input:disabled { opacity:.5; cursor:default; }
+  /* The history of huddles, and a conversation's last few in its panel */
+  .hd-hist { display:grid; gap:4px; }
+  .hd-hist-row { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:none;
+                 border:1px solid var(--border); border-radius:10px; padding:8px 10px; cursor:pointer;
+                 color:var(--text); font-family:inherit; }
+  .hd-hist-row:hover { border-color:var(--primary); }
+  .hd-hist-av { width:34px; height:34px; font-size:12px; flex-shrink:0; }
+  .hd-hist-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .hd-hist-title { font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .hd-hist-sub { font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .hd-hist-n { font-size:11.5px; color:var(--muted); white-space:nowrap; }
+  .hd-live { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#fff;
+             background:var(--danger); border-radius:999px; padding:1px 7px; vertical-align:2px; }
+  .hd-link { background:none; border:none; color:var(--primary); font-size:12px; font-weight:600; cursor:pointer;
+             padding:6px 2px; text-align:left; font-family:inherit; }
+  /* A group's picture in its panel */
+  .cg-pic { display:flex; align-items:center; gap:14px; }
+  .chat-room-avatar.cg-pic-face { width:64px; height:64px; font-size:22px; border-radius:16px; }
+  .cg-pic-acts { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .cg-pic-hint { flex-basis:100%; font-size:11px; color:var(--muted); }
   @media (max-width:640px) {
     /* On a phone the composer and the FAB own the bottom, so dock to the top —
        the join chip and the ringing prompt are both hidden while in a huddle. */
     #hd-bar { left:10px; right:10px; top:10px; bottom:auto; max-width:none; }
     .hd-tile, .hd-video, .hd-avatar { width:100%; }
     .hd-tiles { display:grid; grid-template-columns:1fr 1fr; }
+    /* The thread takes the screen; closing it goes back to the call */
+    #hd-thread { inset:0; width:auto; height:auto; border-radius:0; border:none; z-index:1350; }
   }
 
   /* ── The access editor ──────────────────────────────────────────────────────
