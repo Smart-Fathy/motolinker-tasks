@@ -42,7 +42,7 @@ db.install();
     await page.evaluateOnNewDocument((route, token) => {
       window.lucide = { createIcons() {} };
       window.Chart = function () { return { destroy() {}, update() {} }; };
-      if (token) localStorage.setItem(route === '/dashboard' ? 'ml_admin_token' : 'ml_emp_token', token);
+      if (token) localStorage.setItem(route.startsWith('/dashboard') ? 'ml_admin_token' : 'ml_emp_token', token);
     }, route, token);
     await page.goto(base + route, { waitUntil: 'domcontentloaded' });
     return page;
@@ -127,6 +127,19 @@ db.install();
   await sleep(400);
   check('a sign-in page opens with the new wording already in it (written by the server, not painted over)', await sign.evaluate(() => document.querySelector('[data-ws-text="team_title"]').textContent === 'Crew Portal'));
   await sign.close();
+
+  // ── Safe mode: the page wears the original look, and the editor still shows the saved one ──
+  {
+    const safe = await open('/dashboard?safe=1', ADMIN);
+    await until(safe, () => document.getElementById('app').style.display === 'block');
+    await safe.evaluate(() => navigate('workspace'));
+    await until(safe, () => !!document.querySelector('.wsa-tab[data-id="colours"]'));
+    await click(safe, '.wsa-tab[data-id="colours"]');
+    const gotPreset = await until(safe, () => !!document.querySelector('.wsa-preset.on[data-id="moto"]'));
+    const safePrimary = await page_(safe, '--primary'), discardOff = await safe.evaluate(() => !!document.getElementById('wsa-discard-btn') && document.getElementById('wsa-discard-btn').disabled);
+    check('in safe mode the page is the original look, but the editor starts from what is saved', gotPreset && safePrimary === '#c9a35e' && discardOff, JSON.stringify({ gotPreset, safePrimary, discardOff, on: await safe.evaluate(() => [...document.querySelectorAll('.wsa-preset.on')].map(e => e.getAttribute('data-id'))) }));
+    await safe.close();
+  }
 
   // ── Who may switch ────────────────────────────────────────────────────────────────────
   await click(admin, '.wsa-tab[data-id="behaviour"]');

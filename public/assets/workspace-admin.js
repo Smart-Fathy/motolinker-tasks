@@ -91,7 +91,7 @@ function wsaRender() {
   const root = document.getElementById('wsa-root');
   if (!root || !_wsa) return;
   const T = wsaT(), d = _wsa.draft, tab = _wsa.tab;
-  const tabs = WSA_TABS.map(([id, label]) => `<button class="wsa-tab${tab === id ? ' on' : ''}" type="button" data-act="tab" data-id="${id}">${label}</button>`).join('');
+  const tabs = WSA_TABS.map(([id, label]) => `<button class="wsa-tab${tab === id ? ' on' : ''}" type="button" role="tab" aria-selected="${tab === id}" data-act="tab" data-id="${id}">${label}</button>`).join('');
   root.innerHTML = `
     <div class="wsa-head">
       <div>
@@ -108,7 +108,7 @@ function wsaRender() {
     <div class="wsa-grid">
       <div class="wsa-col">
         <div class="wsa-tabs" role="tablist">${tabs}</div>
-        <div id="wsa-tab">${wsaTabHtml()}</div>
+        <div id="wsa-tab" role="tabpanel">${wsaTabHtml()}</div>
       </div>
       <aside class="wsa-col wsa-side">
         <div class="wsa-card wsa-pv-card">
@@ -406,7 +406,7 @@ function wsaBind(root) {
     if (!b || !_wsa) return;
     const act = b.getAttribute('data-act'), id = b.getAttribute('data-id');
     const T = wsaT(), d = _wsa.draft;
-    if (act === 'tab') { wsaReadIdentity(); _wsa.tab = id; document.getElementById('wsa-tab').innerHTML = wsaTabHtml(); root.querySelectorAll('.wsa-tab').forEach(t => t.classList.toggle('on', t.getAttribute('data-id') === id)); if (typeof lucide !== 'undefined') lucide.createIcons(); }
+    if (act === 'tab') { wsaReadIdentity(); _wsa.tab = id; document.getElementById('wsa-tab').innerHTML = wsaTabHtml(); root.querySelectorAll('.wsa-tab').forEach(t => { const on = t.getAttribute('data-id') === id; t.classList.toggle('on', on); t.setAttribute('aria-selected', String(on)); }); if (typeof lucide !== 'undefined') lucide.createIcons(); }
     else if (act === 'preset') {
       // choosing a preset starts from it: its colours (not the old overrides), and, if asked, its type, shape, glow and mode
       const P = T.PRESETS[id];
