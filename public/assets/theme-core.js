@@ -76,6 +76,14 @@
     }
     return lighter ? '#ffffff' : '#000000';
   }
+  // `c` lightened toward white by up to `t`, but never so far that `ink` stops reading on it:
+  // the primary button is a gradient from this to the accent, with the ink over both ends.
+  function lift(c, t, ink) {
+    if (contrast(ink, mix(c, '#ffffff', t)) >= 4.5) return mix(c, '#ffffff', t);
+    let lo = 0, hi = t;
+    for (let i = 0; i < 14; i++) { const mid = (lo + hi) / 2; if (contrast(ink, mix(c, '#ffffff', mid)) >= 4.5) lo = mid; else hi = mid; }
+    return mix(c, '#ffffff', lo);
+  }
   // The ink for a filled button: near-black or white, whichever reads better on it.
   const INK = '#0c0c0e';
   const onFill = fill => (contrast(INK, fill) >= contrast('#ffffff', fill) ? INK : '#ffffff');
@@ -95,25 +103,25 @@
       dark:  { bg: '#0c0c0e', panel: '#141416', sidebar: '#0f0f12', text: '#f3efe7', text2: '#b9b3a4', muted: '#8d897f', accent: '#c9a35e', accent2: '#e8cd93',
                card: '#18181b', field: '#0e0e10', field2: '#101013', thead: '#101012', auth1: '#15130e', auth2: '#0b0b0c', avatar1: '#1c1a14', ink2: '#1b1608',
                soft: '#d9bd7f', deep: '#a07e3f', lite: '#e8cd93', dim: '#8a6a30', muted2: '#a5a29a', placeholder: '#6f6b63' },
-      light: { bg: '#f7f4ee', panel: '#ffffff', sidebar: '#ffffff', text: '#1f1c17', muted: '#6b6558', accent: '#806224', accent2: '#b78c3d' },
+      light: { bg: '#f7f4ee', panel: '#ffffff', sidebar: '#ffffff', text: '#1f1c17', muted: '#6b6558', accent: '#a8802f', accent2: '#b78c3d' },
     },
     'moto': {
       name: 'Moto Palette', blurb: 'The MotoLinker brand: forest green, road green and lime.',
       font: { heading: 'poppins', body: 'poppins' }, shape: { radius: 3, density: 1 }, glow: 'off', mode: 'light',
       dark:  { bg: '#04140e', panel: '#0a231a', sidebar: '#04140e', text: '#eaf4e5', muted: '#8fb09a', accent: '#7ec842', accent2: '#3a8e0e', hover: '#5fa52f' },
-      light: { bg: '#f5f9f3', panel: '#ffffff', sidebar: '#043627', text: '#16271f', muted: '#5a6d62', accent: '#2e7607', accent2: '#3a8e0e' },
+      light: { bg: '#f5f9f3', panel: '#ffffff', sidebar: '#043627', text: '#16271f', muted: '#5a6d62', accent: '#328008', accent2: '#3a8e0e' },
     },
     'cyberpunk': {
       name: 'Cyberpunk Tech', blurb: 'Night-city blue-black with electric cyan and hot magenta.',
       font: { heading: 'space-grotesk', body: 'inter' }, shape: { radius: 0, density: 1 }, glow: 'strong', mode: 'dark',
       dark:  { bg: '#0a0a12', panel: '#11111d', sidebar: '#08080f', text: '#e8f4ff', muted: '#8a93b0', accent: '#00e5ff', accent2: '#ff2bd6' },
-      light: { bg: '#eef2fb', panel: '#ffffff', sidebar: '#0f1226', text: '#10142a', muted: '#555d7e', accent: '#007282', accent2: '#d4009f' },
+      light: { bg: '#eef2fb', panel: '#ffffff', sidebar: '#0f1226', text: '#10142a', muted: '#555d7e', accent: '#0095ab', accent2: '#d4009f' },
     },
     'neon-minimal': {
       name: 'Neon Minimalist', blurb: 'Almost nothing but black, white and one acid-lime line.',
       font: { heading: 'inter', body: 'inter' }, shape: { radius: 1, density: 1 }, glow: 'subtle', mode: 'dark',
       dark:  { bg: '#050505', panel: '#0d0d0d', sidebar: '#050505', text: '#f2f2f2', muted: '#8f8f8f', accent: '#c6ff3d', accent2: '#ffffff' },
-      light: { bg: '#f6f6f4', panel: '#ffffff', sidebar: '#ffffff', text: '#0a0a0a', muted: '#5e5e5e', accent: '#507100', accent2: '#0a0a0a' },
+      light: { bg: '#f6f6f4', panel: '#ffffff', sidebar: '#ffffff', text: '#0a0a0a', muted: '#5e5e5e', accent: '#5f8500', accent2: '#0a0a0a' },
     },
     'synthwave': {
       name: 'Synthwave', blurb: 'Purple dusk, pink neon, a sunset-grid mood.',
@@ -125,7 +133,7 @@
       name: 'Matrix', blurb: 'Terminal green on black, set in a monospace.',
       font: { heading: 'jetbrains-mono', body: 'jetbrains-mono' }, shape: { radius: 0, density: 0 }, glow: 'subtle', mode: 'dark',
       dark:  { bg: '#020a05', panel: '#07160c', sidebar: '#010603', text: '#d6ffe4', muted: '#6fae86', accent: '#00ff6a', accent2: '#00b34a' },
-      light: { bg: '#f1fbf4', panel: '#ffffff', sidebar: '#062313', text: '#0b2415', muted: '#4f6f5b', accent: '#007534', accent2: '#00a946' },
+      light: { bg: '#f1fbf4', panel: '#ffffff', sidebar: '#062313', text: '#0b2415', muted: '#4f6f5b', accent: '#007a36', accent2: '#00a946' },
     },
     'deep-ocean': {
       name: 'Deep Ocean', blurb: 'Navy depths, sky-blue light.',
@@ -137,11 +145,15 @@
       name: 'Ember', blurb: 'Warm charcoal lit by orange coals.',
       font: { heading: 'playfair', body: 'manrope' }, shape: { radius: 2, density: 1 }, glow: 'subtle', mode: 'dark',
       dark:  { bg: '#0f0b0a', panel: '#1a1311', sidebar: '#0b0706', text: '#fbeee7', muted: '#b39a8d', accent: '#ff6a3d', accent2: '#ffb020' },
-      light: { bg: '#fff6f1', panel: '#ffffff', sidebar: '#2b1510', text: '#2a1510', muted: '#7a5d52', accent: '#b83e0b', accent2: '#d97706' },
+      light: { bg: '#fff6f1', panel: '#ffffff', sidebar: '#2b1510', text: '#2a1510', muted: '#7a5d52', accent: '#c2410c', accent2: '#d97706' },
     },
   };
   const PRESET_ORDER = ['black-gold', 'moto', 'cyberpunk', 'neon-minimal', 'synthwave', 'matrix', 'deep-ocean', 'ember'];
   const DEFAULT_PRESET = 'black-gold';
+  // How much of itself an accent may be washed with behind its own text: on a dark page the
+  // wash is dim and the accent bright, so 14% (the active nav row) is the hard case; on a light
+  // page the sheets put up to 30% behind it (a badge, a calendar cell) and it has to be dark.
+  const accentTint = dark => (dark ? 0.14 : 0.3);
 
   // ── Fonts ───────────────────────────────────────────────────────────────────
   // An allow-list: the id is what is stored, the family and stack are what reach the page.
@@ -292,16 +304,18 @@
     const dark = mode === 'dark';
     const preset = PRESETS[n.theme.preset];
 
-    // One accent for fills and for text: a button, a border, an active nav item, a link.
-    // It is held to 4.5:1 on a panel's accent-tinted rows (the active nav item, a hovered
-    // row), the hardest place it has to read, so it needs no second "text" version — and a
-    // fill that reads as text always shows up against the page.
-    // (The tint is made of the accent itself, so moving the accent moves the tint: settle.)
-    let fill = P.accent;
+    // The accent as a fill — a button, a border, a chip — is held to 3:1 on a panel (so it shows
+    // up) and carries its own ink (onAccent). As text it must do more: it is read on the washes
+    // of itself the sheets put behind it (a badge, a calendar cell, the active nav row), so it
+    // gets a darker (or, on a dark page, a lighter) twin held to 4.5:1 there. On a dark page
+    // the twin is the accent itself. (The wash is made of the accent, so as the twin moves the
+    // wash moves with it: settle.)
+    const fill = ensure(P.accent, P.panel, 3);
+    let text = fill;
     for (let i = 0; i < 6; i++) {
-      const next = ensure(fill, over(fill, P.panel, 0.14), 4.5);
-      if (next === fill) break;
-      fill = next;
+      const next = ensure(text, over(text, P.panel, accentTint(dark)), 4.5);
+      if (next === text) break;
+      text = next;
     }
     const fill2 = ensure(P.accent2 || fill, P.panel, 3);
 
@@ -311,7 +325,13 @@
     const sbCandidates = [preset.dark.text, preset.light.text, '#f4f1ea', '#15171c'];
     const sbText = sbCandidates.find(c => contrast(c, P.sidebar) >= 7) || sbCandidates.slice().sort((a, b) => contrast(b, P.sidebar) - contrast(a, P.sidebar))[0];
     const sbMuted = ensure(mix(sbText, P.sidebar, 0.42), P.sidebar, 4.5);
-    const sbAccent = ensure(n.theme.accent || preset.dark.accent, over(n.theme.accent || preset.dark.accent, P.sidebar, 0.14), 4.5);
+    const sbBase = n.theme.accent || preset.dark.accent, sbTint = accentTint(luminance(P.sidebar) < 0.4);
+    let sbAccent = sbBase;
+    for (let i = 0; i < 6; i++) {
+      const next = ensure(sbAccent, over(sbAccent, P.sidebar, sbTint), 4.5);
+      if (next === sbAccent) break;
+      sbAccent = next;
+    }
 
     const ink = dark ? '#ffffff' : P.text;          // what translucent overlays are made of
     const text2 = P.text2 || mix(P.text, P.muted, 0.5);
@@ -328,12 +348,12 @@
       auth2: P.auth2 || (dark ? mix(P.bg, '#000000', 0.2) : P.bg),
       avatar1: P.avatar1 || (dark ? mix(P.panel, fill, 0.1) : mix(P.panel, fill, 0.12)),
       ink,
-      accent: fill, accent2: fill2,
+      accent: fill, accentText: text, accent2: fill2,
       onAccent: onFill(fill),
       onAccent2: P.ink2 && contrast(P.ink2, fill) >= 4.5 ? P.ink2 : onFill(fill),
       deep: P.deep || P.hover || mix(fill, '#000000', dark ? 0.25 : 0.18),
-      soft: P.soft || mix(fill, '#ffffff', dark ? 0.28 : 0.35),
-      lite: P.lite || mix(fill, '#ffffff', dark ? 0.5 : 0.55),
+      soft: P.soft || lift(fill, dark ? 0.28 : 0.35, onFill(fill)),
+      lite: P.lite || lift(fill, dark ? 0.5 : 0.55, onFill(fill)),
       dim: P.dim || mix(fill, '#000000', dark ? 0.4 : 0.32),
       sbText, sbMuted, sbAccent,
     };
@@ -376,6 +396,12 @@
     '--muted-2': '#a5a29a', '--placeholder': '#6f6b63',
   };
 
+  // The least opacity at which `ink` is readable on `ground`, to the hundredth.
+  function inkAlpha(ink, ground, min) {
+    for (let a = 0.3; a < 1; a += 0.01) if (contrast(over(ink, ground, a), ground) >= min) return Math.round(a * 100) / 100;
+    return 1;
+  }
+
   // ── Variables ───────────────────────────────────────────────────────────────
   // Ordered: what is emitted is deterministic, so two renders of one profile compare equal.
   function deriveVars(profile, mode) {
@@ -416,7 +442,7 @@
     v['--primary'] = c.accent;
     v['--primary-h'] = c.deep;
     v['--primary-rgb'] = triplet(c.accent);
-    v['--primary-text'] = c.accent;
+    v['--primary-text'] = c.accentText;
     v['--primary-glow'] = rgba(c.accent, 0.15);
     v['--primary-glow-strong'] = rgba(c.accent, 0.25);
     v['--on-primary'] = c.onAccent;
@@ -444,13 +470,28 @@
     v['--sb-hair'] = rgba(c.sbText, 0.09);
     v['--sb-hair-gold'] = rgba(c.sbAccent, 0.22);
     v['--sb-glass-border'] = rgba(c.sbText, 0.07);
+    // Secondary text the sheets write as the ink at 30-65% — a caption, a hint, a muted label.
+    // The sheets keep each one's own opacity until a look is chosen; then a caption is the
+    // least that reads, and a softer label a little more.
+    const dimOn = (ink, grounds) => Math.max(...grounds.map(g => inkAlpha(ink, g, 4.5)));
+    const dim = dimOn(c.ink, [c.bg, c.panel, c.card, c.field]), sbDim = dimOn(c.sbText, [c.sidebar]);
+    v['--t-dim'] = String(dim);
+    v['--t-soft'] = String(Math.min(0.9, Math.round((dim + 0.12) * 100) / 100));
+    v['--sb-t-dim'] = String(sbDim);
+    v['--sb-t-soft'] = String(Math.min(0.9, Math.round((sbDim + 0.12) * 100) / 100));
     // Effects
     v['--glow'] = glow === 'off' ? '0 0 #0000'
       : glow === 'subtle' ? '0 0 ' + (c.dark ? '12px ' + rgba(c.accent, 0.28) : '10px ' + rgba(c.accent, 0.18))
       : '0 0 ' + (c.dark ? '20px ' + rgba(c.accent, 0.5) + ',0 0 3px ' + rgba(c.accent, 0.7) : '16px ' + rgba(c.accent, 0.32));
     v['--chev-select'] = 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23' + c.accent.slice(1) + '\' stroke-width=\'2.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")';
     v['--color-scheme'] = c.dark ? 'dark' : 'light';
-    if (!c.dark) for (const [k, hex] of Object.entries(STATUS)) v[k] = ensure(hex, c.panel, 4.5);
+    // A status hue is read as text on a wash of itself (a badge is the hue at 12-25% behind the
+    // hue), which is darker than the panel: sink it until it reads there.
+    if (!c.dark) for (const [k, hex] of Object.entries(STATUS)) {
+      let h = hex;
+      for (let i = 0; i < 6; i++) { const next = ensure(h, over(h, c.panel, 0.25), 4.5); if (next === h) break; h = next; }
+      v[k] = h;
+    }
     return v;
   }
 
@@ -547,7 +588,7 @@
     { id: 'muted-panel', fg: 'muted', bg: 'panel', min: 3, warn: 4.5, label: 'Secondary text on panels' },
     { id: 'muted-bg', fg: 'muted', bg: 'bg', min: 3, warn: 4.5, label: 'Secondary text on the page' },
     { id: 'accent-panel', fg: 'accent', bg: 'panel', min: 3, label: 'Accent on panels' },
-    { id: 'accent-text', fg: 'accent', bg: 'tint', min: 4.5, label: 'Accent used as text' },
+    { id: 'accent-text', fg: 'accentText', bg: 'tint', min: 4.5, label: 'Accent used as text' },
     { id: 'on-accent', fg: 'onAccent', bg: 'accent', min: 4.5, label: 'Button text' },
     { id: 'sidebar-text', fg: 'sbText', bg: 'sidebar', min: 4.5, label: 'Sidebar text' },
   ];
@@ -556,7 +597,7 @@
     const rows = [];
     for (const mode of ['dark', 'light']) {
       const c = palette(n, mode);
-      c.tint = over(c.accent, c.panel, 0.14);
+      c.tint = over(c.accentText, c.panel, accentTint(c.dark));
       for (const p of PAIRS) {
         const ratio = contrast(c[p.fg], c[p.bg]);
         const level = ratio < p.min ? 'error' : p.warn && ratio < p.warn ? 'warn' : 'ok';

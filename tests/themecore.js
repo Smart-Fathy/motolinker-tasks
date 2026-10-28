@@ -56,8 +56,9 @@ check('Black & Gold is the default, and Moto Palette is among them', T.DEFAULT_P
       ['text/bg ≥14', C.contrast(c.text, c.bg) >= 14], ['text/panel ≥14', C.contrast(c.text, c.panel) >= 14],
       ['muted/bg ≥5', C.contrast(c.muted, c.bg) >= 5], ['muted/panel ≥5', C.contrast(c.muted, c.panel) >= 5],
       ['accent/panel ≥3', C.contrast(c.accent, c.panel) >= 3], ['accent2/panel ≥3', C.contrast(c.accent2, c.panel) >= 3],
-      ['accent as text ≥4.5', C.contrast(c.accent, C.over(c.accent, c.panel, 0.14)) >= 4.5],
-      ['the preset\'s accent is already the readable one', c.accent === T.PRESETS[id][mode].accent],
+      ['accent as text ≥4.5', C.contrast(c.accentText, C.over(c.accentText, c.panel, mode === 'dark' ? 0.14 : 0.3)) >= 4.5],
+      ['the preset\'s accent is already a good fill', c.accent === T.PRESETS[id][mode].accent],
+      ['on a dark page the text twin is the accent itself', mode === 'light' || c.accentText === c.accent],
       ['sidebar accent ≥4.5', C.contrast(c.sbAccent, c.sidebar) >= 4.5],
       ['button ink ≥4.5', C.contrast(c.onAccent, c.accent) >= 4.5],
       ['sidebar text ≥7', C.contrast(c.sbText, c.sidebar) >= 7], ['sidebar muted ≥4.5', C.contrast(c.sbMuted, c.sidebar) >= 4.5],
@@ -72,8 +73,9 @@ check('Moto Palette in light has the forest sidebar with light text on it', (() 
   const c = T.palette({ theme: { preset: 'moto' } }, 'light');
   return c.sidebar === '#043627' && C.luminance(c.sbText) > 0.6 && C.luminance(c.bg) > 0.9;
 })());
-check('Moto Palette in light uses a nudged brand green, not the exact one, which fails on white',
-  T.PRESETS['moto'].light.accent === '#2e7607' && C.contrast('#2e7607', '#ffffff') >= 4.5 && C.contrast('#3a8e0e', '#ffffff') < 4.5 && T.PRESETS['moto'].light.accent2 === '#3a8e0e');
+check('Moto Palette in light fills with a nudged brand green (the exact one is 4.15:1 under white ink), and its text twin is darker',
+  T.PRESETS['moto'].light.accent === '#328008' && C.contrast('#328008', '#ffffff') >= 4.5 && C.contrast('#3a8e0e', '#ffffff') < 4.5 && T.PRESETS['moto'].light.accent2 === '#3a8e0e'
+  && C.luminance(T.palette({ theme: { preset: 'moto' } }, 'light').accentText) < C.luminance('#328008'));
 check('…and its sidebar accent is the lime, not that green, which would vanish on forest', (() => {
   const c = T.palette({ theme: { preset: 'moto' } }, 'light');
   return C.contrast(c.sbAccent, c.sidebar) >= 4.5 && C.luminance(c.sbAccent) > 0.3;

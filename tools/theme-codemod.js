@@ -226,6 +226,34 @@ PASSES['strong'] = {
   },
 };
 
+// The accent as text. A fill and a text need different things of a colour (a button reads
+// against the page; a label has to read against the wash of itself behind it), so text in the
+// accent goes through --primary-text, which is the accent itself on a dark page.
+PASSES['ptext'] = {
+  about: 'accent used as text (color: var(--gold) / var(--primary)) → var(--primary-text, …)',
+  forward(value, d) {
+    if (!/^(color|-webkit-text-fill-color|fill|stroke|caret-color|text-decoration-color)$/.test(d.prop)) return null;
+    const m = /^(\s*)(var\(--(?:gold|primary)(?:,[^()]*)?\))(\s*)$/.exec(value);
+    return m ? m[1] + 'var(--primary-text,' + m[2] + ')' + m[3] : null;
+  },
+};
+
+// Secondary text made of the page's ink at 30–65%: each keeps its own opacity until a look is
+// chosen, then a caption is the least opacity that reads and a softer label a little more.
+PASSES['tdim'] = {
+  about: 'text in the ink at 30–65% → rgba(var(--ov,…), var(--t-dim|--t-soft, same))',
+  forward(value, d) {
+    if (!/^(color|-webkit-text-fill-color|caret-color|text-decoration-color|fill|stroke)$/.test(d.prop)) return null;
+    // (no masked spans: the match is itself an rgba(var(--ov,…),a), which a var() mask would refuse)
+    return sub(value, [], /rgba\(var\(--ov,\s*255\s*,\s*255\s*,\s*255\s*\),\s*(0?\.\d+)\s*\)/g, m => {
+      const a = parseFloat(m[1]);
+      if (a < 0.25 || a > 0.7) return null;
+      const token = a <= 0.45 ? '--t-dim' : '--t-soft';
+      return m[0].replace(/,\s*(0?\.\d+)\s*\)$/, (x, al) => ',var(' + token + ',' + al + '))');
+    });
+  },
+};
+
 // Dark ink on the accent. Text colour only; the sites are listed so each can be looked at.
 PASSES['ink'] = {
   about: '#0c0c0e / #1b1608 as text → --on-primary / --on-primary-2',

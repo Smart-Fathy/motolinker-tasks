@@ -101,7 +101,8 @@ for (const html of ['public/dashboard.html', 'public/employee.html']) {
 }
 const declared = css => { const set = new Set(); for (const m of blank(css).matchAll(/(--[\w-]+)\s*:/g)) set.add(m[1]); return set; };
 for (const [portal, html, own] of [['admin', 'public/dashboard.html', 'dashboard.css'], ['team', 'public/employee.html', 'employee.css']]) {
-  const have = new Set([...declared(sheets[own]), ...declared(sheets['mobile.css']), ...runtime]);
+  // (plus what a workspace's look writes: --sb-t-dim and the like, which the sheets leave undefined on purpose)
+  const have = new Set([...declared(sheets[own]), ...declared(sheets['mobile.css']), ...runtime, ...Object.keys(T.deriveVars({}, 'light'))]);
   const missing = new Map();
   const sources = [['public/assets/' + own, sheets[own]], ['public/assets/mobile.css', sheets['mobile.css']], ...pageSources(html).map(f => [f, read(f)])];
   for (const [f, text] of sources) {
@@ -150,8 +151,17 @@ for (const [portal, file] of [['admin', 'dashboard.css'], ['team', 'employee.css
   const wrong = [];
   const found = [];
   if (m) for (const decl of m[1].split(';').map(x => x.trim()).filter(Boolean)) {
+    // --t-dim: var(--sb-t-dim) has no fallback because the page has no default for it either: the
+    // sheets keep each caption's own opacity until a look defines them.
+    const bare = decl.match(/^(--[\w-]+)\s*:\s*var\(\s*(--sb-[\w-]+)\s*\)$/);
+    if (bare) {
+      found.push(bare[1]);
+      if (bare[1] in roots[portal]) wrong.push(`${bare[1]} has a page default but the sidebar remap has no fallback`);
+      if (!(bare[2] in T.deriveVars({}, 'dark'))) wrong.push(`${bare[2]} is not a token theme-core writes`);
+      continue;
+    }
     const d = decl.match(/^(--[\w-]+)\s*:\s*var\(\s*(--sb-[\w-]+)\s*,([\s\S]*)\)$/);
-    if (!d) { wrong.push(`${decl} is not a --sb-* lookup with a fallback`); continue; }
+    if (!d) { wrong.push(`${decl} is not a --sb-* lookup`); continue; }
     found.push(d[1]);
     const want = roots[portal][d[1]];
     if (norm(d[3]) !== want) wrong.push(`${d[1]}: falls back to ${norm(d[3])}, page has ${want}`);

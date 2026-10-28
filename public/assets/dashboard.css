@@ -876,7 +876,8 @@
      --muted, --gold or an rgba(var(--ov),a) overlay follows without being rewritten. */
   .sidebar{
     --ov:var(--sb-ov,255,255,255); --strong:var(--sb-strong,#fff); --text:var(--sb-text,#f3efe7); --muted:var(--sb-muted,#8d897f);
-    --gold:var(--sb-accent,#c9a35e); --primary:var(--sb-accent,#c9a35e); --primary-rgb:var(--sb-accent-rgb,201,163,94);
+    --gold:var(--sb-accent,#c9a35e); --primary:var(--sb-accent,#c9a35e); --primary-text:var(--sb-accent,#c9a35e); --primary-rgb:var(--sb-accent-rgb,201,163,94);
+    --t-dim:var(--sb-t-dim); --t-soft:var(--sb-t-soft);
     --hair:var(--sb-hair,rgba(255,255,255,.09)); --hair-gold:var(--sb-hair-gold,rgba(201,163,94,.22));
     --border:var(--sb-hair,rgba(255,255,255,.09));
   }
