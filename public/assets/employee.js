@@ -685,7 +685,7 @@ function gLinkCard(url) {
 function empcRenderBody(b) {
   let h = esc(b || '');
   (_coworkers || []).forEach(e => {
-    if (e.name) h = h.split('@' + esc(e.name)).join(`<span style="color:var(--primary);font-weight:700">@${esc(e.name)}</span>`);
+    if (e.name) h = h.split('@' + esc(e.name)).join(`<span style="color:var(--primary-text,var(--primary));font-weight:700">@${esc(e.name)}</span>`);
   });
   return h;
 }
@@ -1143,7 +1143,7 @@ async function loadMyHours() {
     const weekAgo = new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0];
     const thisWeek = myHours.filter(h => (h.log_date||'') >= weekAgo).reduce((s,h) => s+parseFloat(h.hours||0), 0);
     document.getElementById('hours-stats').innerHTML = `
-      <div class="stat-box"><div class="stat-val" style="color:var(--primary)">${totalHrs.toFixed(1)}h</div><div class="stat-lbl">Total Logged</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--primary-text,var(--primary))">${totalHrs.toFixed(1)}h</div><div class="stat-lbl">Total Logged</div></div>
       <div class="stat-box"><div class="stat-val" style="color:var(--info)">${myHours.length}</div><div class="stat-lbl">Entries</div></div>
       <div class="stat-box"><div class="stat-val" style="color:var(--success)">${thisWeek.toFixed(1)}h</div><div class="stat-lbl">This Week</div></div>`;
 
@@ -3719,7 +3719,7 @@ async function chatOpenRoom(roomId) {
       <button onclick="chatStopRecording()" class="btn btn-primary btn-sm">Send <i data-lucide="check" style="width:12px;height:12px"></i></button>
     </div>
     <div class="chat-reply-bar" id="chat-reply-bar">
-      <span style="color:var(--primary);display:flex"><i data-lucide="corner-up-left" style="width:14px;height:14px"></i></span>
+      <span style="color:var(--primary-text,var(--primary));display:flex"><i data-lucide="corner-up-left" style="width:14px;height:14px"></i></span>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:11px" id="chat-reply-sender"></div>
         <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="chat-reply-body"></div>
@@ -4197,13 +4197,13 @@ function helpInit() {
     .hb-art p{font-size:13px;line-height:1.65;margin:0 0 9px}
     .hb-art li{font-size:13px;line-height:1.65;margin-bottom:4px}
     .hb-art[dir="rtl"]{text-align:right}
-    .hb-back{background:none;border:none;color:var(--primary,#c9a35e);font-size:12px;cursor:pointer;padding:0 0 8px}
+    .hb-back{background:none;border:none;color:var(--primary-text,var(--primary,#c9a35e));font-size:12px;cursor:pointer;padding:0 0 8px}
     .hb-msg{max-width:86%;padding:10px 13px;border-radius:calc(14px * var(--r-k,1));font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
     .hb-msg.user{align-self:flex-end;background:var(--primary,#c9a35e);color:var(--on-primary,#0c0c0e);border-bottom-right-radius:calc(4px * var(--r-k,1))}
     .hb-msg.bot{align-self:flex-start;background:rgba(var(--ov,255,255,255),.06);color:var(--text,#e8e4da);border-bottom-left-radius:calc(4px * var(--r-k,1))}
     .hb-msg.ar{direction:rtl;text-align:right}
     .hb-chip{display:inline-block;margin:4px 4px 0 0;padding:6px 10px;font-size:12px;border:1px solid var(--border,#2a2a2e);border-radius:calc(16px * var(--r-k,1));cursor:pointer;color:var(--muted,#9a958a);background:none}
-    .hb-chip:hover{border-color:var(--primary,#c9a35e);color:var(--primary,#c9a35e)}
+    .hb-chip:hover{border-color:var(--primary,#c9a35e);color:var(--primary-text,var(--primary,#c9a35e))}
     .hb-composer{display:flex;gap:8px;padding:12px;border-top:1px solid var(--border,#2a2a2e)}
     .hb-composer textarea{flex:1;resize:none;background:var(--field-bg-2,#101013);color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:calc(10px * var(--r-k,1));padding:9px 12px;font-size:13.5px;font-family:inherit;max-height:120px}
     .hb-send{background:var(--primary,#c9a35e);color:var(--on-primary,#0c0c0e);border:none;border-radius:calc(10px * var(--r-k,1));padding:0 14px;cursor:pointer;font-weight:700}

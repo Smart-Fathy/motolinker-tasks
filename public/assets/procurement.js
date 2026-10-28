@@ -637,7 +637,7 @@
             <button class="btn btn-outline" style="padding:5px 10px;font-size:12px" onclick="poAddRow()">+ Add vehicle line</button> ${procColsBtn('po_items')}
             <button class="btn btn-outline" style="padding:5px 10px;font-size:12px;margin-left:6px" onclick="openCataloguePicker('po')">
               <i data-lucide="list-plus" style="width:13px;height:13px"></i> From supplier catalogue</button>
-            <div id="po-total" style="font-size:13px;font-weight:700;color:var(--primary)"></div>
+            <div id="po-total" style="font-size:13px;font-weight:700;color:var(--primary-text,var(--primary))"></div>
           </div>
         </div>
 
@@ -2243,7 +2243,7 @@
     if (!r.ok) {
       msg.style.color = 'var(--danger)';
       msg.innerHTML = esc(d.error || 'Upload failed.')
-        + (r.status === 409 ? ' <a href="#" onclick="hideModal();navigate(\'drive\');return false" style="color:var(--primary)">Connect Drive</a>' : '');
+        + (r.status === 409 ? ' <a href="#" onclick="hideModal();navigate(\'drive\');return false" style="color:var(--primary-text,var(--primary))">Connect Drive</a>' : '');
       return;
     }
     msg.style.color = 'var(--success)';
@@ -2251,7 +2251,7 @@
     // questions people actually had ("uploaded WHERE?").
     const meta = d.client_file_meta || {};
     msg.innerHTML = `Saved to Drive → MotoLinker / Client Files` +
-      (ceLinkUrl(d.client_file) ? ` · <a href="${esc(ceLinkUrl(d.client_file))}" target="_blank" rel="noopener" style="color:var(--primary)">${esc(meta.name || 'open the file')}</a>` : '');
+      (ceLinkUrl(d.client_file) ? ` · <a href="${esc(ceLinkUrl(d.client_file))}" target="_blank" rel="noopener" style="color:var(--primary-text,var(--primary))">${esc(meta.name || 'open the file')}</a>` : '');
     document.getElementById('sale-client_file').value = d.client_file || '';
     loadSales();
   }

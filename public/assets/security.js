@@ -213,7 +213,7 @@
       <ol class="sec-steps"><li>Open the app and add an account (＋), then scan the code below.</li>
         <li>Type the 6-digit code it shows to finish.</li></ol>
       <div class="sec-qr"><img alt="QR code to scan with your authenticator app" src="${esc(s.qr)}">
-        <div style="flex:1;min-width:190px"><div class="sec-sub">On your phone? <a href="${esc(s.otpauth)}" style="color:var(--primary,#c9a35e)">Open in your authenticator app</a>.</div>
+        <div style="flex:1;min-width:190px"><div class="sec-sub">On your phone? <a href="${esc(s.otpauth)}" style="color:var(--primary-text,var(--primary,#c9a35e))">Open in your authenticator app</a>.</div>
           <div class="sec-sub" style="margin-top:10px">Or enter this key by hand:</div><div class="sec-key">${esc(groups4(s.secret))}</div></div></div>
       <label class="sec-label" for="sec-code">6-digit code</label>
       <input class="sec-input" id="sec-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456" onkeydown="if(event.key==='Enter')SecurityPanel.finishSetup()">

@@ -2467,7 +2467,7 @@ function gLinkCard(url) {
 function tcRenderBody(b) {
   let h = esc(b || '');
   (employeesForTasks || []).forEach(e => {
-    if (e.name) h = h.split('@' + esc(e.name)).join(`<span style="color:var(--gold);font-weight:700">@${esc(e.name)}</span>`);
+    if (e.name) h = h.split('@' + esc(e.name)).join(`<span style="color:var(--primary-text,var(--gold));font-weight:700">@${esc(e.name)}</span>`);
   });
   return h;
 }
@@ -4292,9 +4292,9 @@ function driveFileIcon(mimeType) {
   if (mimeType === 'application/vnd.google-apps.document') return '<i data-lucide="file-text" style="width:16px;height:16px;vertical-align:middle;color:var(--info)"></i>';
   if (mimeType === 'application/vnd.google-apps.presentation') return '<i data-lucide="presentation" style="width:16px;height:16px;vertical-align:middle;color:var(--warning)"></i>';
   if (mimeType === 'application/pdf') return '<i data-lucide="file-type" style="width:16px;height:16px;vertical-align:middle;color:var(--danger)"></i>';
-  if (mimeType.startsWith('image/')) return '<i data-lucide="image" style="width:16px;height:16px;vertical-align:middle;color:var(--primary)"></i>';
+  if (mimeType.startsWith('image/')) return '<i data-lucide="image" style="width:16px;height:16px;vertical-align:middle;color:var(--primary-text,var(--primary))"></i>';
   if (mimeType.startsWith('video/')) return '<i data-lucide="video" style="width:16px;height:16px;vertical-align:middle;color:var(--warning)"></i>';
-  if (mimeType.startsWith('audio/')) return '<i data-lucide="music" style="width:16px;height:16px;vertical-align:middle;color:var(--primary)"></i>';
+  if (mimeType.startsWith('audio/')) return '<i data-lucide="music" style="width:16px;height:16px;vertical-align:middle;color:var(--primary-text,var(--primary))"></i>';
   return '<i data-lucide="paperclip" style="width:16px;height:16px;vertical-align:middle"></i>';
 }
 
@@ -4824,7 +4824,7 @@ async function adminChatOpenRoom(roomId) {
       <button onclick="adminChatStopRecording()" class="btn btn-primary btn-sm">Send <i data-lucide="check" style="width:12px;height:12px"></i></button>
     </div>
     <div class="chat-reply-bar" id="admin-reply-bar">
-      <span style="color:var(--primary);display:flex"><i data-lucide="corner-up-left" style="width:14px;height:14px"></i></span>
+      <span style="color:var(--primary-text,var(--primary));display:flex"><i data-lucide="corner-up-left" style="width:14px;height:14px"></i></span>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:11px" id="admin-reply-sender"></div>
         <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="admin-reply-body"></div>
@@ -5448,13 +5448,13 @@ function helpInit() {
     .hb-art p{font-size:13px;line-height:1.65;margin:0 0 9px}
     .hb-art li{font-size:13px;line-height:1.65;margin-bottom:4px}
     .hb-art[dir="rtl"]{text-align:right}
-    .hb-back{background:none;border:none;color:var(--primary,#c9a35e);font-size:12px;cursor:pointer;padding:0 0 8px}
+    .hb-back{background:none;border:none;color:var(--primary-text,var(--primary,#c9a35e));font-size:12px;cursor:pointer;padding:0 0 8px}
     .hb-msg{max-width:86%;padding:10px 13px;border-radius:calc(14px * var(--r-k,1));font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
     .hb-msg.user{align-self:flex-end;background:var(--primary,#c9a35e);color:var(--on-primary,#0c0c0e);border-bottom-right-radius:calc(4px * var(--r-k,1))}
     .hb-msg.bot{align-self:flex-start;background:rgba(var(--ov,255,255,255),.06);color:var(--text,#e8e4da);border-bottom-left-radius:calc(4px * var(--r-k,1))}
     .hb-msg.ar{direction:rtl;text-align:right}
     .hb-chip{display:inline-block;margin:4px 4px 0 0;padding:6px 10px;font-size:12px;border:1px solid var(--border,#2a2a2e);border-radius:calc(16px * var(--r-k,1));cursor:pointer;color:var(--muted,#9a958a);background:none}
-    .hb-chip:hover{border-color:var(--primary,#c9a35e);color:var(--primary,#c9a35e)}
+    .hb-chip:hover{border-color:var(--primary,#c9a35e);color:var(--primary-text,var(--primary,#c9a35e))}
     .hb-composer{display:flex;gap:8px;padding:12px;border-top:1px solid var(--border,#2a2a2e)}
     .hb-composer textarea{flex:1;resize:none;background:var(--field-bg-2,#101013);color:var(--text,#e8e4da);border:1px solid var(--border,#2a2a2e);border-radius:calc(10px * var(--r-k,1));padding:9px 12px;font-size:13.5px;font-family:inherit;max-height:120px}
     .hb-send{background:var(--primary,#c9a35e);color:var(--on-primary,#0c0c0e);border:none;border-radius:calc(10px * var(--r-k,1));padding:0 14px;cursor:pointer;font-weight:700}
@@ -6006,7 +6006,7 @@ async function saveLeadCell(id, col, val) {
 function leadCellHtml(c, col) {
   const raw = col.builtin ? c[col.key] : (c.custom_fields || {})[col.key];
   const attrs = `class="lead-cell" onclick="leadCellClick(event, ${c.id}, '${esc(col.key)}')"`;
-  if (col.key === 'name') return `<td ${attrs} title="Open profile"><strong style="color:var(--primary);cursor:pointer">${esc(raw || '—')}</strong></td>`;
+  if (col.key === 'name') return `<td ${attrs} title="Open profile"><strong style="color:var(--primary-text,var(--primary));cursor:pointer">${esc(raw || '—')}</strong></td>`;
   if (col.key === 'next_followup') {
     const due = _pendingFollowups[c.id];
     if (!due) return `<td ${attrs} style="font-size:12px;color:var(--muted)">—</td>`;
@@ -6153,7 +6153,7 @@ function leadHeaderClick(e, key) {
 }
 function leadSortArrow(key) {
   if (!_leadSort || _leadSort.key !== key) return '';
-  return `<span class="lead-sort-arrow" style="color:var(--primary);margin-left:3px;font-size:10px">${_leadSort.dir === 'desc' ? '▼' : '▲'}</span>`;
+  return `<span class="lead-sort-arrow" style="color:var(--primary-text,var(--primary));margin-left:3px;font-size:10px">${_leadSort.dir === 'desc' ? '▼' : '▲'}</span>`;
 }
 
 // ── Lead filters ────────────────────────────────────────────────────────────────
@@ -6867,7 +6867,7 @@ async function openDedupeModal() {
       return;
     }
     const fmt = c => [c.phone, c.car_in_question, c.lead_date].filter(Boolean).join(' · ') || '—';
-    body.innerHTML = `<div style="font-size:13px;color:var(--gold);font-weight:600">${data.groupCount} duplicate group(s) · ${data.totalRemove} lead(s) to remove</div>` +
+    body.innerHTML = `<div style="font-size:13px;color:var(--primary-text,var(--gold));font-weight:600">${data.groupCount} duplicate group(s) · ${data.totalRemove} lead(s) to remove</div>` +
       _dedupeGroups.map((g, gi) => `
         <div style="border:1px solid var(--hair);border-radius:calc(8px * var(--r-k,1));padding:10px 12px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">

@@ -108,7 +108,7 @@
     .logi-ct-btn{width:34px;height:34px;border-radius:50%;border:1px solid var(--border,rgba(255,255,255,.12));
                  background:none;color:var(--muted,#8d897f);cursor:pointer;
                  display:flex;align-items:center;justify-content:center}
-    .logi-ct-btn:hover{color:var(--primary,#c9a35e);border-color:var(--primary,#c9a35e)}
+    .logi-ct-btn:hover{color:var(--primary-text,var(--primary,#c9a35e));border-color:var(--primary,#c9a35e)}
 
     /* The voyage strip, under the container card: ship, leg, and where on it. */
     .logi-voy{padding:16px 20px;border-top:1px solid var(--border,rgba(255,255,255,.09))}
@@ -128,7 +128,7 @@
                   background:var(--primary,#c9a35e)}
     .logi-voy-end{position:absolute;top:3px;right:0;color:var(--muted,#8d897f);display:flex}
     .logi-voy-end svg{width:15px;height:15px}
-    .logi-voy-ship-ic{position:absolute;top:0;color:var(--primary,#c9a35e);display:flex;transform:translateX(-50%)}
+    .logi-voy-ship-ic{position:absolute;top:0;color:var(--primary-text,var(--primary,#c9a35e));display:flex;transform:translateX(-50%)}
     .logi-voy-ship-ic svg{width:19px;height:19px}
     .logi-voy-times{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;margin-top:9px}
     .logi-voy-times b{display:block;font-size:12.5px;font-weight:700;margin-top:2px}
@@ -155,7 +155,7 @@
     .logi-map .leaflet-container{background:#0d1b2a}
     .logi-map .leaflet-control-attribution{background:rgba(0,0,0,.55);color:#9aa;font-size:9px}
     .logi-map .leaflet-control-attribution a{color:#bcd}
-    .logi-ship-marker{display:flex;align-items:center;justify-content:center;color:var(--primary,#c9a35e);
+    .logi-ship-marker{display:flex;align-items:center;justify-content:center;color:var(--primary-text,var(--primary,#c9a35e));
                       filter:drop-shadow(0 0 3px rgba(0,0,0,.8))}
 
     .logi-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:calc(20px * var(--r-k,1));
@@ -303,7 +303,7 @@
     const speed = c.vessel_speed != null && c.vessel_speed !== '' ? `${Number(c.vessel_speed).toFixed(1)} kn` : '';
     return `<div class="logi-pos">
       <div class="logi-pos-head">
-        <span style="color:var(--primary,#c9a35e);display:flex">${ic('radio', 14)}</span>
+        <span style="color:var(--primary-text,var(--primary,#c9a35e));display:flex">${ic('radio', 14)}</span>
         <span class="logi-pos-co">${esc(dm(c.vessel_lat, 'lat'))}, ${esc(dm(c.vessel_lon, 'lon'))}</span>
         ${speed ? `<span style="color:var(--muted,#8d897f)">· ${esc(speed)}</span>` : ''}
         <span class="logi-pos-age ${age.cls}" title="AIS reports are delayed, especially by satellite mid-ocean">${esc(age.label)}</span>
@@ -350,7 +350,7 @@
         el.outerHTML = `<div class="logi-map-fallback">Map unavailable offline —
           position ${esc(dm(el.dataset.lat, 'lat'))}, ${esc(dm(el.dataset.lon, 'lon'))}
           (<a href="https://www.openstreetmap.org/?mlat=${encodeURIComponent(el.dataset.lat)}&mlon=${encodeURIComponent(el.dataset.lon)}#map=5/${encodeURIComponent(el.dataset.lat)}/${encodeURIComponent(el.dataset.lon)}"
-              target="_blank" rel="noopener" style="color:var(--primary,#c9a35e)">open a map</a>)</div>`;
+              target="_blank" rel="noopener" style="color:var(--primary-text,var(--primary,#c9a35e))">open a map</a>)</div>`;
       });
     });
   }
@@ -375,7 +375,7 @@
     const pct = p == null ? 0 : Math.round(p * 100);
     return `<div class="logi-voy">
       <div class="logi-voy-ship">
-        <span style="color:var(--primary,#c9a35e);display:flex">${ic('ship', 17)}</span>
+        <span style="color:var(--primary-text,var(--primary,#c9a35e));display:flex">${ic('ship', 17)}</span>
         <span class="logi-voy-name">${esc(c.vessel_name || 'Vessel not set')}</span>
         ${c.vessel_imo ? `<span class="logi-voy-imo">IMO ${esc(c.vessel_imo)}</span>` : ''}
       </div>
