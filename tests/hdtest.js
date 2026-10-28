@@ -381,6 +381,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // 6b. Full screen. Both clients share one DOM in this harness, so render from A
   //     and assert against A's view: A's camera is on, B is audio-only.
+  //     The others keep polling and each poll re-renders the one shared widget with
+  //     its own idea of whether it is maximised, which, landing between a toggle and a
+  //     click, makes this section flake. Only A needs to draw it here.
+  await page.evaluate(() => { for (const k of ['B', 'C', 'B2']) { const st = window[k].state(); clearInterval(st.statsTimer); st.statsTimer = null; } });
   await page.evaluate(() => window.A.hdRenderBar());
   await sleep(200);
   const fsBefore = await page.evaluate(() => {
@@ -403,8 +407,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // requestFullscreen needs a trusted gesture, so drive a real click.
   // The toast is pointer-events:none precisely so it cannot intercept this.
-  await page.click('[data-tile="__self"] .hd-full');
-  await sleep(700);
+  for (let attempt = 1; ; attempt++) {
+    try { await page.click('[data-tile="__self"] .hd-full'); break; }
+    catch (e) { if (attempt >= 6) throw e; await sleep(150); }
+  }
+  await page.waitForFunction(() => !!document.fullscreenElement, { timeout: 4000, polling: 50 }).catch(() => {});
+  await sleep(300);
   const inFs = await page.evaluate(() => {
     const el = document.fullscreenElement;
     if (!el) return { active: false };
@@ -463,8 +471,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     localStorage.removeItem('ml_huddle_ui');
   });
 
-  await page.click('[data-tile="__self"] .hd-full');
-  await sleep(700);
+  // The widget re-renders after the toggle above, and a click that lands mid-render finds
+  // the button detached or not laid out yet ("Node is either not clickable"). It has to
+  // be a real click — full screen needs a user gesture — so try again until one lands.
+  for (let attempt = 1; ; attempt++) {
+    try { await page.click('[data-tile="__self"] .hd-full'); break; }
+    catch (e) { if (attempt >= 6) throw e; await sleep(150); }
+  }
+  // Leaving full screen is asynchronous; a slow start can take longer than a fixed pause.
+  await page.waitForFunction(() => !document.fullscreenElement, { timeout: 4000, polling: 50 }).catch(() => {});
+  await sleep(150);
   const outFs = await page.evaluate(() => {
     const v = document.querySelector('[data-tile="__self"] .hd-video');
     const cs = getComputedStyle(v);

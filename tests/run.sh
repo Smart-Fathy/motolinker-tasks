@@ -7,10 +7,15 @@
 cd "$(dirname "$0")/.." || exit 1
 pass=0; fail=0
 run() {
-  printf '%-14s ' "$1"; shift
+  name=$1; printf '%-14s ' "$name"; shift
   out=$("$@" 2>&1); rc=$?
   echo "$out" | tail -1
-  [ $rc -eq 0 ] && pass=$((pass+1)) || fail=$((fail+1))
+  if [ $rc -eq 0 ]; then pass=$((pass+1))
+  else
+    fail=$((fail+1))
+    # The last line is rarely the one that says what went wrong.
+    echo "$out" > "${TMPDIR:-/tmp}/ml-suite-$name.txt"; echo "               full output: ${TMPDIR:-/tmp}/ml-suite-$name.txt"
+  fi
 }
 run hdtest      node tests/hdtest.js
 run sharetest   node tests/sharetest.js
@@ -75,6 +80,7 @@ run tracktest   node tests/tracktest.js
 run portaltest  node tests/portaltest.js
 run envexample  node tests/envexample.js
 run mobiletest  node tests/mobiletest.js
+run themecss    node tests/themecss.js
 run homecache   node tests/homecache.js
 run dbfetch     node tests/dbfetch.js
 run fetchall    node tests/fetchall.js
