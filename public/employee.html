@@ -400,6 +400,7 @@
         <div class="topbar-title" id="topbar-title">Log Hours</div>
       </div>
       <div style="display:flex;align-items:center;gap:14px">
+        <button class="notif-bell" id="ml-mode-toggle" onclick="mlCycleMode()" aria-label="Colour mode" title="Colour mode"></button>
         <button class="notif-bell" id="help-btn" onclick="helpOpen()" aria-label="Help" title="Help · مساعدة">
           <i data-lucide="help-circle" style="width:20px;height:20px"></i>
         </button>
@@ -1330,6 +1331,7 @@
 
 <!-- Shared with the admin dashboard. Loaded first so their function declarations
      exist before the portal script runs; each portal defines HOMECFG/HDCFG. -->
+<script src="/assets/theme-core.js?v=130"></script>
 <script src="/assets/workspace.js?v=130"></script>
 <script src="/assets/mobile.js?v=130"></script>
 <script src="/assets/columns.js?v=130"></script>

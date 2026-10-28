@@ -37,6 +37,7 @@ async function checkAuth() {
     return false;
   }
   document.getElementById('app').style.display = 'block';
+  if (typeof mlSyncPrefs === 'function') mlSyncPrefs();   // the colour mode this person chose on another device
   // A security alert pushed to this device opens /dashboard#security.
   if (location.hash === '#security') setTimeout(openSecurity, 0);
   return true;

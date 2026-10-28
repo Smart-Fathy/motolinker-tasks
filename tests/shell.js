@@ -85,7 +85,7 @@ const stripped = html => html
     check('the name is in the title, the sidebar and the headings — escaped', a.text.includes('<title data-ws-title="{ws} · Admin Dashboard">Moto &amp; &quot;Co&quot; &lt;Group&gt; · Admin Dashboard</title>')
       && a.text.includes('<div class="sidebar-logo-text" data-ws-name>Moto &amp; &quot;Co&quot; &lt;Group&gt;</div>') && !a.text.includes('<Group>') && (a.text.match(/data-ws-name>Moto/g) || []).length === 2, (a.text.match(/data-ws-name>[^<]*/g) || []).join(' | '));
     check('…on the team page too, in the sign-in line and the install banner', (t.text.match(/data-ws-name>Moto &amp;/g) || []).length === 4);
-    check('the picture is on the page before any script runs: the mark, and the tab icon with the original kept', a.text.includes('<html lang="en" class="ws-custom-logo" style="--ws-logo:url(&quot;' + LOGO + '&quot;)">')
+    check('the picture is on the page before any script runs: the mark, and the tab icon with the original kept', /<html lang="en" data-ws-stamp="[^"]+" class="ws-custom-logo" style="--ws-logo:url\(&quot;/.test(a.text) && a.text.includes('style="--ws-logo:url(&quot;' + LOGO + '&quot;)">')
       && a.text.includes('<link rel="icon" type="image/png" href="' + LOGO + '" data-default-href="/icons/favicon.png">'));
     check('a changed workspace is a different page (new ETag)', a.r.headers.get('etag') !== adminDefault.r.headers.get('etag'));
     check('…and nothing but the intended things differ from the original page', (() => {
@@ -127,8 +127,8 @@ const stripped = html => html
       + '<h1 data-ws-text="admin_title">Admin Dashboard</h1><p data-ws-text="team_sub"><b>x</b> y</p><p><span data-ws-text="team_sub">Log hours</span></p><i data-ws-text="admin_sub">Welcome</i></body></html>';
     const ws = { name: 'Moto', custom_name: true, logo_url: '', updated_at: 'x', theme: {}, typography: {}, shape: {}, texts: { admin_title: 'Moto <HQ> & Co', team_sub: '{ws} · Hours', evil: 'x' } };
     const out = renderShell(fixture, ws);
-    check('a replaced line is written in, escaped (the brackets were already taken out of it on the way in)', out.includes('<h1 data-ws-text="admin_title">Moto HQ &amp; Co</h1>'), (out.match(/<h1[^>]*>[^<]*/) || [])[0]);
-    check('{ws} stands for the workspace\'s name', out.includes('<span data-ws-text="team_sub">Moto · Hours</span>'));
+    check('a replaced line is written in, escaped (the brackets were already taken out of it on the way in)', out.includes('<h1 data-ws-text="admin_title" data-ws-text-default="Admin Dashboard">Moto HQ &amp; Co</h1>'), (out.match(/<h1[^>]*>[^<]*/) || [])[0]);
+    check('{ws} stands for the workspace\'s name', out.includes('<span data-ws-text="team_sub" data-ws-text-default="Log hours">Moto · Hours</span>'));
     check('a line nobody replaced keeps its own wording, and one that holds markup is left alone', out.includes('<i data-ws-text="admin_sub">Welcome</i>') && out.includes('<p data-ws-text="team_sub"><b>x</b> y</p>'));
   }
 

@@ -43,6 +43,7 @@ run hdextras    node tests/hdextras.js
 run workspaceui node tests/workspaceui.js
 run workspaceapi node tests/workspaceapi.js
 run shell        node tests/shell.js
+run themeui     node tests/themeui.js
 run icontest    node tests/icontest.js
 run leadstest   node tests/leadstest.js
 run permstest   node tests/permstest.js
@@ -84,6 +85,7 @@ run envexample  node tests/envexample.js
 run mobiletest  node tests/mobiletest.js
 run themecss    node tests/themecss.js
 run themecore   node tests/themecore.js
+run themeaudit  node tests/themeaudit.js
 run homecache   node tests/homecache.js
 run dbfetch     node tests/dbfetch.js
 run fetchall    node tests/fetchall.js

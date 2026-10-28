@@ -105,7 +105,7 @@
       // changing the accent must not move any neutral.
       dark:  { bg: '#0c0c0e', panel: '#141416', sidebar: '#0f0f12', text: '#f3efe7', text2: '#b9b3a4', muted: '#8d897f', accent: '#c9a35e', accent2: '#e8cd93',
                card: '#18181b', field: '#0e0e10', field2: '#101013', thead: '#101012', auth1: '#15130e', auth2: '#0b0b0c', avatar1: '#1c1a14', ink2: '#1b1608',
-               soft: '#d9bd7f', deep: '#a07e3f', lite: '#e8cd93', dim: '#8a6a30', muted2: '#a5a29a', placeholder: '#6f6b63' },
+               soft: '#d9bd7f', deep: '#a07e3f', lite: '#e8cd93', dim: '#8a6a30', muted2: '#a5a29a', placeholder: '#6f6b63', accentText: '#c9a35e' },
       light: { bg: '#f7f4ee', panel: '#ffffff', sidebar: '#ffffff', text: '#1f1c17', muted: '#655f54', accent: '#a8802f', accent2: '#b78c3d' },
     },
     'moto': {
@@ -153,10 +153,10 @@
   };
   const PRESET_ORDER = ['black-gold', 'moto', 'cyberpunk', 'neon-minimal', 'synthwave', 'matrix', 'deep-ocean', 'ember'];
   const DEFAULT_PRESET = 'black-gold';
-  // How much of itself an accent may be washed with behind its own text: on a dark page the
-  // wash is dim and the accent bright, so 14% (the active nav row) is the hard case; on a light
-  // page the sheets put up to 30% behind it (a badge, a calendar cell) and it has to be dark.
-  const accentTint = dark => (dark ? 0.14 : 0.3);
+  // How much of itself an accent may be washed with behind its own text: the sheets stack washes
+  // (a chip's 15% on a cell that is itself 10% accent), so a text sits on up to a quarter of its
+  // own colour on a dark page and a little more on a light one, and has to be held to 4.5:1 there.
+  const accentTint = dark => (dark ? 0.25 : 0.3);
   // The alpha of the hairlines (borders, grid gaps) the sheets draw in the ink colour.
   const hairAlpha = dark => (dark ? 0.09 : 0.14);
 
@@ -297,7 +297,7 @@
     const p = Object.assign({}, base);
     for (const k of NEUTRAL_KEYS) if (over[k]) p[k] = over[k];
     // A chosen accent brings its own shades; the preset's were cut for its own.
-    if (n.theme.accent) { p.accent = n.theme.accent; for (const k of ['hover', 'deep', 'soft', 'lite', 'dim']) delete p[k]; }
+    if (n.theme.accent) { p.accent = n.theme.accent; for (const k of ['hover', 'deep', 'soft', 'lite', 'dim', 'accentText']) delete p[k]; }
     if (n.theme.accent2) p.accent2 = n.theme.accent2;
     return p;
   }
@@ -332,7 +332,7 @@
       }
       return t;
     };
-    const text = sink(fill, accentTint(dark));
+    const text = P.accentText || sink(fill, accentTint(dark));
     const fill2 = ensure(P.accent2 || fill, P.panel, 3);
 
     // The sidebar is its own surface: a forest-green one beside a white page, a white one

@@ -58,7 +58,7 @@ check('Black & Gold is the default, and Moto Palette is among them', T.DEFAULT_P
       ['accent/panel ≥3', C.contrast(c.accent, c.panel) >= 3], ['accent2/panel ≥3', C.contrast(c.accent2, c.panel) >= 3],
       ['accent as text ≥4.5', C.contrast(c.accentText, C.over(c.accentText, c.panel, mode === 'dark' ? 0.14 : 0.3)) >= 4.5],
       ['the preset\'s accent is already a good fill', c.accent === T.PRESETS[id][mode].accent],
-      ['on a dark page the text twin is the accent itself', mode === 'light' || c.accentText === c.accent],
+      ['on a dark page the text twin is the accent, or a lighter shade of it where a wash of the accent would swallow it', mode === 'light' || c.accentText === c.accent || (C.luminance(c.accentText) > C.luminance(c.accent) && C.contrast(c.accentText, C.over(c.accentText, c.panel, 0.25)) >= 4.5)],
       ['sidebar accent ≥4.5', C.contrast(c.sbAccent, c.sidebar) >= 4.5],
       ['button ink ≥4.5', C.contrast(c.onAccent, c.accent) >= 4.5],
       ['sidebar text ≥7', C.contrast(c.sbText, c.sidebar) >= 7], ['sidebar muted ≥4.5', C.contrast(c.sbMuted, c.sidebar) >= 4.5],

@@ -225,6 +225,7 @@
         <span id="refresh-countdown">Auto-refresh in 30s</span>
       </div>
       <span class="last-updated" id="last-updated"></span>
+      <button class="notif-bell" id="ml-mode-toggle" onclick="mlCycleMode()" aria-label="Colour mode" title="Colour mode"></button>
       <button class="notif-bell" id="help-btn" onclick="helpOpen()" aria-label="Help" title="Help · مساعدة">
         <i data-lucide="help-circle" style="width:20px;height:20px"></i>
       </button>
@@ -1553,6 +1554,7 @@
 
 <!-- Shared with the team portal. Loaded first so their function declarations exist
      before the portal script runs; each portal defines HOMECFG/HDCFG for them. -->
+<script src="/assets/theme-core.js?v=150"></script>
 <script src="/assets/workspace.js?v=150"></script>
 <script src="/assets/mobile.js?v=150"></script>
 <script src="/assets/columns.js?v=150"></script>

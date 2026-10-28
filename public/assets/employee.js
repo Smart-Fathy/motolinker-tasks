@@ -741,6 +741,7 @@ async function showApp() {
   document.getElementById('auth-wrap').style.display = 'none';
   document.getElementById('layout').style.display = 'flex';
   renderProfile();
+  if (typeof mlSyncPrefs === 'function') mlSyncPrefs();   // the colour mode this person chose on another device
   document.getElementById('h-date').value = new Date().toISOString().split('T')[0];
   initSidebarState();
   applyPermissions(empInfo?.permissions);

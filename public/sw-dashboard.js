@@ -6,7 +6,7 @@ const CACHE = 'motolinker-dash-v150';
 // asserts the HTML and this file agree on N.
 const V = CACHE.split('-v')[1];
 const SHELL = ['/dashboard', '/manifest-dashboard.json', '/help-docs.js?v=' + V, '/assets/dashboard.css?v=' + V, '/assets/mobile.css?v=' + V, '/assets/dashboard.js?v=' + V, '/assets/home.js?v=' + V, '/assets/huddle.js?v=' + V,
-  '/assets/procurement.js?v=' + V, '/assets/quote.js?v=' + V, '/assets/meetings.js?v=' + V, '/assets/calendar.js?v=' + V, '/assets/availability.js?v=' + V, '/assets/logistics.js?v=' + V, '/assets/accounting.js?v=' + V, '/assets/assistant.js?v=' + V, '/assets/chat-extras.js?v=' + V, '/assets/columns.js?v=' + V, '/assets/client-folder.js?v=' + V, '/assets/lead-filters.js?v=' + V, '/assets/lead-views.js?v=' + V, '/assets/mobile.js?v=' + V, '/assets/security.js?v=' + V, '/assets/workspace.js?v=' + V];
+  '/assets/procurement.js?v=' + V, '/assets/quote.js?v=' + V, '/assets/meetings.js?v=' + V, '/assets/calendar.js?v=' + V, '/assets/availability.js?v=' + V, '/assets/logistics.js?v=' + V, '/assets/accounting.js?v=' + V, '/assets/assistant.js?v=' + V, '/assets/chat-extras.js?v=' + V, '/assets/columns.js?v=' + V, '/assets/client-folder.js?v=' + V, '/assets/lead-filters.js?v=' + V, '/assets/lead-views.js?v=' + V, '/assets/mobile.js?v=' + V, '/assets/security.js?v=' + V, '/assets/workspace.js?v=' + V, '/assets/theme-core.js?v=' + V];
 const CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'unpkg.com', 'cdn.jsdelivr.net'];
 
 self.addEventListener('install', e => {

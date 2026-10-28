@@ -40,8 +40,12 @@ function renderShell(html, ws, { safe = false } = {}) {
   }
 
   // ── The picture: the round mark and the tab's icon ────────────────────────────
+  // (and the stamp of the profile this page was written from, which is how a page tells a
+  // newer profile — one it keeps for offline use, say — from an older one)
+  const stamp = !safe && ws.updated_at && !ws.degraded ? ' data-ws-stamp="' + esc(ws.updated_at) + '"' : '';
+  const logo = ws.logo_url ? ' class="ws-custom-logo" style="--ws-logo:url(&quot;' + esc(ws.logo_url) + '&quot;)"' : '';
+  if (stamp || logo) out = out.replace(/<html\b([^>]*)>/i, (m, attrs) => '<html' + attrs + stamp + logo + '>');
   if (ws.logo_url) {
-    out = out.replace(/<html\b([^>]*)>/i, (m, attrs) => '<html' + attrs + ' class="ws-custom-logo" style="--ws-logo:url(&quot;' + esc(ws.logo_url) + '&quot;)">');
     out = out.replace(/<link rel="icon"([^>]*?)href="([^"]*)"([^>]*)>/i, (m, a, href, b) => '<link rel="icon"' + a + 'href="' + esc(ws.logo_url) + '" data-default-href="' + esc(href) + '"' + b + '>');
   }
 
@@ -57,7 +61,8 @@ function renderShell(html, ws, { safe = false } = {}) {
   if (Object.keys(look.texts).length) {
     out = out.replace(/(<([a-z][a-z0-9]*)\b[^>]*\bdata-ws-text="(\w+)"[^>]*>)([^<]*)(<\/\2>)/gi, (m, open, _tag, key, inner, close) => {
       const t = look.texts[key];
-      return t ? open + esc(t.replace(/\{ws\}/g, name)) + close : m;
+      // the wording the page has by default is kept beside it, so putting it back needs no memory of it
+      return t ? open.replace(/>$/, ' data-ws-text-default="' + esc(inner) + '">') + esc(t.replace(/\{ws\}/g, name)) + close : m;
     });
   }
 
