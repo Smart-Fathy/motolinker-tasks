@@ -149,13 +149,18 @@ function diffRulesEffective(a, b) {
     for (const [k, d] of A) {
       const e = B.get(k);
       if (!e) { lines.push(`- [${which}] selector gone: ${k}`); continue; }
-      for (const p of Object.keys(d)) if (d[p] !== e[p]) lines.push(`~ [${which}] ${k}\n    ${p}: ${JSON.stringify(d[p])} -> ${JSON.stringify(e[p])}`);
+      for (const p of Object.keys(d)) if (squash(p, d[p]) !== squash(p, e[p])) lines.push(`~ [${which}] ${k}\n    ${p}: ${JSON.stringify(d[p])} -> ${JSON.stringify(e[p])}`);
       added += Object.keys(e).filter(p => !(p in d)).length;
     }
   }
   diffRulesEffective.added = added;
   return lines;
 }
+
+// A shadow that draws nothing (the glow when a workspace has none) is not a difference: it
+// is dropped from a box-shadow list before two are compared.
+const NOTHING = /(^|,\s*)rgba\(0,\s*0,\s*0,\s*0\) 0px 0px 0px 0px(\s*,|$)/g;
+const squash = (prop, v) => (prop === 'box-shadow' ? (typeof v === 'string' ? v.replace(NOTHING, (m, a, z) => (a && z ? ', ' : '')).trim().replace(/^,\s*|\s*,$/g, '') || 'none' : 'none') : v);
 
 function diffRules(a, b) {
   const lines = [];
@@ -164,7 +169,7 @@ function diffRules(a, b) {
     for (const k of Object.keys(A)) {
       if (!(k in B)) { lines.push(`- [${which}] rule gone: ${k}`); continue; }
       for (const p of new Set([...Object.keys(A[k]), ...Object.keys(B[k])])) {
-        if (A[k][p] !== B[k][p]) lines.push(`~ [${which}] ${k}\n    ${p}: ${JSON.stringify(A[k][p])} -> ${JSON.stringify(B[k][p])}`);
+        if (squash(p, A[k][p]) !== squash(p, B[k][p])) lines.push(`~ [${which}] ${k}\n    ${p}: ${JSON.stringify(A[k][p])} -> ${JSON.stringify(B[k][p])}`);
       }
     }
     for (const k of Object.keys(B)) if (!(k in A)) lines.push(`+ [${which}] new rule: ${k}`);
@@ -365,6 +370,9 @@ async function recordPages() {
 
 function diffPages(a, b, ignore = []) {
   const lines = [];
+  const shadow = PROPS.indexOf('box-shadow');
+  const flat = o => Object.fromEntries(Object.entries(o).map(([scene, kinds]) => [scene, Object.fromEntries(Object.entries(kinds).map(([sig, rows]) => [sig, rows.map(r => r.map((v, i) => (i === shadow ? squash('box-shadow', v) : v)))]))]));
+  a = flat(a); b = flat(b);
   if (ignore.length) {
     // Two signatures that differ only by the ignored class become one: their looks are pooled.
     const bare = sig => ignore.reduce((t, c) => t.replace(new RegExp('\\.' + c.replace(/[-\\^$*+?.()|[\]{}]/g, '\\$&') + '(?![\\w-])', 'g'), ''), sig);

@@ -445,7 +445,7 @@
     v['--sb-hair-gold'] = rgba(c.sbAccent, 0.22);
     v['--sb-glass-border'] = rgba(c.sbText, 0.07);
     // Effects
-    v['--glow'] = glow === 'off' ? 'none'
+    v['--glow'] = glow === 'off' ? '0 0 #0000'
       : glow === 'subtle' ? '0 0 ' + (c.dark ? '12px ' + rgba(c.accent, 0.28) : '10px ' + rgba(c.accent, 0.18))
       : '0 0 ' + (c.dark ? '20px ' + rgba(c.accent, 0.5) + ',0 0 3px ' + rgba(c.accent, 0.7) : '16px ' + rgba(c.accent, 0.32));
     v['--chev-select'] = 'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23' + c.accent.slice(1) + '\' stroke-width=\'2.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")';

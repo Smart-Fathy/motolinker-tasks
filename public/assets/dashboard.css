@@ -910,12 +910,12 @@
   .stat-card:hover{ transform:translateY(-2px); box-shadow:0 14px 30px -18px rgba(0,0,0,.7)!important; border-color:var(--hair-gold)!important; }
   .progress-track{ background:rgba(var(--ov,255,255,255),.08); }
   .progress-fill{ background:linear-gradient(90deg,var(--gold-deep),var(--gold-soft))!important; }
-  .btn-primary{ background:linear-gradient(135deg,var(--gold-soft),var(--gold))!important; color:var(--on-primary,#0c0c0e)!important; font-weight:600; }
+  .btn-primary{ background:linear-gradient(135deg,var(--gold-soft),var(--gold))!important; color:var(--on-primary,#0c0c0e)!important; font-weight:600; box-shadow:var(--glow,0 0 #0000); }
   .btn-primary:hover{ filter:brightness(1.06); }
   .btn-outline{ border:1px solid var(--hair-gold)!important; color:var(--text)!important; background:transparent!important; }
   .btn-outline:hover{ background:rgba(var(--primary-rgb,201,163,94),.08)!important; border-color:var(--gold)!important; }
   .filter-input,.form-input,.form-control,.auth-input,.chat-input{ background:var(--field-bg,#0e0e10)!important; border:1px solid var(--hair)!important; color:var(--text)!important; }
-  .filter-input:focus,.form-input:focus,.form-control:focus,.auth-input:focus,.chat-input:focus{ border-color:var(--gold)!important; box-shadow:0 0 0 3px rgba(var(--primary-rgb,201,163,94),.14)!important; }
+  .filter-input:focus,.form-input:focus,.form-control:focus,.auth-input:focus,.chat-input:focus{ border-color:var(--gold)!important; box-shadow:0 0 0 3px rgba(var(--primary-rgb,201,163,94),.14), var(--glow,0 0 #0000)!important; }
   thead th{ background:var(--thead-bg,#101012)!important; border-bottom:1px solid var(--hair-gold)!important; }
   tbody tr{ border-bottom:1px solid var(--hair)!important; }
   tbody tr:hover{ background:rgba(var(--primary-rgb,201,163,94),.05)!important; }
@@ -1785,7 +1785,7 @@
   }
   .nav-item.active{
     background:rgba(var(--primary-rgb,201,163,94),.13)!important; color:var(--text)!important;
-    box-shadow:inset 0 0 0 1px rgba(var(--primary-rgb,201,163,94),.26);
+    box-shadow:inset 0 0 0 1px rgba(var(--primary-rgb,201,163,94),.26), var(--glow,0 0 #0000);
   }
   /* The icon is a chip, not a bare glyph — this is the thing you scan. */
   .nav-item .nav-icon{
