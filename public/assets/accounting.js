@@ -136,7 +136,7 @@
       .acct-bar .n{font-size:10.5px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
       .acct-bar .b{width:100%;max-width:52px;height:100px;display:flex;align-items:flex-end;gap:3px}
       .acct-bar .b i{display:block;flex:1;border-radius:calc(4px * var(--r-k,1)) calc(4px * var(--r-k,1)) 0 0;min-height:2px}
-      .acct-bar .b i.in{background:#6dd8a4}.acct-bar .b i.out{background:#e57373}.acct-bar .b i.ox{background:#a78bfa}
+      .acct-bar .b i.in{background:var(--h-6dd8a4,#6dd8a4)}.acct-bar .b i.out{background:var(--h-e57373,#e57373)}.acct-bar .b i.ox{background:var(--h-a78bfa,#a78bfa)}
       .acct-bar .m{font-size:10.5px;color:var(--muted,#9a958a)}
       .acct-legend{display:flex;gap:14px;font-size:11px;color:var(--muted,#9a958a);margin-top:8px}
       .acct-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:middle}
@@ -359,7 +359,7 @@
     if (!rows.length) return '<div class="acct-empty">No movements in range.</div>';
     const max = Math.max(1, ...rows.flatMap(m => keys.map(k => Math.abs(N(m[k.key])))));
     return `<div class="acct-bars">${rows.map(m => `<div class="acct-bar" title="${h(m.month)}: ${keys.map(k => k.label + ' ' + money(m[k.key])).join(' · ')}">
-        <span class="n" style="color:${N(m.net) < 0 ? '#e57373' : 'inherit'}">${m.net !== undefined ? shortM(m.net) : shortM(m[keys[0].key])}</span>
+        <span class="n" style="color:${N(m.net) < 0 ? 'var(--h-e57373,#e57373)' : 'inherit'}">${m.net !== undefined ? shortM(m.net) : shortM(m[keys[0].key])}</span>
         <span class="b">${keys.map(k => `<i class="${k.cls}" style="height:${Math.max(2, Math.round(Math.abs(N(m[k.key])) / max * 100))}%"></i>`).join('')}</span>
         <span class="m">${h(String(m.month).slice(2).replace('-', '/'))}</span></div>`).join('')}</div>
       <div class="acct-legend">${keys.map(k => `<span><i class="${k.cls}" style="background:${k.color}"></i>${h(k.label)}</span>`).join('')}</div>`;
@@ -370,19 +370,19 @@
     const k = d.kpis || {};
     pane.innerHTML = `${warnHtml(d.warnings)}
       <div class="acct-kpis">
-        ${kpi('Cash in', k.cash_in, '#6dd8a4', `${N((d.counts || {}).payments_in)} payments`)}
-        ${kpi('Cash out', k.cash_out, '#e57373', `${N((d.counts || {}).payments_out)} payments`)}
-        ${kpi('Net cash', k.net_cash, N(k.net_cash) < 0 ? '#e57373' : '#c9a35e')}
-        ${kpi('Receivables', k.receivables_outstanding, '#e6a850', `EGP ${money(k.receivables_overdue)} overdue`)}
-        ${kpi('Vehicle costs', k.landed_costs, '#9fb0bd', 'supplier · freight · customs')}
-        ${kpi('Gross margin', k.gross_margin, N(k.gross_margin) < 0 ? '#e57373' : '#6dd8a4', `${N(k.gross_margin_pct)}% of cash revenue`)}
-        ${kpi('Expenses', k.expenses, '#a78bfa', `${N((d.counts || {}).expenses)} entries`)}
-        ${kpi('Net result', k.net_result, N(k.net_result) < 0 ? '#e57373' : '#6dd8a4', 'margin − expenses')}
+        ${kpi('Cash in', k.cash_in, 'var(--h-6dd8a4,#6dd8a4)', `${N((d.counts || {}).payments_in)} payments`)}
+        ${kpi('Cash out', k.cash_out, 'var(--h-e57373,#e57373)', `${N((d.counts || {}).payments_out)} payments`)}
+        ${kpi('Net cash', k.net_cash, N(k.net_cash) < 0 ? 'var(--h-e57373,#e57373)' : 'var(--h-c9a35e,#c9a35e)')}
+        ${kpi('Receivables', k.receivables_outstanding, 'var(--h-e6a850,#e6a850)', `EGP ${money(k.receivables_overdue)} overdue`)}
+        ${kpi('Vehicle costs', k.landed_costs, 'var(--h-9fb0bd,#9fb0bd)', 'supplier · freight · customs')}
+        ${kpi('Gross margin', k.gross_margin, N(k.gross_margin) < 0 ? 'var(--h-e57373,#e57373)' : 'var(--h-6dd8a4,#6dd8a4)', `${N(k.gross_margin_pct)}% of cash revenue`)}
+        ${kpi('Expenses', k.expenses, 'var(--h-a78bfa,#a78bfa)', `${N((d.counts || {}).expenses)} entries`)}
+        ${kpi('Net result', k.net_result, N(k.net_result) < 0 ? 'var(--h-e57373,#e57373)' : 'var(--h-6dd8a4,#6dd8a4)', 'margin − expenses')}
       </div>
       ${insCard('overview', 'AI insights')}
       <div class="acct-grid" style="margin-top:14px">
         <div class="acct-card"><div class="acct-card-head"><h3>Cash flow by month</h3><span>in, out and net</span><button class="acct-mini" onclick="acctExport('cash_by_month')" ${can('accounting', 'export') ? '' : 'hidden'}>CSV</button></div>
-          ${barsHtml(d.cash_by_month, [{ key: 'in', cls: 'in', label: 'In', color: '#6dd8a4' }, { key: 'out', cls: 'out', label: 'Out', color: '#e57373' }])}</div>
+          ${barsHtml(d.cash_by_month, [{ key: 'in', cls: 'in', label: 'In', color: 'var(--h-6dd8a4,#6dd8a4)' }, { key: 'out', cls: 'out', label: 'Out', color: 'var(--h-e57373,#e57373)' }])}</div>
         <div class="acct-card"><div class="acct-card-head"><h3>Top paying clients</h3><span>cash received in range</span></div>
           ${A(d.top_clients).length ? A(d.top_clients).map((c, i, all) => `<div class="acct-row"><span class="nm">${h(c.client)}</span><span class="mt"></span><span class="vl">EGP ${money(c.received)}</span><span class="tr"><i style="width:${Math.round(N(c.received) / Math.max(1, N(all[0].received)) * 100)}%"></i></span></div>`).join('') : '<div class="acct-empty">No customer payments in range.</div>'}</div>
       </div>`;
@@ -401,12 +401,12 @@
     const tot = Math.max(1, N(d.outstanding));
     pane.innerHTML = `${warnHtml(d.warnings)}
       <div class="acct-kpis">
-        ${kpi('Outstanding', d.outstanding, '#e6a850', `${rows.length} open sales · as of ${h(d.as_of || '')}`)}
-        ${kpi('Overdue', d.overdue, '#e57373', `${N(d.overdue_count)} sales past due`)}
+        ${kpi('Outstanding', d.outstanding, 'var(--h-e6a850,#e6a850)', `${rows.length} open sales · as of ${h(d.as_of || '')}`)}
+        ${kpi('Overdue', d.overdue, 'var(--h-e57373,#e57373)', `${N(d.overdue_count)} sales past due`)}
         <div class="acct-kpi" style="--c:var(--h-6dd8a4,#6dd8a4)"><span class="l">Settled</span><div class="v">${N(d.settled)}</div><div class="s">sales fully paid</div></div>
       </div>
       <div class="acct-card" style="margin-bottom:14px"><div class="acct-card-head"><h3>Aging</h3><span>how old the money owed is</span><button class="acct-mini" onclick="acctExport('receivables')" ${can('accounting', 'export') ? '' : 'hidden'}>CSV</button></div>
-        ${A(d.buckets).map(b => { const a = aging[b.key] || {}; return `<div class="acct-row"><span class="nm">${h(b.label)}</span><span class="mt">${N(a.count)} sale${N(a.count) === 1 ? '' : 's'}</span><span class="vl">EGP ${money(a.amount)}</span><span class="tr"><i style="width:${Math.round(N(a.amount) / tot * 100)}%;background:${b.key === 'current' ? '#9fb0bd' : b.key === '1_30' || b.key === '31_60' ? '#e6a850' : '#e57373'}"></i></span></div>`; }).join('')}
+        ${A(d.buckets).map(b => { const a = aging[b.key] || {}; return `<div class="acct-row"><span class="nm">${h(b.label)}</span><span class="mt">${N(a.count)} sale${N(a.count) === 1 ? '' : 's'}</span><span class="vl">EGP ${money(a.amount)}</span><span class="tr"><i style="width:${Math.round(N(a.amount) / tot * 100)}%;background:${b.key === 'current' ? 'var(--h-9fb0bd,#9fb0bd)' : b.key === '1_30' || b.key === '31_60' ? 'var(--h-e6a850,#e6a850)' : 'var(--h-e57373,#e57373)'}"></i></span></div>`; }).join('')}
       </div>
       ${insCard('receivables', 'AI collection insights')}
       <div class="acct-card" style="margin-top:14px"><div class="acct-card-head"><h3>Open balances</h3><span>click a column to sort</span></div><div id="acct-recv-table"></div></div>`;
@@ -449,10 +449,10 @@
     const byCcy = d.po_by_currency || {};
     pane.innerHTML = `${warnHtml(d.warnings)}
       <div class="acct-kpis">
-        ${kpi('Supplier payments', cogs.supplier, '#9fb0bd')}
-        ${kpi('Freight', cogs.freight, '#9fb0bd')}
-        ${kpi('Customs', cogs.customs, '#9fb0bd')}
-        ${kpi('Total vehicle cost', cogs.total, '#e57373', 'paid out in range')}
+        ${kpi('Supplier payments', cogs.supplier, 'var(--h-9fb0bd,#9fb0bd)')}
+        ${kpi('Freight', cogs.freight, 'var(--h-9fb0bd,#9fb0bd)')}
+        ${kpi('Customs', cogs.customs, 'var(--h-9fb0bd,#9fb0bd)')}
+        ${kpi('Total vehicle cost', cogs.total, 'var(--h-e57373,#e57373)', 'paid out in range')}
         <div class="acct-kpi" style="--c:var(--h-c98b5e,#c98b5e)"><span class="l">POs in range</span><div class="v">${Object.keys(byCcy).length ? Object.entries(byCcy).map(([c, v]) => `${h(c)} ${shortM(v)}`).join(' · ') : '—'}</div><div class="s">${N(d.po_in_range)} purchase orders (PI totals)</div></div>
         <div class="acct-kpi" style="--c:var(--h-a78bfa,#a78bfa)"><span class="l">Indicative USD rate</span><div class="v">${rate ? N(rate.rate).toFixed(2) : '—'}</div><div class="s">${rate ? 'last USD movement booked ' + h(rate.as_of) : 'no USD movement recorded yet'}</div></div>
       </div>
@@ -484,16 +484,16 @@
     const rows = A(d.rows);
     pane.innerHTML = `${warnHtml(d.warnings)}
       <div class="acct-kpis">
-        ${kpi('Expenses in range', d.total, '#a78bfa', `${N(d.count)} entries`)}
-        ${kpi('Prior 3-month average', prior.avg_per_month, '#9fb0bd', 'per month')}
-        ${kpi('Largest category', byCat.length ? byCat[0].amount : 0, '#e6a850', byCat.length ? h(byCat[0].label) : '—')}
+        ${kpi('Expenses in range', d.total, 'var(--h-a78bfa,#a78bfa)', `${N(d.count)} entries`)}
+        ${kpi('Prior 3-month average', prior.avg_per_month, 'var(--h-9fb0bd,#9fb0bd)', 'per month')}
+        ${kpi('Largest category', byCat.length ? byCat[0].amount : 0, 'var(--h-e6a850,#e6a850)', byCat.length ? h(byCat[0].label) : '—')}
       </div>
       ${insCard('expenses', 'AI expense review')}
       <div class="acct-grid" style="margin-top:14px">
         <div class="acct-card"><div class="acct-card-head"><h3>By category</h3><span>in range</span><button class="acct-mini" onclick="acctExport('opex')" ${can('accounting', 'export') ? '' : 'hidden'}>CSV</button></div>
           ${byCat.length ? byCat.map(c => `<div class="acct-row"><span class="nm">${h(c.label)}</span><span class="mt">${N(c.count)}</span><span class="vl">EGP ${money(c.amount)}</span><span class="tr"><i style="width:${Math.round(N(c.amount) / cmax * 100)}%;background:#a78bfa"></i></span></div>`).join('') : '<div class="acct-empty">No expenses in range.</div>'}</div>
         <div class="acct-card"><div class="acct-card-head"><h3>By month</h3><span>operating expenses</span></div>
-          ${barsHtml(A(d.by_month).map(m => ({ month: m.month, amount: m.amount })), [{ key: 'amount', cls: 'ox', label: 'Expenses', color: '#a78bfa' }])}</div>
+          ${barsHtml(A(d.by_month).map(m => ({ month: m.month, amount: m.amount })), [{ key: 'amount', cls: 'ox', label: 'Expenses', color: 'var(--h-a78bfa,#a78bfa)' }])}</div>
       </div>
       <div class="acct-card"><div class="acct-card-head"><h3>Entries</h3><span>${rows.length} in range</span>
           <span style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -505,7 +505,7 @@
           ${rows.map(e => `<tr><td>${fmtDate(e.spent_on)}</td><td><span class="acct-pill mut">${h((cats.find(c => c.key === e.category) || {}).label || e.category)}</span></td><td>${h(e.description || '—')}</td><td>${h(e.vendor || '—')}</td>
             <td class="n">${h(e.currency)} ${money(e.amount)}${e.currency !== 'EGP' ? ` <span class="mt" style="color:var(--muted);font-size:10.5px">@${N(e.fx_rate)}</span>` : ''}</td><td class="n"><b>${money(e.amount_base)}</b></td><td>${h(e.method || '—')}</td>
             <td>${e.receipt && e.receipt.url ? `<a href="${h(e.receipt.url)}" target="_blank" rel="noopener" style="color:var(--primary-text,var(--gold))">${h(e.receipt.name || 'file')}</a>` : '—'}</td>
-            ${can('accounting', 'edit') ? `<td style="white-space:nowrap"><button class="acct-mini" onclick="openExpenseForm(${N(e.id)})">Edit</button> <button class="acct-mini" style="color:#e57373" onclick="deleteExpense(${N(e.id)})">Delete</button></td>` : ''}</tr>`).join('')}
+            ${can('accounting', 'edit') ? `<td style="white-space:nowrap"><button class="acct-mini" onclick="openExpenseForm(${N(e.id)})">Edit</button> <button class="acct-mini" style="color:var(--h-e57373,#e57373)" onclick="deleteExpense(${N(e.id)})">Delete</button></td>` : ''}</tr>`).join('')}
           </tbody></table></div>` : '<div class="acct-empty">No expenses recorded in range.' + (can('accounting', 'edit') ? ' Add the first one with + Expense.' : '') + '</div>'}
       </div>`;
     icons();
@@ -588,7 +588,7 @@
     const rows = A(d.rows), kinds = A(d.kinds), t = d.totals || {};
     pane.innerHTML = `${warnHtml(d.warnings)}
       <div class="acct-kpis">
-        ${kpi('In', t.in, '#6dd8a4', 'matching the filters')}${kpi('Out', t.out, '#e57373', 'matching the filters')}${kpi('Net', N(t.in) - N(t.out), N(t.in) - N(t.out) < 0 ? '#e57373' : '#c9a35e')}
+        ${kpi('In', t.in, 'var(--h-6dd8a4,#6dd8a4)', 'matching the filters')}${kpi('Out', t.out, 'var(--h-e57373,#e57373)', 'matching the filters')}${kpi('Net', N(t.in) - N(t.out), N(t.in) - N(t.out) < 0 ? 'var(--h-e57373,#e57373)' : 'var(--h-c9a35e,#c9a35e)')}
       </div>
       <div class="acct-card"><div class="acct-card-head"><h3>Every payment</h3><span>${rows.length} rows, newest first</span>
         <span style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -628,7 +628,7 @@
         <div class="acct-card"><div class="acct-card-head"><h3>Saved reports</h3><span>${list.length} kept</span></div>
           ${list.length ? `<div class="acct-table-wrap"><table class="acct-table"><thead><tr><th>Period</th><th>Language</th><th>Generated</th><th>Summary</th><th></th></tr></thead><tbody>
             ${list.map(r => `<tr><td><b>${h(r.period_label || (r.period_from + ' → ' + r.period_to))}</b></td><td>${r.lang === 'ar' ? 'AR' : 'EN'}</td><td>${fmtDate(r.created_at)}</td><td style="color:var(--muted);font-size:11.5px">${h(r.summary || (r.model ? '' : 'figures only — no AI narrative'))}</td>
-              <td style="white-space:nowrap"><button class="acct-mini" onclick="acctReportOpen(${N(r.id)})">Open</button>${isAdmin() ? ` <button class="acct-mini" style="color:#e57373" onclick="acctReportDelete(${N(r.id)})">Delete</button>` : ''}</td></tr>`).join('')}
+              <td style="white-space:nowrap"><button class="acct-mini" onclick="acctReportOpen(${N(r.id)})">Open</button>${isAdmin() ? ` <button class="acct-mini" style="color:var(--h-e57373,#e57373)" onclick="acctReportDelete(${N(r.id)})">Delete</button>` : ''}</td></tr>`).join('')}
             </tbody></table></div>` : '<div class="acct-empty">No reports yet. Generate the first one on the left.</div>'}
         </div>
       </div>
@@ -685,8 +685,8 @@
             ${can('accounting', 'export') ? `<button class="acct-btn" data-perm="accounting.export" onclick="acctReportPdf(${N(r.id)}, '${h(r.period_label || '').replace(/'/g, '')}')">PDF</button>` : ''}
             <button class="acct-btn" onclick="document.getElementById('acct-rep-view').innerHTML=''">Close</button></span></div>
         <div class="acct-kpis">
-          ${kpi('Cash in', cash.in, '#6dd8a4')}${kpi('Cash out', cash.out, '#e57373')}${kpi('Revenue (cash)', rev.cash, '#c9a35e')}${kpi('Gross margin', gm.amount, N(gm.amount) < 0 ? '#e57373' : '#6dd8a4', `${N(gm.pct)}%`)}
-          ${kpi('Expenses', opex.total, '#a78bfa')}${kpi('Net result', p.net_result, N(p.net_result) < 0 ? '#e57373' : '#6dd8a4')}${kpi('Receivables', recv.outstanding, '#e6a850', `EGP ${money(recv.overdue)} overdue`)}
+          ${kpi('Cash in', cash.in, 'var(--h-6dd8a4,#6dd8a4)')}${kpi('Cash out', cash.out, 'var(--h-e57373,#e57373)')}${kpi('Revenue (cash)', rev.cash, 'var(--h-c9a35e,#c9a35e)')}${kpi('Gross margin', gm.amount, N(gm.amount) < 0 ? 'var(--h-e57373,#e57373)' : 'var(--h-6dd8a4,#6dd8a4)', `${N(gm.pct)}%`)}
+          ${kpi('Expenses', opex.total, 'var(--h-a78bfa,#a78bfa)')}${kpi('Net result', p.net_result, N(p.net_result) < 0 ? 'var(--h-e57373,#e57373)' : 'var(--h-6dd8a4,#6dd8a4)')}${kpi('Receivables', recv.outstanding, 'var(--h-e6a850,#e6a850)', `EGP ${money(recv.overdue)} overdue`)}
         </div>
         <div class="acct-narr" dir="${r.lang === 'ar' ? 'rtl' : 'ltr'}">${String(r.narrative || '').trim() ? mdHtml(r.narrative) : '<p class="acct-empty">No AI narrative was generated for this report (no AI provider was configured). The figures above stand on their own.</p>'}</div>
       </div>`;
@@ -767,10 +767,10 @@
     if (!el) return;
     try {
       const d = await acctJson(await api('/api/dashboard/accounting/ai/status'));
-      if (!d.ai) { el.textContent = '● AI not configured — set CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN (or GEMINI_API_KEY) on the server'; el.style.color = '#e6a850'; return; }
-      if (d.ok) { el.textContent = '● Connected (' + String(d.model || 'AI').replace(/^@cf\/[^/]+\//, '') + ') · reading ' + rangeLabel(); el.style.color = '#6dd8a4'; }
-      else if (d.status === 429) { el.textContent = '● Busy — out of capacity, retry shortly'; el.style.color = '#e6a850'; }
-      else if (d.ok === false) { el.textContent = '● Key set but failing: ' + (d.error || 'unknown error'); el.style.color = '#e6a850'; }
+      if (!d.ai) { el.textContent = '● AI not configured — set CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN (or GEMINI_API_KEY) on the server'; el.style.color = 'var(--h-e6a850,#e6a850)'; return; }
+      if (d.ok) { el.textContent = '● Connected (' + String(d.model || 'AI').replace(/^@cf\/[^/]+\//, '') + ') · reading ' + rangeLabel(); el.style.color = 'var(--h-6dd8a4,#6dd8a4)'; }
+      else if (d.status === 429) { el.textContent = '● Busy — out of capacity, retry shortly'; el.style.color = 'var(--h-e6a850,#e6a850)'; }
+      else if (d.ok === false) { el.textContent = '● Key set but failing: ' + (d.error || 'unknown error'); el.style.color = 'var(--h-e6a850,#e6a850)'; }
       else { el.textContent = '● Ready · reading ' + rangeLabel(); el.style.color = 'var(--muted,#9a958a)'; }
     } catch (_) { el.textContent = ''; }
   }

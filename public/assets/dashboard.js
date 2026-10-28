@@ -5388,7 +5388,7 @@ async function loadDeletionRequests() {
           <div style="font-size:12px;color:var(--muted);margin-top:2px">by ${esc(r.requested_by)} · ${new Date(r.created_at).toLocaleString()}${r.reason ? ' · “' + esc(r.reason) + '”' : ''}</div>
         </div>
         ${actionable ? `
-          <button class="btn btn-sm btn-outline" style="color:#5ab478;border-color:#5ab478" onclick="reviewDeletion(${r.id}, 'approved')"><i data-lucide="check" style="width:13px;height:13px"></i> Approve &amp; delete</button>
+          <button class="btn btn-sm btn-outline" style="color:var(--h-5ab478,#5ab478);border-color:#5ab478" onclick="reviewDeletion(${r.id}, 'approved')"><i data-lucide="check" style="width:13px;height:13px"></i> Approve &amp; delete</button>
           <button class="btn btn-sm btn-outline" onclick="reviewDeletion(${r.id}, 'rejected')"><i data-lucide="x" style="width:13px;height:13px"></i> Reject</button>`
           : `<span style="font-size:12px;font-weight:700;color:${r.status === 'approved' ? '#5ab478' : 'var(--muted)'}">${r.status === 'approved' ? '✓ Approved' : 'Rejected'}</span>`}
       </div>`;
@@ -7024,7 +7024,7 @@ function dealCard(d) {
     ${d.budget_egp ? `<div style="font-size:12px;font-weight:700;color:var(--primary-text,var(--primary));margin-bottom:4px">${Number(d.budget_egp).toLocaleString()} EGP</div>` : ''}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
       ${d.assigned_to ? `<div style="font-size:10px;color:var(--muted)">${esc(d.assigned_to)}</div>` : '<div></div>'}
-      <div style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;${daysOpen > 20 ? 'background:rgba(239,68,68,.12);color:#ef4444' : daysOpen > 10 ? 'background:rgba(245,158,11,.12);color:#f59e0b' : 'color:var(--muted)'}">${daysOpen}d</div>
+      <div style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;${daysOpen > 20 ? 'background:rgba(239,68,68,.12);color:var(--h-ef4444,#ef4444)' : daysOpen > 10 ? 'background:rgba(245,158,11,.12);color:var(--h-f59e0b,#f59e0b)' : 'color:var(--muted)'}">${daysOpen}d</div>
     </div>
   </div>`;
 }
