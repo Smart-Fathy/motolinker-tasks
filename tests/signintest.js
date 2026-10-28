@@ -261,6 +261,15 @@ let googleEmail = 'sara@example.com';
   const down = await signIn(lap, 'sara', SARA_PW);
   db.failing.delete('account_security');
   c('if the second factor cannot be checked, sign-in is refused — never waved through', !down.token && !down.mfa_required && /try again/i.test(down.error || ''), JSON.stringify(down));
+  // …nor is the minute after a database restart, when PostgREST answers PGRST002 while
+  // it reloads its schema cache. That message names the schema cache, as a missing
+  // table's does, and passed for "migration 023 not applied" — so a password alone got in.
+  db.restarting.add('account_security');
+  const ovRestart = await J(await go(lap, '/api/employee/security', { token: ok1.token }));
+  const restarting = await signIn(lap, 'sara', SARA_PW);
+  db.restarting.delete('account_security');
+  c('a database that is restarting is reported as an error, not as a missing migration', ovRestart.twofa && ovRestart.twofa.reason === 'error', JSON.stringify(ovRestart.twofa));
+  c('…and sign-in is refused while it comes back, not waved through without the code', !restarting.token && !restarting.mfa_required && /try again/i.test(restarting.error || ''), JSON.stringify(restarting));
 
   // — Google sign-in does not skip it either —
   googleEmail = 'sara@example.com';
