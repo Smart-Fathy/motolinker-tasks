@@ -263,6 +263,27 @@ PASSES['radius-tokens'] = {
   },
 };
 
+// Density. The workspace chooses compact, comfortable or roomy and the sheets' own spacing
+// follows — but only where it is the *page's* spacing (the gutters, the cards, the table
+// cells, the rail), listed here per sheet. Controls keep the size that is comfortable to tap,
+// and a phone's own rules (the media blocks) are left as they are.
+const DENSITY = {
+  'dashboard.css': { '.main': ['padding'], '.page-body': ['padding'], '.page-header': ['padding', 'gap'], 'thead th': ['padding'], 'td': ['padding'],
+    '.stat-card': ['padding'], '.table-header': ['padding'], '.table-footer': ['padding'], '.nav-item': ['padding'], '.stats-grid': ['gap'], '.chart-card': ['padding'] },
+  'employee.css': { '.page': ['padding'], '.card': ['padding', 'margin-bottom'], '.stat-box': ['padding'], 'th': ['padding'], 'td': ['padding'], '.nav-item': ['padding'],
+    '.topbar': ['padding'], '.stat-card': ['padding'], '.stats-grid': ['gap'], '.sidebar-nav': ['padding'] },
+};
+PASSES['density'] = {
+  about: 'page gutters, cards, table cells and the rail → calc(Npx * var(--d-k,1))',
+  forward(value, d, ctx) {
+    const rules = DENSITY[require('path').basename(ctx.file)];
+    if (!rules || d.rule.parent) return null;   // a rule inside @media (a phone's) is left alone
+    const props = rules[d.rule.head.replace(/\s+/g, ' ')];
+    if (!props || !props.includes(d.prop)) return null;
+    return sub(value, maskedSpans(value), /(?<![\w.-])(\d+(?:\.\d+)?)px(?![\w-])/g, m => parseFloat(m[1]) >= 4 ? 'calc(' + m[0] + ' * var(--d-k,1))' : null);
+  },
+};
+
 // Type: the two families the sheets name
 const FAMILIES = [
   [/^\s*'Cormorant Garamond'\s*,\s*serif\s*$/i, '--font-head'],
