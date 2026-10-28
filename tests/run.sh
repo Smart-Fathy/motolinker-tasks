@@ -27,6 +27,7 @@ run shared      node tests/shared.js
 run widgets     node tests/widgets.js
 run linktest    node tests/linktest.js
 run emailview   node tests/emailview.js
+run attachlinks node tests/attachlinks.js
 run pastetest   node tests/pastetest.js
 run invitetest  node tests/invitetest.js
 run hdsignal    node tests/hdsignal.js

@@ -2431,9 +2431,12 @@ async function cmtFileSelected(input) {
 }
 function cmtRemoveAttach() { _cmtPendingFile = null; const p = document.getElementById('cmt-attach-preview'); if (p) p.style.display = 'none'; }
 function commentAttachHtml(c) {
-  if (!c.file_url) return '';
-  const u = esc(c.file_url), t = c.file_type || '';
-  if (t.startsWith('image/')) return `<img src="${u}" class="chat-img-thumb" onclick="window.open('${u}','_blank')" loading="lazy">`;
+  // file_url is whatever the poster sent. Only a real web link is drawn (ceLinkUrl),
+  // and never inside an onclick: a quote in it closed window.open('…') and ran the rest.
+  const href = ceLinkUrl(c.file_url);
+  if (!href) return '';
+  const u = esc(href), t = c.file_type || '';
+  if (t.startsWith('image/')) return `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" class="chat-img-thumb" loading="lazy"></a>`;
   if (t.startsWith('audio/')) return `<div class="chat-voice-msg"><audio controls src="${u}" preload="none"></audio></div>`;
   return `<div class="chat-file-attach"><i data-lucide="paperclip" style="width:13px;height:13px"></i> <a href="${u}" target="_blank" rel="noopener">${esc(c.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${c.file_size ? (c.file_size / 1024 / 1024).toFixed(1) + 'MB' : ''}</span></div>`;
 }
@@ -4881,12 +4884,13 @@ function adminChatMsgHTML(msg, grouped) {
     <div class="chat-reply-quote-body">${esc(msg.reply_to_body)}</div>
   </div>` : '';
   const dlBtn = msg.file_url ? `<button class="chat-download-btn" onclick="adminChatDownloadFile(${msg.id})" title="Download"><i data-lucide="download" style="width:13px;height:13px"></i></button>` : '';
-  const fileHTML = msg.file_url ? (
+  const fileHref = ceLinkUrl(msg.file_url);   // a real web link only, never inside an onclick (see commentAttachHtml)
+  const fileHTML = fileHref ? (
     msg.file_type?.startsWith('image/')
-      ? `<div><img src="${esc(msg.file_url)}" class="chat-img-thumb" onclick="window.open('${esc(msg.file_url)}','_blank')" loading="lazy"><div style="text-align:right">${dlBtn}</div></div>`
+      ? `<div><a href="${esc(fileHref)}" target="_blank" rel="noopener"><img src="${esc(fileHref)}" class="chat-img-thumb" loading="lazy"></a><div style="text-align:right">${dlBtn}</div></div>`
       : msg.file_type?.startsWith('audio/')
-        ? `<div class="chat-voice-msg"><audio controls src="${esc(msg.file_url)}" preload="none"></audio>${msg.voice_duration ? `<span class="chat-voice-dur">${String(Math.floor(msg.voice_duration/60)).padStart(2,'0')}:${String(msg.voice_duration%60).padStart(2,'0')}</span>` : ''}${dlBtn}</div>`
-        : `<div class="chat-file-attach"><i data-lucide="paperclip" style="width:13px;height:13px"></i> <a href="${esc(msg.file_url)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
+        ? `<div class="chat-voice-msg"><audio controls src="${esc(fileHref)}" preload="none"></audio>${msg.voice_duration ? `<span class="chat-voice-dur">${String(Math.floor(msg.voice_duration/60)).padStart(2,'0')}:${String(msg.voice_duration%60).padStart(2,'0')}</span>` : ''}${dlBtn}</div>`
+        : `<div class="chat-file-attach"><i data-lucide="paperclip" style="width:13px;height:13px"></i> <a href="${esc(fileHref)}" target="_blank" rel="noopener">${esc(msg.file_name || 'File')}</a><span style="color:var(--muted);margin-left:auto">${msg.file_size ? (msg.file_size/1024/1024).toFixed(1)+'MB' : ''}</span>${dlBtn}</div>`
   ) : '';
   return `<div class="chat-msg ${mine ? 'mine' : 'theirs'}${grouped ? ' grouped' : ''}${chatIsAssistant(msg) ? ' assistant' : ''}" data-msg-id="${msg.id}" onclick="adminChatToggleActions(event)">
     ${actions}

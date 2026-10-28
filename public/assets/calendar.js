@@ -196,7 +196,7 @@
       </div>`,
       `${room
         ? `<button class="btn btn-primary" onclick="CALCFG.closeModal();calJoinHuddle(${room})"><i data-lucide="radio" style="width:14px;height:14px"></i> Join huddle</button>`
-        : (m.meet_link ? `<a class="btn btn-primary" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Join</a>` : '')}
+        : (ceLinkUrl(m.meet_link) ? `<a class="btn btn-primary" href="${esc(ceLinkUrl(m.meet_link))}" target="_blank" rel="noopener">Join</a>` : '')}
        ${can('meet', 'schedule') ? `<button class="btn btn-outline" onclick="CALCFG.closeModal();openMeetingForm(${m.id})">Edit</button>` : ''}
        <button class="btn btn-outline" onclick="CALCFG.closeModal()">Close</button>`);
     if (window.lucide) requestAnimationFrame(() => lucide.createIcons());

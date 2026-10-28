@@ -44,7 +44,7 @@
               </div>
               ${/^huddle:(\d+)$/.test(String(m.meet_link || ''))
                 ? `<button class="btn btn-primary btn-sm" onclick="calJoinHuddle(${/^huddle:(\d+)$/.exec(m.meet_link)[1]})"><i data-lucide="radio" style="width:13px;height:13px"></i> Join huddle</button>`
-                : (m.meet_link ? `<a class="btn btn-primary btn-sm" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Join</a>` : '')}
+                : (ceLinkUrl(m.meet_link) ? `<a class="btn btn-primary btn-sm" href="${esc(ceLinkUrl(m.meet_link))}" target="_blank" rel="noopener">Join</a>` : '')}
               ${mine ? `<button class="btn btn-outline btn-sm" onclick="openMeetingForm(${m.id})">Edit</button>
               <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deleteMeeting(${m.id})">Cancel</button>` : ''}
             </div>`;

@@ -41,6 +41,14 @@ function sanitizeAttachments(v) {
       type: String(a.type || '').slice(0, 100),
     }));
 }
+// One file link on a chat message or a comment, which likewise only ever comes from
+// the upload routes: an https URL, or nothing. The characters no storage URL holds —
+// whitespace, quotes, angle brackets, backtick, backslash — are refused too, since
+// each is a way out of an attribute or a script string on whichever screen draws it.
+function safeFileUrl(v) {
+  const s = String(v == null ? '' : v).trim();
+  return s.length <= 2048 && /^https:\/\/[^\s"'<>`\\]+$/i.test(s) ? s : '';
+}
 
 // ── Logistics and money ──────────────────────────────────────────────────────
 // The company buys in USD and sells in EGP, so "how much" is never a single
@@ -159,7 +167,7 @@ function inspectContainerNo(raw) {
   return { no, valid: true, checkOk: expected != null && expected === Number(no[10]), expected };
 }
 
-module.exports = { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL, TASK_ATTACH_MAX, sanitizeAttachments,
+module.exports = { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL, TASK_ATTACH_MAX, sanitizeAttachments, safeFileUrl,
   BASE_CURRENCY, CURRENCIES, UNIT_STATUSES, UNIT_STATUS_KEYS,
   PAYMENT_KINDS, PAYMENT_KIND_KEYS, PAYMENT_METHODS, PAYMENT_DIRECTIONS,
   EXPENSE_CATEGORIES, EXPENSE_CATEGORY_KEYS,

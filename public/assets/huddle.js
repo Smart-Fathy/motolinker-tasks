@@ -1444,9 +1444,11 @@ async function chatGroupLoadFiles(roomId) {
   try { const r = await HDCFG.fetch(HDCFG.base + '/rooms/' + roomId + '/attachments'); files = r.ok ? await r.json() : []; } catch (_) {}
   if (!files.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px">Nothing shared yet.</div>'; return; }
   box.innerHTML = '<div class="hd-files">' + files.map(f => {
+    const href = ceLinkUrl(f.file_url);   // whatever the poster sent: a real web link, or nothing
+    if (!href) return '';
     const img = (f.file_type || '').startsWith('image/');
     const kb = f.file_size ? Math.max(1, Math.round(f.file_size / 1024)) + ' KB' : '';
-    return `<a class="hd-file" href="${esc(f.file_url)}" target="_blank" rel="noopener" title="${esc(f.file_name || '')}">
+    return `<a class="hd-file" href="${esc(href)}" target="_blank" rel="noopener" title="${esc(f.file_name || '')}">
       ${img ? `<img src="${esc(f.file_url)}" alt="">` : '<div class="hd-file-ic"><i data-lucide="file-text" style="width:22px;height:22px"></i></div>'}
       <div class="hd-file-meta"><div class="hd-file-name">${esc(f.file_name || 'file')}</div>
         <div class="hd-file-sub">${esc(f.sender_name || '')}${kb ? ' · ' + kb : ''}</div></div></a>`;

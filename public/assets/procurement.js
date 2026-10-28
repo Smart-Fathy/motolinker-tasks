@@ -2162,7 +2162,7 @@
               // status or recoloring it in the field editor shows up here.
               if (c.type === 'select' || c.type === 'radio') return `<td style="padding:8px 10px">${eng.badgeHtml(c, x[k])}</td>`;
               if (SALE_NUM_KEYS.includes(k)) return `<td style="padding:8px 10px;text-align:right">${Number(x[k]) ? Number(x[k]).toLocaleString() : '—'}</td>`;
-              if (k === 'client_file' && x[k]) return `<td style="padding:8px 10px"><a href="${esc(x[k])}" target="_blank" rel="noopener" style="color:var(--primary)">file</a></td>`;
+              if (k === 'client_file' && ceLinkUrl(x[k])) return `<td style="padding:8px 10px"><a href="${esc(ceLinkUrl(x[k]))}" target="_blank" rel="noopener" style="color:var(--primary)">file</a></td>`;
               return `<td style="padding:8px 10px">${esc(x[k] || '')}</td>`;
             }).join('')}
             <td style="padding:8px 10px;text-align:right;white-space:nowrap">
@@ -2200,7 +2200,7 @@
         const meta = x?.client_file_meta || null;
         return `<div style="grid-column:1/-1"><div class="po-lbl">${esc(label)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            ${x?.client_file ? `<a href="${esc(x.client_file)}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">
+            ${ceLinkUrl(x?.client_file) ? `<a href="${esc(ceLinkUrl(x.client_file))}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">
               <i data-lucide="file-text" style="width:13px;height:13px"></i> ${esc(meta?.name || 'Open current file')}</a>` : ''}
             <input type="file" id="sale-file-input" style="display:none" onchange="saleUploadFile(${id || 'null'}, this)">
             <button class="btn btn-outline btn-sm" ${id ? '' : 'disabled title="Save the sale first"'}
@@ -2247,7 +2247,7 @@
     // questions people actually had ("uploaded WHERE?").
     const meta = d.client_file_meta || {};
     msg.innerHTML = `Saved to Drive → MotoLinker / Client Files` +
-      (d.client_file ? ` · <a href="${esc(d.client_file)}" target="_blank" rel="noopener" style="color:var(--primary)">${esc(meta.name || 'open the file')}</a>` : '');
+      (ceLinkUrl(d.client_file) ? ` · <a href="${esc(ceLinkUrl(d.client_file))}" target="_blank" rel="noopener" style="color:var(--primary)">${esc(meta.name || 'open the file')}</a>` : '');
     document.getElementById('sale-client_file').value = d.client_file || '';
     loadSales();
   }
