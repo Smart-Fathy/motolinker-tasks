@@ -42,6 +42,7 @@ run hdmeeting   node tests/hdmeeting.js
 run hdextras    node tests/hdextras.js
 run workspaceui node tests/workspaceui.js
 run workspaceapi node tests/workspaceapi.js
+run shell        node tests/shell.js
 run icontest    node tests/icontest.js
 run leadstest   node tests/leadstest.js
 run permstest   node tests/permstest.js

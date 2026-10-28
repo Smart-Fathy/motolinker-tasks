@@ -55,21 +55,40 @@ async function workspaceRaw() {
   catch (_) { return null; }   // a row that isn't JSON is no profile, not a reason to call the database down
 }
 
-async function workspaceProfile({ fresh = false } = {}) {
-  if (!fresh && cached && Date.now() - cached.at < WORKSPACE_TTL_MS) return cached.profile;
-  let raw;
-  try { raw = await workspaceRaw(); }
-  catch (e) {
-    // A database that can't answer still gets a named workspace: the default, not an error page.
-    console.warn('[workspace] could not read the workspace profile:', e.message);
-    if (cached) return cached.profile;
-    // Said out loud, so nobody mistakes it for the real thing: a page that gets this has
-    // not heard from the database, and must not forget the look it already has.
-    return { ...workspaceShape(null), degraded: true };
+// One read at a time, shared by everyone who asks while it is out. It never rejects: a
+// read that fails resolves to null, and says so in the log.
+let reading = null;
+let saves = 0;   // bumped by every save, so a read that began before one cannot overwrite it
+function loadProfile() {
+  if (!reading) {
+    const began = saves;
+    reading = workspaceRaw()
+      .then(raw => {
+        const profile = workspaceShape(raw);
+        if (saves === began) cached = { profile, at: Date.now() };
+        return profile;
+      })
+      .catch(e => { console.warn('[workspace] could not read the workspace profile:', e.message); return null; })
+      .finally(() => { reading = null; });
   }
-  const profile = workspaceShape(raw);
-  cached = { profile, at: Date.now() };
-  return profile;
+  return reading;
+}
+
+// `patience` is for callers that must not stand waiting on the database — the pages
+// themselves, which need no database to open. It is the longest they will wait: past
+// that they get what was last known (however old), or the original marked degraded, and
+// the read carries on in the background to fill the cache for the next visitor.
+async function workspaceProfile({ fresh = false, patience = 0 } = {}) {
+  if (!fresh && cached && Date.now() - cached.at < WORKSPACE_TTL_MS) return cached.profile;
+  if (patience > 0 && !fresh && cached) { loadProfile(); return cached.profile; }   // stale beats slow
+  const read = loadProfile();
+  const got = patience > 0 ? await Promise.race([read, new Promise(r => setTimeout(() => r(null), patience).unref())]) : await read;
+  if (got) return got;
+  // A database that can't answer still gets a named workspace: the default, not an error page.
+  if (cached) return cached.profile;
+  // Said out loud, so nobody mistakes it for the real thing: a page that gets this has
+  // not heard from the database, and must not forget the look it already has.
+  return { ...workspaceShape(null), degraded: true };
 }
 
 // Changes are merged onto the record as stored, not rebuilt from what this module
@@ -85,6 +104,7 @@ async function workspaceSave(patch) {
     .upsert({ key: WORKSPACE_KEY, value: JSON.stringify(next), updated_at: at }, { onConflict: 'key' });
   if (error) throw error;
   const profile = workspaceShape(next);
+  saves++;
   cached = { profile, at: Date.now() };
   workspaceAnnounce(profile);
   return profile;

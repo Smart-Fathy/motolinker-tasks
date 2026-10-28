@@ -36,6 +36,17 @@ db.install();
     check('a database that cannot answer still gets a named workspace…', r.status === 200 && p.name === 'MotoLinker' && p.theme.preset === 'black-gold');
     check('…marked degraded, so a page knows it has not heard from the database', p.degraded === true);
     db.failing.delete('quotation_settings');
+    // A database that answers slowly: a caller that cannot stand waiting (the pages) gets
+    // the original, marked, at once — and the read goes on to fill the cache for the next.
+    db.latency = 700;
+    let t = Date.now();
+    const quick = await ctx.workspaceProfile({ patience: 100 });
+    check('a caller with patience is not kept waiting on a slow database…', quick.degraded === true && Date.now() - t < 450, `${Date.now() - t} ms`);
+    await sleep(1100);
+    t = Date.now();
+    const warm = await ctx.workspaceProfile({ patience: 100 });
+    check('…and the read it did not wait for has filled the cache by the next visit', !warm.degraded && Date.now() - t < 100 && warm.name === 'MotoLinker', `${Date.now() - t} ms`);
+    db.latency = 0;
     const q = await get('/api/workspace');
     check('once it answers, the flag is gone and the answer is the real one', !('degraded' in q) && q.name === 'MotoLinker');
   }

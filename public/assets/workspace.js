@@ -16,12 +16,18 @@ function wsName() { return _ws.name || WS_DEFAULT_NAME; }
 function wsCurrent() { return { ..._ws }; }
 
 function wsApply(p) {
-  if (!p || typeof p !== 'object') return;
+  // A degraded answer is the server saying it has not heard from its database: it
+  // describes nothing, and must not overwrite what this page already knows.
+  if (!p || typeof p !== 'object' || p.degraded) return;
   const name = String(p.name || '').trim() || WS_DEFAULT_NAME;
   const logo = typeof p.logo_url === 'string' && /^https?:\/\//i.test(p.logo_url) ? p.logo_url : '';
   _ws = { name, logo_url: logo };
   document.querySelectorAll('[data-ws-name]').forEach(el => { if (el.textContent !== name) el.textContent = name; });
-  if (_wsTitle === null) _wsTitle = document.title.includes(WS_DEFAULT_NAME) ? document.title.replace(WS_DEFAULT_NAME, '{ws}') : '';
+  if (_wsTitle === null) {
+    // The server writes the name into the page it sends and keeps the template beside it.
+    const t = document.querySelector('title');
+    _wsTitle = t && t.dataset.wsTitle ? t.dataset.wsTitle : document.title.includes(WS_DEFAULT_NAME) ? document.title.replace(WS_DEFAULT_NAME, '{ws}') : '';
+  }
   if (_wsTitle) document.title = _wsTitle.replace('{ws}', name);
   const root = document.documentElement;
   // Quoted, with the three characters that could end the url("…") encoded.
@@ -30,7 +36,7 @@ function wsApply(p) {
   root.classList.toggle('ws-custom-logo', !!logo);
   const icon = document.querySelector('link[rel="icon"]');
   if (icon) {
-    if (_wsFavicon === null) _wsFavicon = icon.getAttribute('href') || '';
+    if (_wsFavicon === null) _wsFavicon = icon.getAttribute('data-default-href') || icon.getAttribute('href') || '';
     const want = logo || _wsFavicon;
     if (icon.getAttribute('href') !== want) icon.setAttribute('href', want);
   }

@@ -69,8 +69,23 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Icons and manifests — cache-first
-  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/') || url.pathname.startsWith('/manifest-employee')) {
+  // The manifest carries the workspace's name and colours: network-first, so a rename
+  // reaches an installed copy, and the last one seen still answers offline.
+  if (url.pathname.startsWith('/manifest-employee')) {
+    e.respondWith(
+      fetch(request)
+        .then(res => {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(request, clone));
+          return res;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Icons and assets — cache-first
+  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/')) {
     e.respondWith(
       caches.match(request).then(hit => {
         if (hit) return hit;
