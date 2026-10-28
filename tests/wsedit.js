@@ -150,6 +150,12 @@ db.install();
   check('and so is text that is not JSON', /not valid JSON/.test(await toast(admin)) && stored().theme.preset === 'moto', await toast(admin));
   await click(admin, '[data-act="discard"]');
   await sleep(150);
+  await admin.evaluate(() => { document.getElementById('wsa-json').value = '{"shape":{"radius":4,"density":2}}'; });
+  await click(admin, '[data-act="import"]');
+  await sleep(150);
+  check('a file that has only some of the sections changes only those', await admin.evaluate(() => { const j = JSON.parse(document.getElementById('wsa-json').value); return j.shape.radius === 4 && j.shape.density === 2 && j.theme.preset === 'moto' && j.texts.team_title === 'Crew Portal'; }));
+  await click(admin, '[data-act="discard"]');
+  await sleep(150);
 
   // ── The draft survives going elsewhere ───────────────────────────────────────────────
   await click(admin, '.wsa-tab[data-id="type"]');
@@ -163,6 +169,23 @@ db.install();
   await sleep(300);
   check('coming back, the unsaved draft is still there', await admin.evaluate(() => !document.getElementById('wsa-discard-btn').disabled) && (await pv(admin, '--r-k')) === '2');
   await click(admin, '[data-act="discard"]');
+
+  // ── "Keep it" from a try ─────────────────────────────────────────────────────────────
+  const fontsLink = () => admin.evaluate(() => document.querySelector('link[href^="https://fonts.googleapis.com/css2?"]:not(#wsa-fonts)').getAttribute('href'));
+  const before = await fontsLink();
+  await click(admin, '.wsa-tab[data-id="type"]');
+  await admin.evaluate(() => { const s = document.getElementById('wsa-font-head'); s.value = 'playfair'; s.dispatchEvent(new Event('change', { bubbles: true })); });
+  await click(admin, '#wsa-try-btn');
+  await sleep(200);
+  check('a try wears the draft\'s faces too', /Playfair/.test(await fontsLink()) && (await fontsLink()) !== before, await fontsLink());
+  await click(admin, '#wsa-try-keep');
+  await until(admin, () => !document.getElementById('wsa-try-bar'));
+  await (async () => { for (let i = 0; i < 30; i++) { if (stored().typography && stored().typography.heading === 'playfair') return; await sleep(150); } })();
+  check('"Keep it" saves it, and the page keeps the faces it was trying (they do not slip back)', stored().typography.heading === 'playfair' && (await fontsLink()) === T.fontsHref(T.normalize(stored())), await fontsLink());
+  await click(admin, '#wsa-try-btn');
+  await sleep(150);
+  await click(admin, '#wsa-try-drop');
+  check('…and a try that is put back leaves the saved faces', (await fontsLink()) === T.fontsHref(T.normalize(stored())));
 
   // ── The original look comes back ─────────────────────────────────────────────────────
   await click(admin, '.wsa-tab[data-id="behaviour"]');

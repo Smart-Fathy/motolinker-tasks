@@ -490,7 +490,7 @@ async function wsaSave() {
       if (!r.ok) { showAdminToast(j.error || 'Could not save the look.'); return; }
       profile = j; wsApply(j);
     }
-    wsaTryStop(false);
+    wsaTryStop(true);
     const f = wsaFromProfile(profile);
     _wsa.saved = wsaClone(f); _wsa.draft = f;
     showAdminToast('Saved. Everyone who has the portal open sees it now.');
@@ -506,7 +506,7 @@ async function wsaReset() {
   const r = await apiFetch('/api/dashboard/workspace/theme', { method: 'PUT', body: JSON.stringify({ reset: true }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { showAdminToast(j.error || 'Could not reset the look.'); return; }
-  wsApply(j); wsaTryStop(false);
+  wsApply(j); wsaTryStop(true);
   const f = wsaFromProfile(j); _wsa.saved = wsaClone(f); _wsa.draft = f;
   showAdminToast('The original look is back.');
   wsaRender();
@@ -557,8 +557,8 @@ function wsaTry() {
   const base = document.getElementById('ws-theme');
   if (base && base.nextSibling) base.parentNode.insertBefore(st, base.nextSibling); else document.head.appendChild(st);
   const link = document.querySelector('link[href^="https://fonts.googleapis.com/css2?"]:not(#wsa-fonts)');
-  const own = link ? link.getAttribute('href') : null;
-  if (link) link.setAttribute('href', T.fontsHref(n));
+  const own = link ? link.getAttribute('href') : null, tried = T.fontsHref(n);
+  if (link) link.setAttribute('href', tried);
   let left = 60;
   const bar = document.createElement('div');
   bar.id = 'wsa-try-bar';
@@ -567,16 +567,19 @@ function wsaTry() {
     <button class="btn btn-outline btn-sm" type="button" id="wsa-try-drop">Put it back</button>`;
   document.body.appendChild(bar);
   const timer = setInterval(() => { left--; const e = document.getElementById('wsa-try-left'); if (e) e.textContent = left; if (left <= 0) wsaTryStop(false); }, 1000);
-  _wsa.trying = { st, bar, timer, link, own };
+  _wsa.trying = { st, bar, timer, link, own, tried };
   document.getElementById('wsa-try-keep').onclick = () => wsaSave();
   document.getElementById('wsa-try-drop').onclick = () => wsaTryStop(false);
 }
-function wsaTryStop() {
+// (A try that ends in a save has already had the saved look's faces put on the page by the save;
+// only one that is dropped hands the page its old faces back — and only if nothing else has
+// changed them since, a save from another admin's tab, say.)
+function wsaTryStop(afterSave) {
   const t = _wsa && _wsa.trying;
   if (!t) return;
   clearInterval(t.timer);
   t.st.remove(); t.bar.remove();
-  if (t.link && t.own) t.link.setAttribute('href', t.own);
+  if (!afterSave && t.link && t.own && t.link.getAttribute('href') === t.tried) t.link.setAttribute('href', t.own);
   _wsa.trying = null;
 }
 
@@ -598,8 +601,9 @@ function wsaImport(text) {
   if (!Object.keys(pick).length) { showAdminToast('That file has no look in it.'); return; }
   const { value, errors } = wsaT().validate(pick);
   if (errors.length) { showAdminToast('Not loaded: ' + errors[0]); return; }
-  const d = _wsa.draft;
-  _wsa.draft = { name: d.name, theme: wsaClone(value.theme), typography: wsaClone(value.typography), shape: wsaClone(value.shape), texts: wsaClone(value.texts) };
+  // (a section the file does not have stays as the editor has it)
+  const d = _wsa.draft, take = k => (pick[k] !== undefined ? wsaClone(value[k]) : d[k]);
+  _wsa.draft = { name: d.name, theme: take('theme'), typography: take('typography'), shape: take('shape'), texts: take('texts') };
   showAdminToast('Loaded into the editor. Save to apply it.');
   wsaRender();
 }
