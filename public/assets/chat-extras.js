@@ -84,8 +84,8 @@ function chatIcons() { try { if (window.lucide && lucide.createIcons) lucide.cre
       .chat-msg.assistant .chat-msg-bubble{background:linear-gradient(160deg,rgba(167,139,250,.14),rgba(56,189,248,.08));border:1px solid rgba(167,139,250,.45)}
       .chat-msg.assistant .chat-msg-sender{color:#a78bfa}
       .chat-msg.assistant .chat-msg-avatar{border:1px solid rgba(167,139,250,.5)}
-      .chat-mention-box{position:fixed;z-index:9990;background:var(--surface,#141416);border:1px solid rgba(167,139,250,.45);border-radius:10px;padding:4px;box-shadow:0 10px 30px rgba(0,0,0,.45);min-width:220px}
-      .chat-mention-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text,#e8e4da)}
+      .chat-mention-box{position:fixed;z-index:9990;background:var(--surface,#141416);border:1px solid rgba(167,139,250,.45);border-radius:calc(10px * var(--r-k,1));padding:4px;box-shadow:0 10px 30px rgba(0,0,0,.45);min-width:220px}
+      .chat-mention-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:calc(8px * var(--r-k,1));cursor:pointer;font-size:13px;color:var(--text,#e8e4da)}
       .chat-mention-item:hover,.chat-mention-item.on{background:rgba(167,139,250,.14)}
       .chat-mention-item .av{width:22px;height:22px;border-radius:50%;flex-shrink:0}
       .chat-mention-item small{color:var(--muted,#9a958a);margin-left:auto;font-size:11px}

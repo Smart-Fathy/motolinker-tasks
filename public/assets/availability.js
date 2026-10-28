@@ -168,7 +168,7 @@
     const hours = day.status !== 'off' && span ? span : meta.label;
     const title = [meta.label, span, day.note || ''].filter(Boolean).join(' · ');
     return `<td style="padding:7px 8px;text-align:center" title="${esc(title)}">
-      <span style="display:inline-block;padding:2px 8px;border-radius:9px;font-size:10.5px;font-weight:600;background:${meta.color}26;color:${meta.color};white-space:nowrap">${esc(hours)}</span>
+      <span style="display:inline-block;padding:2px 8px;border-radius:calc(9px * var(--r-k,1));font-size:10.5px;font-weight:600;background:${meta.color}26;color:${meta.color};white-space:nowrap">${esc(hours)}</span>
     </td>`;
   }
 

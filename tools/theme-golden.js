@@ -267,8 +267,9 @@ function collectPage(PROPS) {
     const c = (el.getAttribute && el.getAttribute('class')) || '';
     const attrs = ['type', 'disabled', 'checked', 'hidden', 'role', 'aria-selected', 'aria-pressed', 'aria-expanded', 'aria-current', 'data-state', 'data-status', 'data-kind', 'data-tone']
       .filter(a => el.hasAttribute && el.hasAttribute(a)).map(a => a + '=' + el.getAttribute(a)).join(',');
-    const st = ((el.getAttribute && el.getAttribute('style')) || '').replace(/-?\d+(\.\d+)?/g, 'N').replace(/\s+/g, '');
-    return el.localName + (c ? '.' + c.trim().split(/\s+/).sort().join('.') : '') + (attrs ? '[' + attrs + ']' : '') + (st ? '{' + st + '}' : '');
+    // (Not the inline style: what it does shows in the computed look, and a change to how it is
+    // written must not make the same element a different kind.)
+    return el.localName + (c ? '.' + c.trim().split(/\s+/).sort().join('.') : '') + (attrs ? '[' + attrs + ']' : '');
   };
   const add = (sig, cs) => {
     const row = PROPS.map(p => cs.getPropertyValue(p));

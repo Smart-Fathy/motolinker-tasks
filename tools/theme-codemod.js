@@ -6,10 +6,13 @@
 //   node tools/theme-codemod.js <pass[,pass…]> <file…> --check    prove the change was only that
 //   node tools/theme-codemod.js list                              the passes
 //
-// Why a program and not search-and-replace: ~700 sites in two sheets, and each has to be
-// found where it is a *value* — not in a selector, a comment, a string, a url(), a custom
-// property's own definition, or inside a var() that already has a fallback. The scanner
-// below knows the difference.
+// Why a program and not search-and-replace: ~1,200 sites in two sheets, two pages and
+// seventeen scripts, and each has to be found where it is a *value* — not in a selector, a
+// comment, a string, a url(), a custom property's own definition, or inside a var() that
+// already has a fallback. The scanner below knows the difference. In a page or a script it
+// reads what is CSS: style="…" attributes, .style.cssText strings, and the style sheets
+// the scripts inject (template literals assigned to a <style>'s textContent); ${…}
+// interpolations are set aside while it works and put back untouched.
 //
 // Why it can be trusted: every replacement keeps the original text as the var()'s
 // fallback — rgba(201,163,94,.35) becomes rgba(var(--primary-rgb,201,163,94),.35) — so a
@@ -293,8 +296,74 @@ PASSES['chevron'] = {
   },
 };
 
+// ── Pages and scripts ────────────────────────────────────────────────────────
+// ${…} set aside: balanced, strings inside them respected. Replaced by \u0001N\u0001 so that
+// nothing in the CSS reader mistakes their braces, colons or quotes for CSS.
+function maskInterpolations(text) {
+  const saved = [];
+  let out = '', i = 0;
+  while (i < text.length) {
+    if (text[i] === '$' && text[i + 1] === '{') {
+      let depth = 1, j = i + 2;
+      for (; j < text.length && depth; j++) {
+        const c = text[j];
+        if (c === '"' || c === "'" || c === '`') { const q = c; for (j++; j < text.length && text[j] !== q; j++) if (text[j] === '\\') j++; continue; }
+        if (c === '{') depth++; else if (c === '}') depth--;
+      }
+      saved.push(text.slice(i, j));
+      out += '\u0001' + (saved.length - 1) + '\u0001';
+      i = j; continue;
+    }
+    out += text[i++];
+  }
+  return { masked: out, restore: t => t.replace(/\u0001(\d+)\u0001/g, (m, n) => saved[+n]) };
+}
+
+// Where CSS lives in a page or a script: { start, end, kind: 'css' | 'decls' } over the masked text.
+function regions(text) {
+  const out = [];
+  const add = (start, end, kind) => { if (end > start) out.push({ start, end, kind }); };
+  // a style sheet held in a template literal: <style>.textContent = `…`, const CSS = `…`
+  for (const m of text.matchAll(/(?:\.textContent|\bCSS)\s*=\s*`/g)) {
+    const start = m.index + m[0].length;
+    let j = start;
+    for (; j < text.length && text[j] !== '`'; j++) if (text[j] === '\\') j++;
+    add(start, j, 'css');
+  }
+  for (const m of text.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) add(m.index + m[0].indexOf('>') + 1, m.index + m[0].length - 8, 'css');
+  // a list of declarations: style="…" and .style.cssText = '…'
+  for (const m of text.matchAll(/\bstyle\s*=\s*"([^"]*)"/g)) add(m.index + m[0].indexOf('"') + 1, m.index + m[0].length - 1, 'decls');
+  for (const m of text.matchAll(/\.cssText\s*\+?=\s*(['"`])/g)) {
+    const q = m[1], start = m.index + m[0].length;
+    let j = start;
+    for (; j < text.length && text[j] !== q; j++) if (text[j] === '\\') j++;
+    add(start, j, 'decls');
+  }
+  // regions must not overlap; keep the outer one
+  out.sort((a, b) => a.start - b.start || b.end - a.end);
+  const kept = [];
+  for (const r of out) if (!kept.length || r.start >= kept[kept.length - 1].end) kept.push(r);
+  return kept;
+}
+
+function applyAny(text, passNames, file) {
+  if (/\.css$/.test(file)) return apply(text, passNames, file);
+  const { masked, restore } = maskInterpolations(text);
+  let out = masked;
+  const report = {}, review = [];
+  for (const r of regions(masked).reverse()) {
+    const body = out.slice(r.start, r.end);
+    const css = r.kind === 'css' ? body : 'x{' + body + '}';
+    const res = apply(css, passNames, file, out.slice(0, r.start).split('\n').length - (r.kind === 'css' ? 0 : 0));
+    for (const [k, v] of Object.entries(res.report)) report[k] = (report[k] || 0) + v;
+    review.push(...res.review);
+    if (res.out !== css) out = out.slice(0, r.start) + (r.kind === 'css' ? res.out : res.out.slice(2, -1)) + out.slice(r.end);
+  }
+  return { out: restore(out), report, review };
+}
+
 // ── Running ───────────────────────────────────────────────────────────────────
-function apply(css, passNames, file) {
+function apply(css, passNames, file, lineBase = 0) {
   const review = [];
   const report = {};
   let out = css;
@@ -306,7 +375,8 @@ function apply(css, passNames, file) {
     let count = 0;
     for (const d of decls.reverse()) {
       const value = out.slice(d.valueStart, d.valueEnd);
-      const ctx = { file, line: out.slice(0, d.start).split('\n').length, selector: d.rule.head.replace(/\s+/g, ' ').slice(0, 80), review };
+      if (value.includes('\u0001')) continue;   // an interpolation is in it: not ours to read
+      const ctx = { file, line: lineBase + out.slice(0, d.start).split('\n').length, selector: d.rule.head.replace(/\s+/g, ' ').slice(0, 80), review };
       const next = pass.forward(value, d, ctx);
       if (next != null && next !== value) { out = out.slice(0, d.valueStart) + next + out.slice(d.valueEnd); count++; }
     }
@@ -335,7 +405,7 @@ if (require.main === module) {
       let committed;
       try { committed = execFileSync('git', ['show', 'HEAD:' + file], { encoding: 'utf8', maxBuffer: 1 << 26 }); } catch (e) { console.log(`${file}: not committed yet`); bad++; continue; }
       // 1. the file is exactly what the pass makes of the committed file — nothing else was touched
-      const expected = apply(committed, names, file).out;
+      const expected = applyAny(committed, names, file).out;
       if (expected !== css) {
         bad++;
         const a = css.split('\n'), b = expected.split('\n');
@@ -350,7 +420,7 @@ if (require.main === module) {
       console.log(`${file}: ${changed} line(s) changed by ${names.join('+')}; the committed text is intact inside them (insertions only)`);
       continue;
     }
-    const { out, report, review } = apply(css, names, file);
+    const { out, report, review } = applyAny(css, names, file);
     const total = Object.values(report).reduce((a, b) => a + b, 0);
     console.log(`${file}: ${Object.entries(report).map(([k, v]) => k + ' ' + v).join(', ')}${total ? '' : ' (nothing to change)'}`);
     if (review.length) console.log('  to look at:\n    ' + review.join('\n    '));
@@ -359,4 +429,4 @@ if (require.main === module) {
   process.exit(bad ? 1 : 0);
 }
 
-module.exports = { parse, apply, PASSES, maskedSpans };
+module.exports = { parse, apply, applyAny, regions, maskInterpolations, PASSES, maskedSpans };

@@ -369,8 +369,8 @@ function ColumnsEngine(entity, cfg) {
   E._optRow = function (key, label, color) {
     return `<div class="lo-row" data-optkey="${esc(key)}" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
       <input class="form-control" value="${esc(label)}" placeholder="Option label" style="flex:1">
-      <input type="color" value="${esc(color || '#8a8f98')}" title="Badge color" style="width:34px;height:32px;padding:2px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer">
-      <button onclick="this.closest('.lo-row').remove()" title="Remove" style="background:rgba(239,68,68,.1);border:none;border-radius:6px;color:var(--danger);cursor:pointer;width:30px;height:30px;flex-shrink:0">✕</button>
+      <input type="color" value="${esc(color || '#8a8f98')}" title="Badge color" style="width:34px;height:32px;padding:2px;border:1px solid var(--border);border-radius:calc(6px * var(--r-k,1));background:none;cursor:pointer">
+      <button onclick="this.closest('.lo-row').remove()" title="Remove" style="background:rgba(239,68,68,.1);border:none;border-radius:calc(6px * var(--r-k,1));color:var(--danger);cursor:pointer;width:30px;height:30px;flex-shrink:0">✕</button>
     </div>`;
   };
   E.addOptRow = function () {

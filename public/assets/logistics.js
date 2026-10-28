@@ -80,7 +80,7 @@
     .logi-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
     .logi-hint{font-size:12px;color:var(--muted,#8d897f)}
     .logi-empty{padding:26px 18px;text-align:center;color:var(--muted,#8d897f);font-size:13px;
-                border:1px dashed var(--border,rgba(255,255,255,.12));border-radius:12px}
+                border:1px dashed var(--border,rgba(255,255,255,.12));border-radius:calc(12px * var(--r-k,1))}
 
     /* The container card: one field per row, icon then label then value, which is
        the shape the carrier's own card uses and what the team reads at a glance. */
@@ -90,7 +90,7 @@
     /* The field upper-cases what is typed, which would otherwise shout the
        placeholder too. */
     #logi-ct-search::placeholder{text-transform:none}
-    .logi-ct{border:1px solid var(--primary,#c9a35e);border-radius:16px;overflow:hidden;
+    .logi-ct{border:1px solid var(--primary,#c9a35e);border-radius:calc(16px * var(--r-k,1));overflow:hidden;
              background:var(--card,#18181b);display:flex;flex-direction:column}
     .logi-ct-body{padding:18px 20px;display:flex;flex-direction:column;gap:14px}
     .logi-ct-row{display:flex;align-items:center;gap:14px;min-width:0}
@@ -100,7 +100,7 @@
     .logi-ct-k{font-size:11.5px;color:var(--muted,#8d897f);line-height:1.3}
     .logi-ct-v{font-size:16px;font-weight:600;letter-spacing:.01em;line-height:1.35;
                overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .logi-ct-foot{padding:14px 20px;background:rgba(255,255,255,.04);
+    .logi-ct-foot{padding:14px 20px;background:rgba(var(--ov,255,255,255),.04);
                   border-top:1px solid var(--border,rgba(255,255,255,.09));
                   display:flex;align-items:center;gap:14px}
     .logi-ct-foot .logi-ct-row{flex:1;min-width:0}
@@ -142,13 +142,13 @@
                  color:var(--text,#f3efe7);white-space:nowrap}
     .logi-pos-head{flex-wrap:wrap}
     .logi-pos-age{margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-weight:700;
-                  padding:2px 8px;border-radius:20px;white-space:nowrap}
+                  padding:2px 8px;border-radius:calc(20px * var(--r-k,1));white-space:nowrap}
     /* A fix has an age and the age decides how much to trust it: minutes is a
        coastal report, hours is a satellite pass, a day is not a position. */
     .logi-pos-age.fresh{background:rgba(16,185,129,.12);color:var(--success,#8a9a86)}
     .logi-pos-age.aging{background:rgba(245,158,11,.12);color:var(--warning,#c9a35e)}
     .logi-pos-age.stale{background:rgba(239,68,68,.12);color:var(--danger,#c97d6e)}
-    .logi-map{height:190px;width:100%;background:rgba(255,255,255,.03)}
+    .logi-map{height:190px;width:100%;background:rgba(var(--ov,255,255,255),.03)}
     .logi-map-fallback{padding:14px 20px;font-size:12px;color:var(--muted,#8d897f)}
     /* Leaflet paints its own light chrome; tone it into the dark card. */
     .logi-map .leaflet-tile{filter:brightness(.72) saturate(.75) contrast(1.05)}
@@ -158,24 +158,24 @@
     .logi-ship-marker{display:flex;align-items:center;justify-content:center;color:var(--primary,#c9a35e);
                       filter:drop-shadow(0 0 3px rgba(0,0,0,.8))}
 
-    .logi-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:20px;
+    .logi-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:calc(20px * var(--r-k,1));
                font-size:10.5px;font-weight:800;letter-spacing:.02em;white-space:nowrap}
     .logi-warn{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--warning,#c9a35e);
                margin-top:8px}
     .logi-units{border-top:1px solid var(--border,rgba(255,255,255,.09));padding:12px 20px;
                 display:flex;flex-wrap:wrap;gap:6px;align-items:center}
     .logi-unit-chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;
-                    border:1px solid var(--border,rgba(255,255,255,.12));border-radius:20px;padding:3px 10px}
+                    border:1px solid var(--border,rgba(255,255,255,.12));border-radius:calc(20px * var(--r-k,1));padding:3px 10px}
     .logi-unit-chip button{background:none;border:none;color:var(--muted,#8d897f);cursor:pointer;
                            font-size:13px;line-height:1;padding:0}
 
     /* Payments */
-    .logi-pay-sum{display:flex;gap:18px;flex-wrap:wrap;padding:14px 16px;border-radius:12px;
+    .logi-pay-sum{display:flex;gap:18px;flex-wrap:wrap;padding:14px 16px;border-radius:calc(12px * var(--r-k,1));
                   border:1px solid var(--border,rgba(255,255,255,.09));margin-bottom:14px}
     .logi-pay-cell{min-width:110px}
     .logi-pay-k{font-size:10.5px;color:var(--muted,#8d897f);text-transform:uppercase;letter-spacing:.06em}
     .logi-pay-v{font-size:16px;font-weight:800;margin-top:3px}
-    .logi-pay-bar{height:6px;border-radius:3px;background:rgba(255,255,255,.09);overflow:hidden;margin-top:10px}
+    .logi-pay-bar{height:6px;border-radius:3px;background:rgba(var(--ov,255,255,255),.09);overflow:hidden;margin-top:10px}
     .logi-pay-bar i{display:block;height:100%;background:var(--success,#8a9a86)}
     .logi-pay-row{display:flex;align-items:center;gap:12px;padding:10px 4px;
                   border-bottom:1px solid var(--border,rgba(255,255,255,.07));font-size:12.5px}
@@ -649,7 +649,7 @@
                  ${ic('check', 14)} The key works — it just needs a different header</div>
                <div style="margin-bottom:10px">${esc(d.provider)} accepted <code>${esc(d.auth.shape)}</code>.</div>
                <div>Set this and redeploy:</div>
-               <pre style="margin:8px 0 0;padding:10px 12px;background:rgba(255,255,255,.05);border-radius:8px;overflow-x:auto;font-size:12px">${esc(d.auth.env)}</pre>
+               <pre style="margin:8px 0 0;padding:10px 12px;background:rgba(var(--ov,255,255,255),.05);border-radius:calc(8px * var(--r-k,1));overflow-x:auto;font-size:12px">${esc(d.auth.env)}</pre>
                ${d.auth.base ? `<div style="font-size:11.5px;color:var(--muted,#8d897f);margin-top:8px">Working base: <code>${esc(d.auth.base)}</code></div>` : ''}
              </div>`)
         : `<div class="logi-empty" style="text-align:left">

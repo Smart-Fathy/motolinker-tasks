@@ -623,7 +623,7 @@
           <div class="po-lbl" style="margin-bottom:6px">Vehicle lines</div>
           <!-- min-width:0 lets this grid item shrink so the wide table scrolls
                inside it instead of stretching the whole modal -->
-          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:10px">
+          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:calc(10px * var(--r-k,1))">
             <table id="po-grid" style="border-collapse:collapse;font-size:12px;min-width:1500px">
               <thead><tr>
                 <th class="po-th" style="width:38px">No</th>
@@ -899,7 +899,7 @@
 
         <div>
           <div class="po-lbl" style="margin-bottom:6px">Requested vehicles</div>
-          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:10px">
+          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:calc(10px * var(--r-k,1))">
             <table style="border-collapse:collapse;font-size:12px;min-width:1080px">
               <thead><tr>
                 <th class="po-th" style="width:34px">#</th>
@@ -1279,7 +1279,7 @@
         ${procColsBtn('supplier_vehicles')}
         <button class="btn btn-outline btn-sm" onclick="supAddVehicleRow()"><i data-lucide="plus" style="width:13px;height:13px"></i> Add vehicle</button>
       </div>
-      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px">
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:calc(10px * var(--r-k,1))">
         <table style="border-collapse:collapse;font-size:12px;min-width:900px;width:100%">
           <thead><tr>${cols.map(c => procTh('supplier_vehicles', c, { cls: 'po-th', style: `min-width:${c.width || 100}px` })).join('')}<th class="po-th" style="width:38px"></th></tr></thead>
           <tbody id="sup-v-body">${rows.map(supVehicleRowHtml).join('')}</tbody>
@@ -1492,7 +1492,7 @@
       c.innerHTML = `
         <div class="table-scroll" style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow)">
           <table style="width:100%;border-collapse:collapse">
-            <thead><tr style="background:#101012">
+            <thead><tr style="background:var(--thead-bg,#101012)">
               <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Name</th>
               <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Lead</th>
               <th style="padding:10px 16px;font-size:11px;color:var(--muted);text-align:left;font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border)">Email</th>
@@ -1567,7 +1567,7 @@
     const chev = eng && eng.cfg.canEdit()
       ? `<span class="col-chev-btn" title="Field options — type, dropdown options, colors"
            onclick="event.stopPropagation();CE('${entity}').openMenu(event,'${escJs(col.key)}')"
-           style="cursor:pointer;display:inline-flex;align-items:center;padding:0 2px;margin-left:3px;border-radius:4px;opacity:.7;vertical-align:middle"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></span>`
+           style="cursor:pointer;display:inline-flex;align-items:center;padding:0 2px;margin-left:3px;border-radius:calc(4px * var(--r-k,1));opacity:.7;vertical-align:middle"><i data-lucide="chevron-down" style="width:11px;height:11px"></i></span>`
       : '';
     return `<th class="${opts.cls || ''}" style="${opts.style || ''}">${esc(col.label)}${chev}</th>`;
   }
@@ -2031,7 +2031,7 @@
 
         <div>
           <label class="form-label">Units in stock <span style="color:var(--muted);font-weight:400">(one row per physical car)</span></label>
-          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:10px">
+          <div style="overflow-x:auto;min-width:0;border:1px solid var(--border);border-radius:calc(10px * var(--r-k,1))">
             <table style="border-collapse:collapse;font-size:12px;min-width:1080px">
               <thead><tr>
                 <th class="po-th" style="width:34px">#</th>
