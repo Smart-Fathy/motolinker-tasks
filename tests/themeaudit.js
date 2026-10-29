@@ -240,7 +240,16 @@ function auditPage() {
       await page.setViewport({ width, height: phone ? 844 : 900, isMobile: phone, hasTouch: phone });
       await page.setBypassServiceWorker(true);
       await page.setRequestInterception(true);
-      page.on('request', req => { if (/unpkg|jsdelivr|fonts\.g|gstatic/.test(req.url())) return req.respond({ status: 200, contentType: 'text/plain', body: '' }); req.continue(); });
+      page.on('request', req => {
+        const url = req.url();
+        if (/unpkg|jsdelivr|fonts\.g|gstatic/.test(url)) return req.respond({ status: 200, contentType: 'text/plain', body: '' });
+        // Offline on purpose, whatever the network allows, so the audit sees the same page on every machine.
+        // Leaflet is lazy-loaded from cdnjs on the stock Tracking page; it used to load only where cdnjs was
+        // reachable (a hosted runner, not the dev image) and the audit then judged its attribution control
+        // against map tiles it cannot see.
+        if (/^https?:/.test(url) && !url.startsWith(base)) return req.abort('internetdisconnected');
+        req.continue();
+      });
       await page.evaluateOnNewDocument((key, token, mode) => {
         // Draws what lucide draws (an <svg class="lucide …"> in the <i>'s place, with its class and style),
         // minus the glyph: the page lays out and colours its icons as it would, and they can be measured.
