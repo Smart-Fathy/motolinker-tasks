@@ -31,11 +31,11 @@ job's timeout is 75 minutes, several times the measured run.
 
 ## On the runtime production has
 
-Production builds with Node 18.20.8 (see the README, "How production is built"); the suites above ran
-on Node 22. The suites that cover the new server code — `contracts` 26/26, `actor` 30/30, `permstest`
-82/82, the route inventory and `smoke` (465 routes) — were also run on 18.20.8, in a tree assembled the
-way Railway's builder assembles it (manifests only, `npm install`, the source over the top,
-`npm run build`), and pass there too.
+The numbers above were taken on Node 22 while production still ran Node 18.20.8; the suites that cover
+the new server code (`contracts`, `actor`, `permstest`, the route inventory and `smoke`) also passed on
+18.20.8 then, in a tree assembled the way Railway's builder assembles it. Production now builds with
+Node 22.x — the major these suites run on, and the one CI reads from `package.json` — behind a healthcheck
+(see the README, "How production is built").
 
 ## When a suite goes red
 

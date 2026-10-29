@@ -8,7 +8,7 @@
 //   v1(router, { method: 'get', path: '/api/v1/leads', cap: 'leads.view' }, handler)
 //     → requireActor, requireCan('leads.view'), handler
 //   v1(router, { method: 'get', path: '/api/v1/me' }, handler)            any signed-in actor
-//   v1(router, { method: 'get', path: '/api/v1/ping', public: true }, handler)   no guard — say so on purpose
+//   v1(router, { method: 'get', path: '/api/v1/health', public: true }, handler)   no guard — say so on purpose
 
 const contracts = require('@motolinker/contracts');
 const { requireCan } = require('./actor');
@@ -44,6 +44,15 @@ function mountV1({ receiver, ctx }) {
   const router = receiver.router;
   const v1 = (/** @type {any} */ spec, /** @type {import('express').RequestHandler} */ handler) =>
     register(router, spec, handler, ctx.requireActor);
+
+  // Is the process up and answering? The host (railway.json) asks this once per deployment and moves
+  // traffic only when it gets a 2xx, so a release that cannot boot never replaces the one that can.
+  // Liveness only, on purpose: it does not touch the database, so an outage there cannot hold a deploy
+  // (or a rollback) hostage — the app is built to ride one out. Public on purpose: the host has no token.
+  v1({ method: 'get', path: '/api/v1/health', public: true }, (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, uptime_s: Math.round(process.uptime()) });
+  });
 
   // Who is asking, and everything the app needs to draw itself for them. An employee's permissions
   // are read fresh from their record first (the same refresh the portal's /check does), because the
