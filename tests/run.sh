@@ -9,9 +9,10 @@
 #   bash tests/run.sh --only themecss,shell   just those (the first column below; smoke and routes too)
 cd "$(dirname "$0")/.." || exit 1
 pass=0; fail=0
-only=""
-if [ "$1" = "--only" ]; then only=",$2,"; shift 2; fi
-wanted() { [ -z "$only" ] || [[ "$only" == *",$1,"* ]]; }
+only=""; asked=()
+if [ "$1" = "--only" ]; then only=",$2,"; IFS=, read -ra asked <<< "$2"; shift 2; fi
+known=","   # every suite name the runner reached, wanted or not: what --only is checked against
+wanted() { known="$known$1,"; [ -z "$only" ] || [[ "$only" == *",$1,"* ]]; }
 run() {
   name=$1; wanted "$name" || return 0
   printf '%-14s ' "$name"; shift
@@ -123,6 +124,14 @@ if wanted routes; then
   else
     echo "$out" | grep -E "^(ROUTES CHANGED|  )"; fail=$((fail+1))
   fi
+fi
+
+# A name that matches nothing would run nothing and pass — and the nightly job selects its suites by name.
+if [ -n "$only" ]; then
+  for n in "${asked[@]}"; do
+    [[ "$known" == *",$n,"* ]] || { echo "no suite is called '$n' (the names are the first column of a full run)"; fail=$((fail+1)); }
+  done
+  [ $((pass+fail)) -gt 0 ] || { echo "--only matched no suite"; fail=1; }
 fi
 
 echo; echo "$pass suite(s) green, $fail red"

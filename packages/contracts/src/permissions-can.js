@@ -9,7 +9,6 @@
  * @param {string} action
  * @returns {boolean}
  */
-// Can this employee perform <action> in <section>? Master must be on AND the action allowed.
 function employeeCan(emp, section, action) {
   const p = emp && emp.permissions;
   if (!p) return false;

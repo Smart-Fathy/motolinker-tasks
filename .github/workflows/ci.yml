@@ -47,3 +47,12 @@ jobs:
         env:
           CI: 'true'
           TZ: UTC
+      # The runner prints each suite's last line; the line that says what went wrong is higher up,
+      # in the file it saved (the runner names it under each red suite).
+      - name: What the red suites printed
+        if: failure()
+        run: |
+          for f in /tmp/ml-suite-*.txt; do
+            [ -e "$f" ] || continue
+            echo "::group::$f"; tail -n 120 "$f"; echo "::endgroup::"
+          done

@@ -175,6 +175,14 @@ function serialise(g) {
       const w = C.describeActor(sara), a = C.describeActor(admin);
       return a.caps === '*' && a.sections === '*' && Array.isArray(w.caps) && w.caps.join() === [...w.caps].sort().join() && w.actor.key === 'employee_7' && w.scope.assignedOnly === true;
     })());
+    check('nothing can widen an actor by writing to it: the actor, its scope and the scope lists are frozen', (() => {
+      const frozen = a => Object.isFrozen(a) && Object.isFrozen(a.scope) && Object.isFrozen(a.scope.dealStages) && Object.isFrozen(a.scope.leadStatuses);
+      let pushed = false;
+      try { admin.caps = new Set(); sara.caps = '*'; sara.scope.assignedOnly = false; } catch (_) { /* strict mode throws, sloppy mode ignores: either way nothing changes */ }
+      try { C.NO_SCOPE.dealStages.push('x'); pushed = C.NO_SCOPE.dealStages.length > 0; } catch (_) { /* a frozen list refuses */ }
+      return frozen(admin) && frozen(sara) && Object.isFrozen(C.NO_SCOPE) && Object.isFrozen(C.NO_SCOPE.dealStages) && Object.isFrozen(C.NO_SCOPE.leadStatuses) && C.scopeOf(admin, 'leads') === C.NO_SCOPE
+        && admin.caps === '*' && sara.caps !== '*' && sara.scope.assignedOnly === true && !pushed && C.NO_SCOPE.dealStages.length === 0;
+    })());
     const me = C.schemas.MeResponse;
     check('the /me schema accepts what describeActor and the workspace produce, and refuses what is not', me.safeParse({ ...C.describeActor(sara), workspace: { name: 'MotoLinker', logo_url: '', updated_at: null }, flags: {} }).success
       && me.safeParse({ ...C.describeActor(admin), workspace: { name: 'MotoLinker', logo_url: '', updated_at: '2026-03-04T10:00:00.000Z' }, flags: { a: true } }).success

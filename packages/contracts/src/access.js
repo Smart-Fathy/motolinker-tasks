@@ -10,7 +10,7 @@ const { PERM_ACTIONS } = require('./permissions-catalogue');
 const { employeeCan } = require('./permissions-can');
 
 /**
- * @typedef {{ assignedOnly: boolean, dealStages: string[], leadStatuses: string[] }} Scope
+ * @typedef {{ assignedOnly: boolean, dealStages: readonly string[], leadStatuses: readonly string[] }} Scope
  * @typedef {{
  *   kind: 'admin' | 'employee',
  *   id: number | null,
@@ -23,8 +23,16 @@ const { employeeCan } = require('./permissions-can');
  * }} Actor
  */
 
+// An actor is read by everything that handles the request — and the admin's is one object shared by
+// every request — so actors and their scopes are frozen, lists included: nothing downstream can widen
+// one by writing to it. (A frozen Set still takes add(); the sets are typed ReadonlySet and nothing
+// writes to them, which tests/actor.js pins.)
 /** @type {Scope} */
-const NO_SCOPE = Object.freeze({ assignedOnly: false, dealStages: [], leadStatuses: [] });
+const NO_SCOPE = Object.freeze({
+  assignedOnly: false,
+  dealStages: Object.freeze(/** @type {string[]} */ ([])),
+  leadStatuses: Object.freeze(/** @type {string[]} */ ([])),
+});
 
 /**
  * A stored scope list as a list of strings: anything else (a session written by an older version) is empty.
@@ -63,16 +71,16 @@ function capabilitiesOf(permissions, jobTitle = '') {
  * @returns {Actor}
  */
 function adminActor() {
-  return {
-    kind: 'admin',
+  return Object.freeze({
+    kind: /** @type {const} */ ('admin'),
     id: null,
     key: 'admin',
     name: 'Admin',
     jobTitle: '',
-    caps: '*',
-    sections: '*',
+    caps: /** @type {const} */ ('*'),
+    sections: /** @type {const} */ ('*'),
     scope: NO_SCOPE,
-  };
+  });
 }
 
 /**
@@ -84,20 +92,20 @@ function employeeActor(emp) {
   const jobTitle = emp.job_title || '';
   const { caps, sections } = capabilitiesOf(emp.permissions, jobTitle);
   const s = (emp.permissions && emp.permissions.scope) || NO_SCOPE;
-  return {
-    kind: 'employee',
+  return Object.freeze({
+    kind: /** @type {const} */ ('employee'),
     id: emp.id,
     key: 'employee_' + emp.id,
     name: emp.name || '',
     jobTitle,
     caps,
     sections,
-    scope: {
+    scope: Object.freeze({
       assignedOnly: s.assignedOnly === true,
-      dealStages: strings(s.dealStages),
-      leadStatuses: strings(s.leadStatuses),
-    },
-  };
+      dealStages: Object.freeze(strings(s.dealStages)),
+      leadStatuses: Object.freeze(strings(s.leadStatuses)),
+    }),
+  });
 }
 
 /**
