@@ -1,0 +1,20 @@
+# Prettier formats only the code that is written to the new standard. The legacy portals,
+# the legacy server files and the tests are left exactly as they are until each is migrated
+# (see README: "Repository layout"); they are removed from this list as they move.
+node_modules
+dist
+coverage
+package-lock.json
+*.sql
+*.md
+*.png
+public
+tests
+tools
+scripts
+migrations
+index.js
+src/ctx.js
+src/assets
+src/lib
+src/routes

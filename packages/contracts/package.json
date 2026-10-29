@@ -1,0 +1,11 @@
+{
+  "name": "@motolinker/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "What the server and the web app agree on: the permission catalogue and rules, module metadata, response schemas.",
+  "main": "src/index.js",
+  "types": "src/index.js",
+  "dependencies": {
+    "zod": "^4.0.0"
+  }
+}
