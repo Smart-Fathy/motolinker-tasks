@@ -58,6 +58,7 @@ run leadstest   node tests/leadstest.js
 run permstest   node tests/permstest.js
 run contracts   node tests/contracts.js
 run actor       node tests/actor.js
+run deployconfig node tests/deployconfig.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js
 run foldertest  node tests/foldertest.js

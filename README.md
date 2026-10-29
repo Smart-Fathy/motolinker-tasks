@@ -796,6 +796,26 @@ new standard (`packages/*`, `src/http`, `src/modules`, `apps/*`); the legacy ser
 tools and tests are outside them until each is migrated. CI runs all of it on every push and
 pull request.
 
+### How production is built
+
+Railway builds this repository with Railpack: it copies every `package.json` and the lockfile,
+runs `npm install`, copies the source over, runs `npm run build` if there is one (a no-op until the
+web app lands) and starts `npm run start`. `tests/deployconfig.js` pins the three things that depend on:
+
+- **The Node version** comes from `engines.node` (`>=18.0.0`, which Railpack resolves to the latest
+  18.x — 18.20.8 today). There is deliberately **no `.nvmrc`, `.node-version` or `.tool-versions`**:
+  Railpack hands those to mise, which lets them override `engines`, so adding one "for developers"
+  would move production to another Node major in a release that is about something else. Development
+  and CI run Node 22 (the workflow asks for it explicitly); the suites that cover the new code also
+  pass on 18.20.8. Moving production is a release of its own — change `engines` and the expected value
+  in `tests/deployconfig.js` in the same commit. (Node 18 is end-of-life, and the Vite build needs a
+  newer one, so that release is coming.)
+- **Whatever a package under `packages/` needs at runtime** (today: `zod`) is declared by the root
+  package too, so npm hoists it into `/app/node_modules` — the one dependency folder the deploy image
+  is certain to carry — instead of nesting it inside the package.
+- **The lockfile agrees with `package.json`**, which `npm install` on the host would silently repair
+  and `npm ci` in CI refuses.
+
 ## 🧩 Migrating to one codebase
 
 The two portals — the admin's and the team's — are being ported, module by module, to **one
