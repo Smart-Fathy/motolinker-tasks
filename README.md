@@ -773,8 +773,10 @@ snapshots only when routes genuinely change, and say so in the commit.
 ### Tests
 
 ```
-npm test                                  = bash tests/run.sh, every suite (about 16 minutes: the suites use fixed ports, so they run serially)
+npm test                                  = bash tests/run.sh, every suite (about 16 minutes: the suites use fixed ports, so on one machine they run serially)
 bash tests/run.sh --only themecss,shell   just those (the first column of run.sh; smoke and routes too)
+bash tests/run.sh --shard 2/5             the 2nd of 5 slices of the suites; CI runs the five on five machines
+bash tests/run.sh --list                  the suite names, running nothing (also with --only / --shard)
 ```
 
 They drive the shipped code rather than a copy: the browser suites slice the real
@@ -782,6 +784,15 @@ module out of `public/assets/*.js` (and the real stylesheet, since some behaviou
 CSS), the WebRTC suite runs three peers with fake media devices, and the migration
 suite applies the real SQL to a throwaway Postgres and asserts the resulting rows.
 The relay suite checks its success case against a local coturn on `127.0.0.1:3478` when `LIVE_TURN=1` is set (the nightly job does); `docs/test-baseline.md` records what a full run looks like.
+
+**CI runs the suites in parallel, across machines.** The fixed ports only forbid two suites on _one_ machine, so
+the workflow splits them over five (`suite-shard`, matrix 1–5) and the check called `suite` passes only when
+every shard did; a pull request waits for the slowest shard rather than for the sum. `tools/shard-plan.js` deals
+the suites out, longest first to the lightest shard, by the seconds in `tests/suite-weights.json` (every shard
+prints the seconds each of its suites took, so refreshing that file is copy and paste; a suite with no weight
+still gets a shard, it just may land on a heavier one). The contrast audit, the longest suite by far, runs as
+three parts (`themeaudit1..3`; `--only themeaudit` still asks for all three). `tests/shards.js` fails if a
+suite could be left out of every shard, or if the workflow's matrix stops being exactly shards 1..N.
 
 The browser they drive is found in one place, `tests/helpers/browser.js`: `CHROME_BIN`
 if set, else the Chromium the dev image ships, else the Chrome puppeteer downloaded on
