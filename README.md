@@ -773,7 +773,7 @@ snapshots only when routes genuinely change, and say so in the commit.
 ### Tests
 
 ```
-npm test                                  = bash tests/run.sh, every suite (~25 minutes: the suites use fixed ports, so they run serially)
+npm test                                  = bash tests/run.sh, every suite (about 16 minutes: the suites use fixed ports, so they run serially)
 bash tests/run.sh --only themecss,shell   just those (the first column of run.sh; smoke and routes too)
 ```
 
@@ -781,7 +781,7 @@ They drive the shipped code rather than a copy: the browser suites slice the rea
 module out of `public/assets/*.js` (and the real stylesheet, since some behaviour is
 CSS), the WebRTC suite runs three peers with fake media devices, and the migration
 suite applies the real SQL to a throwaway Postgres and asserts the resulting rows.
-The relay suite needs a local coturn on `127.0.0.1:3478` for its success case.
+The relay suite checks its success case against a local coturn on `127.0.0.1:3478` when `LIVE_TURN=1` is set (the nightly job does); `docs/test-baseline.md` records what a full run looks like.
 
 The browser they drive is found in one place, `tests/helpers/browser.js`: `CHROME_BIN`
 if set, else the Chromium the dev image ships, else the Chrome puppeteer downloaded on
