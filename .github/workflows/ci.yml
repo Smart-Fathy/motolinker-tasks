@@ -1,0 +1,49 @@
+# Every push to main and every pull request runs the same two jobs:
+#   static  lint, format, type-check and the build (the build is a no-op until apps/web exists)
+#   suite   the whole of tests/run.sh — serial, because the suites use fixed ports
+# Nothing here deploys anything; Railway deploys from the branch on its own.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run build
+
+  suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # puppeteer downloads the Chrome the browser suites drive (tests/helpers/browser.js finds it);
+      # CHROME_BIN would override it.
+      - run: npm ci
+      - run: bash tests/run.sh
+        env:
+          CI: 'true'
+          TZ: UTC

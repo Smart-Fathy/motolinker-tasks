@@ -1,0 +1,35 @@
+# The two suites that need something a plain runner does not have: relaytest drives a real coturn
+# on 127.0.0.1:3478 and doc-rfq prints workbooks through LibreOffice. Both skip themselves when the
+# tool is missing, which is why the main workflow does not run them. A failure here is reported by
+# the run's status; it does not block a merge.
+name: Nightly
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  needs-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Install coturn and LibreOffice
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y coturn libreoffice-calc
+      - name: Start coturn with the probe credentials relaytest uses
+        run: |
+          nohup turnserver -n --no-cli --lt-cred-mech -u probe:probepass -r motolinker.test \
+            -L 127.0.0.1 -p 3478 --no-tls --no-dtls --log-file=/tmp/turnserver.log &
+          sleep 2
+      - run: bash tests/run.sh --only relaytest,docrfq
+        env:
+          CI: 'true'
+          TZ: UTC
