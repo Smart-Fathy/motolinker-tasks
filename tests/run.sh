@@ -116,12 +116,11 @@ fi
 
 if wanted routes; then
   printf '\n%-14s ' "routes"
-  routes_out="${TMPDIR:-/tmp}/ml-routes.txt"
-  node tools/route-inventory.js "$routes_out" >/dev/null 2>&1
-  if diff -q tools/routes.snapshot.txt "$routes_out" >/dev/null; then
-    echo "inventory matches the snapshot"; pass=$((pass+1))
+  # The legacy routes must be exactly the snapshot; /api/v1 is fingerprinted beside it, with its guards.
+  if out=$(node tools/route-inventory.js --check 2>&1); then
+    echo "$out" | grep -E "^inventory matches" | tail -1; pass=$((pass+1))
   else
-    echo "ROUTES CHANGED — review, then regenerate tools/routes.snapshot.txt"; fail=$((fail+1))
+    echo "$out" | grep -E "^(ROUTES CHANGED|  )"; fail=$((fail+1))
   fi
 fi
 
