@@ -15,8 +15,9 @@ the tooling / contracts / actor run), on the machine described below, by running
   — if one appears, it goes here with its symptom and what was done.
 - **86 is 84 listed suites plus `smoke` and `routes`.** One of the 84, `docpo`, is a placeholder that
   prints `0/0 passed` (the purchase-order PDF has no test yet), so 85 suites check something.
-- **Serial on purpose.** The suites use fixed ports, so they cannot run side by side; that is why a full
-  run is about 16 minutes and not less on a bigger machine.
+- **Serial on one machine, on purpose.** The suites use fixed ports, so they cannot run side by side on a
+  machine; that is why a full run is about 16 minutes and not less on a bigger one. CI gets its speed from
+  more machines instead: `--shard I/N` (see the README, "Tests").
 - Two suites can use a tool a plain machine may lack. `relaytest` checks its success case against a
   real coturn on `127.0.0.1:3478` only when `LIVE_TURN=1` is set (it was not, above), and `docrfq`
   prints its workbooks through LibreOffice (installed on this machine, so those checks ran; it skips

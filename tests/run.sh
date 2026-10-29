@@ -5,18 +5,51 @@
 # slice the actual module out of public/assets/*.js, and the migration suite runs
 # the real SQL against a throwaway Postgres.
 #
-#   bash tests/run.sh                         every suite
+#   bash tests/run.sh                         every suite, one after another (they use fixed ports)
 #   bash tests/run.sh --only themecss,shell   just those (the first column below; smoke and routes too)
+#   bash tests/run.sh --shard 2/5             the 2nd of 5 slices of the suites; CI runs the five side by side on
+#                                             five machines (tools/shard-plan.js deals them out by tests/suite-weights.json)
+#   bash tests/run.sh --list                  print the suite names and run nothing (also with --only / --shard)
+#
+# `themeaudit`, the contrast audit, is the longest suite and runs as three (themeaudit1..3) so that it can be
+# spread over machines; --only themeaudit asks for all three. Every suite's seconds go to
+# ${TMPDIR:-/tmp}/ml-suite-times.txt, which is what tests/suite-weights.json is refreshed from.
 cd "$(dirname "$0")/.." || exit 1
-pass=0; fail=0
-only=""; asked=()
-if [ "$1" = "--only" ]; then only=",$2,"; IFS=, read -ra asked <<< "$2"; shift 2; fi
+pass=0; fail=0; listed=0
+only=""; only_given=0; asked=(); shard=""; list=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --only)  only_given=1; IFS=, read -ra asked <<< "${2-}"; shift; [ $# -gt 0 ] && shift ;;
+    --shard) shard=${2-}; shift; [ $# -gt 0 ] && shift ;;
+    --list)  list=1; shift ;;
+    *) echo "usage: bash tests/run.sh [--only a,b] [--shard I/N] [--list]" >&2; exit 2 ;;
+  esac
+done
+if [ -n "$shard" ]; then
+  [ $only_given -eq 1 ] && { echo "--shard and --only cannot be combined" >&2; exit 2; }
+  if ! [[ "$shard" =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]]; then echo "--shard wants I/N, like 2/5; got '$shard'" >&2; exit 2; fi
+  si=${BASH_REMATCH[1]}; sn=${BASH_REMATCH[2]}
+  [ "$si" -le "$sn" ] || { echo "--shard I/N wants I no bigger than N; got '$shard'" >&2; exit 2; }
+  mine=$(bash "$0" --list | node tools/shard-plan.js "$si" "$sn") || exit 2
+  only_given=1; IFS=, read -ra asked <<< "$mine"
+fi
+expanded=()
+for n in "${asked[@]}"; do
+  case "$n" in themeaudit) expanded+=(themeaudit1 themeaudit2 themeaudit3) ;; *) expanded+=("$n") ;; esac
+done
+asked=("${expanded[@]}")
+if [ $only_given -eq 1 ]; then only=","; for n in "${asked[@]}"; do only="$only$n,"; done; fi
 known=","   # every suite name the runner reached, wanted or not: what --only is checked against
+times="${TMPDIR:-/tmp}/ml-suite-times.txt"
+[ $list -eq 1 ] || : > "$times"
 wanted() { known="$known$1,"; [ -z "$only" ] || [[ "$only" == *",$1,"* ]]; }
 run() {
   name=$1; wanted "$name" || return 0
+  if [ $list -eq 1 ]; then echo "$name"; listed=$((listed+1)); return 0; fi
   printf '%-14s ' "$name"; shift
+  t0=$SECONDS
   out=$("$@" 2>&1); rc=$?
+  echo "$name $((SECONDS - t0))" >> "$times"
   echo "$out" | tail -1
   if [ $rc -eq 0 ]; then pass=$((pass+1))
   else
@@ -59,6 +92,7 @@ run permstest   node tests/permstest.js
 run contracts   node tests/contracts.js
 run actor       node tests/actor.js
 run deployconfig node tests/deployconfig.js
+run shards       node tests/shards.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js
 run foldertest  node tests/foldertest.js
@@ -97,7 +131,9 @@ run envexample  node tests/envexample.js
 run mobiletest  node tests/mobiletest.js
 run themecss    node tests/themecss.js
 run themecore   node tests/themecore.js
-run themeaudit  node tests/themeaudit.js
+run themeaudit1 node tests/themeaudit.js --part=1/3
+run themeaudit2 node tests/themeaudit.js --part=2/3
+run themeaudit3 node tests/themeaudit.js --part=3/3
 run homecache   node tests/homecache.js
 run dbfetch     node tests/dbfetch.js
 run fetchall    node tests/fetchall.js
@@ -112,28 +148,37 @@ run docrfq      node tests/doc-rfq.js
 run relaytest   node tests/relaytest.js
 
 if wanted smoke; then
-  printf '%-14s ' "smoke"
-  if out=$(node tools/smoke-routes.js 2>&1); then echo "$out" | tail -1; pass=$((pass+1));
-  else echo "$out" | grep -E "BROKEN|exercised|BLIND|escaped a handler" | tail -6; fail=$((fail+1)); fi
-fi
-
-if wanted routes; then
-  printf '\n%-14s ' "routes"
-  # The legacy routes must be exactly the snapshot; /api/v1 is fingerprinted beside it, with its guards.
-  if out=$(node tools/route-inventory.js --check 2>&1); then
-    echo "$out" | grep -E "^inventory matches" | tail -1; pass=$((pass+1))
-  else
-    echo "$out" | grep -E "^(ROUTES CHANGED|  )"; fail=$((fail+1))
+  if [ $list -eq 1 ]; then echo smoke; listed=$((listed+1)); else
+    printf '%-14s ' "smoke"
+    t0=$SECONDS
+    if out=$(node tools/smoke-routes.js 2>&1); then echo "$out" | tail -1; pass=$((pass+1));
+    else echo "$out" | grep -E "BROKEN|exercised|BLIND|escaped a handler" | tail -6; fail=$((fail+1)); fi
+    echo "smoke $((SECONDS - t0))" >> "$times"
   fi
 fi
 
-# A name that matches nothing would run nothing and pass — and the nightly job selects its suites by name.
-if [ -n "$only" ]; then
-  for n in "${asked[@]}"; do
-    [[ "$known" == *",$n,"* ]] || { echo "no suite is called '$n' (the names are the first column of a full run)"; fail=$((fail+1)); }
-  done
-  [ $((pass+fail)) -gt 0 ] || { echo "--only matched no suite"; fail=1; }
+if wanted routes; then
+  if [ $list -eq 1 ]; then echo routes; listed=$((listed+1)); else
+    printf '\n%-14s ' "routes"
+    t0=$SECONDS
+    # The legacy routes must be exactly the snapshot; /api/v1 is fingerprinted beside it, with its guards.
+    if out=$(node tools/route-inventory.js --check 2>&1); then
+      echo "$out" | grep -E "^inventory matches" | tail -1; pass=$((pass+1))
+    else
+      echo "$out" | grep -E "^(ROUTES CHANGED|  )"; fail=$((fail+1))
+    fi
+    echo "routes $((SECONDS - t0))" >> "$times"
+  fi
 fi
 
+# A name that matches nothing would run nothing and pass — and CI selects its suites by name.
+if [ $only_given -eq 1 ]; then
+  for n in "${asked[@]}"; do
+    [[ "$known" == *",$n,"* ]] || { echo "no suite is called '$n' (the names are the first column of a full run)" >&2; fail=$((fail+1)); }
+  done
+  [ $((pass + fail + listed)) -gt 0 ] || { echo "--only matched no suite" >&2; fail=1; }
+fi
+
+if [ $list -eq 1 ]; then [ $fail -eq 0 ]; exit; fi
 echo; echo "$pass suite(s) green, $fail red"
 [ $fail -eq 0 ]

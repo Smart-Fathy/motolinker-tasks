@@ -15,6 +15,9 @@
 //   node tests/themeaudit.js --pages=home,tasks  fewer screens, for a quick look
 //   node tests/themeaudit.js --list              print every failure, not the top few
 //   node tests/themeaudit.js --width=390         everything at phone width (the default run adds two looks at 390)
+//   node tests/themeaudit.js --part=2/3          every 3rd look, from the 2nd: the audit is the longest suite, and
+//                                                tests/run.sh runs it as three parts (themeaudit1..3) so CI can
+//                                                spread it over machines; the three together are the whole matrix
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
@@ -41,6 +44,14 @@ const matrix = (ONLY ? [ONLY.split(':')]
   : FULL ? T.PRESET_ORDER.flatMap(p => [[p, 'dark'], [p, 'light']]).filter(([p, m]) => !(p === 'black-gold' && m === 'dark'))
   : CHECKED).map(([p, m]) => [p, m, WIDTH || 1280]);
 if (!ONLY && !FULL && !WIDTH) for (const [p, m] of PHONE) matrix.push([p, m, 390]);
+const PART = flag('part');
+if (PART) {
+  const m = /^([1-9]\d*)\/([1-9]\d*)$/.exec(PART);
+  if (!m || +m[1] > +m[2]) throw new Error('--part wants I/N with 1 <= I <= N, got ' + PART);
+  const mine = matrix.filter((_, k) => k % +m[2] === +m[1] - 1);
+  matrix.length = 0; matrix.push(...mine);
+  if (!matrix.length) { console.log('no look falls in part ' + PART); process.exit(0); }
+}
 
 const ADMIN_PAGES = ['home', 'tasks', 'employees', 'requests', 'hours', 'calendar', 'quotation', 'customers', 'deals', 'suppliers', 'rfqs', 'stock', 'contracts', 'purchaseorders', 'reports', 'accounting', 'automations', 'chat', 'notif', 'workspace'];
 const TEAM_PAGES = ['home', 'tasks', 'hours', 'requests', 'leads', 'deals', 'stock', 'suppliers', 'rfq', 'purchaseorders', 'contracts', 'issues', 'calendar', 'accounting', 'reports', 'quotation', 'chat', 'notif'];
@@ -344,6 +355,6 @@ function auditPage() {
     console.log(`  ${String(g.ratio).padStart(5)}:1 (needs ${g.need})  ${g.parent} > ${g.sig}  "${g.text}"  ${g.fg} on ${g.bg}   [${[...g.looks].join(' ')}]  ${[...g.pages].slice(0, 3).join(' ')}${g.pages.size > 3 ? ' +' + (g.pages.size - 3) : ''}`);
   }
   if (bad.length > 40 && !LIST) console.log(`  … and ${bad.length - 40} more (--list shows all)`);
-  console.log(bad.length ? `${bad.length} kind(s) of text are too faint` : 'every look is readable on every screen');
+  console.log(bad.length ? `${bad.length} kind(s) of text are too faint` : PART ? `every look in part ${PART} is readable on every screen` : 'every look is readable on every screen');
   process.exit(bad.length ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
