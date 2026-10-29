@@ -36,6 +36,7 @@ const http = require('http');
 const path = require('path');
 const puppeteer = require('puppeteer');
 const { createFakeSupabase, bootApp } = require('../tests/helpers/fake-supabase');
+const { gotoPage } = require('../tests/helpers/browser');
 
 const ROOT = path.join(__dirname, '..', 'public');
 const EXE = require('../tests/helpers/browser').chromePath();
@@ -237,6 +238,9 @@ async function recordPages() {
   const allOn = {};
   for (const [k, v] of Object.entries(normEmpPerms({}))) if (typeof v === 'boolean') allOn[k] = true;
   for (const [section, actions] of Object.entries(PERM_ACTIONS || {})) allOn[section + 'Actions'] = Object.fromEntries(actions.map(a => [a, true]));
+  // The session below is rebuilt from the employee's row at the first /check, so the row carries the same permissions:
+  // otherwise leads, deals, suppliers, rfq, reports … bounce to Home and what is measured for them is Home.
+  db.tables.employees = db.tables.employees.map(e => (e.id === 1 ? { ...e, permissions: allOn } : e));
   const ADMIN = 'golden-admin', EMP = 'golden-employee';
   ctx.sessions.set(ADMIN, { username: 'admin', pwv: ctx.ADMIN_PW_VERSION, createdAt: Date.now() });
   ctx.employeeSessions.set(EMP, { id: 1, name: 'Admin Person', username: 'smoke', job_title: 'Chief Technical Officer', permissions: normEmpPerms(allOn), createdAt: Date.now() });
@@ -281,7 +285,7 @@ async function recordPages() {
       };
       await take();
       for (const p of cfg.pages) {
-        await page.evaluate(p => { try { navigate(p); } catch (e) { window.__navErr = String(e); } }, p);
+        await gotoPage(page, p);
         await sleep(450);
         await take();
       }

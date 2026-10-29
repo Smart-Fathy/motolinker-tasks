@@ -53,4 +53,23 @@ function pointPuppeteerAtChrome() {
   if (installed) process.env.PUPPETEER_EXECUTABLE_PATH = installed;
 }
 
-module.exports = { chromePath, installedChromium, pointPuppeteerAtChrome };
+// navigate() inside the page, proving it landed. The suites used to swallow whatever navigate()
+// threw ("try { navigate(p) } catch {}"), so a function that was gone, or a page the portal
+// bounced somewhere else, made them measure whatever screen happened to be open and stay green.
+// This throws instead: navigate() must exist, must not throw, and the page it activates must be
+// the one that was asked for (#page-<name> carries .active).
+async function gotoPage(page, name) {
+  const r = await page.evaluate(n => {
+    if (typeof navigate !== 'function') return { ok: false, why: 'navigate() is not defined on this page' };
+    try {
+      navigate(n);
+    } catch (e) {
+      return { ok: false, why: 'navigate() threw: ' + String(e) };
+    }
+    const el = document.querySelector('.page.active');
+    return { ok: !!el && el.id === 'page-' + n, why: 'the active page is ' + (el ? '#' + el.id : 'none') };
+  }, name);
+  if (!r.ok) throw new Error("navigate('" + name + "') did not land: " + r.why);
+}
+
+module.exports = { chromePath, installedChromium, pointPuppeteerAtChrome, gotoPage };

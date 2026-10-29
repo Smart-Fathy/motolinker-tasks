@@ -21,6 +21,7 @@ const puppeteer = require('puppeteer');
 const { createFakeSupabase, bootApp } = require('./helpers/fake-supabase');
 const { parseSchema, seedTables } = require('./helpers/seed');
 const T = require('../public/assets/theme-core.js');
+const { gotoPage } = require('./helpers/browser');
 
 const args = process.argv.slice(2);
 const flag = n => (args.find(a => a.startsWith('--' + n + '=')) || '').slice(n.length + 3);
@@ -214,6 +215,9 @@ function auditPage() {
   const allOn = {};
   for (const [k, v] of Object.entries(normEmpPerms({}))) if (typeof v === 'boolean') allOn[k] = true;
   for (const [section, actions] of Object.entries(PERM_ACTIONS || {})) allOn[section + 'Actions'] = Object.fromEntries(actions.map(a => [a, true]));
+  // The session below is rebuilt from the employee's row at the first /check, so the row carries the same permissions:
+  // otherwise leads, deals, suppliers, rfq, reports … bounce to Home and what is measured for them is Home.
+  db.tables.employees = db.tables.employees.map(e => (e.id === 1 ? { ...e, permissions: allOn } : e));
   const ADMIN = 'audit-admin', EMP = 'audit-employee';
   ctx.sessions.set(ADMIN, { username: 'admin', pwv: ctx.ADMIN_PW_VERSION, createdAt: Date.now() });
   ctx.employeeSessions.set(EMP, { id: 1, name: 'Admin Person', username: 'smoke', job_title: 'Chief Technical Officer', permissions: normEmpPerms(allOn), createdAt: Date.now() });
@@ -273,7 +277,10 @@ function auditPage() {
       // The sign-in screen is the first thing anyone sees; it has nothing to navigate to.
       if (!signedIn) { if (!PAGES) await measure('sign-in'); await page.close(); continue; }
       for (const pg of (PAGES ? PAGES.split(',') : p.pages)) {
-        await page.evaluate(n => { try { navigate(n); } catch (e) {} }, pg);
+        // --pages names pages for both portals at once, so one that this portal does not have is skipped;
+        // a page in the portal's own list that will not open is a failure.
+        if (PAGES && !(await page.evaluate(n => !!document.getElementById('page-' + n), pg))) continue;
+        await gotoPage(page, pg);
         await sleep(450);
         await measure(pg);
         // A lead open: its status in the header and the changes in the timeline.
