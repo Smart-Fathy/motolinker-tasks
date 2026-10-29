@@ -218,7 +218,7 @@ function auditPage() {
   ctx.sessions.set(ADMIN, { username: 'admin', pwv: ctx.ADMIN_PW_VERSION, createdAt: Date.now() });
   ctx.employeeSessions.set(EMP, { id: 1, name: 'Admin Person', username: 'smoke', job_title: 'Chief Technical Officer', permissions: normEmpPerms(allOn), createdAt: Date.now() });
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const browser = await puppeteer.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: 'new', args: ['--no-sandbox'] });
+  const browser = await puppeteer.launch({ executablePath: require('./helpers/browser').chromePath(), headless: 'new', args: ['--no-sandbox'] });
 
   const portals = [
     { who: 'admin', route: '/dashboard', key: 'ml_admin_token', token: ADMIN, pages: ADMIN_PAGES },

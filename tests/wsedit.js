@@ -28,7 +28,7 @@ db.install();
   const A = { Authorization: 'Bearer ' + ADMIN, 'Content-Type': 'application/json' };
   const stored = () => { const r = db.tables.quotation_settings.find(x => x.key === 'workspace_profile'); return r ? JSON.parse(r.value) : {}; };
 
-  const browser = await puppeteer.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: 'new', args: ['--no-sandbox'] });
+  const browser = await puppeteer.launch({ executablePath: require('./helpers/browser').chromePath(), headless: 'new', args: ['--no-sandbox'] });
   const errors = [];
   async function open(route, token) {
     const context = await browser.createBrowserContext();

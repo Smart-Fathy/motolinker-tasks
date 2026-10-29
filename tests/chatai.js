@@ -69,7 +69,7 @@ async function openPortal(browser, { route, file, tokenKey, port, mine }) {
   const srv = http.createServer((_q, s) => { s.writeHead(404); s.end(); });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const port = srv.address().port;
-  const browser = await puppeteer.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: 'new', args: ['--no-sandbox'] });
+  const browser = await puppeteer.launch({ executablePath: require('./helpers/browser').chromePath(), headless: 'new', args: ['--no-sandbox'] });
   for (const portal of [
     { label: 'admin', route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token', mine: 'admin', list: '#admin-chat-messages', input: '#admin-chat-input', open: 'adminChatOpenRoom', append: 'adminChatAppendMessage' },
     { label: 'team', route: '/employee', file: 'public/employee.html', tokenKey: 'ml_emp_token', mine: 'employee_2', list: '#chat-messages', input: '#chat-input', open: 'chatOpenRoom', append: 'chatAppendMessage' },

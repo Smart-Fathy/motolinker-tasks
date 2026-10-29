@@ -4,10 +4,17 @@
 # Most of these drive the real shipped code rather than a copy — the browser suites
 # slice the actual module out of public/assets/*.js, and the migration suite runs
 # the real SQL against a throwaway Postgres.
+#
+#   bash tests/run.sh                         every suite
+#   bash tests/run.sh --only themecss,shell   just those (the first column below; smoke and routes too)
 cd "$(dirname "$0")/.." || exit 1
 pass=0; fail=0
+only=""
+if [ "$1" = "--only" ]; then only=",$2,"; shift 2; fi
+wanted() { [ -z "$only" ] || [[ "$only" == *",$1,"* ]]; }
 run() {
-  name=$1; printf '%-14s ' "$name"; shift
+  name=$1; wanted "$name" || return 0
+  printf '%-14s ' "$name"; shift
   out=$("$@" 2>&1); rc=$?
   echo "$out" | tail -1
   if [ $rc -eq 0 ]; then pass=$((pass+1))
@@ -100,16 +107,21 @@ run docrfq      node tests/doc-rfq.js
 # needs a local coturn on 127.0.0.1:3478 for the success path; skips it otherwise
 run relaytest   node tests/relaytest.js
 
-printf '%-14s ' "smoke"
-if out=$(node tools/smoke-routes.js 2>&1); then echo "$out" | tail -1; pass=$((pass+1));
-else echo "$out" | grep -E "BROKEN|exercised|BLIND|escaped a handler" | tail -6; fail=$((fail+1)); fi
+if wanted smoke; then
+  printf '%-14s ' "smoke"
+  if out=$(node tools/smoke-routes.js 2>&1); then echo "$out" | tail -1; pass=$((pass+1));
+  else echo "$out" | grep -E "BROKEN|exercised|BLIND|escaped a handler" | tail -6; fail=$((fail+1)); fi
+fi
 
-printf '\n%-14s ' "routes"
-node tools/route-inventory.js /tmp/ml-routes.txt >/dev/null 2>&1
-if diff -q tools/routes.snapshot.txt /tmp/ml-routes.txt >/dev/null; then
-  echo "inventory matches the snapshot"; pass=$((pass+1))
-else
-  echo "ROUTES CHANGED — review, then regenerate tools/routes.snapshot.txt"; fail=$((fail+1))
+if wanted routes; then
+  printf '\n%-14s ' "routes"
+  routes_out="${TMPDIR:-/tmp}/ml-routes.txt"
+  node tools/route-inventory.js "$routes_out" >/dev/null 2>&1
+  if diff -q tools/routes.snapshot.txt "$routes_out" >/dev/null; then
+    echo "inventory matches the snapshot"; pass=$((pass+1))
+  else
+    echo "ROUTES CHANGED — review, then regenerate tools/routes.snapshot.txt"; fail=$((fail+1))
+  fi
 fi
 
 echo; echo "$pass suite(s) green, $fail red"

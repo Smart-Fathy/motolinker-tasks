@@ -38,7 +38,7 @@ const puppeteer = require('puppeteer');
 const { createFakeSupabase, bootApp } = require('../tests/helpers/fake-supabase');
 
 const ROOT = path.join(__dirname, '..', 'public');
-const EXE = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const EXE = require('../tests/helpers/browser').chromePath();
 const SHEETS = {
   admin: ['/assets/dashboard.css', '/assets/mobile.css'],
   team: ['/assets/employee.css', '/assets/mobile.css'],
