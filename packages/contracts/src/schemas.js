@@ -28,6 +28,8 @@ const MeResponse = z.object({
     name: z.string(),
     logo_url: z.string(),
     updated_at: z.string().nullable(),
+    // true when the database could not be asked: the name is the default, not the real one
+    degraded: z.boolean().optional(),
   }),
   flags: z.record(z.string(), z.boolean()),
 });

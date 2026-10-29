@@ -26,6 +26,13 @@ const { employeeCan } = require('./permissions-can');
 /** @type {Scope} */
 const NO_SCOPE = Object.freeze({ assignedOnly: false, dealStages: [], leadStatuses: [] });
 
+/**
+ * A stored scope list as a list of strings: anything else (a session written by an older version) is empty.
+ * @param {unknown} v
+ * @returns {string[]}
+ */
+const strings = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
+
 // The entities whose rows a scope narrows. (Leads and deals today; the rest see what their section lets them.)
 const SCOPED_ENTITIES = new Set(['leads', 'customers', 'deals', 'reports']);
 
@@ -87,8 +94,8 @@ function employeeActor(emp) {
     sections,
     scope: {
       assignedOnly: s.assignedOnly === true,
-      dealStages: [...(s.dealStages || [])],
-      leadStatuses: [...(s.leadStatuses || [])],
+      dealStages: strings(s.dealStages),
+      leadStatuses: strings(s.leadStatuses),
     },
   };
 }

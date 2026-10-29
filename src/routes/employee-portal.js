@@ -179,7 +179,11 @@ receiver.router.post('/api/employee/login', express.json(), async (req, res) => 
   if (r.mfa_required) return res.json({ mfa_required: true, mfa_token: r.mfa_token, name: emp.name });
   res.json(employeeLoginResponse(emp, r.token));
 });
-receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res) => {
+// The employee's own record is the truth about their permissions; the session keeps the copy it was
+// opened with. Reads the record (bounded, so a stalled database cannot hold the portal), refreshes the
+// session from it, and returns the profile fields. A database that does not answer leaves the session's
+// copy standing. Used by /check, which every portal load makes, and by /api/v1/me.
+async function refreshEmployeeFromDb(req) {
   let profile = {};
   try {
     // Bounded like the session read (restoreSession, index.js): the portal waits on this
@@ -200,6 +204,10 @@ receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res)
       }
     }
   } catch (_) {}
+  return profile;
+}
+receiver.router.get('/api/employee/check', requireEmployeeAuth, async (req, res) => {
+  const profile = await refreshEmployeeFromDb(req);
   res.json({ ok: true, ...req.employee, ...profile });
 });
 receiver.router.post('/api/employee/logout', requireEmployeeAuth, (req, res) => {
@@ -1165,4 +1173,4 @@ receiver.router.put('/api/dashboard/deletion-requests/:id', requireAuth, express
 Object.assign(ctx, { express, logLeadActivity, normalizePhone, parseBudget, path, receiver, requireAuth, supabase });
 Object.assign(ctx, require('./automation'));
 
-module.exports = { employeeLoginResponse, employeeSessionPayload, fetchEmployeeTasks, DEFAULT_PERMISSIONS, PERM_ACTIONS, backfillHotLeadDeals, customerInScope, dealInScope, empCan, empHasScope, importLeadRows, loadLeadsColsConfig, logLeadActivity, multerCsv, normEmpPerms, normalizePhone, parseBudget, parseLeadsCsv, scopedQuotedIds };
+module.exports = { employeeLoginResponse, employeeSessionPayload, fetchEmployeeTasks, refreshEmployeeFromDb, DEFAULT_PERMISSIONS, PERM_ACTIONS, backfillHotLeadDeals, customerInScope, dealInScope, empCan, empHasScope, importLeadRows, loadLeadsColsConfig, logLeadActivity, multerCsv, normEmpPerms, normalizePhone, parseBudget, parseLeadsCsv, scopedQuotedIds };

@@ -10,6 +10,11 @@
 // Plain CommonJS with JSDoc types (checked by `npm run typecheck`): the server loads it with no build
 // step, and the web app imports it through its bundler.
 
+/**
+ * @typedef {import('./access').Actor} Actor
+ * @typedef {import('./access').Scope} Scope
+ */
+
 module.exports = {
   ...require('./permissions-catalogue'),
   ...require('./permissions-normalise'),
