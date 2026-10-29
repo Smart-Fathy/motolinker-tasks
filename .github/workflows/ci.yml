@@ -2,9 +2,9 @@
 #   static  lint, format, type-check and the build (the build is a no-op until apps/web exists)
 #   suite   the whole of tests/run.sh — serial, because the suites use fixed ports
 # Nothing here deploys anything; Railway deploys from the branch on its own.
-# Node 22 is asked for by number: there is deliberately no .nvmrc, because Railway's builder reads one
-# and lets it override package.json "engines", which would move production's Node (see the README,
-# "How production is built", and tests/deployconfig.js).
+# Node comes from package.json "engines" — the line Railway's builder reads — so the suites run on what
+# production runs on. There is deliberately no .nvmrc: the builder reads one and lets it override
+# "engines" (see the README, "How production is built", and tests/deployconfig.js).
 name: CI
 
 on:
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: package.json
           cache: npm
       - run: npm ci
         env:
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: package.json
           cache: npm
       # puppeteer downloads the Chrome the browser suites drive (tests/helpers/browser.js finds it);
       # CHROME_BIN would override it.

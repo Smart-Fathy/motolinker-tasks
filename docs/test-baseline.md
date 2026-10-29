@@ -31,11 +31,21 @@ job's timeout is 75 minutes, several times the measured run.
 
 ## On the runtime production has
 
-Production builds with Node 18.20.8 (see the README, "How production is built"); the suites above ran
-on Node 22. The suites that cover the new server code — `contracts` 26/26, `actor` 30/30, `permstest`
-82/82, the route inventory and `smoke` (465 routes) — were also run on 18.20.8, in a tree assembled the
-way Railway's builder assembles it (manifests only, `npm install`, the source over the top,
-`npm run build`), and pass there too.
+The numbers above were taken on Node 22 while production still ran Node 18.20.8; the suites that cover
+the new server code (`contracts`, `actor`, `permstest`, the route inventory and `smoke`) also passed on
+18.20.8 then, in a tree assembled the way Railway's builder assembles it. Production now builds with
+Node 22.x — the major these suites run on, and the one CI reads from `package.json` — behind a healthcheck
+(see the README, "How production is built").
+
+## On a hosted runner
+
+The first GitHub Actions run of the suite (the Run 1 merge; `ubuntu-24.04`, Node 22.23.4) took 14 min 44 s
+and passed 85 of 86 suites. The one that differed was `themeaudit`. The dev image cannot reach
+`cdnjs.cloudflare.com`, so Leaflet (loaded lazily on the stock Tracking page) had never rendered in a
+local run; on the runner it did, and the audit judged its attribution control against map tiles it cannot
+see. The audit now refuses every request that is not to the page's own server, so it sees the same page
+on every machine. Whether that attribution text is readable enough on the real map is a separate, open
+question about third-party chrome.
 
 ## When a suite goes red
 

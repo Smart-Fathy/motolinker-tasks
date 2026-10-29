@@ -119,6 +119,31 @@ function unitTests() {
   check('…and a session the map does know keeps working through it', stillIn.status === 200);
   db.failing.delete('sessions');
 
+  // 2b. The health route the host asks before it moves traffic to a new deployment (railway.json): public,
+  //     light, and independent of the database.
+  const http = require('http');
+  const asHost = (hostname, path) => new Promise((resolve, reject) => {
+    const u = new URL(base);
+    const req = http.request({ host: u.hostname, port: u.port, path, method: 'GET', headers: { Host: hostname } }, res => {
+      let body = ''; res.on('data', d => { body += d; });
+      res.on('end', () => resolve({ status: res.statusCode, body }));
+    });
+    req.on('error', reject); req.end();
+  });
+  const queriesBefore = db.log.length;
+  const health = await fetch(base + '/api/v1/health');
+  const healthBody = await health.json().catch(() => null);
+  check('/api/v1/health with no token: 200 {ok: true, uptime_s}', health.status === 200 && !!healthBody && healthBody.ok === true && Number.isInteger(healthBody.uptime_s) && healthBody.uptime_s >= 0, JSON.stringify(healthBody));
+  check('…it is never cached and sets no cookie', health.headers.get('cache-control') === 'no-store' && !health.headers.get('set-cookie'));
+  check('…it asks the database nothing', db.log.length === queriesBefore, `${db.log.length - queriesBefore} queries`);
+  check('…a token it is handed is not looked at (a public route neither signs anyone in nor out)', (await get('/api/v1/health', 'not-a-token-anyone-issued')).status === 200);
+  const fromHost = await asHost('healthcheck.railway.app', '/api/v1/health');
+  check('…it answers the hostname the platform asks from (healthcheck.railway.app)', fromHost.status === 200 && JSON.parse(fromHost.body).ok === true, String(fromHost.status));
+  for (const t of ['sessions', 'employees', 'quotation_settings']) db.failing.add(t);
+  const whileDown = await fetch(base + '/api/v1/health');
+  check('…and it answers while the database is down: an outage cannot hold a deploy or a rollback hostage', whileDown.status === 200);
+  db.failing.clear();
+
   // 3. The inventory: nothing under /api/v1 that did not go through v1().
   const { routes } = require('../src/http/mount-v1');
   const receiver = require(process.cwd() + '/index.js');
@@ -136,7 +161,7 @@ function unitTests() {
   const knownCaps = routes.filter(r => r.cap).every(r => { try { require('../src/http/actor').assertKnownCapability(r.cap); return true; } catch (_) { return false; } });
   check('every capability a route names is in the permission catalogue', knownCaps);
   const publicOnes = routes.filter(r => r.public).map(r => r.method + ' ' + r.path);
-  check('the routes declared public are the ones this suite was told about', JSON.stringify(publicOnes.sort()) === JSON.stringify([].sort()), publicOnes.join(', '));
+  check('the routes declared public are the ones this suite was told about', JSON.stringify(publicOnes.sort()) === JSON.stringify(['GET /api/v1/health']), publicOnes.join(', '));
 
   // 4. The matrix: each kind of actor asks each route that can be asked without parameters.
   const NOT_IN_MATRIX = {};   // 'METHOD /path': why it cannot be asked generically — an entry here is a decision, reviewed
