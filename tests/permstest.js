@@ -28,18 +28,20 @@ const PROC = ['suppliers', 'supplier-catalogue', 'rfq', 'purchase-orders', 'cont
   .map(f => fs.readFileSync(`src/routes/${f}.js`, 'utf8'));
 const SERVER_FILES = [IDX, EMP, HUDDLES, STREAMS, NOTIFS, ...PROC].join('\n');
 
-// ── Load the model out of the real module ─────────────────────────────────────
-// Sliced rather than required, because employee-portal.js registers a hundred
-// routes on import and needs the whole context built first.
+// ── Load the model ────────────────────────────────────────────────────────────
+// It lives in packages/contracts (the server and the portals read one definition); the two things it
+// takes from the server — the deal stages a scope may name and the lead-status normaliser — are
+// passed in here the way employee-portal.js passes them.
 function loadModel() {
-  const from = EMP.indexOf('const DEFAULT_PERMISSIONS =');
-  const to = EMP.indexOf('function empHasScope');
-  if (from < 0 || to < 0) throw new Error('could not slice the permission block');
-  const block = EMP.slice(from, to).replace(/receiver\.router\.get\([\s\S]*?\);\n/, '');
-  return new Function('ctx', 'autoNorm',
-    block + '; return { DEFAULT_PERMISSIONS, PERM_ACTIONS, PERM_LEGACY, normEmpPerms, empCan, permCatalogue };')(
-    { DEAL_STAGES: ['lead', 'inquiry', 'quoted', 'negotiating', 'won', 'lost'] },
-    x => String(x == null ? '' : x).toLowerCase().trim().replace(/[\s-]+/g, '_'));
+  const C = require('../packages/contracts');
+  const deps = {
+    dealStages: ['lead', 'inquiry', 'quoted', 'negotiating', 'won', 'lost'],
+    normStatus: x => String(x == null ? '' : x).toLowerCase().trim().replace(/[\s-]+/g, '_'),
+  };
+  return {
+    DEFAULT_PERMISSIONS: C.DEFAULT_PERMISSIONS, PERM_ACTIONS: C.PERM_ACTIONS, PERM_LEGACY: C.PERM_LEGACY,
+    normEmpPerms: raw => C.normalisePermissions(raw, deps), empCan: C.employeeCan, permCatalogue: C.permCatalogue,
+  };
 }
 const M = loadModel();
 const emp = (permissions, job_title) => ({ job_title: job_title || 'Sales', permissions: M.normEmpPerms(permissions) });

@@ -16,32 +16,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const results = [];
 const check = (n, ok, x) => { results.push(ok); console.log((ok ? '  ok  ' : ' FAIL ') + n + (x ? '  ' + x : '')); };
 
-// The real catalogue, straight out of the server module — no fixture to drift.
-const empSrc = fs.readFileSync('src/routes/employee-portal.js', 'utf8');
-// Lift the declarations by name — a slice by line numbers would rot the first
-// time somebody reorders the file.
-function lift(decl) {
-  const i = empSrc.indexOf(decl);
-  if (i < 0) throw new Error('not found in employee-portal.js: ' + decl);
-  const open = empSrc.indexOf(decl.endsWith('(') ? '{' : (empSrc[empSrc.indexOf('=', i) + 2] === '[' ? '[' : '{'), i);
-  const closer = { '{': '}', '[': ']' }[empSrc[open]];
-  let d = 0;
-  for (let j = open; j < empSrc.length; j++) {
-    if (empSrc[j] === empSrc[open]) d++;
-    else if (empSrc[j] === closer && !--d) return empSrc.slice(i, j + 1) + (decl.endsWith('(') ? '' : ';');
-  }
-  throw new Error('unbalanced: ' + decl);
-}
+// The real catalogue, straight out of the contracts package the server reads — no fixture to drift.
 const CATALOGUE = (() => {
-  const src = [
-    'const PERM_ACTIONS =', 'const PERM_GROUPS =', 'const PERM_SECTION_LABELS =',
-    'const PERM_ACTION_LABELS =', 'const PERM_READISH =', 'const PERM_PRESETS =',
-    'function permPresetPerms(', 'function permCatalogue(',
-  ].map(lift).join('\n');
-  // Only `defaultOn` reads DEFAULT_PERMISSIONS, and a fresh employee defaults
-  // every section off, so an empty object is the honest stand-in.
-  const body = `${src}\nreturn { groups: permCatalogue(), presets: PERM_PRESETS.map(p => ({ key:p.key, label:p.label, hint:p.hint, permissions: permPresetPerms(p) })) };`;
-  return new Function('DEFAULT_PERMISSIONS', body)({});
+  const C = require('../packages/contracts');
+  // Only `defaultOn` reads the defaults, and this suite's fresh employee has every section off (the
+  // editor is shown for a record with nothing granted), so that one flag is cleared.
+  const groups = C.permCatalogue().map(g => ({ ...g, sections: g.sections.map(s => ({ ...s, defaultOn: false })) }));
+  return {
+    groups,
+    presets: C.PERM_PRESETS.map(p => ({ key: p.key, label: p.label, hint: p.hint, permissions: C.permPresetPerms(p) })),
+  };
 })();
 
 const EMPLOYEES = [
@@ -269,7 +253,7 @@ function api(pathname, method, body) {
     check('it collapses sensibly on a phone', /@media \(max-width:640px\)[\s\S]{0,400}\.perm-row-sum/.test(css));
     const srv = fs.readFileSync('src/routes/employee-portal.js', 'utf8');
     check('presets are expanded server-side from PERM_ACTIONS, not hardcoded in the page',
-      /function permPresetPerms/.test(srv) && /presets: PERM_PRESETS\.map/.test(srv)
+      /permPresetPerms/.test(srv) && /presets: PERM_PRESETS\.map/.test(srv)
       && !/PERM_PRESETS/.test(js));
   }
 
