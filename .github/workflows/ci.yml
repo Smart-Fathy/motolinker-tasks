@@ -1,0 +1,61 @@
+# Every push to main and every pull request runs the same two jobs:
+#   static  lint, format, type-check and the build (the build is a no-op until apps/web exists)
+#   suite   the whole of tests/run.sh — serial, because the suites use fixed ports
+# Nothing here deploys anything; Railway deploys from the branch on its own.
+# Node 22 is asked for by number: there is deliberately no .nvmrc, because Railway's builder reads one
+# and lets it override package.json "engines", which would move production's Node (see the README,
+# "How production is built", and tests/deployconfig.js).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run build
+
+  suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # puppeteer downloads the Chrome the browser suites drive (tests/helpers/browser.js finds it);
+      # CHROME_BIN would override it.
+      - run: npm ci
+      - run: bash tests/run.sh
+        env:
+          CI: 'true'
+          TZ: UTC
+      # The runner prints each suite's last line; the line that says what went wrong is higher up,
+      # in the file it saved (the runner names it under each red suite).
+      - name: What the red suites printed
+        if: failure()
+        run: |
+          for f in /tmp/ml-suite-*.txt; do
+            [ -e "$f" ] || continue
+            echo "::group::$f"; tail -n 120 "$f"; echo "::endgroup::"
+          done

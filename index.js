@@ -10,6 +10,9 @@ const nodemailer = require('nodemailer');
 const { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL, safeFileUrl }
   = require('./src/lib/constants');
 const { requestMeta } = require('./src/lib/request-info');
+// What the server and the portals agree on: the permission model, actors, wire schemas.
+const contracts = require('@motolinker/contracts');
+const ADMIN_ACTOR = contracts.adminActor();
 
 // ─── App Init ─────────────────────────────────────────────────────────────────
 // Plain Express server (Slack integration removed). `receiver.router` is kept as
@@ -449,6 +452,7 @@ async function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   req.sessionToken = token; req.session = sess;
+  req.actor = ADMIN_ACTOR;
   touchSession(token, sess);
   next();
 }
@@ -471,9 +475,34 @@ async function requireEmployeeAuth(req, res, next) {
   }
   req.employee = sess;
   req.sessionToken = token; req.session = sess;
+  req.actor = contracts.employeeActor(sess);
   touchSession(token, sess);
   next();
 }
+
+// Which kind of account holds this token, according to the sessions table (null: none). The guards
+// above each restore a token of their own kind, so the actor guard has to know which to ask.
+async function sessionKindOf(token) {
+  const { data, error } = await supabase.from('sessions').select('kind').eq('token', token)
+    .abortSignal(AbortSignal.timeout(ctx.SESSION_READ_TIMEOUT_MS)).maybeSingle();
+  if (error && !isMissingRelation(error)) throw new Error('sessions table unreadable: ' + error.message);
+  return data && (data.kind === 'admin' || data.kind === 'employee') ? data.kind : null;
+}
+
+// The guard for /api/v1: whoever holds a valid admin OR employee token is an actor. It runs the legacy
+// guard that fits the token — the Map first, the sessions table once for a token it does not know — so
+// there is exactly one implementation of what makes a session valid (expiry, a rotated admin password,
+// revocation, the 503 for a database that is down), and req.actor is set by that guard.
+function requireActor(req, res, next) {
+  const token = bearerToken(req);
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  if (employeeSessions.has(token)) return requireEmployeeAuth(req, res, next);
+  if (sessions.has(token)) return requireAuth(req, res, next);
+  sessionKindOf(token).then(
+    kind => (kind === 'employee' ? requireEmployeeAuth : requireAuth)(req, res, next),
+    () => sessionStoreDown(res));
+}
+ctx.requireActor = requireActor;
 
 // Route guard for the per-action permission model. Mount it after
 // requireEmployeeAuth, which is what puts req.employee there:
@@ -2215,6 +2244,10 @@ Object.assign(ctx, require('./src/routes/accounting'));
 // after every module whose helpers it borrows (employee portal, automation,
 // notifications, columns) and after accounting, whose chat it delegates to.
 Object.assign(ctx, require('./src/routes/assistant'));
+// The new API (/api/v1) → src/http/mount-v1.js
+// A final pass, after every legacy route has registered: the legacy registration order is
+// load-bearing and snapshot-tested, and this does not move it.
+require('./src/http/mount-v1').mountV1({ receiver, ctx });
 // ─── Lead follow-up reminders ─────────────────────────────────────────────────
 // Fires within ~5 minutes of a follow-up's due time: notifies the assigned
 // employee (or admin when unassigned) once per follow-up.

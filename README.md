@@ -730,13 +730,19 @@ index.js              boot, config, auth, Google tokens, chat/notifications core
 src/ctx.js            the shared context feature modules pull their deps from
 src/lib/constants.js  domain vocabulary used across features
 src/routes/*.js       one module per feature (stock, suppliers, rfq, huddles, …)
-public/*.html         page markup only
+src/http/             the actor model's server half: requireCan, /api/v1 (see "Migrating to one codebase")
+packages/contracts/   what the server and the web app agree on: the permission catalogue and rules,
+                      actors (admin / employee, capabilities, scope), wire schemas (zod)
+public/*.html         page markup only (the legacy portals)
 public/assets/*.{css,js}   the portals' styles and application code
 public/assets/theme-core.js   the look: presets, contrast, tokens (browser and server)
 public/assets/workspace*.js   the live look; the admin's Workspace editor
 tools/theme-*.js      the codemod and the golden-record tool behind the theme
-tools/route-inventory.js   dumps every registered route, in order
-tests/                browser, unit and migration suites
+tools/route-inventory.js   fingerprints every registered route, in order (and /api/v1 with its guards)
+tools/parity/         photographs of the legacy portals, the baseline for the new app
+tests/                browser, unit and migration suites; tests/helpers/ holds what they share
+docs/parity/          how "the ported module is the same as the old one" is shown
+.github/workflows/    CI (every push and pull request) and a nightly job for the two suites that need coturn / LibreOffice
 ```
 
 `index.js` hands each feature module its dependencies immediately before requiring
@@ -751,23 +757,100 @@ looked up when called instead, and say so in a comment.
 `/huddle/ice` must stay ahead of `/huddle/:roomId`, and there are other pairs like
 it, so the split had to preserve registration *order*, not just the set of routes.
 `tools/routes.snapshot.txt` was captured before the split and is byte-identical to
-what the modular version registers:
+what the modular version registers. `/api/v1` is mounted in a final pass after every
+legacy route and is fingerprinted separately, with the guards in front of each
+handler, in `tools/routes.v1.snapshot.txt`:
 
 ```
-node tools/route-inventory.js out.txt && diff tools/routes.snapshot.txt out.txt
+node tools/route-inventory.js --check                 compare with both snapshots; says where they differ
+node tools/route-inventory.js --check --append-only   allow new routes: the recorded list must stay an in-order subsequence
+node tools/route-inventory.js --write                 regenerate both
 ```
 
-`bash tests/run.sh` runs every suite and finishes with that check. Regenerate the
-snapshot only when routes genuinely change, and say so in the commit.
+`bash tests/run.sh` runs every suite and finishes with `--check`. Regenerate the
+snapshots only when routes genuinely change, and say so in the commit.
 
 ### Tests
 
 ```
-bash tests/run.sh
+npm test                                  = bash tests/run.sh, every suite (about 16 minutes: the suites use fixed ports, so they run serially)
+bash tests/run.sh --only themecss,shell   just those (the first column of run.sh; smoke and routes too)
 ```
 
 They drive the shipped code rather than a copy: the browser suites slice the real
 module out of `public/assets/*.js` (and the real stylesheet, since some behaviour is
 CSS), the WebRTC suite runs three peers with fake media devices, and the migration
 suite applies the real SQL to a throwaway Postgres and asserts the resulting rows.
-The relay suite needs a local coturn on `127.0.0.1:3478` for its success case.
+The relay suite checks its success case against a local coturn on `127.0.0.1:3478` when `LIVE_TURN=1` is set (the nightly job does); `docs/test-baseline.md` records what a full run looks like.
+
+The browser they drive is found in one place, `tests/helpers/browser.js`: `CHROME_BIN`
+if set, else the Chromium the dev image ships, else the Chrome puppeteer downloaded on
+install (what CI has). A suite that moves between pages uses `gotoPage(page, name)` from
+the same file, which fails when `navigate()` is missing or the portal bounced the page
+elsewhere — a tool that swallowed that used to photograph Home under another page's name.
+`tests/helpers/demo-data.js` opens the portals on realistic data, with a team member
+who may open every page (on their database row as well as their session).
+
+`npm run lint`, `npm run format:check` and `npm run typecheck` cover the code written to the
+new standard (`packages/*`, `src/http`, `src/modules`, `apps/*`); the legacy server, portals,
+tools and tests are outside them until each is migrated. CI runs all of it on every push and
+pull request.
+
+### How production is built
+
+Railway builds this repository with Railpack: it copies every `package.json` and the lockfile,
+runs `npm install`, copies the source over, runs `npm run build` if there is one (a no-op until the
+web app lands) and starts `npm run start`. `tests/deployconfig.js` pins the three things that depend on:
+
+- **The Node version** comes from `engines.node` (`>=18.0.0`, which Railpack resolves to the latest
+  18.x — 18.20.8 today). There is deliberately **no `.nvmrc`, `.node-version` or `.tool-versions`**:
+  Railpack hands those to mise, which lets them override `engines`, so adding one "for developers"
+  would move production to another Node major in a release that is about something else. Development
+  and CI run Node 22 (the workflow asks for it explicitly); the suites that cover the new code also
+  pass on 18.20.8. Moving production is a release of its own — change `engines` and the expected value
+  in `tests/deployconfig.js` in the same commit. (Node 18 is end-of-life, and the Vite build needs a
+  newer one, so that release is coming.)
+- **Whatever a package under `packages/` needs at runtime** (today: `zod`) is declared by the root
+  package too, so npm hoists it into `/app/node_modules` — the one dependency folder the deploy image
+  is certain to carry — instead of nesting it inside the package.
+- **The lockfile agrees with `package.json`**, which `npm install` on the host would silently repair
+  and `npm ci` in CI refuses.
+
+## 🧩 Migrating to one codebase
+
+The two portals — the admin's and the team's — are being ported, module by module, to **one
+application**: a Vite + React + TypeScript app hosted by this Node server, in which every module is
+written once and a team member sees exactly the modules and actions the admin grants. (Why Vite and
+not Next.js: everything is behind a login, so server-side rendering buys nothing, and this server is
+one stateful process — sessions, SSE streams, huddle rooms, WhatsApp, timers — that a second server in
+front of it would only complicate.) The old portals keep working, untouched, until each module is
+ported, and the new app will sit behind a switch so every push deploys safely.
+
+What exists so far, all of it invisible to users:
+
+- **`packages/contracts`** — the permission model (24 sections, 91 actions, what a record that
+  predates a section gets, the never-inherited actions, how a scope is read) moved out of
+  `employee-portal.js`, plus actors and the wire schemas. Plain CommonJS with JSDoc types, so the
+  server loads it with no build step. `tests/contracts.js` pins what it means against answers recorded
+  from the code before it moved (`node tests/contracts.js --record` re-records, and the diff of
+  `tests/fixtures/permissions.golden.json` is the review).
+- **The actor** — `req.actor` is set by the two legacy guards (the admin is `caps: '*'`, an explicit
+  "all", not "the request had no employee"). `requireActor` (index.js) is the guard for `/api/v1`: it
+  runs the legacy guard that fits the token, so there is one implementation of what makes a session
+  valid. `requireCan('leads.edit')` (`src/http/actor.js`) fails closed — 401 with no actor, 403 without
+  the capability — and refuses a capability that is not in the catalogue when the route is mounted.
+- **`/api/v1`** — mounted in a final pass by `src/http/mount-v1.js`, every route through
+  `v1({ method, path, cap }, handler)`. Today it has `GET /api/v1/me`: who is asking, their
+  capabilities, sections, scope and the workspace. `tests/actor.js` crosses every v1 route with every
+  kind of actor; a route that cannot be asked without parameters must say why in its `NOT_IN_MATRIX`
+  list, so none is skipped by accident.
+- **Tooling and CI** — see "Tests" above; `tools/parity/shoot-legacy.js` photographs all 52 pages of
+  the legacy portals (light and dark, desktop and phone) as the baseline the new app is compared with.
+
+Rules for new server code: it goes in `src/http` or `src/modules` (linted, formatted, type-checked
+through JSDoc), takes its dependencies explicitly rather than through `ctx`, asks `can(actor, 'x.y')` /
+`requireCan('x.y')` rather than reading `req.employee`, and lives under `/api/v1` once it is a new
+route. A resource that exists twice today (`/api/dashboard/x` and `/api/employee/x`) is unified by
+extracting what the two copies do into one service function, testing both legacy endpoints against it,
+and adding the v1 route — never by editing one copy.
+

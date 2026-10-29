@@ -1,11 +1,22 @@
 {
   "name": "motolinker-task-bot",
   "version": "1.0.0",
+  "private": true,
   "description": "MotoLinker Slack Task Management Bot — Chiefs assign, teams execute.",
   "main": "index.js",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "build": "npm run build --workspaces --if-present",
+    "test": "bash tests/run.sh",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "format": "prettier --write .",
+    "typecheck": "tsc -p packages/contracts && tsc -p src/http"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.43.0",
@@ -18,10 +29,18 @@
     "qrcode": "^1.5.4",
     "undici": "^6.29.0",
     "web-push": "^3.6.7",
-    "whatsapp-web.js": "^1.34.7"
+    "whatsapp-web.js": "^1.34.7",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0"
+    "@eslint/js": "^9.39.5",
+    "@types/express": "^4.17.25",
+    "@types/node": "^22.20.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0",
+    "nodemon": "^3.1.0",
+    "prettier": "^3.9.10",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=18.0.0"

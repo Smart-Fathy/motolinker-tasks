@@ -4,10 +4,18 @@
 # Most of these drive the real shipped code rather than a copy — the browser suites
 # slice the actual module out of public/assets/*.js, and the migration suite runs
 # the real SQL against a throwaway Postgres.
+#
+#   bash tests/run.sh                         every suite
+#   bash tests/run.sh --only themecss,shell   just those (the first column below; smoke and routes too)
 cd "$(dirname "$0")/.." || exit 1
 pass=0; fail=0
+only=""; asked=()
+if [ "$1" = "--only" ]; then only=",$2,"; IFS=, read -ra asked <<< "$2"; shift 2; fi
+known=","   # every suite name the runner reached, wanted or not: what --only is checked against
+wanted() { known="$known$1,"; [ -z "$only" ] || [[ "$only" == *",$1,"* ]]; }
 run() {
-  name=$1; printf '%-14s ' "$name"; shift
+  name=$1; wanted "$name" || return 0
+  printf '%-14s ' "$name"; shift
   out=$("$@" 2>&1); rc=$?
   echo "$out" | tail -1
   if [ $rc -eq 0 ]; then pass=$((pass+1))
@@ -48,6 +56,9 @@ run wsedit      node tests/wsedit.js
 run icontest    node tests/icontest.js
 run leadstest   node tests/leadstest.js
 run permstest   node tests/permstest.js
+run contracts   node tests/contracts.js
+run actor       node tests/actor.js
+run deployconfig node tests/deployconfig.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js
 run foldertest  node tests/foldertest.js
@@ -100,16 +111,28 @@ run docrfq      node tests/doc-rfq.js
 # needs a local coturn on 127.0.0.1:3478 for the success path; skips it otherwise
 run relaytest   node tests/relaytest.js
 
-printf '%-14s ' "smoke"
-if out=$(node tools/smoke-routes.js 2>&1); then echo "$out" | tail -1; pass=$((pass+1));
-else echo "$out" | grep -E "BROKEN|exercised|BLIND|escaped a handler" | tail -6; fail=$((fail+1)); fi
+if wanted smoke; then
+  printf '%-14s ' "smoke"
+  if out=$(node tools/smoke-routes.js 2>&1); then echo "$out" | tail -1; pass=$((pass+1));
+  else echo "$out" | grep -E "BROKEN|exercised|BLIND|escaped a handler" | tail -6; fail=$((fail+1)); fi
+fi
 
-printf '\n%-14s ' "routes"
-node tools/route-inventory.js /tmp/ml-routes.txt >/dev/null 2>&1
-if diff -q tools/routes.snapshot.txt /tmp/ml-routes.txt >/dev/null; then
-  echo "inventory matches the snapshot"; pass=$((pass+1))
-else
-  echo "ROUTES CHANGED — review, then regenerate tools/routes.snapshot.txt"; fail=$((fail+1))
+if wanted routes; then
+  printf '\n%-14s ' "routes"
+  # The legacy routes must be exactly the snapshot; /api/v1 is fingerprinted beside it, with its guards.
+  if out=$(node tools/route-inventory.js --check 2>&1); then
+    echo "$out" | grep -E "^inventory matches" | tail -1; pass=$((pass+1))
+  else
+    echo "$out" | grep -E "^(ROUTES CHANGED|  )"; fail=$((fail+1))
+  fi
+fi
+
+# A name that matches nothing would run nothing and pass — and the nightly job selects its suites by name.
+if [ -n "$only" ]; then
+  for n in "${asked[@]}"; do
+    [[ "$known" == *",$n,"* ]] || { echo "no suite is called '$n' (the names are the first column of a full run)"; fail=$((fail+1)); }
+  done
+  [ $((pass+fail)) -gt 0 ] || { echo "--only matched no suite"; fail=1; }
 fi
 
 echo; echo "$pass suite(s) green, $fail red"

@@ -1273,17 +1273,22 @@ const atBothBases = (method, tail, perm) => {
     /routes\/payments/.test(INDEX) && /routes\/containers/.test(INDEX));
   c('…and no longer loads the register it deleted', !/routes\/vehicle-units/.test(INDEX));
 
+  // (The permission model lives in packages/contracts; these read it there.)
+  const PERMS = require('../packages/contracts');
+  const permsOf = raw => PERMS.normalisePermissions(raw, { dealStages: ['lead', 'inquiry', 'quoted', 'negotiating', 'won', 'lost'], normStatus: String });
   c('the new actions are declared on their sections',
-    /stock: \[.*'tracking'\]/.test(PORTAL) && /deals: \[.*'payments', 'paymentsEdit'\]/.test(PORTAL));
-  c('the admin editor labels them', /'stock\.tracking':/.test(PORTAL) && /'deals\.payments':/.test(PORTAL));
+    PERMS.PERM_ACTIONS.stock.includes('tracking') && ['payments', 'paymentsEdit'].every(a => PERMS.PERM_ACTIONS.deals.includes(a)));
+  c('the admin editor labels them', 'stock.tracking' in PERMS.PERM_ACTION_LABELS && 'deals.payments' in PERMS.PERM_ACTION_LABELS);
   // A permission nobody can spend is a toggle that lies about what it does.
-  c('the register\'s permission went with it', !/stock\.units/.test(PORTAL));
+  c('the register\'s permission went with it', !PERMS.PERM_ACTIONS.stock.includes('units') && !/stock\.units/.test(PORTAL));
   // Cost and supplier routes must not arrive switched on for the whole team the
   // day this deploys, the way `browse` was careful not to.
   c('tracking is never inherited',
-    /PERM_ACTION_NEVER_INHERIT[\s\S]*?'stock\.tracking'\]/.test(PORTAL));
+    PERMS.PERM_ACTION_NEVER_INHERIT.has('stock.tracking') && permsOf({ stock: true }).stockActions.tracking === false
+    && permsOf({ stock: true, stockActions: { view: true } }).stockActions.tracking === false);
   c('payments follow the Sales tab an employee already had',
-    /'deals\.payments': acts => acts\.sales === true/.test(PORTAL));
+    permsOf({ deals: true, dealsActions: { view: true, sales: true } }).dealsActions.payments === true
+    && permsOf({ deals: true, dealsActions: { view: true } }).dealsActions.payments === false);
 }
 
 // ── The vocabulary exists once on each side, and they agree ─────────────────

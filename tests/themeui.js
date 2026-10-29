@@ -32,7 +32,7 @@ db.install();
   const forgetPrefs = () => { const t = db.tables.quotation_settings; for (let i = t.length - 1; i >= 0; i--) if (String(t[i].key).startsWith('ui_prefs:')) t.splice(i, 1); };
   const reset = async () => { forgetPrefs(); return save({ reset: true }); };
 
-  const browser = await puppeteer.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: 'new', args: ['--no-sandbox'] });
+  const browser = await puppeteer.launch({ executablePath: require('./helpers/browser').chromePath(), headless: 'new', args: ['--no-sandbox'] });
   const errors = [];
   // A page in a context of its own (so its storage is its own), signed in or not, with whatever
   // the browser had stored before the page ran.

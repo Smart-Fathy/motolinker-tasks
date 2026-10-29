@@ -20,10 +20,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 // Use the sandbox's Chrome when puppeteer has none of its own (read once, at load).
-if (!process.env.PUPPETEER_EXECUTABLE_PATH && !fs.existsSync(path.join(process.env.HOME || '/root', '.cache', 'puppeteer', 'chrome'))) {
-  const exe = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
-  if (fs.existsSync(exe)) process.env.PUPPETEER_EXECUTABLE_PATH = exe;
-}
+require('./helpers/browser').pointPuppeteerAtChrome();
 const puppeteer = require('puppeteer');
 const { buildQuotationHtml, quotationModel } = require('../src/lib/docs/quotation');
 const { renderPdf } = require('../src/lib/docs/render');

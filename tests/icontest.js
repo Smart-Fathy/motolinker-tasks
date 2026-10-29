@@ -50,7 +50,7 @@ const check = (name, ok, extra) => { results.push(ok); console.log((ok ? '  ok  
 (async () => {
   const server = http.createServer((_q, s) => { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(PAGE); });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
-  const browser = await puppeteer.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: 'new', args: ['--no-sandbox'] });
+  const browser = await puppeteer.launch({ executablePath: require('./helpers/browser').chromePath(), headless: 'new', args: ['--no-sandbox'] });
   const page = await browser.newPage();
   const errs = [];
   page.on('pageerror', e => errs.push(String(e)));

@@ -43,16 +43,8 @@ if (flag('list')) {
 
 // Use puppeteer's own Chrome when it has one; otherwise a Playwright-installed one.
 function pointAtChrome() {
-  if (process.env.PUPPETEER_EXECUTABLE_PATH) return;
   // Decided before puppeteer is required: it reads its configuration once, at load.
-  const cache = process.env.PUPPETEER_CACHE_DIR || path.join(require('os').homedir(), '.cache', 'puppeteer');
-  if (fs.existsSync(path.join(cache, 'chrome'))) return;
-  const root = '/opt/pw-browsers';
-  if (!fs.existsSync(root)) return;
-  for (const d of fs.readdirSync(root).filter(n => /^chromium-\d+$/.test(n)).sort().reverse()) {
-    const exe = path.join(root, d, 'chrome-linux', 'chrome');
-    if (fs.existsSync(exe)) { process.env.PUPPETEER_EXECUTABLE_PATH = exe; return; }
-  }
+  require('../tests/helpers/browser').pointPuppeteerAtChrome();
 }
 
 const have = cmd => spawnSync('which', [cmd]).status === 0;

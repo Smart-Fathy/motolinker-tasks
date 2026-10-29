@@ -76,7 +76,7 @@ async function openPortal(browser, { route, file, tokenKey, port }) {
   const srv = http.createServer((_q, s) => { s.writeHead(404); s.end(); });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const port = srv.address().port;
-  const browser = await puppeteer.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: 'new', args: ['--no-sandbox'] });
+  const browser = await puppeteer.launch({ executablePath: require('./helpers/browser').chromePath(), headless: 'new', args: ['--no-sandbox'] });
 
   // ── 1. The purchase-order PDF, in BOTH portals ────────────────────────────
   // It is the same shared module either side; only the admin shipped the modal

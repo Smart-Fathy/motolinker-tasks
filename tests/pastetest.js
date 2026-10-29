@@ -154,7 +154,7 @@ async function runPortal(browser, o) {
   const srv = http.createServer((_q, s) => { s.writeHead(404); s.end(); });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const port = srv.address().port;
-  const browser = await puppeteer.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  const browser = await puppeteer.launch({ executablePath: require('./helpers/browser').chromePath(),
     headless: 'new', args: ['--no-sandbox'] });
 
   await runPortal(browser, {
