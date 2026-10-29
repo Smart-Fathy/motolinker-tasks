@@ -37,6 +37,16 @@ the new server code (`contracts`, `actor`, `permstest`, the route inventory and 
 Node 22.x — the major these suites run on, and the one CI reads from `package.json` — behind a healthcheck
 (see the README, "How production is built").
 
+## On a hosted runner
+
+The first GitHub Actions run of the suite (the Run 1 merge; `ubuntu-24.04`, Node 22.23.4) took 14 min 44 s
+and passed 85 of 86 suites. The one that differed was `themeaudit`. The dev image cannot reach
+`cdnjs.cloudflare.com`, so Leaflet (loaded lazily on the stock Tracking page) had never rendered in a
+local run; on the runner it did, and the audit judged its attribution control against map tiles it cannot
+see. The audit now refuses every request that is not to the page's own server, so it sees the same page
+on every machine. Whether that attribution text is readable enough on the real map is a separate, open
+question about third-party chrome.
+
 ## When a suite goes red
 
 The runner prints the last line of each suite, which is rarely the line that says what went wrong; the
