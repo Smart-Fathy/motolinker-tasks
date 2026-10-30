@@ -156,6 +156,8 @@ describe('the queue', () => {
     first.unmount();
     s.mount();
     await waitFor(() => expect(s.asked('/api/v1/issues')).toBe(2));
+    // (asked is not answered: the refusal has to have been taken before there is anything to say it did not spoil)
+    await waitFor(() => expect(s.client.getQueryState(s.key)?.status).toBe('error'));
     expect(s.issues().items).toHaveLength(1);
     expect(s.issues().error).toBeNull();
   });
@@ -282,6 +284,27 @@ describe('the replies on a ticket', () => {
     expect(out).toEqual({ ok: true, value: undefined });
     expect(s.api.post).toHaveBeenCalledWith('/api/v1/issues/4/comments', { body: 'On it.' });
     await waitFor(() => expect(s.asked('/api/v1/issues/4/comments')).toBe(2));
+  });
+
+  it('keep the replies they have when asking again fails', async () => {
+    let calls = 0;
+    const s = setup({
+      get: async (p: string) => {
+        if (p === '/api/v1/issues') return { items: [] };
+        if (++calls > 1) throw new ApiError(503, 'down');
+        return { items: [reply(1)] };
+      },
+    });
+    const first = s.mount(4);
+    await waitFor(() => expect(s.comments().items).toHaveLength(1));
+    first.unmount();
+    s.mount(4);
+    await waitFor(() => expect(s.asked('/api/v1/issues/4/comments')).toBe(2));
+    await waitFor(() =>
+      expect(s.client.getQueryState(commentsKey(adminMe().actor.key, 4))?.status).toBe('error'),
+    );
+    expect(s.comments().items).toHaveLength(1);
+    expect(s.comments().error).toBeNull();
   });
 
   it('say why when the server would not take the reply, and are not asked for again', async () => {

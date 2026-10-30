@@ -15,7 +15,7 @@ src/modules/<id>/
 ```
 
 A resource the two classic portals each had a route for becomes one service, and the classic routes become thin
-adapters over it that answer exactly what they always answered (`src/routes/notif-streams.js` is the example). Before
+adapters over it that answer exactly what they always answered (`src/routes/notif-streams.js` is the example; `src/routes/submissions.js` and the Issues routes in `index.js` are the others). Before
 that move, `tests/<id>.js` records what the classic routes do — rows, order, queries, what a failing database
 answers — and it must pass unchanged after it. `/api/v1` is stricter than the classic routes were (a body that is not
 what the contract says is a 400, a database that is down is a 503), because the new app needs to tell "nothing" from
