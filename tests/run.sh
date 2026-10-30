@@ -97,6 +97,9 @@ run shards       node tests/shards.js
 run spashell     node tests/spashell.js
 run webunit      node tools/run-web-tests.js
 run signinparity node tests/signinparity.js
+run shellparity  node tests/shellparity.js
+run webshell     node tests/webshell.js
+run galleryaudit node tests/galleryaudit.js
 run webauth      node tests/webauth.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js

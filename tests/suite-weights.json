@@ -48,6 +48,9 @@
     "spashell": 2,
     "webunit": 4,
     "signinparity": 18,
+    "shellparity": 20,
+    "webshell": 25,
+    "galleryaudit": 20,
     "webauth": 18
   }
 }
