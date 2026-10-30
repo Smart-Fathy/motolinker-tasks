@@ -21,11 +21,13 @@ src/legacy/         a screen that has not moved, shown as its classic page in a 
                     protocol with the page), frameable.ts (the screens a frame cannot hold)
 src/sw/             the service worker: sw.ts (wiring), logic.ts (every decision, testable), shared.ts (what the
                     worker and the pages agree on); built to dist/sw.js by sw-plugin.ts
-src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues
+src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues, meet, calendar
 src/auth/           the sign-in: SignIn.tsx (which step, and what carries between them) and a component per
                     step: PasswordStep, CodeStep (second step), ForgotStep, ResetStep; copy.ts holds every
                     line they say
-src/ui/             the design primitives: Button, Field, Alert, AuthLayout (CSS Modules, in the `ui` layer)
+src/ui/             the design primitives: Button, Field, Alert, AuthLayout, Modal (the team's dialog), Sheet (the shared
+                    dialog both portals open their forms in), Btn (the in-page button), BrandSelect (the dropdown), ToastHost
+                    (CSS Modules, in the `ui` layer)
 src/gallery/        <portal>/__gallery: the primitives, the frame and the colours under any look (lazy chunk)
 src/lib/            env.ts (what the server tells the page: window.__ML__ — the portal, the workspace's name
                     and its replaced wording), session.ts (the token, under the classic portals' own keys),
@@ -303,6 +305,30 @@ shell does not remember it as the admin's last page, and `classicUrlFor` sends i
 - **Links** to a ticket's file open only where a browser should follow them (`fileHref`).
 - Tests: `model.test.ts`, `data.test.tsx`, `issues.test.tsx`, `report.test.tsx`, `ui/Modal.test.tsx`; `tests/issparity.js` (look),
   `tests/webissues.js` (the real thing), `tests/issues.js` (the routes).
+
+## Meet and Calendar
+
+The meetings scheduled with the team and the company's calendar (`src/modules/meetings` and `src/modules/calendar` on the server;
+row by row, `docs/parity/meet.md` and `docs/parity/calendar.md`). Both portals have both pages.
+
+- **Meet** (`modules/meet`): the two cards, the upcoming meetings (`GET /api/v1/meetings`, read each time the screen opens), and the
+  sheet that schedules, changes and cancels them (`POST`, `PUT`, `DELETE`). Whoever has `meet.schedule` has the buttons; a person
+  without `meet.view` gets the cards and no list, and the app does not ask for one. `useScheduling()` is what the Calendar uses too:
+  `open(meeting | null, { date })` asks for the people to invite and the chat rooms to hold a huddle in (the classic routes: there are
+  no v1 routes for them yet), then opens the sheet. A meeting stored, changed or cancelled drops every calendar window
+  (`['calendar', actor.key, …]`) as well as the list (`['meetings', actor.key, …]`), so the Calendar is right without a reload.
+- **Calendar** (`modules/calendar`): a month or a week (`GET /api/v1/calendar?from=&to=`; the window last had stays on show, as
+  `placeholderData`, while the next is on its way), the legend, the grid with the first three things on a day and "+N more", the
+  day's sheet and a meeting's. A task goes to Tasks and a follow-up to Leads. The admin's page also shows whether new tasks are being
+  added to a Google Calendar (`/api/calendar/status`, `disconnect`, and `connect` which leaves the app, carrying the session in the
+  address). A page that pads itself says so with `data-flush`, and the shell then does not pad it.
+- **Sheet, Btn, BrandSelect** (`ui/`): the shared dialog of the classic portals, their in-page button, and their dropdown (a button
+  and a floating panel, which the classic pages make by swapping every `<select>` at run time). `useDialog` is the focus handling
+  `Modal` and `Sheet` share. The dropdown's Escape closes the dropdown and not the dialog it is in; an option that cannot be
+  chosen is not chosen.
+- Tests: `meet/model.test.ts` and `calendar/model.test.ts` (the guards held to the schemas in contracts), `meet.test.tsx`,
+  `calendar.test.tsx`, `ui/Sheet.test.tsx`, `ui/BrandSelect.test.tsx`; `tests/meetparity.js` and `tests/calparity.js` (look),
+  `tests/webmeet.js` (the real thing), `tests/meetings.js` and `tests/calendar.js` (the routes).
 
 ## The gallery
 

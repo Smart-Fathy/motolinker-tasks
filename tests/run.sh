@@ -115,6 +115,7 @@ run webframe     node tests/webframe.js
 run webpwa       node tests/webpwa.js
 run webnotifs    node tests/webnotifs.js
 run webissues    node tests/webissues.js
+run webmeet      node tests/webmeet.js
 run webauth      node tests/webauth.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js

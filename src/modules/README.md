@@ -15,11 +15,16 @@ src/modules/<id>/
 ```
 
 A resource the two classic portals each had a route for becomes one service, and the classic routes become thin
-adapters over it that answer exactly what they always answered (`src/routes/notif-streams.js` is the example; `src/routes/submissions.js` and the Issues routes in `index.js` are the others). Before
+adapters over it that answer exactly what they always answered (`src/routes/notif-streams.js` is the example; `src/routes/submissions.js`, `src/routes/meetings.js`, `src/routes/calendar-feed.js` and the Issues routes in `index.js` are the others). Before
 that move, `tests/<id>.js` records what the classic routes do — rows, order, queries, what a failing database
 answers — and it must pass unchanged after it. `/api/v1` is stricter than the classic routes were (a body that is not
 what the contract says is a 400, a database that is down is a 503), because the new app needs to tell "nothing" from
 "could not ask".
+
+Two of the modules show how far this goes. `meetings` does work behind its answer: the service returns `{ meeting, behind }`,
+the route answers and then starts `behind()` (the Google Calendar writes and the notifications), so scheduling never waits for
+Google and a test can wait for it. `calendar` has one method, `feed(actor, query, { strict })`: the classic routes ask leniently
+(a source the database cannot read is an empty source, as ever), `/api/v1` asks strictly and says which source could not be read.
 
 This code is type-checked through JSDoc (`tsc -p src/modules`), linted and formatted with the rest of the new code;
 `tests/actor.js` crosses every route here with every kind of actor.

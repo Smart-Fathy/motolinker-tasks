@@ -66,6 +66,7 @@
     "webpwa": 24,
     "webnotifs": 32,
     "webissues": 20,
+    "webmeet": 40,
     "webauth": 19,
     "routes": 4,
     "ssetest": 2,

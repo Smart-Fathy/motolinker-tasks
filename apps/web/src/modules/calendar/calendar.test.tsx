@@ -374,6 +374,20 @@ describe.each(['admin', 'team'] as const)('the Calendar, in the %s portal', port
     expect(document.querySelectorAll('[data-part=chip]')).toHaveLength(0);
   });
 
+  it('keeps what the last window held on show for the days it shares with the next, while the next is on its way', async () => {
+    const user = userEvent.setup({ delay: null });
+    const wait = deferred<void>();
+    boot(portal, world(), { slow: { '2026-10-11&to=2026-10-17': wait.promise } });
+    await waitFor(() => expect(chipsIn(dayOf('2026-10-14')).length).toBe(3));
+    await user.click(screen.getByRole('button', { name: 'Week' }));
+    expect(await screen.findByText('Loading…')).toBeTruthy();
+    expect(days()).toHaveLength(7);
+    expect(chipsIn(dayOf('2026-10-14'))).toHaveLength(3);
+    wait.resolve();
+    await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+    expect(chipsIn(dayOf('2026-10-14'))).toHaveLength(3);
+  });
+
   it('shows the loader while a window is on its way, and the days of the last one stay on show until it comes', async () => {
     const user = userEvent.setup({ delay: null });
     const wait = deferred<void>();
@@ -384,6 +398,26 @@ describe.each(['admin', 'team'] as const)('the Calendar, in the %s portal', port
     expect(await screen.findByText('Loading…')).toBeTruthy();
     wait.resolve();
     await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+  });
+});
+
+describe('where a task and a follow-up go', () => {
+  const active = () =>
+    document.querySelector('[data-part=itemActive]')?.getAttribute('data-screen');
+
+  it('a task goes to Tasks, and a follow-up to Leads, where they are kept', async () => {
+    const user = userEvent.setup({ delay: null });
+    boot('admin', world());
+    await waitFor(() => expect(chipsIn(dayOf('2026-10-14')).length).toBe(3));
+    const kind = (k: string) =>
+      chipsIn(dayOf('2026-10-14')).find(c => c.getAttribute('data-kind') === k)!;
+    await user.click(kind('followup'));
+    await waitFor(() => expect(active()).toBe('leads'));
+    cleanup();
+    boot('admin', world());
+    await waitFor(() => expect(chipsIn(dayOf('2026-10-14')).length).toBe(3));
+    await user.click(kind('task'));
+    await waitFor(() => expect(active()).toBe('tasks'));
   });
 });
 
