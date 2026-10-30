@@ -1,6 +1,8 @@
 # Prettier formats only the code that is written to the new standard. The legacy portals,
 # the legacy server files and the tests are left exactly as they are until each is migrated
 # (see README: "Repository layout"); they are removed from this list as they move.
+# the template the server dresses: its head has to stay as the classic pages have it, exact text (tests/spashell.js)
+apps/web/index.html
 node_modules
 dist
 coverage

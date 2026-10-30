@@ -1,5 +1,5 @@
 # Every push to main and every pull request runs these jobs:
-#   static       lint, format, type-check and the build (the build is a no-op until apps/web exists)
+#   static       lint, format, type-check and the build (the web app: a type-check, then Vite)
 #   suite-shard  the suites of tests/run.sh, split over 5 machines that run side by side. The suites use fixed
 #                ports, so they can only be parallel across machines; `--shard I/N` deals them out by the
 #                seconds in tests/suite-weights.json (tools/shard-plan.js), and tests/shards.js fails if a suite
