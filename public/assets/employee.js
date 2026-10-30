@@ -4549,12 +4549,18 @@ function dismissInstallBanner() {
 }
 
 // ── PWA: iOS add-to-home-screen hint ──────────────────────────────────────
+// The hint's markup is at the end of <body>, after this script, so it is not in the DOM yet when this
+// runs: it is looked up when the timer fires.
 (function iosInstallHint() {
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   if (!isIOS || window.navigator.standalone === true) return;
+  // Inside the new app's frame (?embed=1) the new app is the page, so this is not the page to hint.
+  if (document.documentElement.hasAttribute('data-embed')) return;
   if (localStorage.getItem('iosHintDismissed')) return;
-  const hint = document.getElementById('pwa-ios-hint');
-  if (hint) setTimeout(() => { hint.style.display = 'flex'; }, 2500);
+  setTimeout(() => {
+    const hint = document.getElementById('pwa-ios-hint');
+    if (hint) hint.style.display = 'flex';
+  }, 2500);
 })();
 
 function dismissIOSHint() {

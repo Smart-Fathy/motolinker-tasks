@@ -65,6 +65,7 @@ function api(pathname) {
 async function openPortal(browser, o) {
   const page = await browser.newPage();
   await page.setViewport(VIEWPORT);
+  if (o.userAgent) await page.setUserAgent({ userAgent: o.userAgent });
   const errs = [];
   page.on('pageerror', e => errs.push(String(e)));
   await page.setRequestInterception(true);
@@ -87,7 +88,10 @@ async function openPortal(browser, o) {
     localStorage.setItem(k, 'T');
     window.lucide = { createIcons() {} };
   }, o.tokenKey);
+  // What a case needs in place before the page's own scripts run (see iosHint).
+  if (o.beforeLoad) await page.evaluateOnNewDocument(o.beforeLoad, o.beforeLoadArg);
   await page.goto('http://127.0.0.1:' + o.port + o.route, { waitUntil: 'domcontentloaded' });
+  if (o.loadOnly) return { page, errs };   // the caller does its own waiting
   await sleep(500);
   await page.evaluate(o.bootstrap);
   await sleep(700);
@@ -161,6 +165,90 @@ const MEASURE = `(() => {
     tiny: [...new Set(tiny)].slice(0, 6), tinyCount: tiny.length,
   };
 })()`;
+
+// ── The iOS "Add to Home Screen" hint ──
+// iOS Safari has no install prompt, so each portal puts up a hint of its own 2.5s after load: on an
+// iPhone, in a browser tab, until it has been dismissed. Its markup is the last thing in <body>, after
+// the scripts, so a script that looked it up while it ran found nothing and the hint never showed on
+// either portal — and no other check could notice, since it only exists for an iOS user agent.
+const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 '
+  + '(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+
+// Runs in the page before any of its own scripts: what makes a page this case.
+const IOS_CASE = ({ standalone, dismissKey, framed }) => {
+  if (standalone !== undefined) {
+    Object.defineProperty(navigator, 'standalone', { get: () => standalone, configurable: true });
+  }
+  if (dismissKey) localStorage.setItem(dismissKey, '1');
+  if (framed) {
+    // A classic page the new app frames (?embed=1) carries data-embed on <html>. <html> is not there yet
+    // when this runs, so the attribute goes on as soon as it is — still ahead of every script of the page.
+    const mark = () => document.documentElement.setAttribute('data-embed', '');
+    if (document.documentElement) mark();
+    else new MutationObserver((_m, ob) => { if (document.documentElement) { ob.disconnect(); mark(); } })
+      .observe(document, { childList: true });
+  }
+};
+
+const HINT_NOW = () => {
+  const el = document.getElementById('pwa-ios-hint');
+  if (!el) return { present: false };
+  const r = el.getBoundingClientRect();
+  return { present: true, display: getComputedStyle(el).display,
+           box: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)],
+           screen: [innerWidth, innerHeight] };
+};
+// Shown means on the screen, not merely not display:none.
+const hintShown = s => s.present && s.display === 'flex' && s.box[2] > s.box[0] && s.box[3] > s.box[1]
+  && s.box[0] >= 0 && s.box[1] >= 0 && s.box[2] <= s.screen[0] && s.box[3] <= s.screen[1];
+// Hidden is there and off; a hint that has gone from the page would pass for anything.
+const hintHidden = s => s.present && s.display === 'none';
+
+async function iosHint(browser, o) {
+  const t = (n, ok, x) => check(o.label + ': ' + n, ok, x);
+  const CASES = {
+    safari:     { userAgent: IPHONE, standalone: false },
+    dismissed:  { userAgent: IPHONE, standalone: false, dismissKey: o.iosKey },
+    standalone: { userAgent: IPHONE, standalone: true },
+    framed:     { userAgent: IPHONE, standalone: false, framed: true },
+    desktop:    {},   // the browser's own user agent: not iOS
+  };
+  // A browser context apiece: localStorage is shared by every page of an origin within one, so the
+  // dismissed case would dismiss the hint for all the others.
+  const ctxs = [], pages = {}, seen = {};
+  try {
+    await Promise.all(Object.entries(CASES).map(async ([name, { userAgent, ...arg }]) => {
+      const ctx = await browser.createBrowserContext();
+      ctxs.push(ctx);
+      pages[name] = (await openPortal(ctx, {
+        ...o, userAgent, beforeLoad: IOS_CASE, beforeLoadArg: arg, loadOnly: true,
+      })).page;
+    }));
+    // The hint's timer was set while the page loaded. This one is set after it and runs longer, so it
+    // fires after it: what is read then is what the hint did, however busy the machine was.
+    await Promise.all(Object.entries(pages).map(async ([name, page]) => {
+      await page.evaluate(() => new Promise(r => setTimeout(r, 3000)));
+      seen[name] = await page.evaluate(HINT_NOW);
+    }));
+
+    // Dismissing it by hand: it goes, and the next visit is told, under the key the page reads.
+    let tapped = { note: 'the hint was not shown, so there was nothing to tap' };
+    if (hintShown(seen.safari)) {
+      await pages.safari.tap('#pwa-ios-hint button');
+      tapped = { ...(await pages.safari.evaluate(HINT_NOW)),
+                 stored: await pages.safari.evaluate(k => localStorage.getItem(k), o.iosKey) };
+    }
+
+    t('the Add-to-Home-Screen hint shows on an iPhone in a browser tab', hintShown(seen.safari), JSON.stringify(seen.safari));
+    t(`tapping its × hides it and remembers that (${o.iosKey})`, hintHidden(tapped) && tapped.stored === '1', JSON.stringify(tapped));
+    t('…and it stays away once dismissed', hintHidden(seen.dismissed), JSON.stringify(seen.dismissed));
+    t('…and when the portal was opened from the Home Screen', hintHidden(seen.standalone), JSON.stringify(seen.standalone));
+    t('…and inside the new app\'s frame', hintHidden(seen.framed), JSON.stringify(seen.framed));
+    t('…and in a browser that is not iOS', hintHidden(seen.desktop), JSON.stringify(seen.desktop));
+  } finally {
+    await Promise.all(ctxs.map(c => c.close()));
+  }
+}
 
 async function sweep(browser, o) {
   const { page, errs } = await openPortal(browser, o);
@@ -363,6 +451,7 @@ async function sweep(browser, o) {
 
   t('no page errors while sweeping', !errs.length, errs.slice(0, 2).join(' | '));
   await page.close();
+  await iosHint(browser, o);
   return bad;
 }
 
@@ -375,6 +464,7 @@ async function sweep(browser, o) {
 
   await sweep(browser, {
     label: 'admin', port, route: '/dashboard', file: 'public/dashboard.html', tokenKey: 'ml_admin_token',
+    iosKey: 'iosAdminHintDismissed',
     bootstrap: () => {},
     tablePages: ['tasks', 'employees', 'requests', 'submissions', 'hours', 'customers',
                  'contracts', 'purchaseorders', 'rfqs', 'suppliers', 'drive', 'sheets'],
@@ -389,6 +479,7 @@ async function sweep(browser, o) {
 
   await sweep(browser, {
     label: 'team', port, route: '/employee', file: 'public/employee.html', tokenKey: 'ml_emp_token',
+    iosKey: 'iosHintDismissed',
     bootstrap: () => {
       window.empInfo = { id: 2, name: 'Sara' };
       // Every section on. A section that is off bounces its page to Home, and the sweep would
