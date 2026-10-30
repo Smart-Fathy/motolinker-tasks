@@ -865,11 +865,13 @@ What exists so far, all of it invisible to users:
   list, so none is skipped by accident.
 - **Tooling and CI** — see "Tests" above; `tools/parity/shoot-legacy.js` photographs all 52 pages of
   the legacy portals (light and dark, desktop and phone) as the baseline the new app is compared with.
-- **`apps/web`, the new app's foundation** — a Vite + React 19 + TypeScript workspace, built by
-  `npm run build` and served by this server. For now it opens in the workspace's look from the first paint
-  (the same code that dresses the classic pages dresses its page), uses the session the classic portal
-  keeps (same token keys), asks `GET /api/v1/me` who you are and says so; it has no modules yet. Nobody
-  gets it unless they ask: see below.
+- **`apps/web`, the new app** — a Vite + React 19 + TypeScript workspace, built by `npm run build` and
+  served by this server. It opens in the workspace's look from the first paint (the same code that dresses
+  the classic pages dresses its page), **signs people in** — both portals' password step, the second step
+  (authenticator code or recovery code), the team's forgot-password and reset-from-the-email forms, Google's
+  return, sign-out — with the classic portals' own screens, words and look, uses the session the classic
+  portal keeps (same token keys, so a sign-in on either is a sign-in on both), asks `GET /api/v1/me` who you
+  are and says so; it has no modules yet. Nobody gets it unless they ask: see below.
 
 #### Looking at the new app
 
@@ -877,9 +879,9 @@ Everybody gets the classic portals. A browser asks for the new app by opening th
 `?ui=next`: `/dashboard?ui=next` (admin) or `/employee?ui=next` (team). The server remembers the answer in
 a cookie (`ml_ui`, a year, this browser only), so it stays until the browser asks again with
 `?ui=legacy` — which is also the link in the new app's footer. The classic page is always available at
-`/legacy/dashboard` and `/legacy/employee`, whatever the switch says, and the new app has no sign-in
-screen yet: sign in on the classic portal (same browser) and come back. `?safe=1` still means the
-original look. Anything that stops the new app being sent — no build, a page that cannot be dressed — sends
+`/legacy/dashboard` and `/legacy/employee`, whatever the switch says. The new app signs people in itself
+(a session started in either portal is a session in the other, in the same browser). `?safe=1` still
+means the original look, and the original wording. Anything that stops the new app being sent — no build, a page that cannot be dressed — sends
 the classic page instead, so the switch cannot leave a page that does not open.
 
 To change what a browser that has asked for nothing gets (staging, a pilot), set `ML_UI_DEFAULT` to `next`
@@ -889,7 +891,9 @@ new app, which cannot open a chat yet: `?ui=legacy` is the way back.
 
 Working on it: `npm run dev -w apps/web` serves it on its own (the API is proxied to a server on port
 3000), `npm run test:web` runs its unit tests, `npm run build` builds it, `tests/spashell.js` builds it and
-checks the server half. Details in `apps/web/README.md`.
+checks the server half, `tests/signinparity.js` holds its sign-in screens to the classic pages' look value by
+value, and `tests/webauth.js` signs in through the real server in a real browser. Details in
+`apps/web/README.md`.
 
 Rules for new server code: it goes in `src/http` or `src/modules` (linted, formatted, type-checked
 through JSDoc), takes its dependencies explicitly rather than through `ctx`, asks `can(actor, 'x.y')` /
