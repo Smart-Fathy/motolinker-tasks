@@ -141,6 +141,15 @@ require('nodemailer').createTransport = () => ({ sendMail: async m => { mails.pu
   const signInWith = async (page, name, pw) => { await type(page, 'input[name=username]', name); await type(page, 'input[name=password]', pw); await submit(page, 'password'); };
   const heading = page => waitFor(page, 'h1, h2', /./).then(() => page.$eval('h1', e => e.textContent).catch(() => null));
   const signedInAs = (page, who) => waitFor(page, 'h2', 'Signed in as ' + who);
+  // Signing out from inside the frame: the admin's button is in the sidebar's footer; the team's is in the account menu
+  // behind their initials. (Clicked from the page, so it works whatever width the page was opened at.)
+  const signOut = async page => {
+    await page.waitForSelector('[data-part=signOut], [data-part=profileBtn]', { timeout: 15000 });
+    if (await page.$('[data-part=signOut]')) return page.evaluate(() => document.querySelector('[data-part=signOut]').click());
+    await page.evaluate(() => document.querySelector('[data-part=profileBtn]').click());
+    await page.waitForSelector('[data-part=profileMenu]', { timeout: 8000 });
+    return page.evaluate(() => [...document.querySelectorAll('[data-part=profileMenu] button')].find(b => /sign out/i.test(b.textContent)).click());
+  };
   const alertText = (page, ms) => waitFor(page, '[role=alert]', /./, ms);
   const sessionsOf = id => T.sessions.filter(s => s.kind === 'employee' && s.payload && s.payload.id === id).length;
 
@@ -166,7 +175,7 @@ require('nodemailer').createTransport = () => ({ sendMail: async m => { mails.pu
     await page.close();
     page = await p.open('/dashboard');
     await signedInAs(page, 'Admin');
-    await page.click('button.secondary');
+    await signOut(page);
     c('signing out shows the sign-in again', (await heading(page)) === 'Admin Access' && (await token(page, 'ml_admin_token')) === null);
     c('…and the server ended the session, rather than only forgetting it here', (await status('/api/auth/check', adminToken)) === 401);
     await p.close();
@@ -198,7 +207,7 @@ require('nodemailer').createTransport = () => ({ sendMail: async m => { mails.pu
     await page.close();
     page = await p.open('/employee');
     await signedInAs(page, 'Sara');
-    await page.click('button.secondary');
+    await signOut(page);
     c('signing out shows the sign-in, and ends the session at the server', (await heading(page)) === 'Team Portal' && (await token(page, 'ml_emp_token')) === null && (await status('/api/employee/check', saraToken)) === 401);
     await p.close();
   }
@@ -228,7 +237,7 @@ require('nodemailer').createTransport = () => ({ sendMail: async m => { mails.pu
     await type(page, 'input[name=code]', code()); await submit(page, 'code');
     c('the right code signs in', (await signedInAs(page, 'Omar')) !== null && !!(await token(page, 'ml_emp_token')));
     c('…the server records that a second factor was used', T.sessions.some(s => s.payload && s.payload.id === 3 && s.payload.method === 'password+2fa'));
-    await page.click('button.secondary');
+    await signOut(page);
     await heading(page);
 
     // a recovery code, once
@@ -238,7 +247,7 @@ require('nodemailer').createTransport = () => ({ sendMail: async m => { mails.pu
     c('"Use a recovery code instead" changes the label, the keyboard and the example', (await text(page, '[data-step=code] label')) === 'Recovery code' && (await page.$eval('input[name=code]', e => e.getAttribute('inputmode') + '|' + e.placeholder)) === 'text|xxxxx-xxxxx');
     await type(page, 'input[name=code]', recovery[0]); await submit(page, 'code');
     c('a recovery code signs in', (await signedInAs(page, 'Omar')) !== null);
-    await page.click('button.secondary');
+    await signOut(page);
     await heading(page);
     await signInWith(page, 'omar', 'omar-password-1');
     await waitFor(page, 'h2', 'Two-step verification');
