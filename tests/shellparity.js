@@ -159,7 +159,7 @@ const railWidths = who => WIDTHS.filter(w => w >= COLLAPSES_FROM[who]);
         await page.setViewport({ width, height: 800 });
         await settle(page);
         const key = `${p.who}/${look}/${mode}/${width}/collapsed`;
-        const rail = await readRoles(page, side, railRoles(p.who));
+        const rail = await readRoles(page, railRoles(p.who), side);
         // The classic rail is what the new one is held to: if it were not collapsed, nothing would be being compared with a collapsed rail.
         if (side === 'classic' && rail.sidebar?._w !== 64) throw new Error(`${key}: the classic rail is ${rail.sidebar?._w}px wide, not collapsed`);
         (observed[key] = observed[key] || {})[side] = rail;
@@ -175,6 +175,7 @@ const railWidths = who => WIDTHS.filter(w => w >= COLLAPSES_FROM[who]);
   for (const [key, sides] of Object.entries(observed)) {
     const { classic, next } = sides;
     if (!classic || !next) continue;
+    if (key.endsWith('/collapsed')) rails++;
     const { n, bad } = diff(classic, next, ACCEPTED, stale);
     compared += n;
     check(`${key}: ${n} values are the classic page's`, bad.length === 0, PRINT ? '\n      ' + bad.join('\n      ') : bad.slice(0, 4).join(' | ') + (bad.length > 4 ? ` … and ${bad.length - 4} more` : ''));
