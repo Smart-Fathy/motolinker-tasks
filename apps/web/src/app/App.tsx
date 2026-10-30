@@ -1,8 +1,12 @@
-import { classicUrl, readEnv, switchToClassicUrl, type MlEnv } from '../lib/env';
+import { useMemo, useState } from 'react';
+import { SignIn } from '../auth/SignIn';
 import type { Me } from '../lib/api';
+import type { Arrival } from '../lib/arrival';
+import { makeAuthApi, type AuthApi } from '../lib/auth-api';
+import { classicUrl, readEnv, switchToClassicUrl, type MlEnv } from '../lib/env';
 import { useMe, type UseMeDeps } from './useMe';
 
-function Who({ me, env }: { me: Me; env: MlEnv }) {
+function Who({ me, env, onSignOut }: { me: Me; env: MlEnv; onSignOut: () => void }) {
   const { actor, caps, sections, workspace } = me;
   return (
     <>
@@ -31,6 +35,9 @@ function Who({ me, env }: { me: Me; env: MlEnv }) {
         <a className="btn" href={classicUrl(env.portal)}>
           Open the classic portal
         </a>
+        <button type="button" className="btn secondary" onClick={onSignOut}>
+          Sign out
+        </button>
       </div>
       <p className="muted">
         The modules are still in the classic portal; they move here one at a time.
@@ -39,9 +46,46 @@ function Who({ me, env }: { me: Me; env: MlEnv }) {
   );
 }
 
-/** The foundation: it opens with the workspace's look, finds out who you are, and says so. Modules come next. */
-export function App({ env = readEnv(), deps }: { env?: MlEnv; deps?: UseMeDeps }) {
-  const { state, retry } = useMe(env.portal, deps);
+export interface AppProps {
+  env?: MlEnv;
+  /** what the page was opened for (Google's return, a reset link), read once at start-up */
+  arrival?: Arrival | undefined;
+  deps?: UseMeDeps;
+  /** for tests; the portal's own sign-in routes otherwise */
+  api?: AuthApi;
+}
+
+/**
+ * The foundation: it opens with the workspace's look and asks who you are. Nobody yet — the sign-in screens, with
+ * everything the classic portal's has; somebody — who, and a way out. The modules come next.
+ */
+export function App({ env = readEnv(), arrival, deps, api }: AppProps) {
+  const calls = useMemo(
+    () => api ?? makeAuthApi(env.portal, deps?.fetchImpl),
+    [api, env.portal, deps?.fetchImpl],
+  );
+  const { state, retry, signedIn, signOut } = useMe(env.portal, {
+    ...deps,
+    initialToken: arrival?.token,
+  });
+  // What the page was opened for belongs to the first sign-in screen only: once somebody has signed in, or out, the
+  // challenge or reset link it carried is spent, and the next sign-in screen starts from the password.
+  const [opened, setOpened] = useState<Arrival>(arrival ?? {});
+
+  if (state.phase === 'signed-out') {
+    return (
+      <SignIn
+        env={env}
+        arrival={opened}
+        api={calls}
+        onSignedIn={token => {
+          setOpened({});
+          signedIn(token);
+        }}
+      />
+    );
+  }
+
   return (
     <main className="page">
       <header className="header">
@@ -54,21 +98,16 @@ export function App({ env = readEnv(), deps }: { env?: MlEnv; deps?: UseMeDeps }
       <section className="card" aria-live="polite">
         {state.phase === 'loading' && <p role="status">Checking your session…</p>}
 
-        {state.phase === 'signed-out' && (
-          <>
-            <h2>You are not signed in here yet</h2>
-            <p>
-              Sign in on the classic portal, then come back to this page: your session carries over.
-            </p>
-            <div className="actions">
-              <a className="btn" href={classicUrl(env.portal)}>
-                Open the classic portal
-              </a>
-            </div>
-          </>
+        {state.phase === 'signed-in' && (
+          <Who
+            me={state.me}
+            env={env}
+            onSignOut={() => {
+              setOpened({});
+              signOut(ending => void calls.signOut(ending));
+            }}
+          />
         )}
-
-        {state.phase === 'signed-in' && <Who me={state.me} env={env} />}
 
         {state.phase === 'unavailable' && (
           <>

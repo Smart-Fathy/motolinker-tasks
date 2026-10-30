@@ -46,7 +46,16 @@ const tag = (html, re) => (html.match(re) || [''])[0];
 const heads = html => ['<meta name="theme-color"[^>]*>', '<meta name="apple-mobile-web-app-status-bar-style"[^>]*>', '<meta name="apple-mobile-web-app-title"[^>]*>', '<link rel="manifest"[^>]*>', '<title>[^<]*</title>'].map(r => tag(html, new RegExp(r)));
 const classicAdmin = read('public', 'dashboard.html'), classicTeam = read('public', 'employee.html');
 check('the admin head in the template is the classic dashboard page\'s head', JSON.stringify(heads(template)) === JSON.stringify(heads(classicAdmin)), JSON.stringify(heads(template)) + ' vs ' + JSON.stringify(heads(classicAdmin)));
-check('what is swapped in for the team is, word for word, in the classic team page\'s head', SWAPS.team.filter(([, to]) => !to.startsWith('<a ')).every(([, to]) => classicTeam.includes(to)), SWAPS.team.filter(([, to]) => !to.startsWith('<a ') && !classicTeam.includes(to)).map(([, to]) => to).join(' | '));
+// (the <a> is the noscript link, and the <html> tag carries the app's own marker of which portal's defaults the stylesheet starts from:
+// neither is in a classic page's head)
+const fromClassicHead = ([, to]) => !to.startsWith('<a ') && !to.startsWith('<html');
+check('what is swapped in for the team is, word for word, in the classic team page\'s head', SWAPS.team.filter(fromClassicHead).every(([, to]) => classicTeam.includes(to)), SWAPS.team.filter(([, to]) => fromClassicHead([, to]) && !classicTeam.includes(to)).map(([, to]) => to).join(' | '));
+check('the template marks the admin portal on <html>, and the team swap marks the team', template.includes('<html lang="en" data-portal="admin">') && SWAPS.team.some(([from, to]) => from === '<html lang="en" data-portal="admin">' && to === '<html lang="en" data-portal="team">'));
+// The layers rank in the order they are first named in the built sheet, so a component's sheet coming before base.css would put
+// `ui` under the reset and turn every padding and margin in the app to zero. Nothing else notices: the page still opens.
+const builtCss = fs.readFileSync(path.join(dist, 'assets', assets.find(f => f.endsWith('.css'))), 'utf8');
+const layerOrder = css => { const seen = []; for (const m of css.matchAll(/@layer\s+([a-z][a-z0-9, -]*)\s*[{;]/gi)) for (const n of m[1].split(',').map(x => x.trim())) if (n && !seen.includes(n)) seen.push(n); return seen; };
+check('the built stylesheet ranks its layers reset, base, ui — the order they are named in, which the import order in main.tsx decides', layerOrder(builtCss).slice(0, 3).join() === 'reset,base,ui', layerOrder(builtCss).join());
 
 // ── 2. The pure parts ───────────────────────────────────────────────────────────────────────────
 check('the switch takes only next and legacy, from the query first, then the cookie, then the default', (() => {
@@ -153,6 +162,20 @@ db.install();
   check('…and the early light/dark script, as in the classic page', dressed.text.includes('<script>' + T.bootScript(T.normalize(JSON.parse(db.tables.quotation_settings.find(r => r.key === 'workspace_profile').value)))) );
   check('…the workspace\'s name is in the title and in what the app is told', /<title data-ws-title="[^"]*">Acme Motors · Admin Dashboard<\/title>/.test(dressed.text) && mlOf(dressed.text).workspace.name === 'Acme Motors');
   check('…and its fonts are the ones chosen', dressed.text.includes(T.fontsHref(T.normalize(JSON.parse(db.tables.quotation_settings.find(r => r.key === 'workspace_profile').value)))));
+  check('a workspace that has replaced no wording tells the app none', JSON.stringify(mlOf(dressed.text).workspace.texts) === '{}' && JSON.stringify(mlOf(next.text).workspace.texts) === '{}');
+  await put('/api/dashboard/workspace/theme', { texts: { admin_title: 'Owners only', admin_sub: 'Welcome back, {ws}', team_title: 'Crew room' } });
+  const worded = await page('/dashboard?ui=next');
+  const wordedTeam = await page('/employee?ui=next');
+  const wordsOf = t => mlOf(t).workspace.texts;
+  check('the wording an admin replaced reaches the app, which draws its own text where the classic page\'s markers cannot be', wordsOf(worded.text).admin_title === 'Owners only' && wordsOf(worded.text).admin_sub === 'Welcome back, {ws}' && wordsOf(wordedTeam.text).team_title === 'Crew room', JSON.stringify(wordsOf(worded.text)));
+  const classicWorded = await page('/legacy/dashboard');
+  check('…and it is the wording the classic page shows (one source, so the two cannot say different things)', /data-ws-text="admin_title"[^>]*>Owners only</.test(classicWorded.text) && /data-ws-text="admin_sub"[^>]*>Welcome back, Acme Motors</.test(classicWorded.text));
+  check('…{ws} is left for the app to fill in with the name it is told, so a rename needs no page rebuilt', mlOf(worded.text).workspace.name === 'Acme Motors' && !wordsOf(worded.text).admin_sub.includes('Acme'));
+  check('?safe=1 is the original wording in the new app too', JSON.stringify(wordsOf((await page('/dashboard?ui=next&safe=1')).text)) === '{}');
+  await put('/api/dashboard/workspace/theme', { texts: { admin_title: '</script><script>alert(1)</script>' } });
+  const markup = await page('/dashboard?ui=next');
+  check('wording with markup in it puts none into the page or into what the app is told', !markup.text.includes('</script><script>alert(1)') && !/[<>]/.test(wordsOf(markup.text).admin_title || ''), wordsOf(markup.text).admin_title);
+  await put('/api/dashboard/workspace/theme', { texts: {} });
   const safe = await page('/dashboard?ui=next&safe=1');
   check('?safe=1 is the original look in the new app too (the way back in if a look ever makes the screen hard to use)', styleOf(safe.text) === styleOf((await page('/legacy/dashboard?safe=1')).text) && styleOf(safe.text) !== styleOf(dressed.text));
   await put('/api/dashboard/workspace', { name: '</title><script>alert(1)</script>' });

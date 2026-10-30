@@ -1,0 +1,50 @@
+/* What sits between the card's frame and its fields on each sign-in step: the lead-in line, the heading the team's
+   steps have, the row of small links, the "or" between a password and Google. */
+@layer ui {
+  .lead {
+    margin-bottom: 24px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .stepTitle {
+    margin-bottom: 6px;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .aside {
+    margin-top: 12px;
+    text-align: center;
+  }
+  /* the second step's row sets its size on the row; the others on the links in it, so the row keeps the page's own */
+  .small {
+    font-size: 12px;
+  }
+  .sep {
+    color: var(--muted);
+  }
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0;
+  }
+  .divider span {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .divider::before,
+  .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  :global([data-portal='team']) .lead {
+    margin-bottom: 16px;
+    font-size: 12px;
+  }
+  :global([data-portal='team']) .aside {
+    text-align: center;
+  }
+}
