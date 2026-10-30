@@ -198,8 +198,21 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const after = await call('GET', LEGACY[1].path, 'nt-ana');
     check('…which the classic route then lists as read (it is the same table)', after.body.unread === 0);
     reset();
+    db.log.length = 0;
     const live = await call('POST', V1_READ, 'nt-admin', { id: 'tmp-1700000000000' });
     check('a live-only notification has a string id; asking to mark it is not an error (nothing is stored under it)', live.status === 200 && live.body.ok === true && db.tables.notifications.every(n => n.read === seed().find(x => x.id === n.id).read));
+    check('…and the database is not asked about it: its id is a number, so "tmp-…" would be an error from it, not an answer', queries('PATCH').length === 0, queries('PATCH').join());
+    const odd = [];
+    for (const id of ['', '-5', '1e3', '12abc', '99999999999999999999', 1e21, -5]) {
+      db.log.length = 0;
+      const r = await call('POST', V1_READ, 'nt-admin', { id });
+      if (r.status === 200 && queries('PATCH').length) odd.push(`${JSON.stringify(id)} asked the database`);
+      else if (r.status !== 200 && r.status !== 400) odd.push(`${JSON.stringify(id)}: ${r.status}`);
+    }
+    check('…nor is it asked about anything that cannot be an id (negative, with letters, too long for a bigint): either a 400 or nothing to do', odd.length === 0, odd.join('; '));
+    db.log.length = 0;
+    await call('POST', V1_READ, 'nt-admin', { id: '2' });
+    check('…but a numeric id sent as text, as the classic pages send them, is one', queries('PATCH').join() === '?member_key=eq.admin&id=eq.2' && rowOf(2).read === true, queries('PATCH').join());
   }
 
   // what it will not accept

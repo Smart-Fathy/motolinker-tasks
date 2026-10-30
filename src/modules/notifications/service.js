@@ -9,6 +9,9 @@
 /** How many a member is shown: the newest. */
 const LIMIT = 50;
 
+/** What the id of a stored notification looks like: digits, no more than a bigint holds. */
+const STORED_ID = /^\d{1,18}$/;
+
 /** The database could not be asked, or refused. */
 class NotificationsUnavailable extends Error {
   /** @param {string} [why] */
@@ -63,6 +66,9 @@ function createNotificationsService({ supabase }) {
      * @returns {Promise<void>}
      */
     async markRead(actor, input) {
+      // Only a number can be an id here (the column is a bigint): a live-only notification, which could not be stored, has
+      // a "tmp-…" id and nothing under it to mark, and asking the database would be an error and not an answer.
+      if ('id' in input && !STORED_ID.test(String(input.id))) return;
       let q = supabase.from('notifications').update({ read: true }).eq('member_key', actor.key);
       q = 'id' in input ? q.eq('id', input.id) : q.eq('read', false);
       const { error } = await q;
