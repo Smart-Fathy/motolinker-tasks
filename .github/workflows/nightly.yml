@@ -1,0 +1,50 @@
+# The two suites that can use something a plain runner does not have: relaytest checks the relay probe
+# against a real coturn on 127.0.0.1:3478 (only when LIVE_TURN is set — the success path, and the
+# dangerous false pass, can only be shown against a live relay) and doc-rfq prints its workbooks through
+# LibreOffice (it skips those checks when soffice is missing). The main workflow runs both suites too,
+# without the tools, so those parts skip there; this job gives them the tools. A failure here is
+# reported by the run's status; it does not block a merge.
+name: Nightly
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  needs-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - name: Install coturn and LibreOffice
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y coturn libreoffice-calc
+      - name: Start coturn with the probe credentials relaytest uses
+        run: |
+          nohup turnserver -n --no-cli --lt-cred-mech -u probe:probepass -r motolinker.test \
+            -L 127.0.0.1 -p 3478 --no-tls --no-dtls --log-file=/tmp/turnserver.log &
+          sleep 2
+          # Say so here if it did not come up, instead of as a confusing relaytest failure later.
+          if ! ss -lun | grep -q ':3478 '; then
+            echo "coturn is not listening on 127.0.0.1:3478"; cat /tmp/turnserver.log 2>/dev/null || true; exit 1
+          fi
+      - run: bash tests/run.sh --only relaytest,docrfq
+        env:
+          CI: 'true'
+          TZ: UTC
+          LIVE_TURN: '1'
+      - name: What the red suites printed
+        if: failure()
+        run: |
+          for f in /tmp/ml-suite-*.txt; do
+            [ -e "$f" ] || continue
+            echo "::group::$f"; tail -n 120 "$f"; echo "::endgroup::"
+          done
+          echo "::group::coturn log"; cat /tmp/turnserver.log 2>/dev/null || true; echo "::endgroup::"

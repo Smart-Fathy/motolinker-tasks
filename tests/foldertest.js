@@ -78,7 +78,7 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
   const srv = http.createServer((_q, s) => { s.writeHead(404); s.end(); });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const port = srv.address().port;
-  const browser = await puppeteer.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  const browser = await puppeteer.launch({ executablePath: require('./helpers/browser').chromePath(),
     headless: 'new', args: ['--no-sandbox'] });
 
   // ── Admin: create, then share ───────────────────────────────────────────────
@@ -243,15 +243,19 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
     check('a database without migration 013 says so instead of 500-ing',
       /013_client_folder\.sql/.test(SRC) && /isMissingColumn/.test(SRC));
 
-    const EMP = fs.readFileSync('src/routes/employee-portal.js', 'utf8');
+    // (The permission model lives in packages/contracts; these read it there.)
+    const PERMS = require('../packages/contracts');
+    const permsOf = raw => PERMS.normalisePermissions(raw, { dealStages: ['lead', 'inquiry', 'quoted', 'negotiating', 'won', 'lost'], normStatus: String });
     check('clientFolder is a real, grantable action with a label',
-      /'clientFolder'\]/.test(EMP) && /'leads\.clientFolder': 'Client Drive folders'/.test(EMP));
+      PERMS.PERM_ACTIONS.leads.includes('clientFolder') && PERMS.PERM_ACTION_LABELS['leads.clientFolder'] === 'Client Drive folders');
     // The action is new, and every existing employee already holds leads access.
     // Inheriting it the way meet.view inherited its master would hand the whole
     // team every client's passport scans on the deploy that shipped it.
     check('nobody INHERITS access to client folders — it is granted, never assumed',
-      /PERM_ACTION_NEVER_INHERIT = new Set\(\[[^\]]*'leads\.clientFolder'/.test(EMP)
-      && /never \? false : \(fallback/.test(EMP) && /never \? false : \(legacy/.test(EMP));
+      PERMS.PERM_ACTION_NEVER_INHERIT.has('leads.clientFolder')
+      && permsOf({ leads: true }).leadsActions.clientFolder === false
+      && permsOf({ leads: true, leadsActions: { view: true } }).leadsActions.clientFolder === false
+      && permsOf({ leads: true, leadsActions: { clientFolder: true } }).leadsActions.clientFolder === true);
     const MIG = fs.readFileSync('migrations/013_client_folder.sql', 'utf8');
     check('migration 013 adds the column it needs, idempotently',
       /customers ADD COLUMN IF NOT EXISTS client_folder JSONB/.test(MIG));

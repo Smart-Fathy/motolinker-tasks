@@ -32,7 +32,7 @@ const PNG = path.join(PNG_DIR, 'logo.png');
   ctx.sessions.set(ADMIN, { username: 'admin', pwv: ctx.ADMIN_PW_VERSION, createdAt: Date.now() });
   ctx.employeeSessions.set(SARA, { id: 2, name: 'Sara', username: 'sara', job_title: 'Sales', permissions: normEmpPerms({ chat: true }), createdAt: Date.now() });
 
-  const browser = await puppeteer.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', headless: 'new', args: ['--no-sandbox'] });
+  const browser = await puppeteer.launch({ executablePath: require('./helpers/browser').chromePath(), headless: 'new', args: ['--no-sandbox'] });
   const errors = [];
   async function open(route, token, ctxOpts) {
     const context = ctxOpts && ctxOpts.fresh ? await browser.createBrowserContext() : browser.defaultBrowserContext();

@@ -10,6 +10,7 @@
 // catches the header, the Deals kanban, the quotation grids and Submissions at once —
 // and it is impossible to satisfy by accident.
 const fs = require('fs'), path = require('path'), http = require('http'), puppeteer = require('puppeteer');
+const { gotoPage } = require('./helpers/browser');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const results = [];
 const check = (n, ok, x) => { results.push(ok); console.log((ok ? '  ok  ' : ' FAIL ') + n + (x ? '  ' + x : '')); };
@@ -166,7 +167,7 @@ async function sweep(browser, o) {
   const bad = { overflow: [], touch: [], font: [] };
 
   for (const pg of o.pages) {
-    await page.evaluate(p => { try { navigate(p); } catch (_) {} }, pg);
+    await gotoPage(page, pg);
     await sleep(320);
     const m = await page.evaluate(MEASURE);
     if (m.overflow > 1) bad.overflow.push(`${pg} +${m.overflow}px ${m.wide.join(' ')}`);
@@ -182,7 +183,7 @@ async function sweep(browser, o) {
   const cardPages = (o.tablePages || []).filter(p => o.pages.includes(p));
   const notCards = [], unlabelled = [], offscreen = [];
   for (const pg of cardPages) {
-    await page.evaluate(p => { try { navigate(p); } catch (_) {} }, pg);
+    await gotoPage(page, pg);
     await sleep(350);
     const r = await page.evaluate(() => {
       const rows = [...document.querySelectorAll('.table-scroll table tbody tr')]
@@ -223,7 +224,7 @@ async function sweep(browser, o) {
   t('no text input is under 16px (iOS zooms below that)', !bad.font.length, bad.font.slice(0, 3).join(' | '));
   // ── Leads: paged, and safe to touch ──
   if (o.leadsPage) {
-    await page.evaluate(p => { try { navigate(p); } catch (_) {} }, o.leadsPage);
+    await gotoPage(page, o.leadsPage);
     await sleep(500);
     const rowsOf = () => page.evaluate(sel =>
       [...document.querySelectorAll(sel + ' tr')].filter(tr => tr.getAttribute('data-id')).length, o.leadsBody);
@@ -265,7 +266,7 @@ async function sweep(browser, o) {
   if (o.quotePage) {
     // The quotation is a modal sheet now (shared quote.js, PO idiom) — open it
     // first; the row class and its remove button live inside the sheet.
-    await page.evaluate(p => { try { navigate(p); } catch (_) {} }, o.quotePage);
+    await gotoPage(page, o.quotePage);
     await sleep(400);
     const line = await page.evaluate(async sel => {
       try { await openQuoteForm(null); } catch (e) { return { err: String(e) }; }
@@ -288,7 +289,7 @@ async function sweep(browser, o) {
   // Nothing in either portal bound Escape; the Create Employee form's only reachable
   // control was the × at the top of a very long scroll.
   if (o.openModal) {
-    await page.evaluate(p => { try { navigate(p); } catch (_) {} }, o.openModal.page);
+    await gotoPage(page, o.openModal.page);
     await sleep(350);
     const esc = await page.evaluate(fn => {
       try { window[fn](); } catch (e) { return { err: String(e) }; }
@@ -322,7 +323,7 @@ async function sweep(browser, o) {
   // It used to be Google's embed in agenda mode; it is our own grid now, which
   // has to survive 390px without the chips turning it into a wall of text.
   {
-    await page.evaluate(() => { try { navigate('calendar'); } catch (_) {} });
+    await gotoPage(page, 'calendar');
     await sleep(600);
     const cal = await page.evaluate(() => {
       const host = document.getElementById('ml-calendar');
@@ -343,7 +344,7 @@ async function sweep(browser, o) {
 
   // ── Home widgets are sized by their content ──
   {
-    await page.evaluate(() => { try { navigate('home'); } catch (_) {} });
+    await gotoPage(page, 'home');
     await sleep(500);
     const home = await page.evaluate(() => {
       const w = document.querySelector('.home-w');
@@ -369,7 +370,7 @@ async function sweep(browser, o) {
   const srv = http.createServer((_q, s) => { s.writeHead(404); s.end(); });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   const port = srv.address().port;
-  const browser = await puppeteer.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  const browser = await puppeteer.launch({ executablePath: require('./helpers/browser').chromePath(),
     headless: 'new', args: ['--no-sandbox'] });
 
   await sweep(browser, {
@@ -390,8 +391,9 @@ async function sweep(browser, o) {
     label: 'team', port, route: '/employee', file: 'public/employee.html', tokenKey: 'ml_emp_token',
     bootstrap: () => {
       window.empInfo = { id: 2, name: 'Sara' };
-      applyPermissions({ requests: true, drive: true, sheets: true, quotation: true,
-                         leads: true, deals: true, reports: true });
+      // Every section on. A section that is off bounces its page to Home, and the sweep would
+      // then measure Home under that page's name (gotoPage now refuses that).
+      applyPermissions(Object.fromEntries(PERM_SECTIONS.map(s => [s, true])));
       document.getElementById('layout').style.display = 'flex';
     },
     tablePages: ['tasks', 'hours', 'requests', 'leads', 'drive', 'sheets'],

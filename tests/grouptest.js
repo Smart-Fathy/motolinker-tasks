@@ -192,7 +192,7 @@ async function runPortal(browser, opts) {
   const port = server.address().port;
 
   const browser = await puppeteer.launch({
-    executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+    executablePath: require('./helpers/browser').chromePath(),
     headless: 'new', args: ['--no-sandbox'],
   });
 

@@ -1,0 +1,158 @@
+/* The classic portals' design tokens, with the values they ship. The server writes the workspace's look
+   (a chosen preset, light mode, fonts, the wording) into the page as <style id="ws-theme"> AFTER this sheet,
+   and these are the names it redefines — so the new app wears whatever look the old one would, from the
+   first paint. src/styles/tokens.test.ts holds these values to the classic sheets' until those are gone.
+
+   The app's own rules live in layers, lowest first. The server's <style id="ws-theme"> is not in a layer, and an
+   unlayered rule beats a layered one whatever its specificity, so the workspace's look wins over everything here
+   without anyone counting selectors. */
+@layer reset, base, ui;
+
+@layer reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+@layer base {
+  :root,
+  .on-dark {
+    --bg: #0c0c0e;
+    --surface: #141416;
+    --card: #18181b;
+    --border: rgba(255, 255, 255, 0.09);
+    --text: #f3efe7;
+    --muted: #8d897f;
+    --primary: #c9a35e;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --info: #9fb0bd;
+    --orange: #c98b5e;
+    --radius: calc(4px * var(--r-k, 1));
+    --shadow: 0 1px 2px rgba(0, 0, 0, calc(0.4 * var(--sh-k, 1)));
+    --shadow-md: 0 18px 40px -18px rgba(0, 0, 0, calc(0.65 * var(--sh-k, 1)));
+    --primary-text: #c9a35e;
+    --on-primary: #0c0c0e;
+    --color-scheme: dark;
+    --primary-rgb: 201, 163, 94;
+    --gold: #c9a35e;
+    --gold-soft: #d9bd7f;
+    --gold-deep: #a07e3f;
+    --panel: #141416;
+    --hair: rgba(255, 255, 255, 0.09);
+    --hair-gold: rgba(201, 163, 94, 0.22);
+    --field-bg: #0e0e10;
+    --auth-bg-1: #15130e;
+    --auth-bg-2: #0b0b0c;
+    --strong: #fff;
+  }
+
+  :root,
+  .on-dark {
+    color-scheme: var(--color-scheme, dark);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    font-family: var(--font-body, 'Manrope', sans-serif);
+    letter-spacing: 0.1px;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Colour only, as in the classic sheets: a button keeps the browser's own typeface unless a rule gives it one. */
+  button {
+    color: inherit;
+  }
+  a {
+    color: var(--primary-text, var(--primary));
+  }
+
+  /* The signed-in page, until the shell replaces it (src/app/App.tsx). */
+  .page {
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: 2rem 1rem 3rem;
+    display: grid;
+    gap: 1.25rem;
+  }
+  .header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .header h1 {
+    font-size: 1.35rem;
+    font-weight: 700;
+  }
+  .badge {
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.1rem 0.6rem;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.25rem;
+    display: grid;
+    gap: 0.9rem;
+  }
+  .card h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.35rem 1rem;
+  }
+  .facts dt {
+    color: var(--muted);
+  }
+  .actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-block;
+    cursor: pointer;
+    text-decoration: none;
+    background: var(--primary);
+    color: var(--on-primary, #0c0c0e);
+    border: 0;
+    border-radius: var(--radius);
+    padding: 0.55rem 1rem;
+    font-weight: 600;
+  }
+  .btn.secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .footer {
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+}

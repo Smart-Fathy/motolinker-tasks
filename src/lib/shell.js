@@ -21,7 +21,13 @@ const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g,
 // hard to use, since the Workspace page that changes it is on that screen.
 const ORIGINAL_LOOK = ThemeCore.normalize({});
 
-function renderShell(html, ws, { safe = false } = {}) {
+/**
+ * @param {string} html
+ * @param {Record<string, any>} ws the workspace profile
+ * @param {{ safe?: boolean, embed?: boolean }} [opts] `embed`: the page is for the new app's frame (?embed=1) — it is marked,
+ *   and given the sheet that hides its own chrome and the script that talks to the app (public/assets/embed.js)
+ */
+function renderShell(html, ws, { safe = false, embed = false } = {}) {
   const look = safe ? ORIGINAL_LOOK : ThemeCore.normalize(ws);
   const cu = ThemeCore.custom(look);
   const mode = ThemeCore.defaultMode(look);
@@ -44,7 +50,8 @@ function renderShell(html, ws, { safe = false } = {}) {
   // newer profile — one it keeps for offline use, say — from an older one)
   const stamp = !safe && ws.updated_at && !ws.degraded ? ' data-ws-stamp="' + esc(ws.updated_at) + '"' : '';
   const logo = ws.logo_url ? ' class="ws-custom-logo" style="--ws-logo:url(&quot;' + esc(ws.logo_url) + '&quot;)"' : '';
-  if (stamp || logo) out = out.replace(/<html\b([^>]*)>/i, (m, attrs) => '<html' + attrs + stamp + logo + '>');
+  const framed = embed ? ' data-embed="1"' : '';
+  if (stamp || logo || framed) out = out.replace(/<html\b([^>]*)>/i, (m, attrs) => '<html' + attrs + stamp + logo + framed + '>');
   if (ws.logo_url) {
     out = out.replace(/<link rel="icon"([^>]*?)href="([^"]*)"([^>]*)>/i, (m, a, href, b) => '<link rel="icon"' + a + 'href="' + esc(ws.logo_url) + '" data-default-href="' + esc(href) + '"' + b + '>');
   }
@@ -76,10 +83,26 @@ function renderShell(html, ws, { safe = false } = {}) {
   // The script goes in as early as it can, so data-mode is set before anything is drawn;
   // the <style> goes last in <head>, after the sheets, because its dark tokens are
   // :root rules like theirs and must come later to win.
-  const script = '<script>' + ThemeCore.bootScript(look) + '</script>';
+  let script = '<script>' + ThemeCore.bootScript(look) + '</script>';
+  let sheet = '';
+  if (embed) {
+    // The assets carry the page's own deploy stamp (?v=N, from the sheet the page already loads), so a deploy that changes
+    // them reaches a browser that kept the old ones — the same rule the page's other assets follow.
+    const v = /\/assets\/(?:dashboard|employee)\.css\?v=(\d+)/.exec(out);
+    const q = v ? '?v=' + v[1] : '';
+    script += '\n<script src="/assets/embed.js' + q + '"></script>';
+    sheet = '<link rel="stylesheet" href="/assets/embed.css' + q + '">\n';
+  }
   out = /<meta charset="UTF-8">/i.test(out) ? out.replace(/<meta charset="UTF-8">/i, m => m + '\n' + script) : out.replace(/<head>/i, m => m + '\n' + script);
-  out = out.replace(/<\/head>/i, '<style id="ws-theme">' + css + '</style>\n</head>');
+  out = out.replace(/<\/head>/i, sheet + '<style id="ws-theme">' + css + '</style>\n</head>');
   return out;
+}
+
+// The wording an admin replaced, as data. The classic pages are dressed by markers in their HTML (above); the new
+// app draws its text by script, out of the markers' reach, so it is told the wording instead, from the same place
+// and with the same rule for safe mode: the original look has the original wording.
+function wordingOf(ws, { safe = false } = {}) {
+  return { ...(safe ? ORIGINAL_LOOK : ThemeCore.normalize(ws)).texts };
 }
 
 // The install manifest. The workspace's name and, if it has chosen colours, its page
@@ -100,4 +123,4 @@ function renderManifest(base, ws, kind, { safe = false } = {}) {
   return m;
 }
 
-module.exports = { renderShell, renderManifest, esc, DEFAULT_NAME };
+module.exports = { renderShell, renderManifest, wordingOf, esc, DEFAULT_NAME };

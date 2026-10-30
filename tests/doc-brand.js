@@ -5,10 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Use the sandbox's Chrome when puppeteer has none of its own (read once, at load).
-if (!process.env.PUPPETEER_EXECUTABLE_PATH && !fs.existsSync(path.join(process.env.HOME || '/root', '.cache', 'puppeteer', 'chrome'))) {
-  const exe = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
-  if (fs.existsSync(exe)) process.env.PUPPETEER_EXECUTABLE_PATH = exe;
-}
+require('./helpers/browser').pointPuppeteerAtChrome();
 const brand = require('../src/lib/docs/brand');
 const { renderPdf } = require('../src/lib/docs/render');
 

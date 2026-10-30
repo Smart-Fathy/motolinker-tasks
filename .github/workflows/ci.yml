@@ -1,0 +1,85 @@
+# Every push to main and every pull request runs these jobs:
+#   static       lint, format, type-check and the build (the web app: a type-check, then Vite)
+#   suite-shard  the suites of tests/run.sh, split over 5 machines that run side by side. The suites use fixed
+#                ports, so they can only be parallel across machines; `--shard I/N` deals them out by the
+#                seconds in tests/suite-weights.json (tools/shard-plan.js), and tests/shards.js fails if a suite
+#                could be left out of every shard or this matrix stops being exactly shards 1..N.
+#   suite        passes only when every shard did. It is the one check to require if a branch rule ever does.
+# Nothing here deploys anything; Railway deploys from the branch on its own.
+# Node comes from package.json "engines" — the line Railway's builder reads — so the suites run on what
+# production runs on. There is deliberately no .nvmrc: the builder reads one and lets it override
+# "engines" (see the README, "How production is built", and tests/deployconfig.js).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run build
+
+  suite-shard:
+    name: suite (shard ${{ matrix.shard }} of 5)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+      # puppeteer downloads the Chrome the browser suites drive (tests/helpers/browser.js finds it);
+      # CHROME_BIN would override it.
+      - run: npm ci
+      - run: bash tests/run.sh --shard ${{ matrix.shard }}/5
+        env:
+          CI: 'true'
+          TZ: UTC
+      # The runner prints each suite's last line; the line that says what went wrong is higher up,
+      # in the file it saved (the runner names it under each red suite).
+      - name: What the red suites printed
+        if: failure()
+        run: |
+          for f in /tmp/ml-suite-*.txt; do
+            [ -e "$f" ] || continue
+            echo "::group::$f"; tail -n 120 "$f"; echo "::endgroup::"
+          done
+      # Seconds per suite on this shard, longest first: what tests/suite-weights.json is refreshed from.
+      - name: Seconds per suite
+        if: always()
+        run: sort -k2 -n -r /tmp/ml-suite-times.txt | head -n 15 || true
+
+  suite:
+    needs: suite-shard
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every shard passed
+        run: |
+          echo "shards: ${{ needs.suite-shard.result }}"
+          [ "${{ needs.suite-shard.result }}" = "success" ]

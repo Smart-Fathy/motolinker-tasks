@@ -132,7 +132,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
   const browser = await puppeteer.launch({
-    executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+    executablePath: require('./helpers/browser').chromePath(),
     headless: 'new',
     args: ['--no-sandbox', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
            '--auto-select-desktop-capture-source=Entire screen', '--allow-file-access-from-files'],

@@ -730,13 +730,24 @@ index.js              boot, config, auth, Google tokens, chat/notifications core
 src/ctx.js            the shared context feature modules pull their deps from
 src/lib/constants.js  domain vocabulary used across features
 src/routes/*.js       one module per feature (stock, suppliers, rfq, huddles, …)
-public/*.html         page markup only
+src/http/             the new server code: the actor model's guards, /api/v1, the ml_ui switch and the new
+                      app's page (see "Migrating to one codebase")
+packages/contracts/   what the server and the web app agree on: the permission catalogue and rules,
+                      actors (admin / employee, capabilities, scope), the app's screens (who gets each,
+                      where each stands in the navigation, what the classic portals called it), the links
+                      that already exist and where they land, wire schemas (zod)
+apps/web/             the new web app (Vite + React + TypeScript): built to apps/web/dist, served by the
+                      server behind the ml_ui switch; apps/web/README.md
+public/*.html         page markup only (the legacy portals)
 public/assets/*.{css,js}   the portals' styles and application code
 public/assets/theme-core.js   the look: presets, contrast, tokens (browser and server)
 public/assets/workspace*.js   the live look; the admin's Workspace editor
 tools/theme-*.js      the codemod and the golden-record tool behind the theme
-tools/route-inventory.js   dumps every registered route, in order
-tests/                browser, unit and migration suites
+tools/route-inventory.js   fingerprints every registered route, in order (and /api/v1 with its guards)
+tools/parity/         photographs of the legacy portals, the baseline for the new app
+tests/                browser, unit and migration suites; tests/helpers/ holds what they share
+docs/parity/          how "the ported module is the same as the old one" is shown
+.github/workflows/    CI (every push and pull request) and a nightly job for the two suites that need coturn / LibreOffice
 ```
 
 `index.js` hands each feature module its dependencies immediately before requiring
@@ -751,23 +762,177 @@ looked up when called instead, and say so in a comment.
 `/huddle/ice` must stay ahead of `/huddle/:roomId`, and there are other pairs like
 it, so the split had to preserve registration *order*, not just the set of routes.
 `tools/routes.snapshot.txt` was captured before the split and is byte-identical to
-what the modular version registers:
+what the modular version registers. `/api/v1` is mounted in a final pass after every
+legacy route and is fingerprinted separately, with the guards in front of each
+handler, in `tools/routes.v1.snapshot.txt`:
 
 ```
-node tools/route-inventory.js out.txt && diff tools/routes.snapshot.txt out.txt
+node tools/route-inventory.js --check                 compare with both snapshots; says where they differ
+node tools/route-inventory.js --check --append-only   allow new routes: the recorded list must stay an in-order subsequence
+node tools/route-inventory.js --write                 regenerate both
 ```
 
-`bash tests/run.sh` runs every suite and finishes with that check. Regenerate the
-snapshot only when routes genuinely change, and say so in the commit.
+`bash tests/run.sh` runs every suite and finishes with `--check`. Regenerate the
+snapshots only when routes genuinely change, and say so in the commit.
 
 ### Tests
 
 ```
-bash tests/run.sh
+npm test                                  = bash tests/run.sh, every suite (about 16 minutes: the suites use fixed ports, so on one machine they run serially)
+bash tests/run.sh --only themecss,shell   just those (the first column of run.sh; smoke and routes too)
+bash tests/run.sh --shard 2/5             the 2nd of 5 slices of the suites; CI runs the five on five machines
+bash tests/run.sh --list                  the suite names, running nothing (also with --only / --shard)
 ```
 
 They drive the shipped code rather than a copy: the browser suites slice the real
 module out of `public/assets/*.js` (and the real stylesheet, since some behaviour is
 CSS), the WebRTC suite runs three peers with fake media devices, and the migration
 suite applies the real SQL to a throwaway Postgres and asserts the resulting rows.
-The relay suite needs a local coturn on `127.0.0.1:3478` for its success case.
+The relay suite checks its success case against a local coturn on `127.0.0.1:3478` when `LIVE_TURN=1` is set (the nightly job does); `docs/test-baseline.md` records what a full run looks like.
+
+**CI runs the suites in parallel, across machines.** The fixed ports only forbid two suites on _one_ machine, so
+the workflow splits them over five (`suite-shard`, matrix 1–5) and the check called `suite` passes only when
+every shard did; a pull request waits for the slowest shard rather than for the sum. `tools/shard-plan.js` deals
+the suites out, longest first to the lightest shard, by the seconds in `tests/suite-weights.json` (every shard
+prints the seconds each of its suites took, so refreshing that file is copy and paste; a suite with no weight
+still gets a shard, it just may land on a heavier one). The contrast audit, the longest suite by far, runs as
+three parts (`themeaudit1..3`; `--only themeaudit` still asks for all three). `tests/shards.js` fails if a
+suite could be left out of every shard, or if the workflow's matrix stops being exactly shards 1..N.
+
+The browser they drive is found in one place, `tests/helpers/browser.js`: `CHROME_BIN`
+if set, else the Chromium the dev image ships, else the Chrome puppeteer downloaded on
+install (what CI has). A suite that moves between pages uses `gotoPage(page, name)` from
+the same file, which fails when `navigate()` is missing or the portal bounced the page
+elsewhere — a tool that swallowed that used to photograph Home under another page's name.
+`tests/helpers/demo-data.js` opens the portals on realistic data, with a team member
+who may open every page (on their database row as well as their session).
+
+`npm run lint`, `npm run format:check` and `npm run typecheck` cover the code written to the
+new standard (`packages/*`, `src/http`, `src/modules`, `apps/*`); the legacy server, portals,
+tools and tests are outside them until each is migrated. CI runs all of it on every push and
+pull request.
+
+### How production is built
+
+Railway builds this repository with Railpack: it copies every `package.json` and the lockfile,
+runs `npm install`, copies the source over, runs `npm run build` (which builds the web app: a type-check,
+then Vite; a failure stops the deploy and the previous release keeps serving) and starts `npm run start`.
+`tests/deployconfig.js` pins what depends on it:
+
+- **The Node version** comes from `engines.node` (`22.x`, which Railpack resolves to the latest 22.x),
+  and CI reads the same line, so the suites run on what production runs on. There is deliberately **no
+  `.nvmrc`, `.node-version` or `.tool-versions`**: Railpack hands those to mise, which lets them
+  override `engines`, so adding one "for developers" would move production to another Node major in a
+  release that is about something else. Moving production is a release of its own — change `engines`
+  and the expected value in `tests/deployconfig.js` in the same commit. (Production ran Node 18.20.8
+  until the release that added the healthcheck.)
+- **Whatever a package under `packages/` needs at runtime** (today: `zod`) is declared by the root
+  package too, so npm hoists it into `/app/node_modules` — the one dependency folder the deploy image
+  is certain to carry — instead of nesting it inside the package.
+- **The lockfile agrees with `package.json`**, which `npm install` on the host would silently repair
+  and `npm ci` in CI refuses.
+- **A healthcheck gates every release.** `railway.json` asks the host to call `GET /api/v1/health`
+  (public, no database) and to move traffic to a new deployment only once it answers 2xx, so a release
+  that cannot boot never replaces the one that can: the previous deployment keeps serving and the new one
+  is marked failed. The file sets nothing else — config in the repository overrides the dashboard — and
+  the test checks that the path it names is a public route the server really has.
+
+## 🧩 Migrating to one codebase
+
+The two portals — the admin's and the team's — are being ported, module by module, to **one
+application**: a Vite + React + TypeScript app hosted by this Node server, in which every module is
+written once and a team member sees exactly the modules and actions the admin grants. (Why Vite and
+not Next.js: everything is behind a login, so server-side rendering buys nothing, and this server is
+one stateful process — sessions, SSE streams, huddle rooms, WhatsApp, timers — that a second server in
+front of it would only complicate.) The old portals keep working, untouched, until each module is
+ported, and the new app will sit behind a switch so every push deploys safely.
+
+What exists so far, all of it invisible to users:
+
+- **`packages/contracts`** — the permission model (24 sections, 91 actions, what a record that
+  predates a section gets, the never-inherited actions, how a scope is read) moved out of
+  `employee-portal.js`, plus actors and the wire schemas. Plain CommonJS with JSDoc types, so the
+  server loads it with no build step. `tests/contracts.js` pins what it means against answers recorded
+  from the code before it moved (`node tests/contracts.js --record` re-records, and the diff of
+  `tests/fixtures/permissions.golden.json` is the review).
+- **The actor** — `req.actor` is set by the two legacy guards (the admin is `caps: '*'`, an explicit
+  "all", not "the request had no employee"). `requireActor` (index.js) is the guard for `/api/v1`: it
+  runs the legacy guard that fits the token, so there is one implementation of what makes a session
+  valid. `requireCan('leads.edit')` (`src/http/actor.js`) fails closed — 401 with no actor, 403 without
+  the capability — and refuses a capability that is not in the catalogue when the route is mounted.
+- **`/api/v1`** — mounted in a final pass by `src/http/mount-v1.js`, every route through
+  `v1({ method, path, cap }, handler)`. Today it has `GET /api/v1/me`: who is asking, their
+  capabilities, sections, scope and the workspace. `tests/actor.js` crosses every v1 route with every
+  kind of actor; a route that cannot be asked without parameters must say why in its `NOT_IN_MATRIX`
+  list, so none is skipped by accident.
+- **Tooling and CI** — see "Tests" above; `tools/parity/shoot-legacy.js` photographs all 52 pages of
+  the legacy portals (light and dark, desktop and phone) as the baseline the new app is compared with.
+- **`apps/web`, the new app** — a Vite + React 19 + TypeScript workspace, built by `npm run build` and
+  served by this server. It opens in the workspace's look from the first paint (the same code that dresses
+  the classic pages dresses its page), **signs people in** — both portals' password step, the second step
+  (authenticator code or recovery code), the team's forgot-password and reset-from-the-email forms, Google's
+  return, sign-out — with the classic portals' own screens, words and look, uses the session the classic
+  portal keeps (same token keys, so a sign-in on either is a sign-in on both), asks `GET /api/v1/me` who you
+  are, and draws **the frame every screen will sit in**: the rail (the admin's sidebar, the team's rail), the top
+  bar and the phone's bottom bar, in the classic look (`tests/shellparity.js` compares every computed value to the
+  classic portal's, apart from a short list of named differences that are all things not built yet — the
+  search box, the arrange and workspace-settings buttons, the refresh, help and bell). The frame lists the
+  screens the classic portal would list for that person — all of them for the admin; for a team member what
+  their grants allow (`packages/contracts/src/modules.js` is the one catalogue of screens and who gets each) —
+  arranged the way the admin arranged the sidebar (names, groups, hidden items), and it remembers what the
+  classic portal remembers (collapsed rail, open groups, last page). Links that already exist in the world
+  (`/employee#requests`, `?chat=<room>`) land on the screen they name. The colour button works (and follows the
+  person across devices), a look the admin saves reaches an open page without a reload, and `?safe=1` is still
+  the way back to the original look. Home is the only screen built so far (who you are and what you may do);
+  every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
+  (`/legacy/<portal>?embed=1`; the live chat and Security, which a frame cannot hold, open a card that says so and
+  links to the classic page), so the whole portal is reachable from the new app while the screens move one at a
+  time. The app has its own **service worker** (a start without a network, a new build taken at once, push shown and
+  a tap on it taken to the right screen), which takes turns with the classic portal's worker in the same scope. The
+  design primitives are on one page, `/dashboard/__gallery` and `/employee/__gallery`, which
+  `tests/galleryaudit.js` measures for readability under all eight looks in both modes. Nobody gets the app
+  unless they ask: see below.
+
+#### Looking at the new app
+
+Everybody gets the classic portals. A browser asks for the new app by opening the portal's address with
+`?ui=next`: `/dashboard?ui=next` (admin) or `/employee?ui=next` (team). The server remembers the answer in
+a cookie (`ml_ui`, a year, this browser only), so it stays until the browser asks again with
+`?ui=legacy` — which is also the link in the new app's footer. The classic page is always available at
+`/legacy/dashboard` and `/legacy/employee`, whatever the switch says. The new app signs people in itself
+(a session started in either portal is a session in the other, in the same browser). `?safe=1` still
+means the original look, and the original wording. Anything that stops the new app being sent — no build, a page that cannot be dressed — sends
+the classic page instead, so the switch cannot leave a page that does not open.
+
+To change what a browser that has asked for nothing gets (staging, a pilot), set `ML_UI_DEFAULT` to `next`
+for both portals, or `ML_UI_DEFAULT_ADMIN` / `ML_UI_DEFAULT_TEAM` for one (`.env.example`). Unset, or
+anything but `next`, is the classic portals. While a browser has `ml_ui=next`, a notification tap opens the
+new app on the screen it names; a chat room has not moved yet, so it opens the card that links to the room in
+the classic portal (`?ui=legacy` is the way back to everything). A browser that has not asked for the new app and
+opens an address inside it (`/dashboard/leads`) is sent to the classic page that address stands for.
+
+Working on it: `npm run dev -w apps/web` serves it on its own (the API is proxied to a server on port
+3000), `npm run test:web` runs its unit tests, `npm run build` builds it, `tests/spashell.js` builds it and
+checks the server half, `tests/signinparity.js` holds its sign-in screens to the classic pages' look value by
+value, and `tests/webauth.js` signs in through the real server in a real browser. `tests/modules.js` holds the
+catalogue of screens to the classic portals' own navigation, permission code and emitted links,
+`tests/shellparity.js` holds the frame (rail, top bar, bottom bar) to the classic portals' computed style,
+`tests/webshell.js` runs the frame end to end on the real server (the rail it draws is the rail the classic portal
+draws for the same person; deep links; the colour button; a look saved while a page is open; the live stream), and
+`tests/galleryaudit.js` measures the gallery's contrast under every look; `tests/embed.js` holds the classic pages'
+side of being shown in the app's frame, `tests/webframe.js` the two together (every unmoved screen in its frame),
+and `tests/webpwa.js` the service worker in a real browser. Details in `apps/web/README.md`.
+
+**Editing the classic portals' scripts while they still exist:** in a frame, `public/assets/dashboard.js` and
+`employee.js` run with `EMBEDDED` true (`<html data-embed>`, set by `?embed=1`). Anything you add that starts a
+service the app also owns — a stream, a timer that reports presence, a service worker, a push subscription, a
+sign-in screen — has to stand down when `EMBEDDED` is true, or it runs twice; `tests/embed.js` fails on the ones it
+knows about (the notification stream, presence, push, huddle revival, the worker registration).
+
+Rules for new server code: it goes in `src/http` or `src/modules` (linted, formatted, type-checked
+through JSDoc), takes its dependencies explicitly rather than through `ctx`, asks `can(actor, 'x.y')` /
+`requireCan('x.y')` rather than reading `req.employee`, and lives under `/api/v1` once it is a new
+route. A resource that exists twice today (`/api/dashboard/x` and `/api/employee/x`) is unified by
+extracting what the two copies do into one service function, testing both legacy endpoints against it,
+and adding the v1 route — never by editing one copy.
+
