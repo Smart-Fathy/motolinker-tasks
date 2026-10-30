@@ -90,6 +90,7 @@ function unitTests() {
   const admin = await get('/api/v1/me', 't-admin');
   check('the admin: 200, an admin actor with every capability and every section', admin.status === 200 && admin.body.actor.kind === 'admin' && admin.body.actor.key === 'admin' && admin.body.caps === '*' && admin.body.sections === '*');
   check('…the answer is what the schema says (and carries the workspace)', C.schemas.MeResponse.safeParse(admin.body).success && admin.body.workspace.name === 'MotoLinker');
+  check('…and says what this installation has set up: Google Chat is not, here (the rail shows its item only where it is)', admin.body.flags.gchat === false && Object.keys(admin.body.flags).join() === 'gchat', JSON.stringify(admin.body.flags));
 
   const nada = await get('/api/v1/me', 't-nada');
   check('an employee: 200, an employee actor keyed employee_<id>', nada.status === 200 && nada.body.actor.kind === 'employee' && nada.body.actor.key === 'employee_1' && nada.body.actor.name === 'Nada');

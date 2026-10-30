@@ -161,7 +161,8 @@ function isScoped(scope) {
  * @param {Actor} actor
  */
 function describeActor(actor) {
-  const list = /** @param {'*' | ReadonlySet<string>} v */ v => (v === '*' ? '*' : [...v].sort());
+  /** @param {'*' | ReadonlySet<string>} v @returns {'*' | string[]} */
+  const list = v => (v === '*' ? '*' : [...v].sort());
   return {
     actor: {
       kind: actor.kind,

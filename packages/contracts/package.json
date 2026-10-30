@@ -10,6 +10,9 @@
   },
   "exports": {
     ".": "./src/index.js",
-    "./access": "./src/access.js"
+    "./access": "./src/access.js",
+    "./permissions": "./src/permissions.js",
+    "./modules": "./src/modules.js",
+    "./deeplinks": "./src/deeplinks.js"
   }
 }

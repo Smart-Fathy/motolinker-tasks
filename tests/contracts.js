@@ -23,6 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { isDeepStrictEqual } = require('util');
+const { spawnSync } = require('child_process');
 const { handmade, fuzz } = require('./helpers/perm-corpus');
 
 const GOLDEN = path.join(__dirname, 'fixtures', 'permissions.golden.json');
@@ -187,6 +188,19 @@ function serialise(g) {
     check('the /me schema accepts what describeActor and the workspace produce, and refuses what is not', me.safeParse({ ...C.describeActor(sara), workspace: { name: 'MotoLinker', logo_url: '', updated_at: null }, flags: {} }).success
       && me.safeParse({ ...C.describeActor(admin), workspace: { name: 'MotoLinker', logo_url: '', updated_at: '2026-03-04T10:00:00.000Z' }, flags: { a: true } }).success
       && !me.safeParse({ actor: {}, caps: 'all' }).success);
+
+    // What the browser imports must not drag the response schemas (zod) in with it. Loaded in a process of their own, the
+    // subpaths leave zod unloaded; the package root, which has the schemas, loads it (so the probe is known to see it).
+    const loadsZod = mods => spawnSync(process.execPath, ['-e', `for (const m of ${JSON.stringify(mods)}) require(m);
+      process.stdout.write(Object.keys(require.cache).some(k => k.split(require('path').sep).includes('zod')) ? 'zod' : 'none')`], { cwd: path.join(__dirname, '..'), encoding: 'utf8' }).stdout === 'zod';
+    const BROWSER = ['access', 'modules', 'deeplinks', 'permissions'].map(s => '@motolinker/contracts/' + s);
+    check('the subpaths the browser imports (access, modules, deeplinks, permissions) load no zod', !loadsZod(BROWSER));
+    check('…and the package root, which carries the response schemas, does', loadsZod(['@motolinker/contracts']));
+    check('…and the permissions subpath carries every export of the catalogue, normalise and can files, as they export it', (() => {
+      const P = require('@motolinker/contracts/permissions');
+      const files = ['permissions-catalogue', 'permissions-normalise', 'permissions-can'].map(f => require('../packages/contracts/src/' + f));
+      return files.every(f => Object.keys(f).length > 0 && Object.keys(f).every(k => P[k] === f[k]));
+    })());
   }
 
   console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);

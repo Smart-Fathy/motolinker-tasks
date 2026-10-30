@@ -74,7 +74,10 @@ function mountV1({ receiver, ctx }) {
             updated_at: ws.updated_at,
             degraded: !!ws.degraded,
           },
-          flags: {},
+          // What the server knows about this installation that changes what the app draws.
+          flags: {
+            gchat: typeof ctx.gchatConfigured === 'function' && ctx.gchatConfigured() === true,
+          },
         }),
       );
     } catch (e) {
