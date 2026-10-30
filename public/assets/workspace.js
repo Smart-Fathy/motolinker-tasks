@@ -188,7 +188,10 @@ function mlAuthed(path, opts) {
   if (typeof ef === 'function') return ef(path, opts);
   return null;
 }
-function mlPrefsPath() { return (location.pathname.indexOf('/employee') === 0 ? '/api/employee' : '/api/dashboard') + '/ui-prefs'; }
+// Which portal this page is, decided the way mlAuthed decides which fetch to use — by what the page defines, not by its
+// address. The team portal is also served at /legacy/employee, and a team session sent to the admin's route is refused
+// with a 401, which the team portal's fetch reads as "signed out" and answers by signing the person out.
+function mlPrefsPath() { return (typeof apiFetch === 'function' ? '/api/dashboard' : '/api/employee') + '/ui-prefs'; }
 function mlPushPrefs(m) {
   try {
     const r = mlAuthed(mlPrefsPath(), { method: 'PUT', body: JSON.stringify({ mode: m }) });

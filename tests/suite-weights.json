@@ -45,6 +45,8 @@
     "securityui": 5,
     "navtest": 5,
     "spashell": 9,
-    "webunit": 6
+    "webunit": 10,
+    "signinparity": 20,
+    "webauth": 30
   }
 }

@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Arrival } from '../lib/arrival';
@@ -110,6 +110,16 @@ describe.each([
     expect(api.signIn).toHaveBeenCalledTimes(1);
     await act(async () => answer.resolve({ kind: 'signed-in', token: 'tok-1' }));
     expect(onSignedIn).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends the password once even when a second submit arrives before the page has drawn the first (a disabled button cannot stop that one)', async () => {
+    const { api, user } = setup(env);
+    api.signIn.mockReturnValue(new Promise(() => undefined));
+    await enterCredentials(user);
+    const form = screen.getByRole('form', { name: 'Sign In' });
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(api.signIn).toHaveBeenCalledTimes(1);
   });
 
   it('can be tried again after a refusal (the button comes back)', async () => {
@@ -224,6 +234,16 @@ describe.each([
     await user.type(screen.getByLabelText('Authentication code'), '{Enter}');
     expect(api.verifyCode).toHaveBeenCalledTimes(1);
     await act(async () => answer.resolve({ kind: 'failed', status: 401, message: 'no' }));
+  });
+
+  it('sends the code once even when a second submit arrives before the page has drawn the first', async () => {
+    const { api, user } = await toSecondStep();
+    api.verifyCode.mockReturnValue(new Promise(() => undefined));
+    await user.type(screen.getByLabelText('Authentication code'), '123456');
+    const form = document.querySelector('form[data-step=code]') as HTMLFormElement;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(api.verifyCode).toHaveBeenCalledTimes(1);
   });
 
   it('can use a recovery code instead, and back to the app: the words, the keyboard and the field follow', async () => {
@@ -413,6 +433,16 @@ describe('what only the team portal has', () => {
       await act(async () => answer.resolve({ kind: 'done' }));
     });
 
+    it('sends the address once even when a second submit arrives before the page has drawn the first', async () => {
+      const { api, user } = await open();
+      api.forgotPassword.mockReturnValue(new Promise(() => undefined));
+      await user.type(screen.getByLabelText('Email Address'), 'sara@example.com');
+      const form = document.querySelector('form[data-step=forgot]') as HTMLFormElement;
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+      expect(api.forgotPassword).toHaveBeenCalledTimes(1);
+    });
+
     it('goes back to the sign-in form', async () => {
       const { user } = await open();
       await user.click(screen.getByRole('button', { name: '← Back to login' }));
@@ -505,17 +535,35 @@ describe('what only the team portal has', () => {
       expect(fields().button.disabled).toBe(false);
     });
 
-    it('does not go back to sign in on its own if the person has already gone', async () => {
+    it('does not go back to sign in on its own if the person has already gone: a timer left running would clear what they are looking at', async () => {
       const { api, user } = arrive();
       api.resetPassword.mockResolvedValue({ kind: 'done' });
       await typeBoth(user, 'a-new-password', 'a-new-password');
       await user.click(fields().button);
       await screen.findByRole('status');
       await user.click(screen.getByRole('button', { name: '← Back to login' }));
-      expect(screen.getByLabelText('Username')).toBeTruthy();
+      api.signIn.mockResolvedValue({
+        kind: 'failed',
+        status: 401,
+        message: 'Invalid username or password',
+      });
       await user.type(screen.getByLabelText('Username'), 'sara');
+      await user.type(screen.getByLabelText('Password'), 'old-password');
+      await user.click(screen.getByRole('button', { name: 'Sign In' }));
+      await screen.findByRole('alert');
       act(() => void vi.advanceTimersByTime(BACK_TO_SIGN_IN_MS * 2));
+      expect(screen.getByRole('alert').textContent).toBe('Invalid username or password');
       expect((screen.getByLabelText('Username') as HTMLInputElement).value).toBe('sara');
+    });
+
+    it('does not set the password a second time while the confirmation is up', async () => {
+      const { api, user } = arrive();
+      api.resetPassword.mockResolvedValue({ kind: 'done' });
+      await typeBoth(user, 'a-new-password', 'a-new-password');
+      await user.click(fields().button);
+      await screen.findByRole('status');
+      fireEvent.submit(document.querySelector('form[data-step=reset]') as HTMLFormElement);
+      expect(api.resetPassword).toHaveBeenCalledTimes(1);
     });
 
     it('waits for the answer without sending twice', async () => {

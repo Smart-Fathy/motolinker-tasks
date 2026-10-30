@@ -185,6 +185,27 @@ describe('arriving from Google', () => {
     expect(screen.queryByLabelText('Authentication code')).toBeNull();
   });
 
+  it('does not offer a spent challenge again when the session later ends of itself', async () => {
+    const storage = storageWith();
+    const s = server({
+      '/api/employee/login/2fa': json(200, { token: 'tok-g2' }),
+      '/api/v1/me': [json(503, { error: 'db down' }), json(401, { error: 'Unauthorized' })],
+    });
+    const user = userEvent.setup({ delay: null });
+    render(
+      <App
+        env={team}
+        arrival={{ mfaToken: 'google-challenge' }}
+        deps={{ storage, fetchImpl: s.fetchImpl }}
+      />,
+    );
+    await user.type(screen.getByLabelText('Authentication code'), '654321');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    expect(await screen.findByLabelText('Password')).toBeTruthy();
+    expect(screen.queryByLabelText('Authentication code')).toBeNull();
+  });
+
   it('shows Google’s refusal on the sign-in form', () => {
     const s = server({});
     render(
