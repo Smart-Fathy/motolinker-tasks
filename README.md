@@ -733,7 +733,7 @@ src/routes/*.js       one module per feature (stock, suppliers, rfq, huddles, �
 src/http/             the new server code: the actor model's guards, /api/v1, the ml_ui switch and the new
                       app's page (see "Migrating to one codebase")
 src/modules/          the new server's features, one folder each (service / routes / index) with their
-                      dependencies passed in: notifications, submissions, issues (src/modules/README.md)
+                      dependencies passed in: notifications, submissions, issues, meetings, calendar (src/modules/README.md)
 packages/contracts/   what the server and the web app agree on: the permission catalogue and rules,
                       actors (admin / employee, capabilities, scope), the app's screens (who gets each,
                       where each stands in the navigation, what the classic portals called it), the links
@@ -868,8 +868,10 @@ What exists so far, all of it invisible to users:
   `GET /api/v1/notifications` and `POST /api/v1/notifications/read` (`src/modules/notifications`; the classic
   bell's routes use the same service), what the website's form sent us (`GET /api/v1/submissions`,
   `DELETE /api/v1/submissions/:id`) and the Issues centre (`/api/v1/issues`: the queue, closing and reopening a
-  ticket, its replies, and reporting one with a file) — each over one service that the classic portals' routes
-  share. `tests/actor.js` crosses every v1 route with every
+  ticket, its replies, and reporting one with a file), the scheduled meetings (`/api/v1/meetings`: the list, and
+  scheduling, changing and cancelling one — which writes it to Google Calendar and tells the attendees, behind the
+  answer) and the calendar (`GET /api/v1/calendar`: what a person is expected at in a window) — each over one
+  service that the classic portals' routes share. `tests/actor.js` crosses every v1 route with every
   kind of actor; a route that cannot be asked without parameters must say why in its `NOT_IN_MATRIX`
   list, so none is skipped by accident.
 - **Tooling and CI** — see "Tests" above; `tools/parity/shoot-legacy.js` photographs all 52 pages of
@@ -934,10 +936,11 @@ side of being shown in the app's frame, `tests/webframe.js` the two together (ev
 and `tests/webpwa.js` the service worker in a real browser. Notifications have a suite on each layer:
 `tests/notifications.js` (the routes, the classic ones as they always answered and `/api/v1`), `tests/notifparity.js` (the
 bell, panel, toast, page and rail badge against the classic portals' computed style) and `tests/webnotifs.js` (the real
-server, the built app, a real browser). Submissions and Issues have the same three layers: `tests/submissions.js` and
-`tests/issues.js` (the routes), `tests/subparity.js` and `tests/issparity.js` (the pages against the classic pages' computed
-style; the rail's "Report an Issue" button is in `tests/shellparity.js`) and `tests/webissues.js` (the real server, the built
-app, a real browser). What each classic screen did, row by row, and where each row is held, is `docs/parity/`.
+server, the built app, a real browser). Submissions, Issues, Meet and Calendar have the same three layers:
+`tests/submissions.js`, `tests/issues.js`, `tests/meetings.js` and `tests/calendar.js` (the routes), `tests/subparity.js`,
+`tests/issparity.js`, `tests/meetparity.js` and `tests/calparity.js` (the pages against the classic pages' computed
+style; the rail's "Report an Issue" button is in `tests/shellparity.js`) and `tests/webissues.js` and `tests/webmeet.js`
+(the real server, the built app, a real browser). What each classic screen did, row by row, and where each row is held, is `docs/parity/`.
 Details in `apps/web/README.md`.
 
 **Editing the classic portals' scripts while they still exist:** in a frame, `public/assets/dashboard.js` and

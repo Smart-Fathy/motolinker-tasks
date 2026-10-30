@@ -1,10 +1,7 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './Modal.module.css';
-
-/** What a keyboard can land on inside the dialog (the file input of a form is visually hidden but is one of them). */
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+import { useDialog } from './useDialog';
 
 interface ModalProps {
   title: string;
@@ -25,46 +22,7 @@ interface ModalProps {
  */
 export function Modal({ title, hint, onClose, children, footer }: ModalProps) {
   const id = useId();
-  const box = useRef<HTMLDivElement>(null);
-  const close = useRef(onClose);
-  useEffect(() => {
-    close.current = onClose;
-  });
-  useEffect(() => {
-    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    box.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        close.current();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-      const card = box.current;
-      if (!card) return;
-      const items = [...card.querySelectorAll<HTMLElement>(FOCUSABLE)];
-      const first = items[0];
-      const last = items[items.length - 1];
-      const at = document.activeElement;
-      if (!first || !last) {
-        e.preventDefault();
-        card.focus();
-      } else if (!card.contains(at)) {
-        e.preventDefault();
-        first.focus();
-      } else if (e.shiftKey && (at === first || at === card)) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && at === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      before?.focus();
-    };
-  }, []);
+  const box = useDialog(onClose);
   return createPortal(
     <div className={styles['curtain']} data-part="curtain">
       <div

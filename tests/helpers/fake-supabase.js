@@ -59,6 +59,8 @@ function createFakeSupabase(initial = {}, { serial = {}, defaults = {} } = {}) {
       case 'lte': return v != null && cmp(v, val) <= 0;
       case 'gt': return v != null && cmp(v, val) > 0;
       case 'gte': return v != null && cmp(v, val) >= 0;
+      // contains: the array column holds every one of the listed values (`cs.{a,b}`, as supabase-js writes an array)
+      case 'cs': { const want = val.replace(/^\{|\}$/g, '').split(',').map(x => x.trim().replace(/^"|"$/g, '')).filter(Boolean); const have = Array.isArray(v) ? v.map(String) : []; return want.every(w => have.includes(w)); }
       // `*` and `%` match any run of characters, `_` any one — the database's own LIKE, which supabase-js sends as written
       case 'ilike': return v != null && new RegExp('^' + val.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/[*%]/g, '.*').replace(/_/g, '.') + '$', 'i').test(String(v));
       default: throw new Error(`fake-supabase: unsupported filter operator "${op}" on ${col}`);

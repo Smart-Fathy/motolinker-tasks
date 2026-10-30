@@ -60,7 +60,7 @@ function unitTests() {
     { id: 2, name: 'Omar', username: 'omar', email: '', password_hash: 'x', job_title: 'Ops', permissions: everyAction(false), avatar_url: '', status_text: '', status_emoji: '' },
     { id: 3, name: 'Hana', username: 'hana', email: '', password_hash: 'x', job_title: 'Finance', permissions: everyAction(true), avatar_url: '', status_text: '', status_emoji: '' },
   ];
-  const db = createFakeSupabase({ employees, sessions: [], quotation_settings: [], google_tokens: [], push_subscriptions: [], notifications: [], form_submissions: [], issues: [], issue_comments: [] });
+  const db = createFakeSupabase({ employees, sessions: [], quotation_settings: [], google_tokens: [], push_subscriptions: [], notifications: [], form_submissions: [], issues: [], issue_comments: [], meetings: [], tasks: [], lead_followups: [], customers: [] });
   db.install();
   const base = await bootApp({ port: process.env.PORT || 3992 });
   const ctx = require(process.cwd() + '/src/ctx');
@@ -171,6 +171,9 @@ function unitTests() {
     'GET /api/v1/issues/:id/comments': 'it names a row, and who may read a ticket\'s replies depends on the ticket (its reporter, or anyone who may read the centre); tests/issues.js asks it as each',
     'POST /api/v1/issues/:id/comments': 'it changes data and names a row, and who may write depends on the ticket (its reporter, or anyone who may read the centre); tests/issues.js asks it as each',
     'POST /api/v1/issues': 'it changes data and takes a form; any signed-in actor may report one, and tests/issues.js asks it as nobody, the admin and employees',
+    'POST /api/v1/meetings': 'it changes data and takes a body; tests/meetings.js asks it as nobody, an unknown token, the admin and employees with the section, with only "view", and without it',
+    'PUT /api/v1/meetings/:id': 'it changes data and names a row; tests/meetings.js asks it as nobody, the admin and employees with the section, with only "view", and without it',
+    'DELETE /api/v1/meetings/:id': 'it changes data and names a row; tests/meetings.js asks it as nobody, the admin and employees with the section, with only "view", and without it',
     'DELETE /api/v1/submissions/:id': 'it changes data and names a row; tests/submissions.js asks it as nobody, an unknown token, the admin and employees with and without the section',
   };
   const kinds = [

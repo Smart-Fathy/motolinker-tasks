@@ -307,13 +307,17 @@ receiver.router.get('/api/employee/tasks', requireEmployeeAuth, requirePerm('tas
 
 // Fetch all tasks assigned to an employee — matches the legacy single assignee_id
 // (employee id or old Slack user id) OR membership in the assignee_ids array.
-async function fetchEmployeeTasks(employeeId) {
-  const { data: emp } = await supabase.from('employees').select('slack_user_id').eq('id', employeeId).single();
+// Asked strictly (`{ strict: true }`), a list that could only be half read is an error rather than a shorter list.
+async function fetchEmployeeTasks(employeeId, { strict = false } = {}) {
+  const { data: emp, error: empError } = await supabase.from('employees').select('slack_user_id').eq('id', employeeId).single();
   const ids = [String(employeeId), emp?.slack_user_id].filter(Boolean);
   const [single, multi] = await Promise.all([
     supabase.from('tasks').select('*').in('assignee_id', ids),
     supabase.from('tasks').select('*').contains('assignee_ids', [String(employeeId)]),
   ]);
+  // (an employee who is not there — PGRST116 — has no Slack id, which is what the list was always built without)
+  const unread = single.error || multi.error || (empError && empError.code !== 'PGRST116' ? empError : null);
+  if (strict && unread) throw new Error(unread.message);
   const seen = new Set();
   const all = [...(single.data || []), ...(multi.data || [])].filter(t => !seen.has(t.id) && seen.add(t.id));
   all.sort((a, b) => String(a.due_date || '').localeCompare(String(b.due_date || '')));

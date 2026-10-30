@@ -124,7 +124,7 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
       /task\.status === 'done' \? '✓ ' : ''/.test(IDX));
     check("the admin's status change re-syncs too",
       /updates\.status !== undefined\) syncTaskToCalendar\(data\)/.test(REP));
-    const MEET = fs.readFileSync('src/routes/meetings.js', 'utf8');
+    const MEET = fs.readFileSync('src/modules/meetings/service.js', 'utf8');   // (the rules moved out of the route file; tests/meetings.js holds what they do)
     check('meetings sync per-attendee with a company fallback, like tasks',
       /getEmployeeCalendarToken\(emp\.id\)/.test(MEET) && /conferenceDataVersion=1/.test(MEET)
       && /hangoutLink/.test(MEET));

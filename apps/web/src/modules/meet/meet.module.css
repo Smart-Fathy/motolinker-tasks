@@ -1,0 +1,261 @@
+/* The Meet page: the classic portals' own markup for it, which is inline style in both public/dashboard.html and employee.html
+   (the cards and the list are one piece of code, public/assets/meetings.js, in both), with the sheets' differences in the page
+   around it — the admin's .page-body pads itself and its title is the serif display one, the team's block pads itself by an
+   inline 28px inside a page the shell has already padded — and in the loader and the buttons. tests/meetparity.js holds the
+   result to the classic pages' computed style, value by value. */
+@layer ui {
+  /* ── The page ────────────────────────────────────────────────────────────── */
+  .body {
+    padding: calc(28px * var(--d-k, 1));
+    width: 100%;
+  }
+  :global([data-portal='team']) .body {
+    padding: 28px;
+    width: auto;
+  }
+  .title {
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-size: 30px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    margin-bottom: 6px;
+  }
+  :global([data-portal='team']) .title {
+    font-size: 26px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 28px;
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    max-width: 640px;
+  }
+  .card {
+    background: var(--card, var(--surface));
+    border: 1px solid var(--border);
+    border-radius: calc(14px * var(--r-k, 1));
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+  }
+  .badge {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .badge svg {
+    width: 24px;
+    height: 24px;
+  }
+  .badge[data-tone='success'] {
+    background: rgba(52, 211, 153, 0.1);
+  }
+  .badge[data-tone='success'] svg {
+    color: var(--success);
+  }
+  .badge[data-tone='alt'] {
+    background: rgba(var(--alt-rgb, 124, 106, 255), 0.1);
+  }
+  .badge[data-tone='alt'] svg {
+    color: var(--primary-text, var(--primary));
+  }
+  .cardTitle {
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .cardHint {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .wide {
+    width: 100%;
+    text-align: center;
+    text-decoration: none;
+  }
+  .joinRow {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+  .code {
+    flex: 1;
+    text-transform: lowercase;
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--hair, var(--border));
+    border-radius: calc(8px * var(--r-k, 1));
+    font-size: 13px;
+    background: var(--field-bg, #0e0e10);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .code:focus {
+    border-color: var(--primary);
+    background: var(--surface);
+  }
+  :global([data-portal='team']) .code {
+    background: var(--surface);
+    padding: 11px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    transition:
+      border 0.2s,
+      box-shadow 0.2s;
+    font-family: var(--font);
+  }
+  :global([data-portal='team']) .code:focus {
+    box-shadow:
+      0 0 0 3px rgba(var(--alt-rgb, 124, 106, 255), 0.12),
+      var(--glow, 0 0 #0000);
+  }
+
+  /* ── The meetings ────────────────────────────────────────────────────────── */
+  .meetings {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 16px 28px;
+    box-sizing: border-box;
+    width: 100%;
+  }
+  .listHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 18px 0 10px;
+  }
+  .listTitle {
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .empty,
+  .error {
+    color: var(--muted);
+    font-size: 12.5px;
+    padding: 14px 0;
+  }
+  .error {
+    color: var(--error-text, #f88);
+  }
+  .list {
+    display: grid;
+    gap: 8px;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px 12px;
+    flex-wrap: wrap;
+    padding: 11px 14px;
+    background: var(--card, var(--surface));
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .day {
+    text-align: center;
+    min-width: 52px;
+  }
+  .weekday {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .date {
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .what {
+    flex: 1;
+    min-width: 140px;
+  }
+  .name {
+    font-weight: 600;
+    font-size: 13.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .meta {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ── The loader ──────────────────────────────────────────────────────────── */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 64px;
+    color: var(--muted);
+    font-size: 14px;
+    gap: 10px;
+  }
+  :global([data-portal='team']) .loading {
+    display: block;
+    text-align: center;
+    padding: 48px 20px;
+    gap: normal;
+    align-items: normal;
+    justify-content: normal;
+  }
+  .spinner {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  :global([data-portal='team']) .spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* ── On a phone ──────────────────────────────────────────────────────────── */
+  @media (max-width: 700px) {
+    .title {
+      font-size: 20px;
+    }
+    .code {
+      font-size: 16px;
+    }
+  }
+  @media (max-width: 640px) {
+    :global([data-portal='admin']) .body {
+      padding: 16px;
+    }
+    .code {
+      padding: 12px 14px;
+      border-radius: calc(10px * var(--r-k, 1));
+    }
+  }
+  @media (max-width: 768px) {
+    :global([data-portal='team']) .code {
+      padding: 12px 14px;
+      font-size: 16px;
+    }
+  }
+}

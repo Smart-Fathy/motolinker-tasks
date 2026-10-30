@@ -1,0 +1,111 @@
+/* The classic portals' shared dialog: .modal-overlay, .modal, .modal-header, .modal-title, .modal-close, .modal-body and
+   .modal-footer of public/assets/dashboard.css (the admin's) and employee.css (the team's, which copies the admin's shape),
+   with the theme layer's changes to .modal and mobile.css's. The shape is one; the sheets differ in the curtain, the card's
+   colour, border and shadow. */
+@layer ui {
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+  }
+  .modal {
+    background: var(--panel, var(--surface));
+    border: 1px solid var(--hair-gold, var(--border));
+    border-radius: calc(14px * var(--r-k, 1));
+    width: 100%;
+    max-width: 540px;
+    max-height: 90vh;
+    max-height: 90dvh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, calc(0.7 * var(--sh-k, 1)));
+    outline: none;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 0;
+  }
+  .title {
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+  :global([data-portal='team']) .title {
+    font-family: inherit;
+    font-weight: 700;
+    letter-spacing: normal;
+  }
+  .close {
+    user-select: none;
+    cursor: pointer;
+    font-size: 20px;
+    color: var(--muted);
+    line-height: 1;
+    background: none;
+    border: none;
+  }
+  .close:hover {
+    color: var(--text);
+  }
+  .body {
+    padding: 20px 24px;
+  }
+  .footer {
+    padding: 0 24px 20px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+  }
+
+  :global([data-portal='team']) .overlay {
+    background: rgba(0, 0, 0, 0.55);
+  }
+  :global([data-portal='team']) .modal {
+    background: var(--surface);
+    border-color: var(--border);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, calc(0.5 * var(--sh-k, 1)));
+  }
+  :global([data-portal='team']) .footer {
+    align-items: normal;
+  }
+
+  /* On a phone: a thumb-sized × */
+  @media (max-width: 700px) {
+    .close {
+      font-size: 24px;
+      min-width: 44px;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+  /* …and the admin's sheet, at 640px, also fills the width and is a little more compact (the team's sheet has no such rule). */
+  @media (max-width: 640px) {
+    :global([data-portal='admin']) .overlay {
+      padding: 10px;
+    }
+    :global([data-portal='admin']) .modal {
+      max-width: 100%;
+      margin: 10px;
+      border-radius: calc(18px * var(--r-k, 1));
+    }
+    :global([data-portal='admin']) .header {
+      padding: 18px 20px 0;
+    }
+    :global([data-portal='admin']) .body {
+      padding: 18px 20px;
+    }
+    :global([data-portal='admin']) .footer {
+      padding: 0 20px 18px;
+    }
+  }
+}

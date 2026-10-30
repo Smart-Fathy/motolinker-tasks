@@ -93,6 +93,8 @@ run contracts   node tests/contracts.js
 run actor       node tests/actor.js
 run notifications node tests/notifications.js
 run submissions  node tests/submissions.js
+run meetings     node tests/meetings.js
+run calendar     node tests/calendar.js
 run issues       node tests/issues.js
 run modules     node tests/modules.js
 run deployconfig node tests/deployconfig.js
@@ -104,6 +106,8 @@ run shellparity  node tests/shellparity.js
 run notifparity node tests/notifparity.js
 run subparity   node tests/subparity.js
 run issparity   node tests/issparity.js
+run meetparity  node tests/meetparity.js
+run calparity   node tests/calparity.js
 run webshell     node tests/webshell.js
 run galleryaudit node tests/galleryaudit.js
 run embed        node tests/embed.js
@@ -111,6 +115,7 @@ run webframe     node tests/webframe.js
 run webpwa       node tests/webpwa.js
 run webnotifs    node tests/webnotifs.js
 run webissues    node tests/webissues.js
+run webmeet      node tests/webmeet.js
 run webauth      node tests/webauth.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js
