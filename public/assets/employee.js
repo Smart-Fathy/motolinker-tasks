@@ -1,6 +1,9 @@
 // Shown inside the new app's frame (/legacy/employee?embed=1; see assets/embed.js)? Then the app owns what it owns on every
 // screen — signing in, the live notification stream, presence, push, the service worker — and this page keeps its content.
 const EMBEDDED = document.documentElement.hasAttribute('data-embed');
+// A Google connect leaves the page for Google's consent screen, which refuses to be drawn in a frame: from inside the app's
+// frame it is the app's window that goes, and the callback brings it back to /employee#<screen>, where the app opens it.
+const goOut = url => { (EMBEDDED ? window.top : window).location.href = url; };
 let empToken  = localStorage.getItem('ml_emp_token');
 let empInfo   = null;
 let taskMode  = 'select';
@@ -21,7 +24,7 @@ async function empConnectNav(url) {
     const r = await ef('/api/employee/check');
     if (!r.ok) return;   // ef() already sent the user to the login screen
   } catch (_) { showToast('Cannot reach the server — try again in a moment.'); return; }
-  window.location.href = url + (url.includes('?') ? '&' : '?') + '_t=' + encodeURIComponent(empToken || '');
+  goOut(url + (url.includes('?') ? '&' : '?') + '_t=' + encodeURIComponent(empToken || ''));
 }
 
 async function ef(path, opts = {}) {

@@ -61,10 +61,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
     page.asked = [];
+    page.navs = [];       // every time a window was sent somewhere, and whether it was the outer one
     await page.setRequestInterception(true);
     page.on('request', r => {
       const url = r.url(), u = new URL(url);
       if (ours(url)) page.asked.push(u.pathname + u.search);
+      if (r.isNavigationRequest()) page.navs.push({ path: u.pathname, top: r.frame() === page.mainFrame() });
       if (u.pathname === '/__host' && url.startsWith(base)) return r.respond({ status: 200, contentType: 'text/html', body: HOST(base + src, frameWidth) });
       if (/unpkg|jsdelivr|fonts\.g|gstatic/.test(url)) return r.respond({ status: 200, contentType: 'text/plain', body: '' });
       if (/^https?:/.test(url) && !ours(url)) return r.abort('internetdisconnected');
@@ -202,6 +204,23 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check(`${tag} …and the frame neither signs the person out nor shows a sign-in form: that is the app's to decide`, after.token.includes(p.token) && after.auth.every(d => d === 'none' || d === 'absent'), JSON.stringify(after));
     p.sessions.set(p.token, p.session);
     await page.shut();
+
+    // ═══ 2b. Leaving for Google ═════════════════════════════════════════════════════════════════
+    // A Google connect (Drive, Email, Calendar, Chat) sends the window to Google's consent screen, which refuses to be drawn in a
+    // frame. From inside the app's frame it is the app's own window that goes; from a page on its own, that page's.
+    for (const framed of [true, false]) {
+      page = await open(p, { src: framed ? `${p.classic}?embed=1#${p.start}` : `${p.classic}#${p.start}`, framed });
+      await until(page, () => document.querySelector('.page.active') || window.__msgs);
+      await sleep(framed ? 500 : 1200);
+      const guest = framed ? page.inside() : page;
+      const insideUrl = guest.url();
+      guest.evaluate(code => { try { (0, eval)(code); } catch (_) {} }, p.name === 'admin' ? 'connectDrive()' : "empConnectNav('/api/drive/connect')").catch(() => {});
+      let left = null;
+      for (let i = 0; i < 80 && !left; i++) { left = page.navs.find(n => /\/api\/drive\/connect$/.test(n.path)); if (!left) await sleep(100); }
+      check(`${tag} ${framed ? 'a Google connect started in the frame sends the app\'s window, and the frame stays where it is' : 'a Google connect started by a page on its own sends that page, as it always did'}`,
+        !!left && left.top === true && page.navs.filter(n => /\/api\/drive\/connect$/.test(n.path) && !n.top).length === 0 && (!framed || insideUrl.includes('embed=1')), JSON.stringify(page.navs.filter(n => /connect/.test(n.path))));
+      await page.shut();
+    }
 
     // ═══ 3. An installed app on a phone: two things the page does for itself, and not in a frame ═
     const phoneOf = () => ({ bottomNav: document.querySelector('.bottom-nav') ? getComputedStyle(document.querySelector('.bottom-nav')).display : 'absent', room: getComputedStyle(document.querySelector('.app-content, .content')).paddingBottom, installed: document.body.classList.contains('standalone') });

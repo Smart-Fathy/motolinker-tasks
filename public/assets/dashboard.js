@@ -2,6 +2,9 @@
 // Shown inside the new app's frame (/legacy/dashboard?embed=1; see assets/embed.js)? Then the app owns what it owns on every
 // screen — signing in, the live notification stream, presence, push, the service worker — and this page keeps its content.
 const EMBEDDED = document.documentElement.hasAttribute('data-embed');
+// A Google connect leaves the page for Google's consent screen, which refuses to be drawn in a frame: from inside the app's
+// frame it is the app's window that goes, and the callback brings it back to /dashboard#<screen>, where the app opens it.
+const goOut = url => { (EMBEDDED ? window.top : window).location.href = url; };
 let authToken = localStorage.getItem('ml_admin_token') || '';
 
 let allTasks = [];
@@ -2895,7 +2898,7 @@ function gchatConnectBtn(label) {
   return `<button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="gchatConnect()">${esc(label)}</button>`;
 }
 function gchatConnect() {
-  window.location.href = GCHAT_BASE + '/connect' + (authToken ? '?_t=' + encodeURIComponent(authToken) : '');
+  goOut(GCHAT_BASE + '/connect' + (authToken ? '?_t=' + encodeURIComponent(authToken) : ''));
 }
 async function gchatDisconnect() {
   if (!confirm('Disconnect Google Chat?')) return;
@@ -3097,7 +3100,7 @@ async function calendarSyncToggle() {
     return;
   }
   // OAuth redirect — the token query param keeps the session through the round trip
-  window.location.href = '/api/calendar/connect' + (authToken ? '?_t=' + encodeURIComponent(authToken) : '');
+  goOut('/api/calendar/connect' + (authToken ? '?_t=' + encodeURIComponent(authToken) : ''));
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -4118,7 +4121,7 @@ async function deleteHours(id) {
 
 // ── Email ─────────────────────────────────────────────────────────────────────
 function connectGmail() {
-  window.location.href = '/api/email/connect?_t=' + encodeURIComponent(authToken || '');
+  goOut('/api/email/connect?_t=' + encodeURIComponent(authToken || ''));
 }
 
 let emailInboxCache = [];
@@ -4378,7 +4381,7 @@ async function loadDriveSection(statusApi, filesApi, disconnectFn, contentId, co
   } catch (e) { c.innerHTML = `<div class="error-msg">${esc(e.message)}</div>`; }
 }
 
-function connectDrive()  { window.location.href = '/api/drive/connect?_t=' + encodeURIComponent(authToken || ''); }
+function connectDrive()  { goOut('/api/drive/connect?_t=' + encodeURIComponent(authToken || '')); }
 async function disconnectDrive()  { await apiFetch('/api/drive/disconnect', { method: 'POST' }); loadDrive(); }
 function loadDrive()  { loadDriveSection('/api/drive/status',  '/api/drive/files',  'disconnectDrive',  'drive-content',  'connectDrive',  'My Drive',   'Drive'); }
 function loadSheets() { loadDriveSection('/api/drive/status',  '/api/drive/sheets', 'disconnectDrive',  'sheets-content', 'connectDrive',  'My Sheets',  'Sheets'); }
