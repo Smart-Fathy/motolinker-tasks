@@ -8,6 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useNavigate } from 'react-router';
 import { useAppTo, useSession, useStreamEvent } from '../app/context';
 import { Unported } from '../app/Unported';
+import { fromStream } from '../modules/notifications';
 import { frameUrl, parseFromFrame, toFrame, type ToFrame } from './bridge';
 import styles from './legacy.module.css';
 
@@ -91,6 +92,14 @@ export function LegacyFrame({ screen }: { screen: Screen }) {
     // (a line that is not JSON throws, and the stream keeps one listener's trouble from the others)
     const profile: unknown = JSON.parse(data);
     if (profile && typeof profile === 'object') say({ type: 'look', profile });
+  });
+
+  // A task was assigned to the team member, or one is due: the page that lists their tasks reads them again, as it did when it
+  // held the notification stream itself.
+  useStreamEvent('notification', data => {
+    if (state !== 'ready' || portal !== 'team') return;
+    const n = fromStream(JSON.parse(data));
+    if (n && (n.type === 'task' || n.type === 'reminder')) say({ type: 'refresh', what: 'tasks' });
   });
 
   // The frame fills what the window has left below the top bar (and above a phone's bottom bar): the classic page scrolls

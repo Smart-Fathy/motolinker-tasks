@@ -10,6 +10,7 @@
 //                 { ml: 'embed', v: 1, type: 'unauthorized' }         the session is gone: the app decides what to do
 //   app -> page   { ml: 'embed', v: 1, type: 'navigate',     page }   show that page (no reload)
 //                 { ml: 'embed', v: 1, type: 'look',         profile } the workspace's look changed
+//                 { ml: 'embed', v: 1, type: 'refresh',      what }    something this page shows changed: read it again ('tasks')
 //
 // Only the window that framed this page, from this origin, is listened to or spoken to. The page's own scripts ask
 // `document.documentElement.hasAttribute('data-embed')` to leave to the app what the app now owns (the live notification
@@ -54,6 +55,14 @@
       if (typeof window.navigate === 'function') window.navigate(m.page);
     } else if (m.type === 'look') {
       if (m.profile && typeof m.profile === 'object' && typeof window.wsApply === 'function') window.wsApply(m.profile);
+    } else if (m.type === 'refresh') {
+      // The app heard of a task (assigned, or due) on the stream the page does not open in a frame: the page reads its tasks
+      // again, as it does when the notification reaches it directly.
+      if (m.what === 'tasks') {
+        for (const read of [window.loadMyTasks, window.loadDropdownTasks]) {
+          if (typeof read === 'function') Promise.resolve().then(read).catch(() => {});
+        }
+      }
     }
   });
 })();

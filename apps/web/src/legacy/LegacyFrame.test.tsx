@@ -273,6 +273,61 @@ describe('following the frame', () => {
   });
 });
 
+describe('a task assigned to a team member', () => {
+  const task = (type: string, id = 1) =>
+    `event: notification\ndata: ${JSON.stringify({ id, type, title: 'Something', created_at: '2026-10-01T09:00:00.000Z' })}\n\n`;
+
+  it('makes the page that lists their tasks read them again — the page no longer holds the stream that used to tell it', async () => {
+    const stream = open('team', teamMe(), { entries: ['/tasks'] });
+    await opened('My Tasks (classic page)');
+    const heard = listen();
+    await waitFor(() =>
+      expect(stream.calls('/api/employee/notifications/stream?hd=2')).toHaveLength(1),
+    );
+    speak(page('ready', 'tasks'));
+    stream.push(task('task', 1));
+    await waitFor(() => expect(heard.of('refresh')).toHaveLength(1));
+    expect(heard.of('refresh')[0]).toEqual({
+      message: { ml: 'embed', v: 1, type: 'refresh', what: 'tasks' },
+      origin: window.location.origin,
+    });
+    stream.push(task('reminder', 2));
+    await waitFor(() => expect(heard.of('refresh')).toHaveLength(2));
+  });
+
+  it('is not made of any other kind of notification, nor of a frame that is not one, nor before the page is up', async () => {
+    const stream = open('team', teamMe(), { entries: ['/tasks'] });
+    await opened('My Tasks (classic page)');
+    const heard = listen();
+    await waitFor(() =>
+      expect(stream.calls('/api/employee/notifications/stream?hd=2')).toHaveLength(1),
+    );
+    stream.push(task('task', 1));
+    await new Promise(r => setTimeout(r, 50));
+    expect(heard.of('refresh')).toHaveLength(0);
+    speak(page('ready', 'tasks'));
+    stream.push(task('request', 2));
+    stream.push(task('general', 3));
+    stream.push('event: notification\ndata: not json\n\n');
+    stream.push('event: notification\ndata: 7\n\n');
+    stream.push(task('task', 4));
+    await waitFor(() => expect(heard.of('refresh')).toHaveLength(1));
+  });
+
+  it("is the team portal's alone: the admin's pages have no tasks of their own to read", async () => {
+    const stream = open('admin', adminMe(), { entries: ['/leads'] });
+    await opened('Leads (classic page)');
+    const heard = listen();
+    await waitFor(() =>
+      expect(stream.calls('/api/dashboard/notifications/stream?hd=2')).toHaveLength(1),
+    );
+    speak(page('ready', 'customers'));
+    stream.push(task('task', 1));
+    await new Promise(r => setTimeout(r, 80));
+    expect(heard.of('refresh')).toHaveLength(0);
+  });
+});
+
 describe('what the frame needs of the app', () => {
   it('has a dead session asked about, once however many calls fail', async () => {
     const { onUnauthorized } = open('admin', adminMe(), { entries: ['/leads'] });

@@ -11,7 +11,11 @@ export type FromFrame =
   { type: 'ready'; page: string } | { type: 'navigated'; page: string } | { type: 'unauthorized' };
 
 /** What the app tells the page. */
-export type ToFrame = { type: 'navigate'; page: string } | { type: 'look'; profile: object };
+export type ToFrame =
+  | { type: 'navigate'; page: string }
+  | { type: 'look'; profile: object }
+  /** something changed that the page shows, and it should read it again (a task was assigned) */
+  | { type: 'refresh'; what: 'tasks' };
 
 // A page of the classic portals is named by a few lowercase letters ('customers', 'purchaseorders').
 const PAGE = /^[a-z]{2,20}$/;
