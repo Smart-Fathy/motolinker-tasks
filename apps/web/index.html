@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#1e2130">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ML Admin">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/manifest-dashboard.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="/icons/favicon.png">
+  <title>MotoLinker · Admin Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!--ml:boot-->
+</head>
+<body>
+  <!--
+    This file is a template. src/lib/spa-shell.js (the server) writes the rest of the page: for the team portal
+    it swaps the admin values above (title, manifest, theme colour, app title, the noscript link) for the team's,
+    then src/lib/shell.js writes the workspace's name, picture and look into it exactly as it does for the classic
+    portals, and the marker in <head> becomes `window.__ML__`. The head markup has to stay as the classic pages
+    have it, because that code finds its places by their text; tests/spashell.js fails if one goes missing.
+  -->
+  <div id="root"></div>
+  <noscript>MotoLinker needs JavaScript. <a href="/legacy/dashboard">Open the classic portal</a>.</noscript>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

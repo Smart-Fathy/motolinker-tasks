@@ -59,8 +59,7 @@ for (const f of fs.readdirSync(path.join(ROOT, '.github', 'workflows')).filter(n
 const notFromEngines = setupNode.filter(s => !/node-version-file:\s*package\.json/.test(s.step));
 check('CI reads its Node from the same engines line, so the suites run on what production runs on', setupNode.length > 0 && notFromEngines.length === 0, notFromEngines.map(s => s.f).join(', ') || `${setupNode.length} setup-node steps`);
 check('the host starts the server with `npm run start`, which runs index.js', pkg.scripts && pkg.scripts.start === 'node index.js', pkg.scripts && pkg.scripts.start);
-check('`npm run build` exists and does nothing until a workspace has something to build', typeof (pkg.scripts && pkg.scripts.build) === 'string'
-  && !/\bvite\b|\btsc\b|\bwebpack\b/.test(pkg.scripts.build), pkg.scripts && pkg.scripts.build);
+check('`npm run build`, which the host runs before it starts the server, hands the work to the workspaces', pkg.scripts && pkg.scripts.build === 'npm run build --workspaces --if-present', pkg.scripts && pkg.scripts.build);
 
 // ── 2. what the deploy image carries ────────────────────────────────────────────────────────────
 const workspaceDirs = [];
@@ -90,6 +89,17 @@ check('the shared packages are workspace links in the lockfile, not copies', sha
   const entry = lock.packages['node_modules/' + name];
   return entry && entry.link === true && entry.resolved === d.split(path.sep).join('/');
 }));
+
+// The apps are built on the host and what they build is served as files: nothing in them is loaded by the server
+// at run time, so they declare no `dependencies` (the bundler takes what it needs from devDependencies), and
+// the build output is not in the repository (the host writes it).
+const appDirs = workspaceDirs.filter(d => d.startsWith('apps' + path.sep) || d.startsWith('apps/'));
+check('the web app is a workspace', appDirs.some(d => d.endsWith('web')), appDirs.join(', '));
+const runtimeDeps = appDirs.filter(d => Object.keys(read(path.join(d, 'package.json')).dependencies || {}).length);
+check('the apps declare no run-time dependencies: what they use is bundled at build time', runtimeDeps.length === 0, runtimeDeps.join(', '));
+const webPkg = exists('apps/web/package.json') ? read('apps/web/package.json') : {};
+check('the web app\'s build is a type-check and then the bundler, so a type error stops a deploy before it is served', webPkg.scripts && webPkg.scripts.build === 'tsc --noEmit && vite build', webPkg.scripts && webPkg.scripts.build);
+check('the build output is not committed: it is git-ignored', /^dist\/$/m.test(fs.readFileSync(path.join(ROOT, '.gitignore'), 'utf8')));
 
 // ── 3. the lockfile agrees with package.json ────────────────────────────────────────────────────
 const rootLock = lock.packages[''] || {};

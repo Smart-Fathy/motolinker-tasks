@@ -43,6 +43,7 @@
     "hdsignal": 6,
     "permsui": 6,
     "securityui": 5,
-    "navtest": 5
+    "navtest": 5,
+    "webunit": 6
   }
 }
