@@ -50,7 +50,7 @@ describe('the registry', () => {
     );
   });
 
-  it('finds, in this app, the modules that have moved: Home and Notifications so far', () => {
-    expect([...registry.keys()].sort()).toEqual(['home', 'notifications']);
+  it('finds, in this app, the modules that have moved: Home, Notifications and Submissions so far', () => {
+    expect([...registry.keys()].sort()).toEqual(['home', 'notifications', 'submissions']);
   });
 });

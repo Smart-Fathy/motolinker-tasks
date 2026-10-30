@@ -211,9 +211,16 @@ describe('what a team member is given', () => {
   });
 
   it('names the page in the top bar as the classic team portal does', async () => {
-    open('team', teamMe({ submissions: true }), { entries: ['/submissions'] });
-    await screen.findByTitle('Website Submissions (classic page)');
+    // Submissions is the one screen whose title in the team's top bar is not its name in the rail
+    open('team', teamMe({ submissions: true }), {
+      entries: ['/submissions'],
+      more: { '/api/v1/submissions': () => json(200, { items: [] }) },
+    });
+    await screen.findByText('No submissions yet');
     expect(document.querySelector('[data-part=title]')?.textContent).toBe('Website Submissions');
+    expect(
+      within(rail()).getByRole('button', { name: 'Submissions' }).getAttribute('aria-current'),
+    ).toBe('page');
   });
 
   it('keeps their account behind their initials: who they are, the way back to the classic portal, and Sign out', async () => {

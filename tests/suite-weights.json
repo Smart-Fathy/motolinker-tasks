@@ -53,6 +53,7 @@
     "signinparity": 19,
     "shellparity": 32,
     "notifparity": 55,
+    "subparity": 90,
     "webshell": 47,
     "galleryaudit": 10,
     "embed": 34,

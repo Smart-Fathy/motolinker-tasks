@@ -102,6 +102,7 @@ run webunit      node tools/run-web-tests.js
 run signinparity node tests/signinparity.js
 run shellparity  node tests/shellparity.js
 run notifparity node tests/notifparity.js
+run subparity   node tests/subparity.js
 run webshell     node tests/webshell.js
 run galleryaudit node tests/galleryaudit.js
 run embed        node tests/embed.js
