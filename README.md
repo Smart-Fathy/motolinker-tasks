@@ -730,8 +730,8 @@ index.js              boot, config, auth, Google tokens, chat/notifications core
 src/ctx.js            the shared context feature modules pull their deps from
 src/lib/constants.js  domain vocabulary used across features
 src/routes/*.js       one module per feature (stock, suppliers, rfq, huddles, …)
-src/http/             the new server code: the actor model's guards, /api/v1, the ml_ui switch and the new
-                      app's page (see "Migrating to one codebase")
+src/http/             the new server code: the actor model's guards, /api/v1, the ml_ui switch, the new
+                      app's page and who may frame the pages (see "Migrating to one codebase")
 packages/contracts/   what the server and the web app agree on: the permission catalogue and rules,
                       actors (admin / employee, capabilities, scope), the app's screens (who gets each,
                       where each stands in the navigation, what the classic portals called it), the links

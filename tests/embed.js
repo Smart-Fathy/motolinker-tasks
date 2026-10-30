@@ -6,7 +6,7 @@
 // service worker, the sign-in screen, the assistant), and talk to the app (the page it is on, a dead session, a new look).
 // This holds all of that — for the admin's page and the team's — and holds the other side just as hard: a classic page that is
 // not embedded, or is opened by itself with ?embed=1, is exactly the page it was; and only the window that framed it, from its
-// own origin, can steer it or hear it.
+// own origin, can steer it or hear it (a window of another origin is not given the frame at all: section 6).
 //
 // (The frame here is a minimal page of this suite's own, served from the same origin; the app's side of the conversation is
 // tests/webframe.js.)
@@ -272,22 +272,22 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await page.shut();
   }
 
-  // ═══ 6. A parent on another origin hears nothing and steers nothing ═══════════════════════
+  // ═══ 6. A parent on another origin gets no frame at all ═══════════════════════════════════
+  // This used to hold the page to speaking only to its own origin while it sat inside a foreign frame. The server now tells browsers
+  // who may frame its pages (frame-ancestors 'self': src/http/frame-guard.js, held by tests/framing.js), so the page never sits in one:
+  // the browser refuses the frame, and there is nothing to hear from and nothing to steer. The bridge's origin checks stay as the
+  // second line (the sibling frame above, which IS the same origin, still shows them working).
   if (!only || only === 'admin') {
     const p = PORTALS[0];
     const http = require('http');
     const server = http.createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end(HOST(base + p.classic + '?embed=1#' + p.start)); }).listen(Number(new URL(hostBase).port), '127.0.0.1');
     await new Promise(r => server.once('listening', r));
     const page = await open(p, { src: `${p.classic}?embed=1#${p.start}`, parent: hostBase });
-    const f = await (async () => { for (let i = 0; i < 100; i++) { const x = page.inside(); if (x && /\/legacy\//.test(x.url())) return x; await sleep(100); } return null; })();
-    const booted = f && await until(f, () => document.querySelector('.page.active') && typeof window.mlEmbed === 'object');
+    const f = await (async () => { for (let i = 0; i < 100; i++) { const x = page.inside(); if (x && /^chrome-error:/.test(x.url())) return x; await sleep(100); } return null; })();
     await sleep(1500);
     const heardAny = await page.msgs();
-    check('a page that frames it from another origin hears nothing from it (the page speaks only to its own origin)', booted && heardAny.length === 0, JSON.stringify({ booted, heardAny }));
-    const shownBefore = booted ? await shown(f) : null;
-    await say(page, base, { ml: 'embed', v: 1, type: 'navigate', page: p.other });
-    await sleep(600);
-    check('…and cannot steer it either, though it is its parent', booted && await shown(f) === shownBefore && shownBefore === 'page-' + p.start, String(shownBefore));
+    check('a page that frames it from another origin gets no frame: the browser refuses it (frame-ancestors)', !!f, f ? f.url() : 'the frame never became an error page');
+    check('…so there is nothing it can hear from the page, and nothing of the page for it to steer', !!f && heardAny.length === 0, JSON.stringify(heardAny));
     await page.shut();
     server.close();
   }

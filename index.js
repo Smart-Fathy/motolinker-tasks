@@ -10,6 +10,7 @@ const nodemailer = require('nodemailer');
 const { LEADS_ENUM_DEFAULTS, PO_LINE_STATUSES, PO_LINE_STATUS_KEYS, BRAND_LOGO_URL, safeFileUrl }
   = require('./src/lib/constants');
 const { requestMeta } = require('./src/lib/request-info');
+const { makeFrameGuard } = require('./src/http/frame-guard');
 // What the server and the portals agree on: the permission model, actors, wire schemas.
 const contracts = require('@motolinker/contracts');
 const ADMIN_ACTOR = contracts.adminActor();
@@ -29,6 +30,10 @@ expressApp.use(compression({
   filter: (req, res) => !/text\/event-stream/i.test(String(res.getHeader('Content-Type') || ''))
     && compression.filter(req, res),
 }));
+// The portals' pages may be framed by this site and by no other (clickjacking). It is mounted ahead of everything that can
+// answer a page — the shell routes and express.static below — so whichever answers carries it. What is covered, and what is
+// deliberately not, is written in src/http/frame-guard.js.
+expressApp.use(makeFrameGuard({ pages: ['/dashboard', '/employee', '/legacy'] }));
 // Exported so tooling can inspect the app without starting it — the route-inventory
 // check that guards this restructure walks receiver.app's stack.
 module.exports = receiver;

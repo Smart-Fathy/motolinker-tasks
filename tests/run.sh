@@ -84,6 +84,7 @@ run hdextras    node tests/hdextras.js
 run workspaceui node tests/workspaceui.js
 run workspaceapi node tests/workspaceapi.js
 run shell        node tests/shell.js
+run framing      node tests/framing.js
 run themeui     node tests/themeui.js
 run wsedit      node tests/wsedit.js
 run icontest    node tests/icontest.js

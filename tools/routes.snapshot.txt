@@ -1,6 +1,7 @@
 USE query
 USE expressInit
 USE compression
+USE frameGuard
 USE serveWebAssets
 GET /dashboard
 GET /dashboard.html
