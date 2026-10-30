@@ -81,6 +81,43 @@ describe('the dialog', () => {
     );
   });
 
+  it('keeps Tab inside it: from the last control round to the first, and Shift+Tab from the first round to the last', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'Open it' }));
+    const close = screen.getByRole('button', { name: 'Close' });
+    const answer = screen.getByRole('textbox', { name: 'Your answer' });
+    const done = screen.getByRole('button', { name: 'Done' });
+    await user.tab();
+    expect(document.activeElement).toBe(close);
+    await user.tab();
+    expect(document.activeElement).toBe(answer);
+    await user.tab();
+    expect(document.activeElement).toBe(done);
+    await user.tab();
+    expect(document.activeElement).toBe(close);
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(done);
+    // …and Shift+Tab from the dialog itself, where focus starts, does not leave it either
+    (document.querySelector('[role=dialog]') as HTMLElement).focus();
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(done);
+  });
+
+  it('pulls focus back in when it has gone somewhere else and Tab is pressed', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'Open it' }));
+    // (something drawn after the dialog, where Tab would otherwise go on to the start of the page behind it)
+    const after = document.createElement('button');
+    document.body.append(after);
+    after.focus();
+    expect(document.activeElement).toBe(after);
+    await user.tab();
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+    after.remove();
+  });
+
   it('keeps focus where it is when it is drawn again (a parent redrawing is not a reason to take it back)', async () => {
     const user = userEvent.setup({ delay: null });
     const { rerender } = render(<Page />);

@@ -72,8 +72,8 @@ its parts, the thread and a reply, the reply box and its buttons — and the wor
 - **v1 is strict where the classic routes were forgiving**: a status that is not `open` or `resolved` is a 400 (the classic route read
   anything else as `open`); a reply of more than 2000 characters is a 400 (the classic route cut it); a ticket that is not there is a
   404 and an id that is not digits a 400; a ticket that cannot be stored is not announced (the classic route still tells the CTOs).
-- **The report dialog is accessible** where the classic one was not: it is a modal dialog with a name, Escape closes it, focus goes in and
-  back out, and the file input can be reached from the keyboard. A click on the dim curtain does not close it (what was typed is kept).
+- **The report dialog is accessible** where the classic one was not: it is a modal dialog with a name, Escape closes it, focus goes in, stays
+  in while Tab is pressed, and goes back out, and the file input can be reached from the keyboard. A click on the dim curtain does not close it (what was typed is kept).
   Autofocus is left off so a phone's keyboard does not open over the form.
 
 ## Not in this module (so not here)

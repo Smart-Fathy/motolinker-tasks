@@ -2,6 +2,10 @@ import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './Modal.module.css';
 
+/** What a keyboard can land on inside the dialog (the file input of a form is visually hidden but is one of them). */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 interface ModalProps {
   title: string;
   /** the line under the title that says what the dialog is for */
@@ -16,7 +20,8 @@ interface ModalProps {
 /**
  * A dialog over the whole page, as the classic portals draw theirs: a dim curtain, a card with a title and a ×, a body, and
  * a row of buttons. It does not close when the curtain is clicked (what was typed is not lost to a stray click); Escape and
- * the × close it. Focus moves into it when it opens and goes back to where it was when it closes.
+ * the × close it. Focus moves into it when it opens, stays in it while Tab is pressed, and goes back to where it was when it
+ * closes.
  */
 export function Modal({ title, hint, onClose, children, footer }: ModalProps) {
   const id = useId();
@@ -29,7 +34,30 @@ export function Modal({ title, hint, onClose, children, footer }: ModalProps) {
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     box.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close.current();
+      if (e.key === 'Escape') {
+        close.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const card = box.current;
+      if (!card) return;
+      const items = [...card.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      const first = items[0];
+      const last = items[items.length - 1];
+      const at = document.activeElement;
+      if (!first || !last) {
+        e.preventDefault();
+        card.focus();
+      } else if (!card.contains(at)) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && (at === first || at === card)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && at === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => {

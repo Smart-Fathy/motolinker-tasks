@@ -295,7 +295,8 @@ shell does not remember it as the admin's last page, and `classicUrlFor` sends i
 - **Report an Issue** is `ReportIssue.tsx`, opened from a button at the foot of the team's rail and a line in the team's account
   menu (the shell owns the open/closed state; the admin has neither). It checks a report before it asks (words, 10 MB) and
   posts a form to `POST /api/v1/issues` through `api.postForm`. The dialog is `ui/Modal.tsx`: a portal over the page, a modal
-  dialog with a name, Escape closes it, focus goes in and back out, and a click on the curtain does not close it.
+  dialog with a name, Escape closes it, focus goes in, stays in while Tab is pressed and goes back out, and a click on the curtain
+  does not close it.
 - **Data.** The queue is `['issues', actor.key, 'list']`, a ticket's replies `['issues', actor.key, 'comments', id]` (separate, so
   that closing a ticket does not read the replies again). Closing or reopening puts the ticket the server returned in the queue;
   a reply asks for the replies again. A queue already in hand is kept when asking again fails.
