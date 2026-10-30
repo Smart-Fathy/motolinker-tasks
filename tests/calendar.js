@@ -149,6 +149,101 @@ const check = (n, ok, x) => { results.push(!!ok); console.log((ok ? '  ok  ' : '
     reset();
   }
 
+
+  // ═══ 2. /api/v1/calendar: the same feed through the same service, honest about a source it could not read ═══════
+  const { schemas } = require(process.cwd() + '/packages/contracts');
+  const V1 = '/api/v1/calendar';
+  const words = res => JSON.stringify(res.body);
+  const noDbWords = res => !/simulated|XX000|PGRST|rows returned/.test(words(res));
+  const SOURCES = ['tasks', 'meetings', 'lead_followups', 'customers'];
+
+  // ── the admin: the company's diary ──
+  reset();
+  {
+    const classic = await call(`${CLASSIC.admin}?${WINDOW}`, 'cf-admin');
+    const asked = Object.fromEntries(SOURCES.map(t => [t, queries(t)]));
+    db.log.length = 0;
+    const r = await call(`${V1}?${WINDOW}`, 'cf-admin');
+    check('the admin gets the same window and the same three sources', r.status === 200 && r.body.from === classic.body.from && r.body.to === classic.body.to && Object.keys(r.body).join() === 'from,to,tasks,meetings,followups', words(r).slice(0, 200));
+    check('…every item is what the contract says it is', schemas.CalendarFeed.safeParse(r.body).success, JSON.stringify(schemas.CalendarFeed.safeParse(r.body).error && schemas.CalendarFeed.safeParse(r.body).error.issues.slice(0, 2)));
+    check('…the same tasks, meetings and follow-ups, in the same order', JSON.stringify(ids(r.body.tasks).sort((a, b) => a - b)) === JSON.stringify(ids(classic.body.tasks).sort((a, b) => a - b)) && JSON.stringify(ids(r.body.meetings)) === JSON.stringify(ids(classic.body.meetings)) && JSON.stringify(ids(r.body.followups)) === JSON.stringify(ids(classic.body.followups)) && JSON.stringify(ids(r.body.meetings)) === '[5,2,1,3]', words(r).slice(0, 200));
+    check('…asked of the database exactly as the classic page asks', SOURCES.every(t => JSON.stringify(queries(t)) === JSON.stringify(asked[t])) && queries('tasks').length === 1 && queries('customers').length === 1, JSON.stringify(SOURCES.map(t => [t, queries(t).length, asked[t].length])));
+    check('…a meeting is a meeting as the Meet page has it: the Google event ids stay on the server', r.body.meetings.every(m => !('calendar_events' in m)) && r.body.meetings[1].meet_link === 'huddle:3' && r.body.meetings[2].attendee_ids.join() === '81');
+    check('…and a follow-up carries the lead\'s name, or none for a lead that is gone', r.body.followups.map(f => f.customer_name).join('|') === 'Layla Hassan|Monier Samaha|Monier Samaha|');
+    db.tables.tasks.push(task(20, { title: 'Numbers', due_date: day(T0), assignee_ids: [81, '82'] }));
+    const numbers = await call(`${V1}?${WINDOW}`, 'cf-admin'), classicNumbers = await call(`${CLASSIC.admin}?${WINDOW}`, 'cf-admin');
+    check('who a task is assigned to is always text, even where the row stored numbers (the classic feed hands the row\'s own)', numbers.body.tasks.find(t => t.id === 20).assignee_ids.join() === '81,82' && numbers.body.tasks.find(t => t.id === 20).assignee_ids.every(x => typeof x === 'string') && typeof classicNumbers.body.tasks.find(t => t.id === 20).assignee_ids[0] === 'number' && schemas.CalendarFeed.safeParse(numbers.body).success);
+  }
+
+  // ── a team member: their own ──
+  reset();
+  {
+    for (const [who, id] of [['Ana', 81], ['Bo', 82], ['Cy', 83], ['Dee', 84], ['Eli', 85]]) {
+      const classic = await call(`${CLASSIC.team}?${WINDOW}`, TOKEN[id]);
+      const asked = Object.fromEntries(SOURCES.map(t => [t, queries(t)]));
+      db.log.length = 0;
+      const r = await call(`${V1}?${WINDOW}`, TOKEN[id]);
+      const same = r.status === 200 && JSON.stringify(ids(r.body.tasks).sort((a, b) => a - b)) === JSON.stringify(ids(classic.body.tasks).sort((a, b) => a - b)) && JSON.stringify(ids(r.body.meetings)) === JSON.stringify(ids(classic.body.meetings)) && JSON.stringify(ids(r.body.followups)) === JSON.stringify(ids(classic.body.followups));
+      check(`${who} gets what the classic page gives them — their tasks, their meetings, their follow-ups — and nothing of anyone else's`, same && schemas.CalendarFeed.safeParse(r.body).success, `${r.status} ${words(r).slice(0, 160)}`);
+      if (id === 81) check('…asked of the database exactly as the classic page asks (the employee\'s tasks found both ways)', SOURCES.every(t => JSON.stringify(queries(t)) === JSON.stringify(asked[t])), JSON.stringify(SOURCES.map(t => [t, queries(t).length, asked[t].length])));
+      db.log.length = 0;
+    }
+    const ana = await call(`${V1}?${WINDOW}`, TOKEN[81]);
+    check('Ana: the tasks assigned either way, the meetings she is in or made, the follow-ups assigned to her', JSON.stringify(ids(ana.body.tasks)) === '[1,6,2]' && JSON.stringify(ids(ana.body.meetings)) === '[5,2,1]' && JSON.stringify(ids(ana.body.followups)) === '[1,6]', words(ana).slice(0, 200));
+    const cy = await call(`${V1}?${WINDOW}`, TOKEN[83]), dee = await call(`${V1}?${WINDOW}`, TOKEN[84]), bo = await call(`${V1}?${WINDOW}`, TOKEN[82]);
+    check('each source is gated by what it is, not by the page: no tasks without the tasks grant, no meetings without the meet grant, no follow-ups without Leads — an empty list, not a refusal', cy.status === 200 && cy.body.tasks.length === 0 && cy.body.meetings.length > 0 && dee.status === 200 && dee.body.meetings.length === 0 && Array.isArray(dee.body.tasks) && bo.status === 200 && bo.body.followups.length === 0 && bo.body.tasks.length > 0);
+    const fay = await call(`${V1}?${WINDOW}`, TOKEN[86]);
+    check('a person with no Calendar section is refused the feed: the page is theirs to open, and the feed is its (the classic routes answered them anyway)', fay.status === 403 && fay.body.error === 'Not permitted', words(fay));
+  }
+
+  // ── the window, the doors, and a database that fails ──
+  reset();
+  {
+    const wide = await call(`${V1}?from=${day(T0)}&to=${day(T0 + 7 * DAY)}&_=1699999999`, 'cf-admin');
+    check('a parameter the feed does not know (a cache-buster) is ignored', wide.status === 200 && wide.body.from === day(T0 - DAY));
+    const instants = await call(`${V1}?from=${encodeURIComponent(new Date(T0).toISOString())}&to=${encodeURIComponent('2026-10-21T09:00:00+02:00')}`, 'cf-admin');
+    check('an instant is a window\'s end as well as a day, with or without an offset', instants.status === 200 && instants.body.from === day(T0 - DAY) && instants.body.to === '2026-10-22', words(instants).slice(0, 160));
+    const dflt = await call(V1, 'cf-admin');
+    const span = Date.parse(dflt.body.to) - Date.parse(dflt.body.from);
+    check('with no window it is from now for a month, a day wider each side', dflt.status === 200 && Math.abs(Date.parse(dflt.body.from) - (Date.now() - DAY)) < 2 * DAY && span >= 32 * DAY && span <= 34 * DAY, JSON.stringify([dflt.body.from, dflt.body.to]));
+    const bad = [];
+    for (const q of ['from=nope&to=2026-10-20', 'from=2026-10-14&to=nope', 'from=x&to=y', 'from=2026-02-30&to=2026-03-02', 'from=2026-10-14T09:00:00&to=2026-10-20', 'from=2026-10-14&from=2026-10-15', 'from=&to=2026-10-20x', 'from[a]=1']) {
+      const r = await call(`${V1}?${q}`, 'cf-admin');
+      if (r.status !== 400 || r.body.code !== 'invalid' || r.body.error !== 'from and to must be dates' || !Array.isArray(r.body.issues) || !r.body.issues.length) bad.push(`${q}: ${r.status} ${words(r)}`);
+    }
+    check('a window that is not two dates is a 400 that says so, with what was wrong (the classic route took anything JavaScript can read as a date)', bad.length === 0, bad.join('; '));
+
+    const wrong = [];
+    for (const [label, token] of [['nobody', null], ['a token nobody issued', 'cf-nobody']]) {
+      const got = (await call(`${V1}?${WINDOW}`, token)).status;
+      if (got !== 401) wrong.push(`${label}: ${got}`);
+    }
+    check('nobody, and a token nobody issued, are 401', wrong.length === 0, wrong.join('; '));
+
+    // a source the database cannot read is said so — not shown as a month with nothing in it
+    const down = [];
+    for (const table of ['meetings', 'tasks', 'lead_followups', 'customers']) {
+      reset(); db.failing.add(table);
+      const r = await call(`${V1}?${WINDOW}`, 'cf-admin');
+      if (r.status !== 503 || r.body.code !== 'unavailable' || !noDbWords(r)) down.push(`${table}: ${r.status} ${words(r)}`);
+    }
+    check('as the admin, a database that cannot be asked for the tasks, the meetings, the follow-ups or the leads\' names is a 503 that says so, without its own words (the classic route showed it as an empty source)', down.length === 0, down.join('; '));
+    const downFor = [];
+    for (const table of ['meetings', 'tasks', 'lead_followups']) {
+      reset(); db.failing.add(table);
+      const r = await call(`${V1}?${WINDOW}`, TOKEN[81]);
+      if (r.status !== 503 || r.body.code !== 'unavailable' || !noDbWords(r)) downFor.push(`${table}: ${r.status} ${words(r)}`);
+    }
+    check('…and so for a team member, whose tasks are found by asking twice: if either could not be read, the list is not guessed at', downFor.length === 0, downFor.join('; '));
+    reset(); db.failing.add('tasks');
+    const classicDown = await call(`${CLASSIC.team}?${WINDOW}`, TOKEN[81]);
+    check('…where the classic route still shows what it could read', classicDown.status === 200 && classicDown.body.tasks.length === 0 && classicDown.body.meetings.length > 0);
+    reset(); db.failing.add('tasks');
+    const cyDown = await call(`${V1}?${WINDOW}`, TOKEN[83]);
+    check('a source the person is not allowed to see is not asked for, so its failure is not theirs (Cy has no tasks to lose)', cyDown.status === 200 && cyDown.body.tasks.length === 0 && cyDown.body.meetings.length > 0 && queries('tasks').length === 0, `${cyDown.status} ${words(cyDown).slice(0, 120)}`);
+    reset();
+  }
+
   console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);
   process.exit(results.every(Boolean) ? 0 : 1);
 })().catch(e => { console.error(e); process.exit(1); });

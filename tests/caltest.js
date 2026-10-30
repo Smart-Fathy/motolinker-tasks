@@ -237,17 +237,21 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
   // ── The feed's own rules ────────────────────────────────────────────────────
   {
     const SRC = fs.readFileSync('src/routes/calendar-feed.js', 'utf8');
+    // (the rules are in the module that /api/v1/calendar shares; the routes are its adapters)
+    const RULES = fs.readFileSync('src/modules/calendar/service.js', 'utf8');
     check('the feed is mounted for both portals',
       /mountCalendarFeed\('\/api\/dashboard', requireAuth\)/.test(SRC)
-      && /mountCalendarFeed\('\/api\/employee', requireEmployeeAuth\)/.test(SRC));
+      && /mountCalendarFeed\('\/api\/employee', requireEmployeeAuth\)/.test(SRC)
+      && /createCalendarService/.test(SRC));
     check('an employee gets THEIR tasks, through the one function that knows who owns what',
-      /fetchEmployeeTasks\(emp\.id\)/.test(SRC));
+      /fetchEmployeeTasks\(\/\*\* @type \{number\} \*\/ \(actor\.id\), \{ strict \}\)/.test(RULES)
+      && /fetchEmployeeTasks: \(\.\.\.a\) => ctx\.fetchEmployeeTasks\(\.\.\.a\)/.test(SRC));
     check('…their meetings, not the company diary',
-      /attendee_ids \|\| \[\]\)\.map\(String\)\.includes\(String\(emp\.id\)\)/.test(SRC));
-    check('…and their follow-ups', /q\.eq\('assigned_to', emp\.id\)/.test(SRC));
+      /attendee_ids \|\| \[\]\)\.map\(String\)\.includes\(String\(actor\.id\)\)/.test(RULES));
+    check('…and their follow-ups', /q = q\.eq\('assigned_to', actor\.id\)/.test(RULES));
     check('each source is gated on its own permission, so one refusal is not the page',
-      /may\('tasks', 'view'\)/.test(SRC) && /may\('meet', 'view'\)/.test(SRC)
-      && /may\('leads', 'view'\)/.test(SRC));
+      /may\('tasks\.view'\)/.test(RULES) && /may\('meet\.view'\)/.test(RULES)
+      && /may\('leads\.view'\)/.test(RULES));
     const DASH_HTML = fs.readFileSync('public/dashboard.html', 'utf8');
     const EMP_HTML = fs.readFileSync('public/employee.html', 'utf8');
     check('neither portal still embeds the Google calendar iframe',

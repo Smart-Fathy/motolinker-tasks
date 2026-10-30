@@ -60,7 +60,7 @@ function unitTests() {
     { id: 2, name: 'Omar', username: 'omar', email: '', password_hash: 'x', job_title: 'Ops', permissions: everyAction(false), avatar_url: '', status_text: '', status_emoji: '' },
     { id: 3, name: 'Hana', username: 'hana', email: '', password_hash: 'x', job_title: 'Finance', permissions: everyAction(true), avatar_url: '', status_text: '', status_emoji: '' },
   ];
-  const db = createFakeSupabase({ employees, sessions: [], quotation_settings: [], google_tokens: [], push_subscriptions: [], notifications: [], form_submissions: [], issues: [], issue_comments: [], meetings: [] });
+  const db = createFakeSupabase({ employees, sessions: [], quotation_settings: [], google_tokens: [], push_subscriptions: [], notifications: [], form_submissions: [], issues: [], issue_comments: [], meetings: [], tasks: [], lead_followups: [], customers: [] });
   db.install();
   const base = await bootApp({ port: process.env.PORT || 3992 });
   const ctx = require(process.cwd() + '/src/ctx');
