@@ -1,75 +1,29 @@
-// Where the browser the suites drive lives, in one place.
+// Point puppeteer at a Chrome it can launch, for the suites that print a document to PDF
+// (src/lib/docs/render.js) or look at one in a browser.
 //
-//   CHROME_BIN       an explicit path (CI, a developer's own Chrome) — wins over everything
-//   installed        the Chromium the dev image ships under /opt/pw-browsers/chromium-<rev>
-//   puppeteer's own  the Chrome puppeteer downloaded when it was installed (what CI has)
+//   require('./helpers/browser').pointPuppeteerAtChrome();   // before puppeteer or the renderer is required
 //
-// Nothing else in the repository names a browser path.
+// puppeteer reads PUPPETEER_EXECUTABLE_PATH once, when it is loaded, so this has to run first.
+// It leaves things alone when the variable is already set or when puppeteer has a Chrome of its own
+// (a `chrome` folder in its cache directory). Otherwise it takes the Chromium a Playwright install
+// leaves under /opt/pw-browsers: the `chromium` link when there is one, else the newest chromium-N
+// folder (chrome-linux/ or chrome-linux64/). Returns the Chrome it settled on, or null when
+// puppeteer is left to find its own.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const BROWSERS_ROOT = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
+const PW_ROOT = '/opt/pw-browsers';
 
-// The newest Chromium under the dev image's browsers directory, or null.
-function installedChromium() {
-  let dirs = [];
-  try {
-    dirs = fs.readdirSync(BROWSERS_ROOT).filter(n => /^chromium-\d+$/.test(n));
-  } catch (_) {
-    return null;
-  }
-  dirs.sort((a, b) => Number(b.split('-')[1]) - Number(a.split('-')[1]));
-  for (const d of dirs) {
-    const exe = path.join(BROWSERS_ROOT, d, 'chrome-linux', 'chrome');
-    if (fs.existsSync(exe)) return exe;
-  }
-  return null;
-}
-
-// The path to hand to puppeteer.launch({ executablePath }).
-function chromePath() {
-  if (process.env.CHROME_BIN) return process.env.CHROME_BIN;
-  const installed = installedChromium();
-  if (installed) return installed;
-  try {
-    return require('puppeteer').executablePath();
-  } catch (_) {
-    return undefined; // puppeteer reports what it could not find, in its own words
-  }
-}
-
-// For the code that launches puppeteer indirectly (the PDF renderer): puppeteer reads its
-// configuration once, when it is required, so this has to run before that require.
 function pointPuppeteerAtChrome() {
-  if (process.env.PUPPETEER_EXECUTABLE_PATH) return;
-  if (process.env.CHROME_BIN) {
-    process.env.PUPPETEER_EXECUTABLE_PATH = process.env.CHROME_BIN;
-    return;
-  }
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) return process.env.PUPPETEER_EXECUTABLE_PATH;
   const cache = process.env.PUPPETEER_CACHE_DIR || path.join(os.homedir(), '.cache', 'puppeteer');
-  if (fs.existsSync(path.join(cache, 'chrome'))) return; // puppeteer has a Chrome of its own
-  const installed = installedChromium();
-  if (installed) process.env.PUPPETEER_EXECUTABLE_PATH = installed;
+  if (fs.existsSync(path.join(cache, 'chrome')) || !fs.existsSync(PW_ROOT)) return null;
+  const newest = fs.readdirSync(PW_ROOT).filter(n => /^chromium-\d+$/.test(n)).sort((a, b) => Number(b.split('-')[1]) - Number(a.split('-')[1]));
+  const candidates = [path.join(PW_ROOT, 'chromium'), ...newest.flatMap(d => ['chrome-linux', 'chrome-linux64'].map(s => path.join(PW_ROOT, d, s, 'chrome')))];
+  const exe = candidates.find(p => fs.existsSync(p));
+  if (exe) process.env.PUPPETEER_EXECUTABLE_PATH = exe;
+  return exe || null;
 }
 
-// navigate() inside the page, proving it landed. The suites used to swallow whatever navigate()
-// threw ("try { navigate(p) } catch {}"), so a function that was gone, or a page the portal
-// bounced somewhere else, made them measure whatever screen happened to be open and stay green.
-// This throws instead: navigate() must exist, must not throw, and the page it activates must be
-// the one that was asked for (#page-<name> carries .active).
-async function gotoPage(page, name) {
-  const r = await page.evaluate(n => {
-    if (typeof navigate !== 'function') return { ok: false, why: 'navigate() is not defined on this page' };
-    try {
-      navigate(n);
-    } catch (e) {
-      return { ok: false, why: 'navigate() threw: ' + String(e) };
-    }
-    const el = document.querySelector('.page.active');
-    return { ok: !!el && el.id === 'page-' + n, why: 'the active page is ' + (el ? '#' + el.id : 'none') };
-  }, name);
-  if (!r.ok) throw new Error("navigate('" + name + "') did not land: " + r.why);
-}
-
-module.exports = { chromePath, installedChromium, pointPuppeteerAtChrome, gotoPage };
+module.exports = { pointPuppeteerAtChrome };
