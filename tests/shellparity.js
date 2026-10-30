@@ -8,6 +8,9 @@
 // spacing, colours, type, borders, shadows — and any property that differs is a failure, except the few named in ACCEPTED,
 // each with its reason.
 //
+// Then the rail is collapsed, by the button on each side as a person does it, and what the rail draws is read again at the widths
+// where a rail can be collapsed (the classic portals' own breakpoints: 901px for the admin, 769px for the team) and held to the same.
+//
 // Run with --print to see every difference rather than the first few; --only=<portal>/<look>/<mode>/<width> narrows it.
 // The classic pages are what this holds the new app to, so it goes when they do (Run P4), and the suite with it.
 const fs = require('fs');
@@ -39,7 +42,7 @@ const PROPS = ['display', 'position', 'boxSizing', 'top', 'left', 'right', 'bott
 
 // Where the two differ on purpose or by necessity, and why. Each must still differ, or it is stale and fails.
 const ACCEPTED = {
-  'nav._h': 'the classic rail has a search box and a row of shortcuts above the list, which come with Cmd+K and the favourites; the list is taller here',
+  'nav._h': 'the classic rail has a search box and a row of shortcuts above the list, which come with Cmd+K and the favourites; the list is taller here. Collapsed, the classic rail hides those, and the two lists differ by what only the classic rail has: the admin\'s Help item (it opens the help panel, which is not built yet) and the team\'s footer (its Report an Issue button is hidden when collapsed, and leaves an empty box)',
   'footer._h': 'the classic footer also holds Arrange sections and the workspace settings, which are not in the new app yet',
   'content._h': 'what is under the header is the screen itself, and the classic Home is a page of widgets',
   'title._w': 'at a phone\'s width the classic header\'s right-hand cluster (refresh, help, bell, Refresh) leaves its name six pixels to be squeezed into',
@@ -114,11 +117,29 @@ const ROLES = {
 const LOOKS = { original: { reset: true }, loud: { theme: { preset: 'cyberpunk' } } };
 const MODES = ['dark', 'light'];
 const WIDTHS = [390, 670, 800, 1100];
+// The rail collapses to its icons from the width the classic portals do (their @media (min-width) for it; narrower, the rail is a drawer
+// with no collapse button). What is read of it then is the roles drawn in the rail, and the page area its width pushes aside.
+const COLLAPSES_FROM = { admin: 901, team: 769 };
+const RAIL = ['sidebar', 'brand', 'mark', 'brandName', 'brandSub', 'collapse', 'close', 'nav', 'group', 'groupHead', 'groupLabel', 'groupCount',
+  'chevron', 'itemActive', 'item', 'icon', 'iconSvg', 'footer', 'signOut', 'content'];
+// Read in the collapsed rail only, for what collapsing does that the roles above do not reach:
+//  - CRM is not the section Home is in, so the new app draws it closed, and a collapsed rail shows what is in it all the same (every
+//    section's items, open or not). It is not in ROLES because, expanded, the classic team portal opens every section that has anything
+//    in it (navHeadingsFollowItems) and the new app only the one the page is in, and a difference accepted for `crmGroup._h` would be
+//    accepted in the collapsed rail as well, where it is the whole point.
+//  - Accounting's brain is the one icon that keeps its colour when the admin's rail is collapsed (the others lose their chip).
+const COLLAPSED = {
+  crmGroup: part('.nav-group[data-group=crm]', '[data-part=group][data-group=crm]', 'nav'),
+  crmItem: part('.nav-group[data-group=crm] .nav-item', '[data-group=crm] [data-part=item]', 'nav'),
+  aiIcon: part('#nav-accounting .nav-icon', '[data-group=finance] [data-part=item] [data-part=icon]', 'nav'),
+};
+const railRoles = who => ({ ...Object.fromEntries(RAIL.filter(role => ROLES[who][role]).map(role => [role, ROLES[who][role]])), ...COLLAPSED });
+const railWidths = who => WIDTHS.filter(w => w >= COLLAPSES_FROM[who]);
 
 const STILL = '*,*::before,*::after{transition:none!important;animation:none!important}';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-const readRoles = (page, which) => page.evaluate((roles, which, props) => {
+const readRoles = (page, which, roles = ROLES[page.portal]) => page.evaluate((roles, which, props) => {
   const out = {};
   const navTop = (() => { const n = document.querySelector(roles.nav[which]); return n ? n.getBoundingClientRect().y : 0; })();
   for (const [role, sel] of Object.entries(roles)) {
@@ -135,7 +156,7 @@ const readRoles = (page, which) => page.evaluate((roles, which, props) => {
     out[role] = o;
   }
   return out;
-}, Object.fromEntries(Object.entries(ROLES[page.portal]).map(([k, v]) => [k, v])), which, PROPS);
+}, roles, which, PROPS);
 
 (async () => {
   const puppeteer = require('puppeteer');
@@ -182,7 +203,7 @@ const readRoles = (page, which) => page.evaluate((roles, which, props) => {
   };
   const settle = page => page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); document.getAnimations().forEach(a => a.cancel()); }).then(() => page.mouse.move(0, 0)).then(() => sleep(80));
 
-  const observed = {};   // `${portal}/${look}/${mode}/${width}` -> side -> role -> style
+  const observed = {};   // `${portal}/${look}/${mode}/${width}` (and `/collapsed` for the collapsed rail) -> side -> role -> style
   for (const [look, body] of Object.entries(LOOKS)) {
     const saved = await fetch(base + '/api/dashboard/workspace/theme', { method: 'PUT', headers: { Authorization: 'Bearer ' + adminToken, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!saved.ok) throw new Error('could not save the look: ' + await saved.text());
@@ -200,6 +221,19 @@ const readRoles = (page, which) => page.evaluate((roles, which, props) => {
         const key = `${p.who}/${look}/${mode}/${width}`;
         (observed[key] = observed[key] || {})[side] = await readRoles(page, side);
       }
+      // The rail collapsed: the button on this side, clicked where it is drawn, then read at the widths a rail can be collapsed at.
+      await page.setViewport({ width: Math.max(...WIDTHS), height: 800 });
+      await page.click(ROLES[p.who].collapse[side]);
+      await page.waitForSelector(side === 'next' ? '[data-part=collapse][aria-pressed=true]' : '#sidebar.collapsed', { timeout: 5000 });
+      for (const width of railWidths(p.who)) {
+        await page.setViewport({ width, height: 800 });
+        await settle(page);
+        const key = `${p.who}/${look}/${mode}/${width}/collapsed`;
+        const rail = await readRoles(page, side, railRoles(p.who));
+        // The classic rail is what the new one is held to: if it were not collapsed, nothing would be being compared with a collapsed rail.
+        if (side === 'classic' && rail.sidebar?._w !== 64) throw new Error(`${key}: the classic rail is ${rail.sidebar?._w}px wide, not collapsed`);
+        (observed[key] = observed[key] || {})[side] = rail;
+      }
       await page.shut();
     }
   }
@@ -210,10 +244,11 @@ const readRoles = (page, which) => page.evaluate((roles, which, props) => {
   const origin = v => (v === '0px 0px' ? '0% 0%' : v);
   const near = (a, b, p) => typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) <= 0.5 : p === 'backgroundPosition' ? origin(a) === origin(b) : a === b;
   const stale = new Set(Object.keys(ACCEPTED));
-  let compared = 0;
+  let compared = 0, rails = 0;
   for (const [key, sides] of Object.entries(observed)) {
     const { classic, next } = sides;
     if (!classic || !next) continue;
+    if (key.endsWith('/collapsed')) rails++;
     const bad = [];
     let n = 0;
     for (const role of Object.keys(classic)) {
@@ -236,6 +271,8 @@ const readRoles = (page, which) => page.evaluate((roles, which, props) => {
   }
   if (!ONLY) {
     check('it compared a real number of values (a comparison that found nothing would pass everything)', compared > 9000, String(compared));
+    const railsWanted = Object.keys(LOOKS).length * MODES.length * portals.reduce((n, p) => n + railWidths(p.who).length, 0);
+    check('it compared the collapsed rail too, in both portals, in every look and mode, at every width it can be collapsed at (a state that was never read would pass everything)', rails === railsWanted, `${rails} of ${railsWanted}`);
     check('every accepted difference still differs, so the list is not hiding anything that got fixed', stale.size === 0, [...stale].join(', '));
   }
   fs.rmSync(dist, { recursive: true, force: true });
