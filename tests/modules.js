@@ -69,7 +69,7 @@ for (const portal of ['admin', 'team']) {
   const want = M.NAV[portal].map(g => ({
     group: g.group,
     label: M.GROUPS.find(x => x.id === g.group).label,
-    items: g.items.map(id => { const s = M.screenOf(id); const p = M.presentation(s, portal); return { id: M.legacyIdOf(s, portal), page: M.legacyIdOf(s, portal), icon: p.icon, label: p.label }; }),
+    items: g.items.filter(id => !M.isNewTo(M.screenOf(id), portal)).map(id => { const s = M.screenOf(id); const p = M.presentation(s, portal); return { id: M.legacyIdOf(s, portal), page: M.legacyIdOf(s, portal), icon: p.icon, label: p.label }; }),
   }));
   const got = classicRail(FILE[portal]).map(g => ({ ...g, items: g.items.map(i => ({ id: i.id, page: i.page, icon: i.icon, label: i.label })) }));
   check(`the ${portal} rail is the classic page's: same sections, same order`, same(want.map(g => [g.group, g.label]), got.map(g => [g.group, g.label])), JSON.stringify(got.map(g => [g.group, g.label])));
@@ -81,6 +81,18 @@ for (const portal of ['admin', 'team']) {
   const bottom = M.BOTTOM_NAV[portal].map(b => ({ page: M.legacyIdOf(M.screenOf(b.id), portal), icon: b.icon, label: b.label }));
   check(`the ${portal} bottom navigation is the classic page's`, same(bottom, classicBottom(FILE[portal])), JSON.stringify(classicBottom(FILE[portal])));
 }
+
+// A screen the catalogue calls new to a portal (Issues, in the admin's) is the one thing the comparison above leaves out. So that
+// the allowance cannot outlive the truth, the classic page must really not have it, and the app must draw it itself.
+check('only a screen a portal is in can be new to it', M.SCREENS.every(s => !s.fresh || s.fresh.every(p => M.inPortal(s, p))));
+for (const portal of ['admin', 'team']) {
+  const html = read('public', FILE[portal]);
+  const fresh = M.SCREENS.filter(s => M.isNewTo(s, portal));
+  check(`${portal}: what is new to the portal (${fresh.map(s => s.id).join(', ') || 'nothing'}) has no page in the classic one`,
+    fresh.every(s => !html.includes(`id="page-${M.legacyIdOf(s, portal)}"`) && !html.includes(`navigate('${M.legacyIdOf(s, portal)}')`)));
+}
+check('Issues is new to the admin portal and not to the team one, where the classic page has it',
+  M.isNewTo(M.screenOf('issues'), 'admin') && !M.isNewTo(M.screenOf('issues'), 'team') && read('public', 'employee.html').includes('id="page-issues"') && !read('public', 'dashboard.html').includes('id="page-issues"'));
 
 // The team portal's top bar names the page; those names are the classic page's own list.
 const titles = (() => { const m = /const pageTitles = (\{[\s\S]*?\});/.exec(read('public', 'assets', 'employee.js')); return m ? Function('return ' + m[1])() : null; })();
@@ -140,18 +152,19 @@ check('classic page ids are read as the screens they were (customers is Leads, d
   M.screenIdFromLegacy('customers', 'admin') === 'leads' && M.screenIdFromLegacy('deletions', 'admin') === 'approvals' && M.screenIdFromLegacy('rfqs', 'admin') === 'rfq' && M.screenIdFromLegacy('notif', 'team') === 'notifications');
 check('the old team key for the hours page still opens it', M.screenIdFromLegacy('log', 'team') === 'hours' && M.screenIdFromLegacy('log', 'admin') === null);
 check('a screen answers to its own id too, a screen the other portal has is not here, and an unknown id is nothing',
-  M.screenIdFromLegacy('leads', 'admin') === 'leads' && M.screenIdFromLegacy('employees', 'team') === null && M.screenIdFromLegacy('issues', 'admin') === null && M.screenIdFromLegacy('nope', 'team') === null && M.screenIdFromLegacy('', 'team') === null);
+  M.screenIdFromLegacy('leads', 'admin') === 'leads' && M.screenIdFromLegacy('employees', 'team') === null && M.screenIdFromLegacy('issues', 'admin') === 'issues' && M.screenIdFromLegacy('workspace', 'team') === null && M.screenIdFromLegacy('nope', 'team') === null && M.screenIdFromLegacy('', 'team') === null);
 
 // ── 5. Deep links: every link the server writes lands somewhere, both ways ──────────────────────
 check('a hash asks for its screen, in either portal\'s own words', D.resolveDeepLink('admin', { hash: '#customers' }) === '/leads' && D.resolveDeepLink('team', { hash: '#leads' }) === '/leads' && D.resolveDeepLink('team', { hash: '#log' }) === '/hours' && D.resolveDeepLink('admin', { hash: '#security' }) === '/security');
-check('a hash that is not a screen asks for nothing, and so does no hash', D.resolveDeepLink('team', { hash: '#nope' }) === null && D.resolveDeepLink('team', {}) === null && D.resolveDeepLink('admin', { hash: '#issues' }) === null);
+check('a hash that is not a screen asks for nothing, and so does no hash', D.resolveDeepLink('team', { hash: '#nope' }) === null && D.resolveDeepLink('team', {}) === null && D.resolveDeepLink('admin', { hash: '#workspace' }) === '/workspace' && D.resolveDeepLink('team', { hash: '#workspace' }) === null);
+check('a link to Issues opens it in either portal (in the admin\'s, only the new app has the page)', D.resolveDeepLink('admin', { hash: '#issues' }) === '/issues' && D.resolveDeepLink('team', { hash: '#issues' }) === '/issues');
 check('?chat= opens the chat, at the room when the room is one, and wins over a hash',
   D.resolveDeepLink('team', { search: '?chat=abc-123' }) === '/chat/abc-123' && D.resolveDeepLink('team', { search: '?chat=../x' }) === '/chat' && D.resolveDeepLink('admin', { search: '?chat=7', hash: '#tasks' }) === '/chat/7');
 check('a stored link is followed in the portal it is for, and goes nowhere in the other',
   D.linkTarget('/employee#requests', 'team') === '/requests' && D.linkTarget('/employee#requests', 'admin') === null && D.linkTarget('/dashboard#deletions', 'admin') === '/approvals' && D.linkTarget('/somewhere#x', 'admin') === null && D.linkTarget('', 'team') === null && D.linkTarget('/employee', 'team') === null);
 check('an address inside the new app is the classic page it stands for',
   D.classicUrlFor('admin', '/leads') === '/dashboard#customers' && D.classicUrlFor('team', '/leads') === '/employee#leads' && D.classicUrlFor('admin', '/chat/r1') === '/dashboard?chat=r1' && D.classicUrlFor('admin', '/approvals') === '/dashboard#deletions'
-  && D.classicUrlFor('team', '/employees') === '/employee' && D.classicUrlFor('admin', '/__gallery') === '/dashboard' && D.classicUrlFor('team', '') === '/employee' && D.classicUrlFor('team', '/hours?x=1#y') === '/employee#hours');
+  && D.classicUrlFor('team', '/employees') === '/employee' && D.classicUrlFor('team', '/issues') === '/employee#issues' && D.classicUrlFor('admin', '/issues') === '/dashboard' && D.classicUrlFor('admin', '/__gallery') === '/dashboard' && D.classicUrlFor('team', '') === '/employee' && D.classicUrlFor('team', '/hours?x=1#y') === '/employee#hours');
 
 const SOURCES = ['index.js', ...fs.readdirSync(path.join(ROOT, 'src'), { recursive: true }).filter(f => f.endsWith('.js')).map(f => path.join('src', f)), 'public/sw-dashboard.js', 'public/sw-employee.js'];
 const emitted = new Map();   // url -> where

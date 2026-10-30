@@ -37,6 +37,7 @@ const { can, hasSection } = require('./access');
  *   needs: Needs,
  *   flag?: string,
  *   portals: readonly Portal[],
+ *   fresh?: readonly Portal[],
  *   team?: { label?: string, icon?: string, title?: string },
  *   legacy?: { admin?: string, team?: string },
  * }} Screen
@@ -65,10 +66,11 @@ const anyCap = (...caps) => /** @type {const} */ ({ kind: 'anyCap', caps });
 
 const BOTH = /** @type {const} */ (['admin', 'team']);
 const ADMIN = /** @type {const} */ (['admin']);
-const TEAM = /** @type {const} */ (['team']);
 
 // The label and icon here are the admin portal's; where the team portal's differ, `team` says how. A screen that is
 // only in the team portal carries the team's. `legacy` names the classic page where it is not the screen's own id.
+// `fresh` names the portals where the screen exists only in the new app: the classic portal has no page for it, so
+// the app must have a module for it (there is nothing to frame), and nothing that speaks of classic pages names it.
 const SCREENS = /** @type {const} */ ([
   { id: 'home', label: 'Home', icon: 'layout-dashboard', needs: always, portals: BOTH },
   {
@@ -213,7 +215,14 @@ const SCREENS = /** @type {const} */ ([
     legacy: { admin: 'notif', team: 'notif' },
   },
   { id: 'workspace', label: 'Workspace', icon: 'palette', needs: admin, portals: ADMIN },
-  { id: 'issues', label: 'Issues', icon: 'bug', needs: section('issues'), portals: TEAM },
+  {
+    id: 'issues',
+    label: 'Issues',
+    icon: 'bug',
+    needs: section('issues'),
+    portals: BOTH,
+    fresh: ADMIN,
+  },
 
   // Not in the rail: reached from the footer (admin) or the profile menu (team), and by '#security' links.
   { id: 'security', label: 'Security', icon: 'shield-check', needs: always, portals: BOTH },
@@ -235,7 +244,7 @@ const NAV = {
     { group: 'integrations', items: ['quotation', 'contracts', 'rfq', 'purchaseorders'] },
     { group: 'chat', items: ['chat', 'whatsapp'] },
     { group: 'google', items: ['calendar', 'meet', 'gchat', 'email', 'drive', 'sheets'] },
-    { group: 'system', items: ['notifications', 'workspace'] },
+    { group: 'system', items: ['notifications', 'issues', 'workspace'] },
   ],
   team: [
     { group: 'management', items: ['home', 'tasks', 'hours', 'requests'] },
@@ -284,6 +293,16 @@ function screenOf(id) {
  */
 function inPortal(screen, portal) {
   return /** @type {readonly Portal[]} */ (screen.portals).includes(portal);
+}
+
+/**
+ * Is this screen new to that portal: in the new app only, with no classic page behind it?
+ * @param {Screen} screen
+ * @param {Portal} portal
+ * @returns {boolean}
+ */
+function isNewTo(screen, portal) {
+  return !!screen.fresh && /** @type {readonly Portal[]} */ (screen.fresh).includes(portal);
 }
 
 /**
@@ -363,6 +382,7 @@ module.exports = {
   BOTTOM_NAV,
   screenOf,
   inPortal,
+  isNewTo,
   presentation,
   legacyIdOf,
   screenIdFromLegacy,

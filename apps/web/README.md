@@ -21,7 +21,7 @@ src/legacy/         a screen that has not moved, shown as its classic page in a 
                     protocol with the page), frameable.ts (the screens a frame cannot hold)
 src/sw/             the service worker: sw.ts (wiring), logic.ts (every decision, testable), shared.ts (what the
                     worker and the pages agree on); built to dist/sw.js by sw-plugin.ts
-src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications
+src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues
 src/auth/           the sign-in: SignIn.tsx (which step, and what carries between them) and a component per
                     step: PasswordStep, CodeStep (second step), ForgotStep, ResetStep; copy.ts holds every
                     line they say
@@ -100,8 +100,8 @@ initials button: Security, the classic portal, Sign out) and the bottom bar on a
   open it; otherwise Home. An address
   for a screen the person may not open, or that belongs to the other portal, is Home.
 - **A screen that has not moved** is in the rail all the same and opens as the classic page itself, in a frame
-  under the app's rail and bars (see "Screens that have not moved" below). Home and Notifications are the screens built
-  so far; Home shows who is signed in and what they may do, which is the thing to check a grant against.
+  under the app's rail and bars (see "Screens that have not moved" below). Home, Notifications, Submissions and Issues are the
+  screens built so far; Home shows who is signed in and what they may do, which is the thing to check a grant against.
 - **What it does not have yet**, named in `tests/shellparity.js` (`ACCEPTED`, each with its reason; one that stops
   differing fails the suite so the list cannot go stale): the search box and shortcuts above the rail, Arrange and
   the workspace settings in the footer, and the header's refresh countdown and help button. They arrive
@@ -273,6 +273,37 @@ the classic portals did, row by row, and where each is held, is `docs/parity/not
   stream the test controls), `lib/toasts.test.ts`, `ui/ToastHost.test.tsx`; `tests/notifparity.js` (look) and
   `tests/webnotifs.js` (the real thing).
 
+## Submissions
+
+What the website's form sent us (`src/modules/submissions`; row by row, `docs/parity/submissions.md`). `data.ts` reads
+`GET /api/v1/submissions` each time the screen opens and deletes through `DELETE /api/v1/submissions/:id`; the page is the
+admin's page header and the team's card title around one table, and on a phone each row is a labelled card (the cells carry
+their heading as `data-label`, which is what the classic `mobile.css` reads). Delete is drawn for whoever has
+`submissions.delete`. Tests: `model.test.ts` (the guards held to the schemas in contracts), `submissions.test.tsx`,
+`data.test.tsx`; `tests/subparity.js` (look) and `tests/submissions.js` (the routes).
+
+## Issues
+
+The Chief Technical Officer's centre (`src/modules/issues`; row by row, `docs/parity/issues.md`): a queue with All / Open /
+Resolved chips, the ticket beside it, its conversation, a reply box, and Mark solved / Reopen for whoever has `issues.resolve`.
+It is the classic **team** page, and the **admin portal now has it too** — `packages/contracts/src/modules.js` marks the screen
+`fresh` for the admin: new to that portal, with no classic page behind it. That mark is how everything that speaks of classic pages
+leaves it out and how the app is held to drawing it: `tests/modules.js` and `tests/webshell.js` leave it out of the comparison with
+the classic rail and check that the classic page really does not have it, `registry.test.ts` checks that a module exists for it, the
+shell does not remember it as the admin's last page, and `classicUrlFor` sends its address to the portal's front.
+
+- **Report an Issue** is `ReportIssue.tsx`, opened from a button at the foot of the team's rail and a line in the team's account
+  menu (the shell owns the open/closed state; the admin has neither). It checks a report before it asks (words, 10 MB) and
+  posts a form to `POST /api/v1/issues` through `api.postForm`. The dialog is `ui/Modal.tsx`: a portal over the page, a modal
+  dialog with a name, Escape closes it, focus goes in, stays in while Tab is pressed and goes back out, and a click on the curtain
+  does not close it.
+- **Data.** The queue is `['issues', actor.key, 'list']`, a ticket's replies `['issues', actor.key, 'comments', id]` (separate, so
+  that closing a ticket does not read the replies again). Closing or reopening puts the ticket the server returned in the queue;
+  a reply asks for the replies again. A queue already in hand is kept when asking again fails.
+- **Links** to a ticket's file open only where a browser should follow them (`fileHref`).
+- Tests: `model.test.ts`, `data.test.tsx`, `issues.test.tsx`, `report.test.tsx`, `ui/Modal.test.tsx`; `tests/issparity.js` (look),
+  `tests/webissues.js` (the real thing), `tests/issues.js` (the routes).
+
 ## The gallery
 
 `/dashboard/__gallery` and `/employee/__gallery` (with `?ui=next`; it needs no session) show the design system on
@@ -297,8 +328,9 @@ Opened from the dev server there is no `window.__ML__`; the app falls back to th
 
 The suites that hold it, from the root: `tests/modules.js` (the catalogue against the classic portals), `tests/spashell.js`
 (the build and the server half), `tests/signinparity.js` and `tests/shellparity.js` (look, value by value),
-`tests/webauth.js`, `tests/webshell.js` and `tests/webnotifs.js` (the real server, a real browser), `tests/notifparity.js`
-(the bell, panel, toast and page), `tests/notifications.js` (the routes behind them), `tests/galleryaudit.js` (readability),
+`tests/webauth.js`, `tests/webshell.js`, `tests/webnotifs.js` and `tests/webissues.js` (the real server, a real browser),
+`tests/notifparity.js`, `tests/subparity.js` and `tests/issparity.js` (the pages, value by value), `tests/notifications.js`,
+`tests/submissions.js` and `tests/issues.js` (the routes behind them), `tests/galleryaudit.js` (readability),
 `tests/embed.js` (the classic pages as guests), `tests/webframe.js` (every unmoved screen in its frame) and
 `tests/webpwa.js` (the service worker, offline and in turns with the classic one).
 The parity suites compare against the classic portals, so they go when the classic portals do. (Vitest's module cache is

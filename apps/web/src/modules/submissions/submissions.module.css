@@ -1,0 +1,391 @@
+/* The Submissions page: the classic portals' own rules for it. The table is one piece of code in both (public/assets/procurement.js
+   draws it with inline styles), the page around it is each portal's own markup — the admin's page header and title, the team's
+   card title with a line under it — and the sheets differ in what they put on a table, a button and the loader. tests/subparity.js
+   holds the result to the classic pages' computed style, value by value. */
+@layer ui {
+  /* ── The page ────────────────────────────────────────────────────────────── */
+  .pageHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: calc(24px * var(--d-k, 1)) calc(28px * var(--d-k, 1)) 0;
+  }
+  .pageTitle {
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-size: 30px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+  .adminBody {
+    padding: 0 28px 28px;
+  }
+  .container {
+    margin-top: 18px;
+  }
+  .teamBody {
+    padding: 28px;
+  }
+  .teamHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .cardTitle {
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--text);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .cardHint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .teamActions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  /* ── Buttons: the classic .btn.btn-outline ───────────────────────────────── */
+  .refresh,
+  .delete {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: calc(8px * var(--r-k, 1));
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--hair-gold, var(--border));
+    background: transparent;
+    color: var(--text);
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .delete {
+    font-size: 12px;
+    padding: 4px 12px;
+  }
+  :global([data-portal='team']) .refresh,
+  :global([data-portal='team']) .delete {
+    padding: 10px 20px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-family: var(--font);
+    border-color: var(--border);
+    white-space: normal;
+  }
+  :global([data-portal='team']) .delete {
+    padding: 4px 12px;
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+
+  /* ── The loader, the empty page, an error ────────────────────────────────── */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 64px;
+    color: var(--muted);
+    font-size: 14px;
+    gap: 10px;
+  }
+  :global([data-portal='team']) .loading {
+    display: block;
+    text-align: center;
+    padding: 48px 20px;
+    gap: normal;
+    align-items: normal;
+    justify-content: normal;
+  }
+  .spinner {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  :global([data-portal='team']) .spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .empty {
+    text-align: center;
+    padding: 60px 0;
+    color: var(--muted);
+  }
+  .emptyMark {
+    font-size: 40px;
+    margin-bottom: 12px;
+  }
+  .emptyTitle {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .emptyHint {
+    font-size: 13px;
+    margin-top: 6px;
+  }
+  .error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.32);
+    color: var(--error-text, #f88);
+    padding: 12px 16px;
+    border-radius: calc(10px * var(--r-k, 1));
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+
+  /* ── The table ───────────────────────────────────────────────────────────── */
+  .tableScroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .headRow {
+    background: var(--thead-bg, #101012);
+  }
+  .th,
+  .thEnd {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--hair-gold, var(--border));
+    background: var(--thead-bg, #101012);
+    font-size: 11px;
+    color: var(--muted);
+    text-align: left;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  .thEnd {
+    font-weight: 700;
+  }
+  .row {
+    border-bottom: 1px solid var(--hair, var(--border));
+    transition: background 0.1s;
+  }
+  .row > td {
+    padding: 12px 16px;
+    vertical-align: middle;
+  }
+  .tdName {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .tdLead,
+  .tdWhen {
+    font-size: 12px;
+  }
+  .tdEmail,
+  .tdPhone,
+  .tdCar,
+  .tdMessage {
+    font-size: 13px;
+  }
+  .tdPhone,
+  .tdMessage,
+  .tdWhen {
+    color: var(--muted);
+  }
+  .tdMessage {
+    max-width: 240px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .tdWhen {
+    white-space: nowrap;
+  }
+  .tdActions {
+    text-align: right;
+  }
+  .chip {
+    cursor: pointer;
+    color: var(--primary-text, var(--primary));
+    background: rgba(230, 150, 80, 0.12);
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .none {
+    color: var(--muted);
+  }
+  .mail {
+    color: var(--primary-text, var(--primary));
+  }
+
+  /* The first column stays put when the table scrolls sideways (the body's cells paint the surface; the heading keeps its own). */
+  .tableScroll .table thead th:first-child,
+  .tableScroll .table tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    box-shadow: 1px 0 0 var(--border);
+  }
+  .tableScroll .table tbody td:first-child {
+    background: var(--surface);
+  }
+  .tableScroll .table thead th:first-child {
+    z-index: 3;
+  }
+
+  /* The team's sheet puts less on a table: no sorting cursor, a heading that may wrap, a faint rule under every cell. */
+  :global([data-portal='team']) .th,
+  :global([data-portal='team']) .thEnd {
+    background: rgba(var(--ov, 255, 255, 255), 0.03);
+    border-bottom-color: var(--border);
+    letter-spacing: 0.05em;
+    white-space: normal;
+    cursor: auto;
+    user-select: auto;
+  }
+  :global([data-portal='team']) .thEnd {
+    font-weight: 600;
+  }
+  :global([data-portal='team']) .tableScroll .table thead th:first-child {
+    background: var(--surface);
+  }
+  :global([data-portal='team']) .row {
+    border-bottom-color: var(--border);
+    transition: none;
+  }
+  :global([data-portal='team']) .row > td {
+    border-bottom: 1px solid rgba(var(--ov, 255, 255, 255), 0.04);
+  }
+
+  /* The page on a phone (dashboard.css at 640px, employee.css and mobile.css at 700px): the admin's header stacks and its title
+     steps down, buttons get a thumb's height, the table is 12px. */
+  @media (max-width: 700px) {
+    .pageTitle {
+      font-size: 20px;
+    }
+    .refresh,
+    .delete {
+      min-width: 44px;
+      min-height: 44px;
+    }
+    :global([data-portal='team']) .table {
+      font-size: 12px;
+    }
+    :global([data-portal='team']) .refresh {
+      padding: 12px 20px;
+    }
+    :global([data-portal='team']) .refresh,
+    :global([data-portal='team']) .delete {
+      justify-content: center;
+    }
+  }
+  @media (max-width: 640px) {
+    .table {
+      font-size: 12px;
+    }
+    .pageHeader {
+      padding: 16px 16px 0;
+      flex-wrap: wrap;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .refresh,
+    .delete {
+      justify-content: center;
+    }
+  }
+
+  /* A table cannot be read as 8 columns on a phone: below 700px each row is a card and each cell a labelled line (the label
+     is the column's heading, written on the cell). The classic portals do this in mobile.css for every .table-scroll. */
+  @media (max-width: 700px) {
+    .tableScroll {
+      overflow-x: visible;
+    }
+    .table,
+    .tbody,
+    .row {
+      display: block;
+    }
+    .table {
+      min-width: 0;
+    }
+    .thead {
+      display: none;
+    }
+    .row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-bottom-color: var(--hair, var(--border));
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .row > td {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      border: none;
+      overflow-wrap: anywhere;
+    }
+    :global([data-portal='team']) .row > td {
+      border-bottom: none;
+    }
+    .row > td + td {
+      border-top: 1px solid rgba(var(--ov, 255, 255, 255), 0.05);
+    }
+    .row > td::before {
+      content: attr(data-label);
+      flex: 0 0 38%;
+      max-width: 38%;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding-top: 2px;
+    }
+    .tdActions {
+      font-size: 14px;
+    }
+    .tdActions:empty {
+      display: none;
+    }
+    .tableScroll .table thead th:first-child,
+    .tableScroll .table tbody td:first-child {
+      position: static;
+      box-shadow: none;
+    }
+  }
+}

@@ -50,6 +50,9 @@
     --auth-bg-1: #15130e;
     --auth-bg-2: #0b0b0c;
     --strong: #fff;
+    --pri-high: #ef4444;
+    --pri-med: #f59e0b;
+    --pri-low: #10b981;
   }
 
   :root,

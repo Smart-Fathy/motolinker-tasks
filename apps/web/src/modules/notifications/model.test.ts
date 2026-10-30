@@ -313,9 +313,13 @@ describe('where a click goes', () => {
   });
 
   it('ignores a link that names a page the portal does not have', () => {
-    expect(routeOf('admin', '/dashboard#issues', 'request')).toBe('/requests');
     expect(routeOf('team', '/employee#workspace', 'task')).toBe('/tasks');
     expect(routeOf('admin', '/dashboard#nonsense', 'task')).toBe('/tasks');
+  });
+
+  it('opens Issues in either portal, though the classic admin portal has no such page', () => {
+    expect(routeOf('team', '/employee#issues', 'issue')).toBe('/issues');
+    expect(routeOf('admin', '/dashboard#issues', 'request')).toBe('/issues');
   });
 
   it('stays where it is, for the admin, when nothing says where; the team goes to its hours', () => {

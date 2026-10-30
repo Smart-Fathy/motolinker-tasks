@@ -1,6 +1,7 @@
-import { legacyIdOf, presentation, screenOf } from '@motolinker/contracts/modules';
-import { useEffect, useMemo } from 'react';
+import { isNewTo, legacyIdOf, presentation, screenOf } from '@motolinker/contracts/modules';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
+import { ReportIssue } from '../../modules/issues';
 import { useLiveNotifications } from '../../modules/notifications';
 import { ToastHost } from '../../ui';
 import { cx } from '../../ui/cx';
@@ -54,11 +55,15 @@ export function Shell({
   const bottom = useMemo(() => buildBottomNav(portal, access), [portal, access]);
   const activeGroup = rail.find(g => g.items.some(i => i.id === active))?.id ?? null;
   const state = useShellState(portal, activeGroup, { openAll: !!openAll });
+  const [reporting, setReporting] = useState(false);
+  const startReport = useCallback(() => setReporting(true), []);
+  const endReport = useCallback(() => setReporting(false), []);
 
-  // Where the person was, for next time (under the key the classic portal keeps it in, as that portal's page name).
+  // Where the person was, for next time (under the key the classic portal keeps it in, as that portal's page name). A screen
+  // the classic portal never had is not a page it could open, so it is not remembered for it.
   useEffect(() => {
     const screen = active ? screenOf(active) : undefined;
-    if (!screen) return;
+    if (!screen || isNewTo(screen, portal)) return;
     try {
       window.localStorage.setItem(pageKey(portal), legacyIdOf(screen, portal));
     } catch {
@@ -76,17 +81,18 @@ export function Shell({
         data-part="overlay"
         onClick={() => state.setDrawer(false)}
       />
-      <Sidebar rail={rail} active={active} state={state} />
+      <Sidebar rail={rail} active={active} state={state} onReportIssue={startReport} />
       <div
         className={cx(styles['content'], state.collapsed && styles['contentWide'])}
         data-part="content"
       >
-        <Header state={state} title={title} />
+        <Header state={state} title={title} onReportIssue={startReport} />
         <main className={styles['page']} data-part="page">
           <Outlet />
         </main>
       </div>
       <BottomNav items={bottom} active={active} state={state} />
+      {reporting && <ReportIssue onClose={endReport} />}
       <ToastHost toasts={toasts} />
     </div>
   );

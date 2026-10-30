@@ -116,10 +116,13 @@ if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log('
     const n = await open(p);
     await n.waitForSelector('[data-part=sidebar]', { timeout: 15000 });
     await sleep(1200);
-    const next = await readNext(n);
+    const drawn = await readNext(n);
     await n.shut();
+    // A screen the classic portal never had (Issues, in the admin's) is the app's own: everything else is the classic rail.
+    const isNew = i => { const sc = M.screenOf(i.page); return !!sc && M.isNewTo(sc, p.portal); };
+    const next = drawn.map(g => ({ ...g, items: g.items.filter(i => !isNew(i)) })).filter(g => g.items.length);
     check(`${who}${why}: the new app draws the rail the classic portal draws (${classic.reduce((s, g) => s + g.items.length, 0)} screens in ${classic.length} sections)`, JSON.stringify(classic) === JSON.stringify(next), JSON.stringify(classic) === JSON.stringify(next) ? '' : '\n      classic: ' + show(classic) + '\n      new:     ' + show(next));
-    return next;
+    return drawn;
   };
 
   // ── 1. The rail is the classic portal's, for every kind of person ───────────────────────────
@@ -127,6 +130,7 @@ if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log('
   for (const who of Object.keys(PEOPLE)) rails[who] = await sameRail(who, '');
   const flat = r => r.flatMap(g => g.items.map(i => i.page));
   check('the admin has every screen of the admin portal, Google Chat among them because the server says it is set up', M.NAV.admin.flatMap(g => g.items).every(id => flat(rails.admin).includes(id)) && flat(rails.admin).length === M.NAV.admin.flatMap(g => g.items).length);
+  check('the one screen the classic admin portal never had, Issues, stands beside Notifications in the admin\'s System section', (() => { const sys = rails.admin.find(g => g.group === 'system'); return !!sys && sys.items.map(i => i.page).join() === 'notifications,issues,workspace'; })());
   check('Sara has the screens she was granted and the ones everybody has, and Google Chat because she was given it', ['leads', 'deals', 'quotation', 'reports', 'gchat', 'tasks', 'notifications'].every(s => flat(rails.sara).includes(s)) && !flat(rails.sara).includes('accounting'));
   check('Omar, granted nothing, has Home and Notifications, and nothing of the admin\'s', flat(rails.omar).join() === 'home,notifications');
   check('Cleo has Issues because of her title, and what she was granted', ['issues', 'accounting', 'stock', 'suppliers', 'email', 'submissions', 'hours'].every(s => flat(rails.cleo).includes(s)));

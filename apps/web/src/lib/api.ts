@@ -115,7 +115,10 @@ export interface Api {
   get<T = unknown>(path: string, options?: RequestOptions): Promise<T>;
   post<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
   put<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
+  patch<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
   del<T = unknown>(path: string, options?: RequestOptions): Promise<T>;
+  /** a multipart form (a file goes with its words): the browser writes the content type, boundary and all */
+  postForm<T = unknown>(path: string, form: FormData, options?: RequestOptions): Promise<T>;
 }
 
 export interface ApiDeps {
@@ -149,13 +152,14 @@ export function makeApi({ portal, token, onUnauthorized, fetchImpl }: ApiDeps): 
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
     };
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    const form = typeof FormData !== 'undefined' && body instanceof FormData;
+    if (body !== undefined && !form) headers['Content-Type'] = 'application/json';
     let res: Response;
     try {
       res = await doFetch(path, {
         method,
         headers,
-        body: body === undefined ? null : JSON.stringify(body),
+        body: body === undefined ? null : form ? body : JSON.stringify(body),
         signal: signal ?? null,
       });
     } catch (e) {
@@ -187,6 +191,8 @@ export function makeApi({ portal, token, onUnauthorized, fetchImpl }: ApiDeps): 
     get: (path, options) => call('GET', path, undefined, options),
     post: (path, body, options) => call('POST', path, body ?? {}, options),
     put: (path, body, options) => call('PUT', path, body ?? {}, options),
+    patch: (path, body, options) => call('PATCH', path, body ?? {}, options),
     del: (path, options) => call('DELETE', path, undefined, options),
+    postForm: (path, form, options) => call('POST', path, form, options),
   };
 }

@@ -46,6 +46,31 @@ describe('makeApi', () => {
     expect((calls[2]?.init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
   });
 
+  it('patches with JSON, as put does', async () => {
+    const { api, calls } = setup(() => json({ id: 3, status: 'resolved' }));
+    await expect(api.patch('/api/v1/issues/3', { status: 'resolved' })).resolves.toEqual({
+      id: 3,
+      status: 'resolved',
+    });
+    expect(calls[0]?.init.method).toBe('PATCH');
+    expect(calls[0]?.init.body).toBe('{"status":"resolved"}');
+    expect((calls[0]?.init.headers as Record<string, string>)['Content-Type']).toBe(
+      'application/json',
+    );
+  });
+
+  it('sends a form as it is, and leaves the content type to the browser (a boundary is its to write)', async () => {
+    const { api, calls } = setup(() => json({ ok: true }));
+    const form = new FormData();
+    form.append('title', 'Cannot log hours');
+    form.append('file', new File(['x'], 'shot.png', { type: 'image/png' }));
+    await api.postForm('/api/v1/issues', form);
+    expect(calls[0]?.init.method).toBe('POST');
+    expect(calls[0]?.init.body).toBe(form);
+    expect(calls[0]?.init.headers).toMatchObject({ Authorization: 'Bearer tok' });
+    expect((calls[0]?.init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+  });
+
   it('is not troubled by an answer with nothing in it', async () => {
     const { api } = setup(() => new Response(null, { status: 204 }));
     await expect(api.del('/api/x/1')).resolves.toBeUndefined();

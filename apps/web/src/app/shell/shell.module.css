@@ -463,6 +463,37 @@
     height: 16px;
   }
 
+  /* The team portal's foot of the rail: one button, "Report an Issue" (the classic .sidebar-footer and its .btn.btn-outline). */
+  .teamFooter {
+    padding: 16px 20px;
+    border-top: 1px solid var(--glass-border);
+  }
+  .reportIssue {
+    width: 100%;
+    padding: 9px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--font);
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+  }
+  .reportIssue:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.04);
+    border-color: rgba(var(--ov, 255, 255, 255), 0.12);
+  }
+  .reportIssue svg {
+    width: 14px;
+    height: 14px;
+  }
+
   /* ── What the page sits in ──────────────────────────────────────────────── */
   .content {
     transition: margin-left 0.2s ease;
@@ -830,6 +861,9 @@
       flex-direction: column;
       gap: 10px;
     }
+    :global([data-portal='team']) .sidebar.collapsed .teamFooter .reportIssue {
+      display: none;
+    }
     :global([data-portal='team']) .sidebar.collapsed .collapse {
       margin: 0;
     }
@@ -963,6 +997,11 @@
 
   /* ── Phone-sized: the shared mobile layer, which both classic portals load last ── */
   @media (max-width: 700px) {
+    .reportIssue {
+      min-width: 44px;
+      min-height: 44px;
+      justify-content: center;
+    }
     .headerLeft,
     .headerRight,
     .topbarLeft {

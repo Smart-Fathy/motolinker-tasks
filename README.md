@@ -733,7 +733,7 @@ src/routes/*.js       one module per feature (stock, suppliers, rfq, huddles, �
 src/http/             the new server code: the actor model's guards, /api/v1, the ml_ui switch and the new
                       app's page (see "Migrating to one codebase")
 src/modules/          the new server's features, one folder each (service / routes / index) with their
-                      dependencies passed in; notifications is the first (src/modules/README.md)
+                      dependencies passed in: notifications, submissions, issues (src/modules/README.md)
 packages/contracts/   what the server and the web app agree on: the permission catalogue and rules,
                       actors (admin / employee, capabilities, scope), the app's screens (who gets each,
                       where each stands in the navigation, what the classic portals called it), the links
@@ -866,7 +866,10 @@ What exists so far, all of it invisible to users:
   `v1({ method, path, cap }, handler)`. Today it has `GET /api/v1/me` (who is asking, their
   capabilities, sections, scope and the workspace) and the people's own notifications —
   `GET /api/v1/notifications` and `POST /api/v1/notifications/read` (`src/modules/notifications`; the classic
-  bell's routes use the same service). `tests/actor.js` crosses every v1 route with every
+  bell's routes use the same service), what the website's form sent us (`GET /api/v1/submissions`,
+  `DELETE /api/v1/submissions/:id`) and the Issues centre (`/api/v1/issues`: the queue, closing and reopening a
+  ticket, its replies, and reporting one with a file) — each over one service that the classic portals' routes
+  share. `tests/actor.js` crosses every v1 route with every
   kind of actor; a route that cannot be asked without parameters must say why in its `NOT_IN_MATRIX`
   list, so none is skipped by accident.
 - **Tooling and CI** — see "Tests" above; `tools/parity/shoot-legacy.js` photographs all 52 pages of
@@ -888,7 +891,9 @@ What exists so far, all of it invisible to users:
   (`/employee#requests`, `?chat=<room>`) land on the screen they name. The colour button works (and follows the
   person across devices), a look the admin saves reaches an open page without a reload, and `?safe=1` is still
   the way back to the original look. **Notifications** is built (the bell in the top bar and its panel, the count on
-  the rail's item, the toast when one arrives live, and the Notification Center), as is Home (who you are and what you
+  the rail's item, the toast when one arrives live, and the Notification Center), as are **Submissions** (what the
+  website's form sent us), **Issues** (the Chief Technical Officer's centre — new to the admin portal, which never
+  had one — with "Report an Issue" in the team's rail and account menu) and Home (who you are and what you
   may do); every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
   (`/legacy/<portal>?embed=1`; the live chat and Security, which a frame cannot hold, open a card that says so and
   links to the classic page), so the whole portal is reachable from the new app while the screens move one at a
@@ -929,7 +934,11 @@ side of being shown in the app's frame, `tests/webframe.js` the two together (ev
 and `tests/webpwa.js` the service worker in a real browser. Notifications have a suite on each layer:
 `tests/notifications.js` (the routes, the classic ones as they always answered and `/api/v1`), `tests/notifparity.js` (the
 bell, panel, toast, page and rail badge against the classic portals' computed style) and `tests/webnotifs.js` (the real
-server, the built app, a real browser). Details in `apps/web/README.md`.
+server, the built app, a real browser). Submissions and Issues have the same three layers: `tests/submissions.js` and
+`tests/issues.js` (the routes), `tests/subparity.js` and `tests/issparity.js` (the pages against the classic pages' computed
+style; the rail's "Report an Issue" button is in `tests/shellparity.js`) and `tests/webissues.js` (the real server, the built
+app, a real browser). What each classic screen did, row by row, and where each row is held, is `docs/parity/`.
+Details in `apps/web/README.md`.
 
 **Editing the classic portals' scripts while they still exist:** in a frame, `public/assets/dashboard.js` and
 `employee.js` run with `EMBEDDED` true (`<html data-embed>`, set by `?embed=1`). Anything you add that starts a

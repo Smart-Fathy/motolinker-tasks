@@ -1,6 +1,7 @@
 // Form Submissions
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
+const { createSubmissionsService } = require('../modules/submissions');
 const { createLimiter } = require('../lib/rate-limit');
 const { clientIp } = require('../lib/request-info');
 const { express, logLeadActivity, normalizePhone, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('express', 'logLeadActivity', 'normalizePhone', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
@@ -130,18 +131,24 @@ receiver.router.post('/api/submissions', submissionGate, express.json({ limit: '
 //
 // There is no create or edit action, because nobody here writes a submission —
 // the website does, and the only thing a person does to one is read it or bin it.
+// The list and the delete are one piece of code for both portals and for /api/v1 (src/modules/submissions); these adapt it to
+// what the classic pages have always been told: the rows with `submitted_at` and `lead_name` added, and a database's own
+// words when it cannot be asked.
+const submissions = createSubmissionsService({ supabase });
+
 function mountSubmissionRoutes(base, guard) {
   receiver.router.get(base, guard, requirePerm('submissions', 'view'), async (_req, res) => {
-    const { data, error } = await supabase.from('form_submissions')
-      .select('*, customers(name)').order('created_at', { ascending: false }).limit(200);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json((data || []).map(s => ({ ...s, submitted_at: s.created_at, lead_name: s.customers?.name || '' })));
+    try {
+      const rows = await submissions.list();
+      res.json(rows.map(s => ({ ...s, submitted_at: s.created_at, lead_name: s.customers?.name || '' })));
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   receiver.router.delete(`${base}/:id`, guard, requirePerm('submissions', 'delete'), async (req, res) => {
-    const { error } = await supabase.from('form_submissions').delete().eq('id', req.params.id);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true });
+    try {
+      await submissions.remove(req.params.id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
 }
 mountSubmissionRoutes('/api/submissions', requireAuth);

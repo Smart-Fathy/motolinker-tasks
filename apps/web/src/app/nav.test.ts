@@ -29,6 +29,8 @@ describe('the rail', () => {
       'approvals',
     ]);
     expect(rail[6]?.items.map(i => i.id)).toEqual(['calendar', 'meet', 'email', 'drive', 'sheets']);
+    // Issues is the one screen here the classic admin portal never had: it stands beside Notifications
+    expect(rail[7]?.items.map(i => i.id)).toEqual(['notifications', 'issues', 'workspace']);
     const withChat = buildRail('admin', accessOf(adminMe({ gchat: true })));
     expect(withChat[6]?.items.map(i => i.id)).toEqual([
       'calendar',
@@ -245,12 +247,31 @@ describe("the admin's arrangement", () => {
           key: 'system',
           items: [
             { id: 'nav-notif', hidden: true },
+            { id: 'nav-issues', hidden: true },
             { id: 'nav-workspace', hidden: true },
           ],
         },
       ]),
     );
     expect(rail.map(g => g.id)).not.toContain('system');
+  });
+
+  it('puts a screen the saved arrangement predates at the end of its section: Issues, for an admin who arranged System before it was there', () => {
+    const rail = buildRail(
+      'admin',
+      admin,
+      cfg([
+        {
+          key: 'system',
+          items: [{ id: 'nav-workspace' }, { id: 'nav-notif' }],
+        },
+      ]),
+    );
+    expect(rail.find(g => g.id === 'system')?.items.map(i => i.id)).toEqual([
+      'workspace',
+      'notifications',
+      'issues',
+    ]);
   });
 
   it('ignores what it names that this portal does not have, and what is not a screen at all', () => {
