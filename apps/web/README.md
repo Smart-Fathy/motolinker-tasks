@@ -16,12 +16,12 @@ src/app/            App.tsx (the gallery, or the product: signed out the sign-in
                     routes.tsx (where an address opens), nav.ts + nav-config.ts (the rail), access.ts (what a
                     person may open), registry.ts + define-module.ts (the screens that have moved),
                     Unported.tsx (the card a screen shows that cannot be framed, or did not open), context.tsx
-src/app/shell/      the frame: Shell, Sidebar, Header, BottomNav, icons, state (what it remembers), shell.module.css
+src/app/shell/      the frame: Shell, Sidebar, Header, NotificationBell, BottomNav, icons, state (what it remembers), shell.module.css
 src/legacy/         a screen that has not moved, shown as its classic page in a frame: LegacyFrame, bridge.ts (the
                     protocol with the page), frameable.ts (the screens a frame cannot hold)
 src/sw/             the service worker: sw.ts (wiring), logic.ts (every decision, testable), shared.ts (what the
                     worker and the pages agree on); built to dist/sw.js by sw-plugin.ts
-src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page })
+src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications
 src/auth/           the sign-in: SignIn.tsx (which step, and what carries between them) and a component per
                     step: PasswordStep, CodeStep (second step), ForgotStep, ResetStep; copy.ts holds every
                     line they say
@@ -31,7 +31,7 @@ src/lib/            env.ts (what the server tells the page: window.__ML__ — th
                     and its replaced wording), session.ts (the token, under the classic portals' own keys),
                     api.ts (authed calls, GET /api/v1/me and the check of its answer), auth-api.ts (the sign-in
                     routes, read into results a screen can act on), arrival.ts (Google's return and the reset
-                    link), query.ts (the data cache), sse.ts (the live stream), theme.ts (the look and the
+                    link), query.ts (the data cache), sse.ts (the live stream), toasts.ts (the small messages), theme.ts (the look and the
                     colour mode while the app is open), pwa.ts (the worker, from the page's side), throttle.ts
 src/styles/         base.css: the layers and the classic portals' design tokens with the values they ship;
                     portal-team.css: where the team portal's sheet starts from something else
@@ -100,11 +100,11 @@ initials button: Security, the classic portal, Sign out) and the bottom bar on a
   open it; otherwise Home. An address
   for a screen the person may not open, or that belongs to the other portal, is Home.
 - **A screen that has not moved** is in the rail all the same and opens as the classic page itself, in a frame
-  under the app's rail and bars (see "Screens that have not moved" below). Home is the only screen built so far;
-  it shows who is signed in and what they may do, which is the thing to check a grant against.
+  under the app's rail and bars (see "Screens that have not moved" below). Home and Notifications are the screens built
+  so far; Home shows who is signed in and what they may do, which is the thing to check a grant against.
 - **What it does not have yet**, named in `tests/shellparity.js` (`ACCEPTED`, each with its reason; one that stops
   differing fails the suite so the list cannot go stale): the search box and shortcuts above the rail, Arrange and
-  the workspace settings in the footer, and the header's refresh countdown, help and notification bell. They arrive
+  the workspace settings in the footer, and the header's refresh countdown and help button. They arrive
   with their screens.
 - **A deliberate difference:** when an admin hides a whole section of the sidebar, the classic admin portal hides
   it, but the classic team portal draws it again for anyone who holds a screen in it (it redraws every heading from
@@ -250,6 +250,27 @@ the two sees one behaviour):
   choice do not, and the colour button is not offered. It is the way back in if a look ever makes the screen hard
   to use, and it is carried along when an address is sent to the classic page.
 
+## Notifications
+
+The first screen with a shell part of its own (`src/modules/notifications`, the bell in `app/shell/NotificationBell.tsx`; what
+the classic portals did, row by row, and where each is held, is `docs/parity/notifications.md`).
+
+- **One list.** `data.ts` reads `GET /api/v1/notifications` into the session's query cache under `['notifications', actor.key]`;
+  the bell, the rail's badge and the Notification Center all read that one list, and how many are unread is counted from it.
+  Reading one or all changes the list at once and tells the server after (and asks the server what is true if it will not
+  take it); `Shell` calls `useLiveNotifications()` so the stream's `notification` events go to the head of the list, up as a
+  toast, whichever screen is open — and so the list is read again when the stream comes back from a gap.
+- **Toasts** are `lib/toasts.ts` (a store per session, on `useSession().toasts`) drawn by `ui/ToastHost`. Anything may
+  `toasts.show(text)`.
+- **Where a click goes** is `routeOf(portal, url, type)` in `model.ts`: the two portals' maps are kept as they were.
+- **A task for a team member** while the Tasks screen is still the classic page in a frame: the frame is told
+  (`{ type: 'refresh', what: 'tasks' }`, `legacy/bridge.ts`, handled in `public/assets/embed.js`) and the page reads its tasks
+  again, as it did when it held the notification stream itself. When Tasks moves it will invalidate its own query instead.
+- Tests: `model.test.ts` (the guards held to the schemas in contracts, the wording, every branch of the routing),
+  `notifications.test.tsx` (the whole feature in a session against a script), `data.test.tsx` (the live hooks against a
+  stream the test controls), `lib/toasts.test.ts`, `ui/ToastHost.test.tsx`; `tests/notifparity.js` (look) and
+  `tests/webnotifs.js` (the real thing).
+
 ## The gallery
 
 `/dashboard/__gallery` and `/employee/__gallery` (with `?ui=next`; it needs no session) show the design system on
@@ -274,10 +295,13 @@ Opened from the dev server there is no `window.__ML__`; the app falls back to th
 
 The suites that hold it, from the root: `tests/modules.js` (the catalogue against the classic portals), `tests/spashell.js`
 (the build and the server half), `tests/signinparity.js` and `tests/shellparity.js` (look, value by value),
-`tests/webauth.js` and `tests/webshell.js` (the real server, a real browser), `tests/galleryaudit.js` (readability),
+`tests/webauth.js`, `tests/webshell.js` and `tests/webnotifs.js` (the real server, a real browser), `tests/notifparity.js`
+(the bell, panel, toast and page), `tests/notifications.js` (the routes behind them), `tests/galleryaudit.js` (readability),
 `tests/embed.js` (the classic pages as guests), `tests/webframe.js` (every unmoved screen in its frame) and
 `tests/webpwa.js` (the service worker, offline and in turns with the classic one).
-The parity suites compare against the classic portals, so they go when the classic portals do.
+The parity suites compare against the classic portals, so they go when the classic portals do. (Vitest's module cache is
+off for this app: the registry is a glob of `modules/*/index.ts`, which a cache keyed on the registry's own text cannot see
+change.)
 
 ## Rules
 

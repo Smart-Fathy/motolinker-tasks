@@ -880,15 +880,16 @@ What exists so far, all of it invisible to users:
   are, and draws **the frame every screen will sit in**: the rail (the admin's sidebar, the team's rail), the top
   bar and the phone's bottom bar, in the classic look (`tests/shellparity.js` compares every computed value to the
   classic portal's, apart from a short list of named differences that are all things not built yet — the
-  search box, the arrange and workspace-settings buttons, the refresh, help and bell). The frame lists the
+  search box, the arrange and workspace-settings buttons, the refresh and help buttons). The frame lists the
   screens the classic portal would list for that person — all of them for the admin; for a team member what
   their grants allow (`packages/contracts/src/modules.js` is the one catalogue of screens and who gets each) —
   arranged the way the admin arranged the sidebar (names, groups, hidden items), and it remembers what the
   classic portal remembers (collapsed rail, open groups, last page). Links that already exist in the world
   (`/employee#requests`, `?chat=<room>`) land on the screen they name. The colour button works (and follows the
   person across devices), a look the admin saves reaches an open page without a reload, and `?safe=1` is still
-  the way back to the original look. Home is the only screen built so far (who you are and what you may do);
-  every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
+  the way back to the original look. **Notifications** is built (the bell in the top bar and its panel, the count on
+  the rail's item, the toast when one arrives live, and the Notification Center), as is Home (who you are and what you
+  may do); every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
   (`/legacy/<portal>?embed=1`; the live chat and Security, which a frame cannot hold, open a card that says so and
   links to the classic page), so the whole portal is reachable from the new app while the screens move one at a
   time. The app has its own **service worker** (a start without a network, a new build taken at once, push shown and
@@ -925,7 +926,10 @@ catalogue of screens to the classic portals' own navigation, permission code and
 draws for the same person; deep links; the colour button; a look saved while a page is open; the live stream), and
 `tests/galleryaudit.js` measures the gallery's contrast under every look; `tests/embed.js` holds the classic pages'
 side of being shown in the app's frame, `tests/webframe.js` the two together (every unmoved screen in its frame),
-and `tests/webpwa.js` the service worker in a real browser. Details in `apps/web/README.md`.
+and `tests/webpwa.js` the service worker in a real browser. Notifications have a suite on each layer:
+`tests/notifications.js` (the routes, the classic ones as they always answered and `/api/v1`), `tests/notifparity.js` (the
+bell, panel, toast, page and rail badge against the classic portals' computed style) and `tests/webnotifs.js` (the real
+server, the built app, a real browser). Details in `apps/web/README.md`.
 
 **Editing the classic portals' scripts while they still exist:** in a frame, `public/assets/dashboard.js` and
 `employee.js` run with `EMBEDDED` true (`<html data-embed>`, set by `?embed=1`). Anything you add that starts a
