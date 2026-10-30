@@ -1,6 +1,7 @@
 // Notification Center streams
 // Lifted out of index.js unchanged. src/ctx.js explains the context object.
 const ctx = require('../ctx');
+const { createNotificationsService } = require('../modules/notifications');
 const { chatCallerIdentity, express, receiver, requireAuth, requireEmployeeAuth, supabase } = ctx.need('chatCallerIdentity', 'express', 'receiver', 'requireAuth', 'requireEmployeeAuth', 'supabase');
 // Provided by another module, so resolved through the context rather than
 // captured at require time — load order between feature modules is not fixed.
@@ -35,40 +36,37 @@ function openNotifStream(key, res, reqObj) {
   reqObj.on('close', done);
 }
 
-async function listNotifications(memberKey, res) {
+// The list and "mark read" are one piece of code for both portals and for /api/v1 (src/modules/notifications); these two
+// adapt it to what the classic pages have always been told. They answer an empty list and ok when the database cannot be asked.
+const notifications = createNotificationsService({ supabase });
+
+async function listNotifications(actor, res) {
   try {
-    const { data } = await supabase.from('notifications')
-      .select('*').eq('member_key', memberKey).order('created_at', { ascending: false }).limit(50);
-    const items = data || [];
-    res.json({ items, unread: items.filter(n => !n.read).length });
+    const { rows, unread } = await notifications.list(actor);
+    res.json({ items: rows, unread });
   } catch (_) { res.json({ items: [], unread: 0 }); }
 }
 
-async function markNotificationsRead(memberKey, body, res) {
-  try {
-    let q = supabase.from('notifications').update({ read: true }).eq('member_key', memberKey);
-    if (body?.id) q = q.eq('id', body.id);
-    else q = q.eq('read', false);
-    await q;
-    res.json({ ok: true });
-  } catch (_) { res.json({ ok: true }); }
+async function markNotificationsRead(actor, body, res) {
+  try { await notifications.markRead(actor, body?.id ? { id: body.id } : { all: true }); } catch (_) { /* the bell does not mind */ }
+  res.json({ ok: true });
 }
 
 // Employee
 receiver.router.get('/api/employee/notifications/stream', requireEmployeeAuth, (req, res) =>
   openNotifStream(`employee_${req.employee.id}`, res, req));
 receiver.router.get('/api/employee/notifications', requireEmployeeAuth, (req, res) =>
-  listNotifications(`employee_${req.employee.id}`, res));
+  listNotifications(req.actor, res));
 receiver.router.post('/api/employee/notifications/read', requireEmployeeAuth, express.json(), (req, res) =>
-  markNotificationsRead(`employee_${req.employee.id}`, req.body, res));
+  markNotificationsRead(req.actor, req.body, res));
 
 // Admin
 receiver.router.get('/api/dashboard/notifications/stream', requireAuth, (req, res) =>
   openNotifStream('admin', res, req));
 receiver.router.get('/api/dashboard/notifications', requireAuth, (req, res) =>
-  listNotifications('admin', res));
+  listNotifications(req.actor, res));
 receiver.router.post('/api/dashboard/notifications/read', requireAuth, express.json(), (req, res) =>
-  markNotificationsRead('admin', req.body, res));
+  markNotificationsRead(req.actor, req.body, res));
 
 // Everyone who can be reached in this workspace — used to validate a huddle guest
 async function chatPeopleKeys() {

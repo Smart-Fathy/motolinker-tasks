@@ -1,2 +1,4 @@
 GET /api/v1/health []
 GET /api/v1/me [requireActor]
+GET /api/v1/notifications [requireActor]
+POST /api/v1/notifications/read [requireActor, jsonBody]

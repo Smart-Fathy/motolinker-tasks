@@ -91,6 +91,7 @@ run leadstest   node tests/leadstest.js
 run permstest   node tests/permstest.js
 run contracts   node tests/contracts.js
 run actor       node tests/actor.js
+run notifications node tests/notifications.js
 run modules     node tests/modules.js
 run deployconfig node tests/deployconfig.js
 run shards       node tests/shards.js

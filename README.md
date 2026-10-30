@@ -732,6 +732,8 @@ src/lib/constants.js  domain vocabulary used across features
 src/routes/*.js       one module per feature (stock, suppliers, rfq, huddles, …)
 src/http/             the new server code: the actor model's guards, /api/v1, the ml_ui switch and the new
                       app's page (see "Migrating to one codebase")
+src/modules/          the new server's features, one folder each (service / routes / index) with their
+                      dependencies passed in; notifications is the first (src/modules/README.md)
 packages/contracts/   what the server and the web app agree on: the permission catalogue and rules,
                       actors (admin / employee, capabilities, scope), the app's screens (who gets each,
                       where each stands in the navigation, what the classic portals called it), the links
@@ -861,8 +863,10 @@ What exists so far, all of it invisible to users:
   valid. `requireCan('leads.edit')` (`src/http/actor.js`) fails closed — 401 with no actor, 403 without
   the capability — and refuses a capability that is not in the catalogue when the route is mounted.
 - **`/api/v1`** — mounted in a final pass by `src/http/mount-v1.js`, every route through
-  `v1({ method, path, cap }, handler)`. Today it has `GET /api/v1/me`: who is asking, their
-  capabilities, sections, scope and the workspace. `tests/actor.js` crosses every v1 route with every
+  `v1({ method, path, cap }, handler)`. Today it has `GET /api/v1/me` (who is asking, their
+  capabilities, sections, scope and the workspace) and the people's own notifications —
+  `GET /api/v1/notifications` and `POST /api/v1/notifications/read` (`src/modules/notifications`; the classic
+  bell's routes use the same service). `tests/actor.js` crosses every v1 route with every
   kind of actor; a route that cannot be asked without parameters must say why in its `NOT_IN_MATRIX`
   list, so none is skipped by accident.
 - **Tooling and CI** — see "Tests" above; `tools/parity/shoot-legacy.js` photographs all 52 pages of

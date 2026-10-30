@@ -165,7 +165,9 @@ function unitTests() {
   check('the routes declared public are the ones this suite was told about', JSON.stringify(publicOnes.sort()) === JSON.stringify(['GET /api/v1/health']), publicOnes.join(', '));
 
   // 4. The matrix: each kind of actor asks each route that can be asked without parameters.
-  const NOT_IN_MATRIX = {};   // 'METHOD /path': why it cannot be asked generically — an entry here is a decision, reviewed
+  const NOT_IN_MATRIX = {     // 'METHOD /path': why it cannot be asked generically — an entry here is a decision, reviewed
+    'POST /api/v1/notifications/read': 'it changes data and needs a body naming a row; tests/notifications.js asks it as nobody, an unknown token, the admin and employees',
+  };
   const kinds = [
     ['nobody', null], ['a token nobody issued', 'x-nobody'], ['the admin', 't-admin'],
     ['an employee with nothing', 't-omar'], ['an employee with everything', 't-hana'],
