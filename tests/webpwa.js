@@ -266,9 +266,10 @@ function startProxy(target, port) {
     const gallery = fs.readdirSync(path.join(dist, 'assets')).find(f => /^Gallery-.*\.js$/.test(f));
     fs.renameSync(path.join(dist, 'assets', gallery), path.join(dist, 'assets', gallery + '.away'));
     const page = await visit(p, { url: p.route + '/__gallery' });     // asks for a file the new build no longer has
-    await sleep(4000);
-    const loads = net.hits(/^\/dashboard\/__gallery$/);
-    check('a page that asks for a file that is gone reloads itself, to get the build that has it — once, and not over and over', loads === 2, 'loads: ' + loads);
+    const loadsOf = () => net.hits(/^\/dashboard\/__gallery$/);
+    for (let i = 0; i < 150 && loadsOf() < 2; i++) await sleep(100);       // (it reloads at once; a slow machine is given its time)
+    await sleep(3000);                                                      // …and then given long enough to do it again, if it were going to
+    check('a page that asks for a file that is gone reloads itself, to get the build that has it — once, and not over and over', loadsOf() === 2, 'loads: ' + loadsOf());
     fs.renameSync(path.join(dist, 'assets', gallery + '.away'), path.join(dist, 'assets', gallery));
     await page.shut();
   }
