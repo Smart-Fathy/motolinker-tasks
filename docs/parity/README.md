@@ -14,3 +14,5 @@ codebase"). "It looks and works the same" is shown, not asserted. Two things car
 
 Nothing here is pixel-gated: the new DOM is different on purpose, so approved pictures become the
 regression baseline for the new app instead.
+
+Modules ported so far: [notifications](notifications.md).

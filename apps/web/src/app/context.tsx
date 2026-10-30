@@ -4,6 +4,7 @@ import type { Api, Me } from '../lib/api';
 import type { MlEnv, Portal } from '../lib/env';
 import type { Stream, StreamMessage } from '../lib/sse';
 import type { Theme, ThemeState } from '../lib/theme';
+import type { Toasts } from '../lib/toasts';
 import type { Access } from './access';
 
 /** Everything a screen can ask of the signed-in session. */
@@ -17,6 +18,8 @@ export interface SessionValue {
   api: Api;
   theme: Theme;
   stream: Stream;
+  /** the small messages at the foot of the screen */
+  toasts: Toasts;
   signOut: () => void;
   /** something said the session may be over (a framed page's call came back 401): ask the server, quietly; at most every few seconds */
   recheck: () => void;

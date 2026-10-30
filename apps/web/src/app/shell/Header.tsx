@@ -6,6 +6,7 @@ import { MODE_NAMES } from '../../lib/theme';
 import { cx } from '../../ui/cx';
 import { useAppTo, useSession, useTheme } from '../context';
 import { Icon, Menu, ModeIcon } from './icons';
+import { NotificationBell } from './NotificationBell';
 import styles from './shell.module.css';
 import type { ShellState } from './state';
 
@@ -144,6 +145,7 @@ export function Header({ state, title }: HeaderProps) {
         </div>
         <div className={styles['topbarRight']}>
           <ModeToggle />
+          <NotificationBell />
           <ProfileMenu />
         </div>
       </header>
@@ -167,6 +169,7 @@ export function Header({ state, title }: HeaderProps) {
       </div>
       <div className={styles['headerRight']}>
         <ModeToggle />
+        <NotificationBell />
       </div>
     </header>
   );

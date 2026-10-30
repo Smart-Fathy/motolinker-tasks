@@ -1,4 +1,5 @@
 import {
+  AlarmClock,
   ArrowLeft,
   BarChart3,
   Bell,
@@ -16,6 +17,7 @@ import {
   FileSearch,
   FileSignature,
   HardDrive,
+  Headphones,
   Home,
   Inbox,
   KanbanSquare,
@@ -29,6 +31,7 @@ import {
   Palette,
   PanelLeftClose,
   Send,
+  ShieldAlert,
   ShieldCheck,
   ShoppingCart,
   Table,
@@ -42,6 +45,7 @@ import type { Mode } from '../../lib/theme';
 
 /** The icons the rail and the bottom bar draw, by the names the classic portals gave them (lucide's). */
 export const ICONS: Readonly<Record<string, LucideIcon>> = {
+  'alarm-clock': AlarmClock,
   'arrow-left': ArrowLeft,
   'bar-chart-3': BarChart3,
   bell: Bell,
@@ -58,6 +62,7 @@ export const ICONS: Readonly<Record<string, LucideIcon>> = {
   'file-search': FileSearch,
   'file-signature': FileSignature,
   'hard-drive': HardDrive,
+  headphones: Headphones,
   home: Home,
   inbox: Inbox,
   'kanban-square': KanbanSquare,
@@ -69,6 +74,7 @@ export const ICONS: Readonly<Record<string, LucideIcon>> = {
   'message-square-text': MessageSquareText,
   palette: Palette,
   send: Send,
+  'shield-alert': ShieldAlert,
   'shield-check': ShieldCheck,
   'shopping-cart': ShoppingCart,
   table: Table,

@@ -168,6 +168,7 @@
   .close,
   .hamburger,
   .bell,
+  .readAll,
   .profileBtn,
   .bottomItem,
   .item {
@@ -811,8 +812,18 @@
       margin-left: 64px;
       width: calc(100% - 64px);
     }
+  }
+  @media (min-width: 901px) {
+    :global([data-portal='admin']) .sidebar.collapsed .brandText,
+    :global([data-portal='admin']) .sidebar.collapsed .groupHead,
+    :global([data-portal='admin']) .sidebar.collapsed .navBadge {
+      display: none;
+    }
+  }
+  @media (min-width: 769px) {
     :global([data-portal='team']) .sidebar.collapsed .brandText,
-    :global([data-portal='team']) .sidebar.collapsed .groupHead {
+    :global([data-portal='team']) .sidebar.collapsed .groupHead,
+    :global([data-portal='team']) .sidebar.collapsed .navBadge {
       display: none;
     }
     :global([data-portal='team']) .sidebar.collapsed .brandRow {
@@ -1072,5 +1083,114 @@
   .page:has([data-part='legacyFrame']),
   :global([data-portal='team']) .page:has([data-part='legacyFrame']) {
     padding: 0;
+  }
+
+  /* ── The notification bell: its badge, its panel, and the rail's badge ───── */
+  .bellWrap {
+    position: relative;
+  }
+  .bellBadge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    background: var(--danger-fill, var(--danger));
+    color: #fff;
+    border-radius: calc(9px * var(--r-k, 1));
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    border: 2px solid var(--surface);
+  }
+  :global([data-portal='team']) .bellBadge {
+    top: 1px;
+    right: 1px;
+    border-color: var(--glass);
+  }
+  .panel {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 340px;
+    max-width: 92vw;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: calc(12px * var(--r-k, 1));
+    box-shadow: 0 8px 32px rgba(0, 0, 0, calc(0.5 * var(--sh-k, 1)));
+    z-index: 300;
+    display: block;
+    overflow: hidden;
+  }
+  :global([data-portal='team']) .panel {
+    background: var(--glass);
+    backdrop-filter: blur(16px);
+    border-color: var(--glass-border);
+    box-shadow: var(--shadow-lg);
+    z-index: 200;
+  }
+  .panelHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  :global([data-portal='team']) .panelHead {
+    border-bottom-color: var(--glass-border);
+  }
+  .panelActions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .readAll {
+    background: none;
+    border: none;
+    color: var(--primary-text, var(--gold));
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  :global([data-portal='team']) .readAll {
+    color: var(--primary-text, var(--primary));
+  }
+  .readAll:hover {
+    text-decoration: underline;
+  }
+  .panelList {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  .panelEmpty {
+    padding: 28px 16px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  @media (max-width: 700px) {
+    .readAll {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+
+  /* The count on the rail's Notifications item (it goes when the rail is narrowed to its icons). */
+  .navBadge {
+    margin-left: auto;
+    background: var(--danger-fill, var(--danger));
+    color: #fff;
+    border-radius: calc(9px * var(--r-k, 1));
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    line-height: 1.4;
   }
 }

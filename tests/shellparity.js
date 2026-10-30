@@ -18,7 +18,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { bootDemo } = require('./helpers/demo-data');
-const { chromePath } = require('./helpers/browser');
+const { PROPS, STILL, sleep, part, openPage, settle, readRoles, diff, launch } = require('./helpers/parity');
 
 const ROOT = path.join(__dirname, '..');
 const PRINT = process.argv.includes('--print');
@@ -30,29 +30,18 @@ const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'ml-web-'));
 const build = spawnSync(process.execPath, [path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'), 'build', '--outDir', dist, '--emptyOutDir'], { cwd: path.join(ROOT, 'apps', 'web'), encoding: 'utf8' });
 if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log(' FAIL the web app builds'); process.exit(1); }
 
-// What is compared. Position and size come from the box (_rect): the computed width and height of an inline element are "auto".
-const PROPS = ['display', 'position', 'boxSizing', 'top', 'left', 'right', 'bottom', 'zIndex', 'overflowX', 'overflowY', 'transform',
-  'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flexGrow', 'flexShrink', 'flexBasis', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
-  'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
-  'borderTopWidth', 'borderTopStyle', 'borderTopColor', 'borderRightWidth', 'borderRightStyle', 'borderRightColor',
-  'borderBottomWidth', 'borderBottomStyle', 'borderBottomColor', 'borderLeftWidth', 'borderLeftColor',
-  'borderTopLeftRadius', 'borderTopRightRadius', 'backgroundColor', 'backgroundImage', 'backgroundSize', 'backgroundPosition', 'backgroundRepeat',
-  'color', 'fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight', 'textTransform', 'textAlign', 'textDecorationLine', 'textOverflow', 'whiteSpace',
-  'boxShadow', 'opacity', 'gap', 'alignItems', 'alignSelf', 'justifyContent', 'flexDirection', 'cursor', 'filter', 'backdropFilter', 'userSelect', 'visibility'];
-
 // Where the two differ on purpose or by necessity, and why. Each must still differ, or it is stale and fails.
 const ACCEPTED = {
   'nav._h': 'the classic rail has a search box and a row of shortcuts above the list, which come with Cmd+K and the favourites; the list is taller here. Collapsed, the classic rail hides those, and the two lists differ by what only the classic rail has: the admin\'s Help item (it opens the help panel, which is not built yet) and the team\'s footer (its Report an Issue button is hidden when collapsed, and leaves an empty box)',
   'footer._h': 'the classic footer also holds Arrange sections and the workspace settings, which are not in the new app yet',
   'content._h': 'what is under the header is the screen itself, and the classic Home is a page of widgets',
-  'title._w': 'at a phone\'s width the classic header\'s right-hand cluster (refresh, help, bell, Refresh) leaves its name six pixels to be squeezed into',
-  'modeToggle._x': 'the classic header also carries the refresh countdown, help, the notification bell and a Refresh button to its right; they come with their screens',
+  'title._w': 'at a phone\'s width the classic header\'s right-hand cluster (refresh, help, bell, Refresh) leaves its name six pixels to be squeezed into; the new one has the bell and not yet the rest',
+  'modeToggle._x': 'the classic header also carries the refresh countdown before it, and help and a Refresh button after the bell; those come with their screens (the bell is built: tests/notifparity.js)',
 };
 
 // The part of the page each role names, in the classic page and in the new app. `y` says how the box's top is held: 'abs' the
 // page's own, 'nav' relative to the rail's list (the classic rail has a search and a shortcuts row above it that this run does
 // not carry yet), 'none' not at all.
-const part = (classic, next, y = 'abs') => ({ classic, next, y });
 const ROLES = {
   admin: {
     sidebar: part('#sidebar', '[data-part=sidebar]'),
@@ -136,72 +125,13 @@ const COLLAPSED = {
 const railRoles = who => ({ ...Object.fromEntries(RAIL.filter(role => ROLES[who][role]).map(role => [role, ROLES[who][role]])), ...COLLAPSED });
 const railWidths = who => WIDTHS.filter(w => w >= COLLAPSES_FROM[who]);
 
-const STILL = '*,*::before,*::after{transition:none!important;animation:none!important}';
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-const readRoles = (page, which, roles = ROLES[page.portal]) => page.evaluate((roles, which, props) => {
-  const out = {};
-  const navTop = (() => { const n = document.querySelector(roles.nav[which]); return n ? n.getBoundingClientRect().y : 0; })();
-  for (const [role, sel] of Object.entries(roles)) {
-    const el = document.querySelector(sel[which]);
-    if (!el) { out[role] = null; continue; }
-    // A part that is not drawn at this width has no look to compare, only the fact that it is not drawn.
-    if (!el.checkVisibility()) { out[role] = { _hidden: true }; continue; }
-    const cs = getComputedStyle(el), o = {};
-    for (const p of props) o[p] = cs[p];
-    const r = el.getBoundingClientRect();
-    const y = sel.y === 'abs' ? r.y : sel.y === 'nav' ? r.y - navTop : 0;
-    const half = n => Math.round(n * 2) / 2;
-    Object.assign(o, { _x: half(r.x), _y: half(y), _w: half(r.width), _h: half(r.height) });
-    out[role] = o;
-  }
-  return out;
-}, roles, which, PROPS);
-
 (async () => {
-  const puppeteer = require('puppeteer');
   process.env.ML_WEB_DIST = dist;   // where the server finds the new app's build
   const { base, portals } = await bootDemo({ port: process.env.PORT || 3999 });
-  const browser = await puppeteer.launch({ executablePath: chromePath(), headless: 'new', args: ['--no-sandbox'] });
+  const browser = await launch();
   const adminToken = portals.find(p => p.who === 'admin').token;
 
-  const open = async (p, mode, next) => {
-    const context = await browser.createBrowserContext();
-    const page = await context.newPage();
-    page.portal = p.who;
-    await page.setRequestInterception(true);
-    page.on('request', r => {
-      const u = r.url();
-      if (/unpkg|jsdelivr|fonts\.g|gstatic/.test(u)) return r.respond({ status: 200, contentType: 'text/plain', body: '' });
-      if (/^https?:/.test(u) && !u.startsWith(base)) return r.abort('internetdisconnected');
-      r.continue();
-    });
-    await page.setBypassServiceWorker(true);
-    await page.evaluateOnNewDocument((key, token, mode) => {
-      // Draws what lucide draws (an <svg class="lucide …"> in the <i>'s place), minus the glyph: icons are laid out and coloured as
-      // they would be, and can be measured.
-      window.lucide = { createIcons() {
-        for (const i of document.querySelectorAll('i[data-lucide]')) {
-          const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-          for (const a of i.attributes) if (a.name !== 'data-lucide') s.setAttribute(a.name, a.value);
-          s.setAttribute('class', ('lucide lucide-' + i.getAttribute('data-lucide') + ' ' + (i.getAttribute('class') || '')).trim());
-          if (!s.getAttribute('width')) s.setAttribute('width', '24');
-          if (!s.getAttribute('height')) s.setAttribute('height', '24');
-          s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '2');
-          i.replaceWith(s);
-        }
-      } };
-      window.Chart = function () { return { destroy() {}, update() {} }; };
-      localStorage.setItem(key, token);
-      localStorage.setItem('ml_mode', mode);
-    }, p.key, p.token, mode);
-    if (next) await page.setCookie({ name: 'ml_ui', value: 'next', url: base });
-    await page.setViewport({ width: 1100, height: 800 });
-    await page.goto(base + (next ? p.route : p.route === '/dashboard' ? '/legacy/dashboard' : '/legacy/employee'), { waitUntil: 'domcontentloaded' });
-    page.shut = async () => { await page.close(); await context.close(); };
-    return page;
-  };
-  const settle = page => page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); document.getAnimations().forEach(a => a.cancel()); }).then(() => page.mouse.move(0, 0)).then(() => sleep(80));
+  const open = (p, mode, next) => openPage(browser, base, p, mode, next);
 
   const observed = {};   // `${portal}/${look}/${mode}/${width}` (and `/collapsed` for the collapsed rail) -> side -> role -> style
   for (const [look, body] of Object.entries(LOOKS)) {
@@ -219,7 +149,7 @@ const readRoles = (page, which, roles = ROLES[page.portal]) => page.evaluate((ro
         await page.setViewport({ width, height: 800 });
         await settle(page);
         const key = `${p.who}/${look}/${mode}/${width}`;
-        (observed[key] = observed[key] || {})[side] = await readRoles(page, side);
+        (observed[key] = observed[key] || {})[side] = await readRoles(page, ROLES[p.who], side);
       }
       // The rail collapsed: the button on this side, clicked where it is drawn, then read at the widths a rail can be collapsed at.
       await page.setViewport({ width: Math.max(...WIDTHS), height: 800 });
@@ -229,7 +159,7 @@ const readRoles = (page, which, roles = ROLES[page.portal]) => page.evaluate((ro
         await page.setViewport({ width, height: 800 });
         await settle(page);
         const key = `${p.who}/${look}/${mode}/${width}/collapsed`;
-        const rail = await readRoles(page, side, railRoles(p.who));
+        const rail = await readRoles(page, railRoles(p.who), side);
         // The classic rail is what the new one is held to: if it were not collapsed, nothing would be being compared with a collapsed rail.
         if (side === 'classic' && rail.sidebar?._w !== 64) throw new Error(`${key}: the classic rail is ${rail.sidebar?._w}px wide, not collapsed`);
         (observed[key] = observed[key] || {})[side] = rail;
@@ -240,33 +170,14 @@ const readRoles = (page, which, roles = ROLES[page.portal]) => page.evaluate((ro
   await browser.close();
 
   // ── compare ──
-  // (0 0 and 0% 0% are the same place: a minifier writes the one for the other when a background is `none`)
-  const origin = v => (v === '0px 0px' ? '0% 0%' : v);
-  const near = (a, b, p) => typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) <= 0.5 : p === 'backgroundPosition' ? origin(a) === origin(b) : a === b;
   const stale = new Set(Object.keys(ACCEPTED));
   let compared = 0, rails = 0;
   for (const [key, sides] of Object.entries(observed)) {
     const { classic, next } = sides;
     if (!classic || !next) continue;
     if (key.endsWith('/collapsed')) rails++;
-    const bad = [];
-    let n = 0;
-    for (const role of Object.keys(classic)) {
-      const c = classic[role], x = next[role];
-      if (!c && !x) continue;   // (the part is not drawn at this width, in either)
-      if (!c || !x) { bad.push(`${role}: ${c ? 'missing from the new app' : 'missing from the classic page'}`); continue; }
-      if (c._hidden || x._hidden) {
-        n++; compared++;
-        if (!!c._hidden !== !!x._hidden) bad.push(`${role}: ${c._hidden ? 'not drawn in the classic page, drawn in the new app' : 'drawn in the classic page, not in the new app'}`);
-        continue;
-      }
-      for (const p of [...PROPS, '_x', '_y', '_w', '_h']) {
-        n++; compared++;
-        if (near(c[p], x[p], p)) continue;
-        if (ACCEPTED[`${role}.${p}`]) { stale.delete(`${role}.${p}`); continue; }
-        bad.push(`${role}.${p}: classic ${JSON.stringify(c[p])} vs new ${JSON.stringify(x[p])}`);
-      }
-    }
+    const { n, bad } = diff(classic, next, ACCEPTED, stale);
+    compared += n;
     check(`${key}: ${n} values are the classic page's`, bad.length === 0, PRINT ? '\n      ' + bad.join('\n      ') : bad.slice(0, 4).join(' | ') + (bad.length > 4 ? ` … and ${bad.length - 4} more` : ''));
   }
   if (!ONLY) {

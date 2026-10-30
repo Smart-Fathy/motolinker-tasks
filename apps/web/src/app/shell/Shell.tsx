@@ -1,6 +1,8 @@
 import { legacyIdOf, presentation, screenOf } from '@motolinker/contracts/modules';
 import { useEffect, useMemo } from 'react';
 import { Outlet, useLocation } from 'react-router';
+import { useLiveNotifications } from '../../modules/notifications';
+import { ToastHost } from '../../ui';
 import { cx } from '../../ui/cx';
 import { useSession } from '../context';
 import { buildBottomNav, buildRail, type NavConfig } from '../nav';
@@ -44,7 +46,8 @@ export function Shell({
   /** every section drawn open, and nothing remembered (the gallery's specimen) */
   openAll?: boolean;
 }) {
-  const { portal, access } = useSession();
+  const { portal, access, toasts } = useSession();
+  useLiveNotifications();
   const { pathname } = useLocation();
   const active = screenAt(pathname);
   const rail = useMemo(() => buildRail(portal, access, navConfig), [portal, access, navConfig]);
@@ -84,6 +87,7 @@ export function Shell({
         </main>
       </div>
       <BottomNav items={bottom} active={active} state={state} />
+      <ToastHost toasts={toasts} />
     </div>
   );
 }

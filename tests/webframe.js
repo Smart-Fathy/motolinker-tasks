@@ -30,6 +30,8 @@ if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log('
 
 // Screens a frame cannot hold (apps/web/src/legacy/frameable.ts): they say why, and where the classic page is.
 const NOT_FRAMED = ['chat', 'security'];
+// Screens that have moved into the app: their page is the app's own, not the classic page in a frame.
+const MOVED = { notifications: '[data-part=notificationsPage]' };
 
 (async () => {
   const db = createFakeSupabase(seedTables(parseSchema()));
@@ -99,7 +101,7 @@ const NOT_FRAMED = ['chat', 'security'];
       const page = await open(p, { url: p.route + '/home' });
       await shell(page);
       const rail = (await railOf(page)).filter(id => id !== 'home');
-      const framed = rail.filter(id => !NOT_FRAMED.includes(id));
+      const framed = rail.filter(id => !NOT_FRAMED.includes(id) && !Object.hasOwn(MOVED, id));
       const cards = rail.filter(id => NOT_FRAMED.includes(id));
       check(`${p.portal}: the rail lists the screens the portal has (${rail.length} besides Home, ${framed.length} of them framed)`, framed.length >= 20, rail.join());
 
@@ -118,6 +120,16 @@ const NOT_FRAMED = ['chat', 'security'];
       check(`${p.portal}: …in one frame that was loaded once (a click is a message, not a reload)`, marker === 'one load' && frames === 1, `${marker} ${frames}`);
       const forced = requested => requested.filter(r => r.frame === 'frame' && /\/legacy\//.test(r.url) && !/[?&]embed=1/.test(r.url));
       check(`${p.portal}: …and it was only ever the embedded page that was asked for`, forced(page.requests).length === 0, forced(page.requests).map(r => r.url).join());
+
+      // the ones that have moved are the app's own page: no frame, nothing of the classic page
+      const moved = [];
+      for (const [id, own] of Object.entries(MOVED)) {
+        await click(page, id);
+        await page.waitForSelector(own, { timeout: 20000 });
+        const there = await page.evaluate(() => ({ frame: !!document.querySelector('iframe'), at: location.pathname }));
+        if (there.frame || !rail.includes(id) || !there.at.endsWith('/' + id) || (await activeItem(page)) !== id) moved.push(id + ' ' + JSON.stringify(there));
+      }
+      check(`${p.portal}: a screen that has moved (${Object.keys(MOVED).join(', ')}) is in the rail and is the app's own page, not a frame`, moved.length === 0, moved.join('; '));
 
       // the ones a frame cannot hold say why and where to go (Security is not in the rail: it is in the footer and the account menu)
       const cardProblems = [];

@@ -77,9 +77,12 @@ function startProxy(target, port) {
 
   // ── the browser ───────────────────────────────────────────────────────────────────────────
   // Every host but this machine is unreachable at once (fonts, icon libraries): nothing waits on the internet, and a font that
-  // cannot be had must not matter to the worker.
+  // cannot be had must not matter to the worker. (No proxy either: through one that a machine has set up, "unreachable" can
+  // take as long as the proxy likes, and a font request still open in the classic worker keeps the app's worker from taking over.
+  // The browser is simply not told of one: it is not given the variables that name it.)
   const puppeteer = require('puppeteer');
-  const browser = await puppeteer.launch({ executablePath: chromePath(), headless: 'new', args: ['--no-sandbox', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1'] });
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^(https?|all|no)_proxy$/i.test(name)));
+  const browser = await puppeteer.launch({ executablePath: chromePath(), headless: 'new', env, args: ['--no-sandbox', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1'] });
 
   const STUBS = () => {
     // (the classic pages draw their icons with lucide and their charts with Chart.js, both from a CDN)
@@ -290,8 +293,17 @@ function startProxy(target, port) {
     });
     const path_ = () => page.evaluate(() => location.pathname + location.search);
 
+    // (a push that shows nothing: what the browser knew, since a hosted machine tells us nothing else)
+    const nothingShown = async e => {
+      const asked = await Promise.allSettled([
+        page.evaluate(async () => ({ permission: Notification.permission, visible: document.visibilityState, shown: (await (await navigator.serviceWorker.ready).getNotifications()).map(n => n.title + '|' + n.tag) })),
+        worker.evaluate(async () => { try { await self.registration.showNotification('diagnostic', { tag: 'diagnostic' }); return 'the worker can show one'; } catch (err) { return 'showNotification: ' + (err && err.message || err); } }),
+      ]);
+      console.log('   (no notification; registration: ' + JSON.stringify(await registrationState(page)) + '; ' + JSON.stringify(asked.map(r => (r.status === 'fulfilled' ? r.value : String(r.reason)))) + '; errors: ' + JSON.stringify(page.errors) + '; last requests: ' + JSON.stringify(net.seen.slice(-10).map(s => s.method + ' ' + s.path)) + ')');
+      throw e;
+    };
     await push(JSON.stringify({ title: 'New lead', body: 'Acme called', url: '/dashboard#customers' }));
-    await until(page, async () => (await (await navigator.serviceWorker.ready).getNotifications()).length === 1);
+    await until(page, async () => (await (await navigator.serviceWorker.ready).getNotifications()).length === 1).catch(nothingShown);
     const first = (await shown())[0];
     check('a push is shown in the words it came with', first && first.title === 'New lead' && first.body === 'Acme called' && first.data.url === '/dashboard#customers', JSON.stringify(first));
     await tap();

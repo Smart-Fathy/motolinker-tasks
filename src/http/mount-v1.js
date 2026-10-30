@@ -12,6 +12,8 @@
 
 const contracts = require('@motolinker/contracts');
 const { requireCan } = require('./actor');
+const { jsonBody } = require('./errors');
+const { createNotificationsService, mountNotifications } = require('../modules/notifications');
 
 /** @type {{ method: string, path: string, cap: string | null, public: boolean }[]} */
 const routes = [];
@@ -19,7 +21,8 @@ const routes = [];
 /**
  * @param {import('express').Router} router
  * @param {{ method: 'get' | 'post' | 'put' | 'patch' | 'delete', path: string, cap?: string, public?: boolean }} spec
- * @param {import('express').RequestHandler} handler
+ * @param {import('express').RequestHandler | import('express').RequestHandler[]} handler  what answers; any middleware it
+ *   needs (a body parser) comes before it
  * @param {import('express').RequestHandler} requireActor
  */
 function register(router, spec, handler, requireActor) {
@@ -28,7 +31,7 @@ function register(router, spec, handler, requireActor) {
   if (spec.public && spec.cap)
     throw new Error(`v1(): ${spec.path} cannot be public and need ${spec.cap}`);
   const guards = spec.public ? [] : [requireActor, ...(spec.cap ? [requireCan(spec.cap)] : [])];
-  router[spec.method](spec.path, ...guards, handler);
+  router[spec.method](spec.path, ...guards, ...[handler].flat());
   routes.push({
     method: spec.method.toUpperCase(),
     path: spec.path,
@@ -42,8 +45,10 @@ function register(router, spec, handler, requireActor) {
  */
 function mountV1({ receiver, ctx }) {
   const router = receiver.router;
-  const v1 = (/** @type {any} */ spec, /** @type {import('express').RequestHandler} */ handler) =>
-    register(router, spec, handler, ctx.requireActor);
+  const v1 = (
+    /** @type {any} */ spec,
+    /** @type {import('express').RequestHandler[]} */ ...handlers
+  ) => register(router, spec, handlers, ctx.requireActor);
 
   // Is the process up and answering? The host (railway.json) asks this once per deployment and moves
   // traffic only when it gets a 2xx, so a release that cannot boot never replaces the one that can.
@@ -84,6 +89,13 @@ function mountV1({ receiver, ctx }) {
       console.warn('[v1/me]', e instanceof Error ? e.message : e);
       res.status(500).json({ error: 'Could not read who you are. Try again in a moment.' });
     }
+  });
+
+  // The people's own notifications (the bell and the Notification Center). The classic routes use the same service.
+  mountNotifications({
+    v1,
+    service: createNotificationsService({ supabase: ctx.supabase }),
+    json: jsonBody(),
   });
 }
 

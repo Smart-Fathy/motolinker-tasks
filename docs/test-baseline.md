@@ -48,6 +48,26 @@ see. The audit now refuses every request that is not to the page's own server, s
 on every machine. Whether that attribution text is readable enough on the real map is a separate, open
 question about third-party chrome.
 
+## One known intermittent: `webpwa`
+
+Part `turns` ("…then the app puts its worker back in charge") occasionally fails: the new app's worker finishes
+installing (it has called `skipWaiting()`) and then stays `waiting` behind the classic portal's worker for the whole
+15-second wait. It is older than the notifications work (merged main shows it too) and is about one run in twenty here;
+through an outbound proxy (this sandbox has one) it is about one in two, which is why the browser is launched without
+the proxy variables (`http_proxy`, `https_proxy`, `all_proxy`, `no_proxy`) in its environment. Measured so far: stopping the classic worker at that moment lets the app's activate at once, and a
+request the active worker answered with a never-ending body holds a waiting worker back while an open stream it does not
+answer does not — so something the classic worker answered, or is still doing, is open, and nothing visible in the page says
+what. `PWA_ONLY=turns node tests/webpwa.js` in a loop reproduces it; a person who goes from the classic portal to the app
+can end a visit without the app's worker in charge (the next visit has it). A failed run of this suite on its own is worth
+one re-run before it is worth a look.
+
+A second failure showed up once, on hosted CI only, and is not explained: the first check of the push part ("a push is
+shown…") timed out twice in a row while the browser was launched with `--no-proxy-server`, and passed on the run after that
+flag was gone. It does not happen here, however the hosted run is imitated (the same Chrome, two cores, a loaded machine, no
+proxy variables). If it comes back, the failure now prints what the browser knew: the notification permission, the
+registration's workers, what `getNotifications()` holds, whether the worker can show a notification itself, the page's
+errors and the last requests the server saw.
+
 ## When a suite goes red
 
 The runner prints the last line of each suite, which is rarely the line that says what went wrong; the

@@ -33,5 +33,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}', 'sw-plugin.test.ts'],
+    // The module registry is whatever `modules/*/index.ts` files there are (import.meta.glob), which a cache keyed on the
+    // registry's own text cannot know: a module added since the last run would be missing from it, and its tests fail oddly.
+    fsModuleCache: false,
   },
 });

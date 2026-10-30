@@ -16,7 +16,7 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
-    "typecheck": "tsc -p packages/contracts && tsc -p src/http && npm run typecheck -w apps/web",
+    "typecheck": "tsc -p packages/contracts && tsc -p src/http && tsc -p src/modules && npm run typecheck -w apps/web",
     "test:web": "npm test -w apps/web"
   },
   "dependencies": {

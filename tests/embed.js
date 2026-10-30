@@ -35,12 +35,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const PORTALS = [
     {
       name: 'admin', token: 'embed-admin', key: 'ml_admin_token', classic: '/legacy/dashboard', api: '/api/dashboard', check: '/api/auth/check', call: 'apiFetch',
-      start: 'customers', other: 'deals', sessions: ctx.sessions, js: 'dashboard.js', stamp: '153', chrome: ['.sidebar', '.header'],
+      start: 'customers', other: 'deals', sessions: ctx.sessions, js: 'dashboard.js', stamp: '154', chrome: ['.sidebar', '.header'],
       session: { username: 'admin', pwv: ctx.ADMIN_PW_VERSION, createdAt: Date.now() },
     },
     {
       name: 'team', token: 'embed-sara', key: 'ml_emp_token', classic: '/legacy/employee', api: '/api/employee', check: '/api/employee/check', call: 'ef',
-      start: 'leads', other: 'deals', sessions: ctx.employeeSessions, js: 'employee.js', stamp: '133', chrome: ['.sidebar', '.topbar'],
+      start: 'leads', other: 'deals', sessions: ctx.employeeSessions, js: 'employee.js', stamp: '134', chrome: ['.sidebar', '.topbar'],
       session: { id: SARA.id, name: SARA.name, username: 'sara', job_title: SARA.title, permissions: normEmpPerms(SARA.raw), createdAt: Date.now() },
     },
   ];
@@ -191,6 +191,20 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await say(page, base, { ml: 'embed', v: 1, type: 'look', profile: 'not a profile' });
     await sleep(300);
     check(`${tag} …and something that is not a look is not worn`, await f.evaluate(() => document.title.startsWith('Acme Motors')));
+
+    // the app tells the page that something it shows has changed (a task was assigned to the team member)
+    await f.evaluate(() => { window.__reads = []; for (const name of ['loadMyTasks', 'loadDropdownTasks']) window[name] = () => { window.__reads.push(name); }; });
+    await say(page, base, { ml: 'embed', v: 1, type: 'refresh', what: 'tasks' });
+    check(`${tag} "your tasks changed" makes the page read them again: the list and the log's dropdown`, await until(f, () => window.__reads.length === 2) && await f.evaluate(() => window.__reads.slice().sort().join()) === 'loadDropdownTasks,loadMyTasks');
+    await say(page, base, { ml: 'embed', v: 1, type: 'refresh', what: 'leads' });
+    await say(page, base, { ml: 'embed', v: 1, type: 'refresh' });
+    await say(page, base, { ml: 'embed', v: 2, type: 'refresh', what: 'tasks' });
+    await sleep(300);
+    check(`${tag} …and nothing else it might be told to refresh, in nothing but this protocol, makes it read anything`, await f.evaluate(() => window.__reads.length) === 2);
+    await f.evaluate(() => { delete window.loadMyTasks; delete window.loadDropdownTasks; });
+    await say(page, base, { ml: 'embed', v: 1, type: 'refresh', what: 'tasks' });
+    await sleep(300);
+    check(`${tag} …and a page that has nothing of the kind to read (the other portal's) is not troubled by being asked`, await f.evaluate(() => document.querySelector('.page.active') !== null));
 
     // a session that is gone
     p.sessions.delete(p.token);

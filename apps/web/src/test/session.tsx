@@ -18,14 +18,18 @@ export const PROFILE = {
 };
 
 /** The frame's own questions, and a live stream the test can write to. */
-export function frame(portal: 'admin' | 'team', more: Record<string, () => Response> = {}) {
+export function frame(
+  portal: 'admin' | 'team',
+  more: Record<string, () => Response | Promise<Response>> = {},
+) {
   const base = portal === 'admin' ? '/api/dashboard' : '/api/employee';
   let push: (text: string) => void = () => undefined;
   const asked: { path: string; init: RequestInit }[] = [];
-  const routes: Record<string, () => Response> = {
+  const routes: Record<string, () => Response | Promise<Response>> = {
     '/api/workspace': () => json(200, PROFILE),
     [`${base}/ui-prefs`]: () => json(200, {}),
     [`${base}/nav-config`]: () => json(200, { groups: [] }),
+    '/api/v1/notifications': () => json(200, { items: [], unread: 0 }),
     [`${base}/notifications/stream?hd=2`]: () =>
       new Response(
         new ReadableStream<Uint8Array>({
@@ -59,7 +63,7 @@ export function open(
     entries = ['/'],
     safe = false,
     browser = false,
-    more = {} as Record<string, () => Response>,
+    more = {} as Record<string, () => Response | Promise<Response>>,
   } = {},
 ) {
   const f = frame(portal, more);
