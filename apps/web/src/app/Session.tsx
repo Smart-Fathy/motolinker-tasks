@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, MemoryRouter } from 'react-router';
 import { makeApi, portalBase, type Me } from '../lib/api';
 import type { MlEnv, Portal } from '../lib/env';
+import { refreshPush } from '../lib/pwa';
 import { makeQueryClient } from '../lib/query';
 import { createStream } from '../lib/sse';
 import { throttle } from '../lib/throttle';
@@ -80,6 +81,16 @@ export function Session({
     void theme.syncPrefs(api);
     return theme.start();
   }, [theme, api, fetchImpl]);
+
+  // A push subscription this person made before is told to the server again (the app's own worker is the one that shows it).
+  useEffect(() => {
+    const done = new AbortController();
+    void refreshPush(
+      subscription => api.post(`${api.base}/push/subscribe`, subscription),
+      done.signal,
+    );
+    return () => done.abort();
+  }, [api]);
 
   // The live stream: the admin changing the look reaches every open page; a refusal about the session is asked about.
   useEffect(() => {

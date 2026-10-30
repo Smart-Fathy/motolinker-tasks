@@ -24,7 +24,9 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      // Only this worker's own older caches. The new app's worker (sw-ui-*.js, apps/web) holds this same scope when its page was
+      // opened last, and keeps its files under its own names (ml-ui-…): deleting those would empty its cache under it.
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE && k.startsWith('motolinker-dash-')).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -56,8 +58,11 @@ self.addEventListener('fetch', e => {
     e.respondWith(
       fetch(request)
         .then(res => {
-          const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(request, clone));
+          // The new app's page (?ui=next) is that app's worker's to keep: offline, this worker would show it in place of this page.
+          if (res.headers.get('X-ML-UI') !== 'next') {
+            const clone = res.clone();
+            caches.open(CACHE).then(c => c.put(request, clone));
+          }
           return res;
         })
         .catch(() => caches.match('/dashboard').then(hit =>

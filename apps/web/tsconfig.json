@@ -11,7 +11,9 @@
     "allowJs": true,
     "checkJs": false,
     "types": ["vite/client"],
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "sw-plugin.ts", "sw-plugin.test.ts"],
+  "exclude": ["src/sw/sw.ts"]
 }

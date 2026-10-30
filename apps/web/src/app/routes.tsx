@@ -9,6 +9,7 @@ import { Shell } from './shell/Shell';
 import { pageKey } from './shell/state';
 import { Unported } from './Unported';
 import { registry } from './registry';
+import { useWorkerMessages } from './useWorkerMessages';
 
 /** Where a bare address opens: the page the person was last on, if they may still open it; Home otherwise. */
 export function startScreen(portal: 'admin' | 'team', allows: (id: string) => boolean): string {
@@ -56,6 +57,7 @@ function ScreenRoute() {
 
 export function AppRoutes() {
   const navConfig = useNavConfig();
+  useWorkerMessages();
   return (
     <Routes>
       <Route element={<Shell navConfig={navConfig} />}>

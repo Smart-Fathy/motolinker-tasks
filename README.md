@@ -884,7 +884,11 @@ What exists so far, all of it invisible to users:
   (`/employee#requests`, `?chat=<room>`) land on the screen they name. The colour button works (and follows the
   person across devices), a look the admin saves reaches an open page without a reload, and `?safe=1` is still
   the way back to the original look. Home is the only screen built so far (who you are and what you may do);
-  every other screen in the rail opens a card that says it is still in the classic portal and links to it. The
+  every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
+  (`/legacy/<portal>?embed=1`; the live chat and Security, which a frame cannot hold, open a card that says so and
+  links to the classic page), so the whole portal is reachable from the new app while the screens move one at a
+  time. The app has its own **service worker** (a start without a network, a new build taken at once, push shown and
+  a tap on it taken to the right screen), which takes turns with the classic portal's worker in the same scope. The
   design primitives are on one page, `/dashboard/__gallery` and `/employee/__gallery`, which
   `tests/galleryaudit.js` measures for readability under all eight looks in both modes. Nobody gets the app
   unless they ask: see below.
@@ -915,7 +919,15 @@ catalogue of screens to the classic portals' own navigation, permission code and
 `tests/shellparity.js` holds the frame (rail, top bar, bottom bar) to the classic portals' computed style,
 `tests/webshell.js` runs the frame end to end on the real server (the rail it draws is the rail the classic portal
 draws for the same person; deep links; the colour button; a look saved while a page is open; the live stream), and
-`tests/galleryaudit.js` measures the gallery's contrast under every look. Details in `apps/web/README.md`.
+`tests/galleryaudit.js` measures the gallery's contrast under every look; `tests/embed.js` holds the classic pages'
+side of being shown in the app's frame, `tests/webframe.js` the two together (every unmoved screen in its frame),
+and `tests/webpwa.js` the service worker in a real browser. Details in `apps/web/README.md`.
+
+**Editing the classic portals' scripts while they still exist:** in a frame, `public/assets/dashboard.js` and
+`employee.js` run with `EMBEDDED` true (`<html data-embed>`, set by `?embed=1`). Anything you add that starts a
+service the app also owns — a stream, a timer that reports presence, a service worker, a push subscription, a
+sign-in screen — has to stand down when `EMBEDDED` is true, or it runs twice; `tests/embed.js` fails on the ones it
+knows about (the notification stream, presence, push, huddle revival, the worker registration).
 
 Rules for new server code: it goes in `src/http` or `src/modules` (linted, formatted, type-checked
 through JSDoc), takes its dependencies explicitly rather than through `ctx`, asks `can(actor, 'x.y')` /

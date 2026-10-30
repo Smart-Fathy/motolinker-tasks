@@ -176,12 +176,18 @@ if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log('
   w = await where(PEOPLE.admin, '/dashboard/leads');
   check('an address inside the app opens that screen straight away (and a reload would)', w.at === '/dashboard/leads' && w.active === 'leads', JSON.stringify(w));
   let page = await open(PEOPLE.sara, { url: '/employee/leads' });
+  await page.waitForSelector('iframe[data-state=ready]', { timeout: 20000 });
+  const framed = await page.evaluate(() => document.querySelector('iframe').getAttribute('src'));
+  check('a screen that has not moved is the classic page, in a frame (tests/webframe.js holds every screen to it)', framed === '/legacy/employee?embed=1#leads', framed);
+  await page.shut();
+  // (a screen a frame cannot hold — the live chat — says so, and its button opens that screen in the classic portal)
+  page = await open(PEOPLE.sara, { url: '/employee/chat' });
   await page.waitForSelector('[data-part=unported]', { timeout: 15000 });
   const pointer = await page.evaluate(() => document.querySelector('[data-part=unported] a')?.getAttribute('href'));
-  check('a screen that has not moved says so, and its button opens that screen in the classic portal', pointer === '/legacy/employee#leads', pointer);
+  check('a screen that cannot be shown in a frame says so, and its button opens that screen in the classic portal', pointer === '/legacy/employee#chat', pointer);
   await page.goto(base + pointer, { waitUntil: 'domcontentloaded' });
-  await until(page, () => document.querySelector('#nav-leads.active'));
-  check('…and the classic portal, opened that way, is the classic portal, signed in as the same person (one origin, one key)', await page.evaluate(() => !!document.querySelector('#page-leads') && location.pathname === '/legacy/employee'));
+  await until(page, () => document.querySelector('#nav-chat.active'));
+  check('…and the classic portal, opened that way, is the classic portal, signed in as the same person (one origin, one key)', await page.evaluate(() => !!document.querySelector('#page-chat') && location.pathname === '/legacy/employee'));
   await page.shut();
 
   // ── 3. The colour button ────────────────────────────────────────────────────────────────────

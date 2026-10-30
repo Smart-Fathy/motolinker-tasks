@@ -2,7 +2,7 @@
   "name": "motolinker-task-bot",
   "version": "1.0.0",
   "private": true,
-  "description": "MotoLinker Slack Task Management Bot — Chiefs assign, teams execute.",
+  "description": "MotoLinker Slack Task Management Bot \u2014 Chiefs assign, teams execute.",
   "main": "index.js",
   "workspaces": [
     "packages/*",
@@ -16,7 +16,7 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
-    "typecheck": "tsc -p packages/contracts && tsc -p src/http && tsc -p apps/web",
+    "typecheck": "tsc -p packages/contracts && tsc -p src/http && npm run typecheck -w apps/web",
     "test:web": "npm test -w apps/web"
   },
   "dependencies": {

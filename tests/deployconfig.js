@@ -98,7 +98,7 @@ check('the web app is a workspace', appDirs.some(d => d.endsWith('web')), appDir
 const runtimeDeps = appDirs.filter(d => Object.keys(read(path.join(d, 'package.json')).dependencies || {}).length);
 check('the apps declare no run-time dependencies: what they use is bundled at build time', runtimeDeps.length === 0, runtimeDeps.join(', '));
 const webPkg = exists('apps/web/package.json') ? read('apps/web/package.json') : {};
-check('the web app\'s build is a type-check and then the bundler, so a type error stops a deploy before it is served', webPkg.scripts && webPkg.scripts.build === 'tsc --noEmit && vite build', webPkg.scripts && webPkg.scripts.build);
+check('the web app\'s build is a type-check (the app, then its service worker) and then the bundler, so a type error stops a deploy before it is served', webPkg.scripts && webPkg.scripts.build === 'tsc --noEmit && tsc --noEmit -p tsconfig.sw.json && vite build', webPkg.scripts && webPkg.scripts.build);
 check('the build output is not committed: it is git-ignored', /^dist\/$/m.test(fs.readFileSync(path.join(ROOT, '.gitignore'), 'utf8')));
 
 // ── 3. the lockfile agrees with package.json ────────────────────────────────────────────────────
