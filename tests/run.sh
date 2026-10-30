@@ -93,6 +93,8 @@ run contracts   node tests/contracts.js
 run actor       node tests/actor.js
 run notifications node tests/notifications.js
 run submissions  node tests/submissions.js
+run meetings     node tests/meetings.js
+run calendar     node tests/calendar.js
 run issues       node tests/issues.js
 run modules     node tests/modules.js
 run deployconfig node tests/deployconfig.js

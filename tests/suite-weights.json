@@ -47,6 +47,8 @@
     "modules": 1,
     "notifications": 1,
     "submissions": 1,
+    "meetings": 2,
+    "calendar": 2,
     "issues": 4,
     "spashell": 2,
     "webunit": 17,
