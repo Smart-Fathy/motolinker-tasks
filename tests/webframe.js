@@ -31,7 +31,7 @@ if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log('
 // Screens a frame cannot hold (apps/web/src/legacy/frameable.ts): they say why, and where the classic page is.
 const NOT_FRAMED = ['chat', 'security'];
 // Screens that have moved into the app: their page is the app's own, not the classic page in a frame.
-const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[data-part=submissionsPage]', issues: '[data-part=issuesPage]' };
+const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[data-part=submissionsPage]', issues: '[data-part=issuesPage]', meet: '[data-part=meetPage]', calendar: '[data-part=calendarPage]' };
 
 (async () => {
   const db = createFakeSupabase(seedTables(parseSchema()));
@@ -148,7 +148,7 @@ const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[d
 
   // ── 2. opened straight at a screen (a bookmark, a reload, a link in a notification) ─────────────
   if (wants('direct')) {
-    const picks = { admin: ['leads', 'tasks', 'reports', 'calendar', 'accounting'], team: ['leads', 'tasks', 'hours', 'requests'] };
+    const picks = { admin: ['leads', 'tasks', 'reports', 'deals', 'accounting'], team: ['leads', 'tasks', 'hours', 'requests'] };
     for (const p of Object.values(PEOPLE)) {
       const bad = [];
       for (const id of picks[p.portal]) {

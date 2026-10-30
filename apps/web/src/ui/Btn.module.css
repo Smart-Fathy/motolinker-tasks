@@ -1,0 +1,117 @@
+/* The classic portals' in-page buttons: .btn, .btn-primary, .btn-outline and .btn-sm of public/assets/dashboard.css (the
+   admin's) and employee.css (the team's), with each sheet's theme layer and mobile.css on top. The two sheets differ in the
+   padding, the radius, the weight, the shadow, whether a small button is small, and where they break for a phone; both looks
+   are kept (the team's under [data-portal='team'], which the server writes on <html>) until the redesign makes them one. */
+@layer ui {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: calc(8px * var(--r-k, 1));
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    text-decoration: none;
+    user-select: none;
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+  .primary {
+    background: linear-gradient(135deg, var(--gold-soft), var(--gold));
+    color: var(--on-primary, #0c0c0e);
+    font-weight: 600;
+    box-shadow: var(--glow, 0 0 #0000);
+  }
+  .primary:hover:not(:disabled) {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+  }
+  .primary:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  .outline {
+    background: transparent;
+    border: 1px solid var(--hair-gold);
+    color: var(--text);
+  }
+  .outline:hover:not(:disabled) {
+    background: rgba(var(--primary-rgb, 201, 163, 94), 0.08);
+    border-color: var(--gold);
+  }
+
+  :global([data-portal='team']) .btn {
+    padding: 10px 20px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-family: var(--font);
+    white-space: normal;
+  }
+  :global([data-portal='team']) .primary {
+    background: linear-gradient(135deg, var(--gold-soft, #d9bd7f), var(--primary));
+    box-shadow:
+      0 2px 10px rgba(var(--primary-rgb, 201, 163, 94), 0.22),
+      var(--glow, 0 0 #0000);
+  }
+  :global([data-portal='team']) .primary:hover:not(:disabled) {
+    filter: none;
+    box-shadow: 0 4px 16px rgba(var(--alt-rgb, 124, 106, 255), 0.35);
+  }
+  :global([data-portal='team']) .outline {
+    border-color: var(--border);
+  }
+  :global([data-portal='team']) .outline:hover:not(:disabled) {
+    background: rgba(var(--ov, 255, 255, 255), 0.04);
+    border-color: rgba(var(--ov, 255, 255, 255), 0.12);
+  }
+
+  /* A small button is small in the team's sheet only; the admin's has no .btn-sm outside its phone rules. */
+  :global([data-portal='team']) .sm {
+    padding: 6px 14px;
+    font-size: 12px;
+  }
+  /* A cancel button is red where the sheet lets inline style win (the team's); the admin's theme layer holds .btn-outline's colour
+     and border with !important, so there it never was. */
+  :global([data-portal='team']) .danger {
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+
+  /* On a phone. The team's sheet at 768px: a taller, centred button. mobile.css at 700px on top of both: nothing under a thumb's
+     size. The admin's sheet at 640px: centred, 14px. */
+  @media (max-width: 768px) {
+    :global([data-portal='team']) .btn {
+      padding: 12px 20px;
+      font-size: 14px;
+      min-height: 44px;
+      justify-content: center;
+    }
+    :global([data-portal='team']) .sm {
+      padding: 8px 14px;
+      font-size: 12px;
+      min-height: 36px;
+    }
+  }
+  @media (max-width: 700px) {
+    :global([data-portal]) .btn {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+  @media (max-width: 640px) {
+    :global([data-portal='admin']) .btn {
+      justify-content: center;
+      font-size: 14px;
+    }
+    :global([data-portal='admin']) .sm {
+      font-size: 12px;
+    }
+  }
+}

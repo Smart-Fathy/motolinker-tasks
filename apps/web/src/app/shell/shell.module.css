@@ -1118,9 +1118,12 @@
     }
   }
   /* A classic page shown in a frame (src/legacy) takes the whole page area, edge to edge: the team's padding would
-     otherwise leave a ring of empty space around a page that has its own. (After the team's rules, and stronger.) */
+     otherwise leave a ring of empty space around a page that has its own. So does a page that says it pads itself
+     (data-flush: the Calendar, whose classic page is `padding: 0`). (After the team's rules, and stronger.) */
   .page:has([data-part='legacyFrame']),
-  :global([data-portal='team']) .page:has([data-part='legacyFrame']) {
+  .page:has([data-flush]),
+  :global([data-portal='team']) .page:has([data-part='legacyFrame']),
+  :global([data-portal='team']) .page:has([data-flush]) {
     padding: 0;
   }
 

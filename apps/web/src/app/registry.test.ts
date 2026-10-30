@@ -51,8 +51,15 @@ describe('the registry', () => {
     );
   });
 
-  it('finds, in this app, the modules that have moved: Home, Issues, Notifications and Submissions so far', () => {
-    expect([...registry.keys()].sort()).toEqual(['home', 'issues', 'notifications', 'submissions']);
+  it('finds, in this app, the modules that have moved: Calendar, Home, Issues, Meet, Notifications and Submissions so far', () => {
+    expect([...registry.keys()].sort()).toEqual([
+      'calendar',
+      'home',
+      'issues',
+      'meet',
+      'notifications',
+      'submissions',
+    ]);
   });
 
   it('has a module for every screen that is new to a portal: the classic portal has no page for a frame to show', () => {
