@@ -51,6 +51,7 @@
     "shellparity": 32,
     "webshell": 47,
     "galleryaudit": 10,
+    "embed": 31,
     "webauth": 19,
     "routes": 4,
     "ssetest": 2,

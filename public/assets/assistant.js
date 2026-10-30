@@ -20,6 +20,9 @@
 // Like the other shared files, dashboard-shaped paths are mapped onto the
 // running portal through PROCFG, which each bundle defines after this loads.
 (function () {
+  // In the new app's frame (assets/embed.js) the assistant is the app's to give, not this page's: no button, no panel, no
+  // insight cards — and nothing exported, so the portals' `typeof aiOnNavigate === 'function'` checks find none.
+  if (document.documentElement.hasAttribute('data-embed')) return;
   function aiPath(url) {
     const u = String(url);
     if (PROCFG.base === '/api/dashboard') return u;

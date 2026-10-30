@@ -26,8 +26,8 @@ const { classicUrlFor } = require('@motolinker/contracts/deeplinks');
 const renderSpa = makeRenderSpa({ renderShell, wordingOf, defaultName: DEFAULT_NAME });
 
 const PAGES = [
-  { kind: 'admin', file: 'dashboard.html', routes: ['/dashboard', '/dashboard.html'], inside: '/dashboard/*', classic: '/legacy/dashboard', manifest: 'manifest-dashboard.json' },
-  { kind: 'team', file: 'employee.html', routes: ['/employee', '/employee.html'], inside: '/employee/*', classic: '/legacy/employee', manifest: 'manifest-employee.json' },
+  { kind: 'admin', file: 'dashboard.html', routes: ['/dashboard', '/dashboard.html'], inside: '/dashboard/*', classic: '/legacy/dashboard', manifest: 'manifest-dashboard.json', worker: 'sw-ui-dashboard.js' },
+  { kind: 'team', file: 'employee.html', routes: ['/employee', '/employee.html'], inside: '/employee/*', classic: '/legacy/employee', manifest: 'manifest-employee.json', worker: 'sw-ui-employee.js' },
 ];
 
 // A page is rebuilt when the workspace changes or the file does, not on every request.
@@ -64,11 +64,15 @@ function mountShell({ receiver, publicDir, profile, webDist }) {
     const sendClassic = async (req, res) => {
       try {
         const safe = req.query.safe === '1';
+        // Shown inside the new app's frame (/legacy/dashboard?embed=1): without its own chrome, and speaking to the app.
+        const embed = req.query.embed === '1';
         const ws = await profile();
-        const make = () => ({ text: renderShell(fs.readFileSync(htmlFile(), 'utf8'), ws, { safe }) });
+        const make = () => ({ text: renderShell(fs.readFileSync(htmlFile(), 'utf8'), ws, { safe, embed }) });
         // A database that has not answered says so; whatever look it happened to describe is not believed.
-        const text = ws.degraded ? make().text : remember(`${page.kind}|${safe}|${ws.updated_at}|${ws.name}|${mtime(htmlFile())}`, make).text;
+        const text = ws.degraded ? make().text : remember(`${page.kind}|${safe}|${embed}|${ws.updated_at}|${ws.name}|${mtime(htmlFile())}`, make).text;
         res.set('Cache-Control', 'no-cache');
+        // Which UI this is: the new app's worker caches a page it was sent only if it is the new app's (tests/webpwa.js).
+        res.set('X-ML-UI', 'legacy');
         res.type('html').send(text);
       } catch (e) {
         // Never let dressing the page up be the reason it does not open.
@@ -85,6 +89,7 @@ function mountShell({ receiver, publicDir, profile, webDist }) {
         const make = () => ({ text: renderSpa(fs.readFileSync(spaIndex(), 'utf8'), ws, { kind: page.kind, safe }) });
         const text = ws.degraded ? make().text : remember(`spa|${page.kind}|${safe}|${ws.updated_at}|${ws.name}|${mtime(spaIndex())}`, make).text;
         res.set('Cache-Control', 'no-cache');
+        res.set('X-ML-UI', 'next');
         res.type('html').send(text);
         return true;
       } catch (e) {
@@ -126,6 +131,18 @@ function mountShell({ receiver, publicDir, profile, webDist }) {
       const [target, hash] = classicUrlFor(page.kind, req.path.slice(page.routes[0].length)).split('#');
       const safe = req.query.safe === '1' ? (target.includes('?') ? '&' : '?') + 'safe=1' : '';
       res.redirect(302, target + safe + (hash ? '#' + hash : ''));
+    });
+
+    // The new app's service worker: one built file (apps/web/src/sw/sw.ts → dist/sw.js), answered at one address per portal. The
+    // address tells it which portal it is for; the scope it holds is the portal's own, which is also the classic worker's, so
+    // whichever portal's page was opened last is the one in charge (tests/webpwa.js). (A script at the root may hold any scope
+    // below it: no Service-Worker-Allowed header is needed.) Never kept by the browser's HTTP cache, or a new worker would wait a
+    // day to be found. With no build there is no worker: the page then simply has none.
+    receiver.router.get('/' + page.worker, (req, res, next) => {
+      const file = path.join(spaDir, 'sw.js');
+      if (!fs.existsSync(file)) return next();
+      res.set('Cache-Control', 'no-cache');
+      res.type('js').sendFile(file);
     });
 
     receiver.router.get('/' + page.manifest, async (req, res) => {

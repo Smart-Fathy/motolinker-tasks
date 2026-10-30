@@ -1,3 +1,6 @@
+// Shown inside the new app's frame (/legacy/employee?embed=1; see assets/embed.js)? Then the app owns what it owns on every
+// screen — signing in, the live notification stream, presence, push, the service worker — and this page keeps its content.
+const EMBEDDED = document.documentElement.hasAttribute('data-embed');
 let empToken  = localStorage.getItem('ml_emp_token');
 let empInfo   = null;
 let taskMode  = 'select';
@@ -32,6 +35,8 @@ async function ef(path, opts = {}) {
   // its own wrong explanation ("not configured", "contact your admin") instead of
   // sending the user back to log in.
   if (r.status === 401 && empToken) {
+    // In the app's frame the session is the app's to end: it is told, and it decides (assets/embed.js).
+    if (EMBEDDED) { if (window.mlEmbed) window.mlEmbed.unauthorized(); return r; }
     localStorage.removeItem('ml_emp_token');
     empToken = null;
     showLogin();
@@ -131,7 +136,10 @@ async function checkAuth() {
     // sign-in is still good. Throwing the token away for that signed everyone out during
     // an outage, onto a login form that cannot work until the database is back.
     if (r.status === 503) return empBootRetry();
-    if (!r.ok) { localStorage.removeItem('ml_emp_token'); empToken = null; return showLogin(); }
+    if (!r.ok) {
+      if (EMBEDDED) { if (window.mlEmbed) window.mlEmbed.unauthorized(); return; }
+      localStorage.removeItem('ml_emp_token'); empToken = null; return showLogin();
+    }
     empInfo = await r.json();
     showApp();
   } catch { showLogin(); }
@@ -165,6 +173,8 @@ function empBootRetry() {
 }
 
 function showLogin() {
+  // In the app's frame there is no sign-in screen: say so, and the app decides.
+  if (EMBEDDED) { if (window.mlEmbed) window.mlEmbed.unauthorized(); return; }
   // Signed out or expired: hang up, or the microphone stays live under the login screen.
   if (typeof huddleLeave === 'function') huddleLeave();
   // …and put the Security panel away, or it sits over the form that signs you back in.
@@ -745,17 +755,20 @@ async function showApp() {
   document.getElementById('h-date').value = new Date().toISOString().split('T')[0];
   initSidebarState();
   applyPermissions(empInfo?.permissions);
-  startPresenceHeartbeat();
+  // In the app's frame the app is the one page that stays open: presence, push, the live stream and a huddle that was
+  // running when the page last unloaded are its to keep (and would otherwise run twice). The list is still read once.
+  if (!EMBEDDED) startPresenceHeartbeat();
   // Re-subscribe push so authenticated POST reaches the server after login
-  if (_swReg) chatSubscribePush(_swReg);
+  if (EMBEDDED) { /* the app's worker holds the subscription */ }
+  else if (_swReg) chatSubscribePush(_swReg);
   else navigator.serviceWorker?.ready.then(reg => chatSubscribePush(reg)).catch(() => {});
   // Notification center: load history + open persistent stream
   loadNotifs();
-  openNotifStream();
+  if (!EMBEDDED) openNotifStream();
   // After applyPermissions(), so a gated section falls back instead of erroring
   // A huddle that was running when this page last unloaded is still running;
   // offer it back rather than leaving people to guess.
-  if (typeof hdBootLive === 'function') hdBootLive();
+  if (!EMBEDDED && typeof hdBootLive === 'function') hdBootLive();
   navigate(lastPage('home'));
   if (location.hash === '#security') { history.replaceState(null, '', location.pathname + location.search); openSecurity(); }
   await Promise.all([loadDropdownTasks(), loadMyTasks(), loadMyHours()]);
@@ -899,6 +912,7 @@ function navigate(page) {
   if (bottomNav) bottomNav.classList.add('active');
   document.getElementById('topbar-title').textContent = pageTitles[page] || (typeof wsName === 'function' ? wsName() : 'MotoLinker');
   rememberPage(page);
+  if (EMBEDDED && window.mlEmbed) window.mlEmbed.navigated(page);   // the app follows the frame
   if (pageLoaders[page]) pageLoaders[page]();
   if (page === 'hours' && typeof renderAvailabilityBoard === 'function') renderAvailabilityBoard('availability-board');
   // The assistant follows the page (shared assets/assistant.js).
@@ -4370,6 +4384,7 @@ document.addEventListener('DOMContentLoaded', helpInit);
 
 // ── PWA: Standalone detection ──────────────────────────────────────────────
 (function detectStandalone() {
+  if (EMBEDDED) return;   // the app around the frame knows whether it is installed
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches
                     || window.navigator.standalone === true;
   if (isStandalone) document.body.classList.add('standalone');
@@ -4380,7 +4395,8 @@ document.addEventListener('DOMContentLoaded', helpInit);
 
 // ── PWA: Service Worker ────────────────────────────────────────────────────
 let _swReg = null;
-if ('serviceWorker' in navigator) {
+// Not in the app's frame: a page registering this worker there would take the scope from the app's own (/employee is both's).
+if ('serviceWorker' in navigator && !EMBEDDED) {
   window.addEventListener('load', async () => {
     try {
       const reg = await navigator.serviceWorker.register('/sw-employee.js', { scope: '/employee' });
@@ -4427,7 +4443,7 @@ function startPresenceHeartbeat() {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     clearInterval(chatHeartbeatTimer); chatHeartbeatTimer = null;
-  } else {
+  } else if (!EMBEDDED) {
     startPresenceHeartbeat();
   }
 });

@@ -1,4 +1,7 @@
 // ── Auth ────────────────────────────────────────────────────────────────────
+// Shown inside the new app's frame (/legacy/dashboard?embed=1; see assets/embed.js)? Then the app owns what it owns on every
+// screen — signing in, the live notification stream, presence, push, the service worker — and this page keeps its content.
+const EMBEDDED = document.documentElement.hasAttribute('data-embed');
 let authToken = localStorage.getItem('ml_admin_token') || '';
 
 let allTasks = [];
@@ -74,6 +77,8 @@ function bootRetryScreen(message) {
 }
 
 function showAuthScreen() {
+  // In the app's frame there is no sign-in screen and the session is not ours to end: say so, and the app decides.
+  if (EMBEDDED) { if (window.mlEmbed) window.mlEmbed.unauthorized(); return; }
   // Signed out or expired: hang up, or the microphone stays live under the login screen.
   if (typeof huddleLeave === 'function') huddleLeave();
   // …and put the Security panel away, or it sits over the form that signs you back in.
@@ -3121,6 +3126,7 @@ function navigate(page) {
   currentPage = page;
   openGroupForPage(page); // reveal the group containing the active item
   rememberPage(page);
+  if (EMBEDDED && window.mlEmbed) window.mlEmbed.navigated(page);   // the app follows the frame
   if (pageLoaders[page]) pageLoaders[page]();
   // The assistant follows the page: its drawer reads this section, and the
   // insight card is mounted here (shared assets/assistant.js).
@@ -4422,13 +4428,15 @@ let notifUnread = 0;
     lucide.createIcons();
     const ok = await checkAuth();
     if (!ok) return;
-    adminStartPresenceHeartbeat();
+    // In the app's frame the app is the one page that stays open: presence, the live stream and a huddle that was running
+    // when the page last unloaded are its to keep (and would otherwise run twice). The list is still read once, for the page.
+    if (!EMBEDDED) adminStartPresenceHeartbeat();
     loadNotifs();
-    openNotifStream();
+    if (!EMBEDDED) openNotifStream();
     initSidebarState();
     // A huddle that was running when this page last unloaded is still running;
     // offer it back rather than leaving people to guess.
-    if (typeof hdBootLive === 'function') hdBootLive();
+    if (!EMBEDDED && typeof hdBootLive === 'function') hdBootLive();
     // Cosmetic — a failure here must not stop the app from opening.
     try { await loadNavConfig(); } catch (_) {}
     // After the config, because favourites are rendered from whatever the rail
@@ -5576,6 +5584,7 @@ document.addEventListener('DOMContentLoaded', helpInit);
 
 // ── PWA: Standalone detection ──────────────────────────────────────────────
 (function detectStandalone() {
+  if (EMBEDDED) return;   // the app around the frame knows whether it is installed
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches
                     || window.navigator.standalone === true;
   if (isStandalone) document.body.classList.add('standalone');
@@ -5586,7 +5595,8 @@ document.addEventListener('DOMContentLoaded', helpInit);
 
 // ── PWA: Service Worker ────────────────────────────────────────────────────
 let _adminSwReg = null;
-if ('serviceWorker' in navigator) {
+// Not in the app's frame: a page registering this worker there would take the scope from the app's own (/dashboard is both's).
+if ('serviceWorker' in navigator && !EMBEDDED) {
   window.addEventListener('load', async () => {
     try {
       const reg = await navigator.serviceWorker.register('/sw-dashboard.js', { scope: '/dashboard' });
@@ -5633,7 +5643,7 @@ function adminStartPresenceHeartbeat() {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     clearInterval(adminChatHeartbeatTimer); adminChatHeartbeatTimer = null;
-  } else {
+  } else if (!EMBEDDED) {
     adminStartPresenceHeartbeat();
   }
 });
