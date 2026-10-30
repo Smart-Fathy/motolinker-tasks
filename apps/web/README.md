@@ -15,8 +15,12 @@ src/app/            App.tsx (the gallery, or the product: signed out the sign-in
                     Session.tsx (everything a signed-in person has: query client, api, theme, stream, router),
                     routes.tsx (where an address opens), nav.ts + nav-config.ts (the rail), access.ts (what a
                     person may open), registry.ts + define-module.ts (the screens that have moved),
-                    Unported.tsx (the card a screen that has not moved shows), context.tsx
+                    Unported.tsx (the card a screen shows that cannot be framed, or did not open), context.tsx
 src/app/shell/      the frame: Shell, Sidebar, Header, BottomNav, icons, state (what it remembers), shell.module.css
+src/legacy/         a screen that has not moved, shown as its classic page in a frame: LegacyFrame, bridge.ts (the
+                    protocol with the page), frameable.ts (the screens a frame cannot hold)
+src/sw/             the service worker: sw.ts (wiring), logic.ts (every decision, testable), shared.ts (what the
+                    worker and the pages agree on); built to dist/sw.js by sw-plugin.ts
 src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page })
 src/auth/           the sign-in: SignIn.tsx (which step, and what carries between them) and a component per
                     step: PasswordStep, CodeStep (second step), ForgotStep, ResetStep; copy.ts holds every
@@ -28,7 +32,7 @@ src/lib/            env.ts (what the server tells the page: window.__ML__ — th
                     api.ts (authed calls, GET /api/v1/me and the check of its answer), auth-api.ts (the sign-in
                     routes, read into results a screen can act on), arrival.ts (Google's return and the reset
                     link), query.ts (the data cache), sse.ts (the live stream), theme.ts (the look and the
-                    colour mode while the app is open), throttle.ts
+                    colour mode while the app is open), pwa.ts (the worker, from the page's side), throttle.ts
 src/styles/         base.css: the layers and the classic portals' design tokens with the values they ship;
                     portal-team.css: where the team portal's sheet starts from something else
 src/types/          the types of the one plain-JS file the app imports from the classic side (theme-core)
@@ -95,10 +99,9 @@ initials button: Security, the classic portal, Sign out) and the bottom bar on a
   for — `tests/modules.js` finds them in the source); otherwise the page the person was last on, if they may still
   open it; otherwise Home. An address
   for a screen the person may not open, or that belongs to the other portal, is Home.
-- **A screen that has not moved** is in the rail all the same and opens `Unported`: a card that says it is still in
-  the classic portal and links to the page they meant (at `/legacy/<portal>`, so the switch cannot send them back).
-  Home is the only screen built so far; it shows who is signed in and what they may do, which is the thing to check
-  a grant against.
+- **A screen that has not moved** is in the rail all the same and opens as the classic page itself, in a frame
+  under the app's rail and bars (see "Screens that have not moved" below). Home is the only screen built so far;
+  it shows who is signed in and what they may do, which is the thing to check a grant against.
 - **What it does not have yet**, named in `tests/shellparity.js` (`ACCEPTED`, each with its reason; one that stops
   differing fails the suite so the list cannot go stale): the search box and shortcuts above the rail, Arrange and
   the workspace settings in the footer, and the header's refresh countdown, help and notification bell. They arrive
@@ -112,6 +115,73 @@ initials button: Security, the classic portal, Sign out) and the bottom bar on a
 in both modes and two looks, at four widths, and compares the computed style of every named part; `tests/webshell.js`
 runs the frame on the real server and compares the rail with the rail the classic portal's own code draws for the
 same person (the admin, and three team members with different grants, with and without an arrangement saved).
+
+## Screens that have not moved
+
+`legacy/LegacyFrame.tsx` shows a screen the app has not rebuilt as the classic page itself: an `<iframe>` of
+`/legacy/<portal>?embed=1#<page>` (and `&safe=1` in safe mode). The page is the real one, with its own code, over the
+same session and the same server, so every item in the rail opens something real while the screens move one at a
+time; each one that moves is deleted from the classic side in the same commit.
+
+- **The page is a guest.** `?embed=1` makes the server dress the classic page for a frame (`src/lib/shell.js`):
+  `<html data-embed="1">`, the bridge `public/assets/embed.js` right after the early theme script, and
+  `public/assets/embed.css` before the workspace's look — no sidebar, no top bar, no bottom bar, no sign-in screen (the app
+  draws the first three and does the last). The classic scripts read the same attribute and **skip what the app now
+  does for every screen**: the service-worker registration (the scope is the app's), push, the notification stream,
+  the presence heartbeat, a huddle revived on load, the assistant, and the sign-in and 401 handling (a dead session is
+  told to the app instead). What stays is what a screen needs: the one-off list reads, page-level streams (a chat room,
+  the Google Chat poller, WhatsApp) and auto-refresh. `tests/embed.js` holds all of it, both portals, every guard
+  mutation-tested; a page opened with `?embed=1` outside a frame is exactly the page it was.
+- **The conversation** (`legacy/bridge.ts` ↔ `public/assets/embed.js`) is `{ ml: 'embed', v: 1, type, … }`. The page
+  says `ready{page}` once, first, then `navigated{page}` whenever the person moves about inside it, and `unauthorized`
+  when a call came back 401. The app says `navigate{page}` (a click in the rail: the page moves, it is not reloaded)
+  and `look{profile}` (the admin saved a new look). Each side hears only the window that framed it, from its own origin,
+  and answers with its own origin as the target.
+- **One frame serves the screens that follow it.** The first screen opens the frame; the rest are asked of the page.
+  What the person does inside it is followed: a page it moves to is the screen the address names (safe mode kept), the
+  browser's back button asks the page for the screen before, a page that reloads itself is taken back to the screen the
+  person is on, and a dead session is the app's to settle (`recheck`: it asks the server who this token is, and signs
+  out only if the server says so).
+- **Leaving for Google.** A "Connect Google Drive / Email / Calendar / Chat" button sends the window to Google's consent
+  screen, which refuses to be drawn in a frame; in a frame those buttons send the app's own window (`goOut` in the classic
+  scripts), and the callback brings it back to `/dashboard#<screen>`, which the app opens as that screen.
+- **It never stays blank.** The page is drawn only when it has said it is up; after 20 seconds without that, the frame
+  gives way to a card — "did not open here", with Try again and a link to the classic portal.
+- **What cannot be framed** (`legacy/frameable.ts`): the live chat (a connection and a call that belong to the app's
+  own chat, not a second copy) and Security (a panel that opens over a page). They are cards that say why and link to the
+  classic page that has them.
+- **Known limits while screens are moving**, each gone with the batch that rebuilds the thing: presence, the notification
+  stream and bell, push subscription (an existing one is kept alive by the app; offering one is a screen's job),
+  huddles and the assistant do not run in the app yet, because the classic scripts stand down in a frame and the app
+  does not have them. The classic portal is one click away (`?ui=legacy`) for all of those.
+
+## The service worker
+
+`src/sw/sw.ts` is built beside the app (`sw-plugin.ts` runs a second Vite build after the first, handing the worker the
+list of files the app's first load is made of) and served as `dist/sw.js` at `/sw-ui-dashboard.js` and
+`/sw-ui-employee.js` — one script, whose address tells it which portal it is for. It holds the portal's own scope
+(`/dashboard`, `/employee`), the same one the classic portal's worker holds: whichever portal's page was opened last is
+the one in charge, and they take turns without either touching the other's caches (`tests/webpwa.js`).
+
+- **A start without a network.** At install it keeps the entry script and style (and what they import at once) and the
+  portal's page; every other file of the app (a screen's chunk, an icon) is kept the first time it is used, cache first,
+  because their names carry a hash of their content. The page is network-first, so a new build arrives with the next
+  open; the last one kept stands in without it, and is kept only if the server labelled it as the app's
+  (`X-ML-UI: next`), whole, and not the original-look page (`?safe=1`).
+- **Never the API, never the classic pages.** Nothing under `/api/` is answered by the worker, and the classic pages
+  shown in the app's frame live at `/legacy/…`, outside its scope.
+- **A new build is found and taken at once**, without a reload and without a prompt: the install is `skipWaiting`, the
+  activation `clients.claim()` and deletes only the older builds of its own cache family (`ml-ui-<portal>-<build>`).
+  A page left open asks for a newer worker when it comes to the front (at most every 30 minutes, `lib/pwa.ts`); a page
+  that was open while a new build went out and asks for a file that is no longer there reloads itself once (Vite's
+  `vite:preloadError`), never in a loop.
+- **A push** is shown with the words it came with; a tap on it takes an open app to the screen it names
+  (`useWorkerMessages`: the worker posts `{ ml: 'sw', type: 'open', url }`, the app resolves it with the same deep-link map as
+  everything else) or opens one. The app tells the server again about a push subscription this browser already has, as the
+  classic pages do each time they open; it never asks for permission.
+- **The exits.** `?ui=legacy` puts the classic portal back (its page registers its own worker, which replaces this one in
+  the scope), and a worker that cannot be had is the app without one. The classic workers delete only their own caches
+  (`motolinker-dash-…`, `motolinker-emp-…`) and do not keep the app's page.
 
 ## Screens
 
@@ -204,7 +274,9 @@ Opened from the dev server there is no `window.__ML__`; the app falls back to th
 
 The suites that hold it, from the root: `tests/modules.js` (the catalogue against the classic portals), `tests/spashell.js`
 (the build and the server half), `tests/signinparity.js` and `tests/shellparity.js` (look, value by value),
-`tests/webauth.js` and `tests/webshell.js` (the real server, a real browser), `tests/galleryaudit.js` (readability).
+`tests/webauth.js` and `tests/webshell.js` (the real server, a real browser), `tests/galleryaudit.js` (readability),
+`tests/embed.js` (the classic pages as guests), `tests/webframe.js` (every unmoved screen in its frame) and
+`tests/webpwa.js` (the service worker, offline and in turns with the classic one).
 The parity suites compare against the classic portals, so they go when the classic portals do.
 
 ## Rules

@@ -1,0 +1,23 @@
+/* A classic page shown inside the new app's frame (?embed=1; see assets/embed.js).
+   The new app draws the rail, the top bar and the phone's bottom bar around the frame, so the page keeps only its
+   content. Every rule starts with html[data-embed], which the server writes only for an embedded page and embed.js
+   takes off a page that turns out not to be in a frame: loaded or not, this file changes nothing for anyone else.
+   (What the page would otherwise start for itself — the install prompt, the assistant, the sign-in screen — is not
+   hidden here but not started, in the page's own scripts; tests/embed.js holds both.) */
+
+/* the page's own chrome */
+html[data-embed] .sidebar,
+html[data-embed] .bottom-nav,
+html[data-embed] .header,
+html[data-embed] .topbar,
+/* the team portal's sign-in form is on show until the page has checked the session; a framed page never shows one —
+   the app owns signing in, and a dead session is told to it (embed.js) */
+html[data-embed] #auth-wrap { display: none !important; }
+
+/* …and the room it kept: beside the rail, and above the bottom bar on a phone */
+html[data-embed] .app-content,
+html[data-embed] .content {
+  margin: 0 !important;
+  width: 100% !important;
+  padding-bottom: 0 !important;
+}

@@ -8,6 +8,7 @@ import './styles/portal-team.css';
 import { App } from './app/App';
 import { takeArrival } from './lib/arrival';
 import { readEnv } from './lib/env';
+import { reloadOnStaleChunk, startWorker } from './lib/pwa';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('index.html has no #root');
@@ -15,6 +16,9 @@ const env = readEnv();
 // Once, before anything renders: a Google return or a reset link is read and taken out of the address bar here, not
 // in a component that StrictMode may run twice.
 const arrival = takeArrival(env.portal);
+// The app's worker keeps its first load for a start without a network; a page the server did not send (the dev server) has none.
+if (env.ui === 'next') startWorker(env.portal);
+reloadOnStaleChunk();
 createRoot(root).render(
   <StrictMode>
     <App env={env} arrival={arrival} />

@@ -100,6 +100,9 @@ run signinparity node tests/signinparity.js
 run shellparity  node tests/shellparity.js
 run webshell     node tests/webshell.js
 run galleryaudit node tests/galleryaudit.js
+run embed        node tests/embed.js
+run webframe     node tests/webframe.js
+run webpwa       node tests/webpwa.js
 run webauth      node tests/webauth.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js

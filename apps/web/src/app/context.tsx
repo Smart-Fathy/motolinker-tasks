@@ -18,6 +18,8 @@ export interface SessionValue {
   theme: Theme;
   stream: Stream;
   signOut: () => void;
+  /** something said the session may be over (a framed page's call came back 401): ask the server, quietly; at most every few seconds */
+  recheck: () => void;
 }
 
 export const SessionContext = createContext<SessionValue | null>(null);

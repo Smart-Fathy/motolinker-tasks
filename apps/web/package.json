@@ -6,8 +6,8 @@
   "description": "The one web app for the admin and team portals (Vite + React + TypeScript). Built by `npm run build`, served by the Node server behind the ml_ui switch.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json && vite build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json",
     "test": "vitest run"
   },
   "devDependencies": {

@@ -226,7 +226,33 @@ db.install();
   // — what did not change —
   const manifest = await fetch(base + '/manifest-dashboard.json');
   check('the install manifests are as they were', manifest.status === 200 && JSON.parse(await manifest.text()).start_url === '/dashboard');
-  check('the classic pages still register their service worker at their own scope, and the new app registers none yet', /serviceWorker\.register\('\/sw-dashboard\.js'/.test(read('public', 'assets', 'dashboard.js')) && allJs.every(f => !/serviceWorker/.test(textOf(f))));
+
+  // — the new app's service worker —
+  // Built beside the app with the files of its first load written into it: the entry script and style, and what the entry imports at
+  // once. Not the gallery, and not a screen's chunk: those are kept the first time they are used, which is what splitting the app is for.
+  const worker = fs.readFileSync(path.join(dist, 'sw.js'), 'utf8');
+  const named = [...worker.matchAll(/\/ui\/assets\/([A-Za-z0-9_.-]+\.(?:js|css))/g)].map(m => m[1]);
+  check('the build writes the worker beside the app, with the first load\'s files written into it and nothing left to fill in', worker.length > 500 && !/__PRECACHE__|__BUILD__/.test(worker) && named.includes(jsFile) && named.includes(cssFile));
+  check('…and only files the build wrote, never one that is loaded on demand', named.length > 0 && named.every(f => assets.includes(f) && !/^Gallery-/.test(f)), named.join());
+  const w = {};
+  for (const portal of ['dashboard', 'employee']) {
+    const r = await fetch(base + '/sw-ui-' + portal + '.js');
+    w[portal] = { status: r.status, h: r.headers, text: await r.text() };
+  }
+  check('each portal\'s worker is answered at its own address', w.dashboard.status === 200 && w.employee.status === 200);
+  check('…as one script, which the browser does not keep for a day', w.dashboard.text === worker && w.employee.text === worker && /javascript/.test(w.dashboard.h.get('content-type')) && /no-cache/.test(w.dashboard.h.get('cache-control')) && /no-cache/.test(w.employee.h.get('cache-control')));
+  fs.renameSync(path.join(dist, 'sw.js'), path.join(dist, 'sw.js.away'));
+  const noWorker = await fetch(base + '/sw-ui-dashboard.js');
+  const classicWorker = await fetch(base + '/sw-dashboard.js');
+  check('with no build there is no worker to find, and the classic one is as it was', noWorker.status === 404 && classicWorker.status === 200 && /javascript/.test(classicWorker.headers.get('content-type')));
+  fs.renameSync(path.join(dist, 'sw.js.away'), path.join(dist, 'sw.js'));
+  const label = async (p, headers) => (await page(p, headers)).r.headers.get('x-ml-ui');
+  check('every page says which UI it is, which is how the new app\'s worker knows its own page from the classic one', (await label('/dashboard?ui=next')) === 'next' && (await label('/employee', { Cookie: 'ml_ui=next' })) === 'next'
+    && (await label('/dashboard?ui=legacy')) === 'legacy' && (await label('/legacy/dashboard')) === 'legacy' && (await label('/legacy/employee?embed=1')) === 'legacy');
+  const entry = textOf(jsFile);
+  check('the new app puts a worker in place, each classic page theirs', entry.includes('/sw-ui-') && /\.register\(/.test(entry)
+    && /serviceWorker\.register\('\/sw-dashboard\.js'/.test(read('public', 'assets', 'dashboard.js')) && /serviceWorker\.register\('\/sw-employee\.js'/.test(read('public', 'assets', 'employee.js')));
+  check('…and no other file of the build starts a worker', allJs.filter(f => f !== jsFile).every(f => !/serviceWorker\.register/.test(textOf(f))));
 
   fs.rmSync(dist, { recursive: true, force: true });
   console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);

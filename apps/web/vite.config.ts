@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
+import { serviceWorker } from './sw-plugin.ts';
 
 // The app is served by the Node server, not by Vite: `npm run build` writes apps/web/dist, and
 // src/routes/shell.js sends dist/index.html (with the workspace's look written into it, the way the classic
@@ -8,7 +9,7 @@ import { defineConfig } from 'vitest/config';
 // files in dist at /ui. So every URL the build writes is under /ui/.
 export default defineConfig({
   base: '/ui/',
-  plugins: [react()],
+  plugins: [react(), serviceWorker()],
   resolve: {
     // The one file that works out the workspace's look, shared with the server and the classic pages (see src/types/theme-core.d.ts).
     alias: {
@@ -31,6 +32,6 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'sw-plugin.test.ts'],
   },
 });

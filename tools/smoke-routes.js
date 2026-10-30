@@ -33,6 +33,8 @@ process.on('uncaughtException',  e => crashes.push(currentRoute + ' :: ' + Strin
 // the code that dresses it. (tests/spashell.js tests the switch itself, against a real build.)
 const webDist = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'ml-smoke-web-'));
 require('fs').copyFileSync(require('path').join(process.cwd(), 'apps', 'web', 'index.html'), require('path').join(webDist, 'index.html'));
+// …and the worker the build writes beside the page (any script will do: the question is whether the route answers)
+require('fs').writeFileSync(require('path').join(webDist, 'sw.js'), '/* the new app\'s service worker */\n');
 process.env.ML_WEB_DIST = webDist;
 const receiver = require(process.cwd() + '/index.js');
 
