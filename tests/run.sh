@@ -106,6 +106,8 @@ run shellparity  node tests/shellparity.js
 run notifparity node tests/notifparity.js
 run subparity   node tests/subparity.js
 run issparity   node tests/issparity.js
+run meetparity  node tests/meetparity.js
+run calparity   node tests/calparity.js
 run webshell     node tests/webshell.js
 run galleryaudit node tests/galleryaudit.js
 run embed        node tests/embed.js

@@ -1,5 +1,6 @@
 export { Alert } from './Alert';
 export { AuthLayout } from './AuthLayout';
+export { BrandSelect, type SelectOption } from './BrandSelect';
 export { Btn, BtnLink } from './Btn';
 export { Button, ButtonLink, LinkButton } from './Button';
 export { Field } from './Field';

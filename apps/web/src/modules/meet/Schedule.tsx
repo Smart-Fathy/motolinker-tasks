@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useId, useState, type ReactNode } from 'react';
 import { useSession } from '../../app/context';
-import { Btn, Sheet } from '../../ui';
+import { BrandSelect, Btn, Sheet } from '../../ui';
 import { fetchChoices, useMeetingActions } from './data';
 import {
   bodyOf,
@@ -97,7 +97,7 @@ export function ScheduleSheet({ meeting, seed, people, rooms, onClose }: SheetPr
         <input
           id={ids.title}
           className={styles['control']}
-          data-part="title"
+          data-part="titleInput"
           maxLength={200}
           placeholder="e.g. Weekly sales sync"
           value={draft.title}
@@ -109,7 +109,7 @@ export function ScheduleSheet({ meeting, seed, people, rooms, onClose }: SheetPr
           <input
             id={ids.date}
             className={styles['control']}
-            data-part="date"
+            data-part="dateInput"
             type="date"
             value={draft.date}
             onChange={e => set('date', e.target.value)}
@@ -119,26 +119,20 @@ export function ScheduleSheet({ meeting, seed, people, rooms, onClose }: SheetPr
           <input
             id={ids.time}
             className={styles['control']}
-            data-part="time"
+            data-part="timeInput"
             type="time"
             value={draft.time}
             onChange={e => set('time', e.target.value)}
           />
         </Group>
         <Group label="Duration" htmlFor={ids.duration}>
-          <select
+          <BrandSelect
             id={ids.duration}
-            className={styles['control']}
-            data-part="duration"
-            value={draft.duration}
-            onChange={e => set('duration', Number(e.target.value))}
-          >
-            {lengths.map(d => (
-              <option key={d} value={d}>
-                {d} min
-              </option>
-            ))}
-          </select>
+            part="durationSelect"
+            value={String(draft.duration)}
+            options={lengths.map(d => ({ value: String(d), label: `${d} min` }))}
+            onChange={v => set('duration', Number(v))}
+          />
         </Group>
       </div>
       <Group label="Attendees" labelled="group">
@@ -171,35 +165,31 @@ export function ScheduleSheet({ meeting, seed, people, rooms, onClose }: SheetPr
         </div>
       </Group>
       <Group label="Where" htmlFor={ids.where}>
-        <select
+        <BrandSelect
           id={ids.where}
-          className={styles['control']}
-          data-part="where"
+          part="whereSelect"
           value={draft.where}
-          onChange={e => set('where', e.target.value as Where)}
-        >
-          <option value="meet">Google Meet — a link is created automatically</option>
-          <option value="huddle" disabled={!rooms.length}>
-            In-app huddle{rooms.length ? '' : ' (no chat rooms yet)'}
-          </option>
-          <option value="link">A link I already have</option>
-        </select>
+          options={[
+            { value: 'meet', label: 'Google Meet — a link is created automatically' },
+            {
+              value: 'huddle',
+              label: `In-app huddle${rooms.length ? '' : ' (no chat rooms yet)'}`,
+              disabled: !rooms.length,
+            },
+            { value: 'link', label: 'A link I already have' },
+          ]}
+          onChange={v => set('where', v as Where)}
+        />
       </Group>
       {draft.where === 'huddle' && (
-        <Group label="Huddle in" htmlFor={ids.room} part="roomGroup">
-          <select
+        <Group label="Huddle in" htmlFor={ids.room}>
+          <BrandSelect
             id={ids.room}
-            className={styles['control']}
-            data-part="room"
+            part="roomSelect"
             value={draft.room}
-            onChange={e => set('room', e.target.value)}
-          >
-            {rooms.map(r => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
+            options={rooms.map(r => ({ value: r.id, label: r.name }))}
+            onChange={v => set('room', v)}
+          />
           <div className={styles['help']}>
             At the time, everyone gets a Join button that opens the huddle here — no Google account
             needed.
@@ -207,11 +197,11 @@ export function ScheduleSheet({ meeting, seed, people, rooms, onClose }: SheetPr
         </Group>
       )}
       {draft.where === 'link' && (
-        <Group label="Link" htmlFor={ids.link} part="linkGroup">
+        <Group label="Link" htmlFor={ids.link}>
           <input
             id={ids.link}
             className={styles['control']}
-            data-part="link"
+            data-part="linkInput"
             placeholder="https://meet.google.com/…"
             value={draft.link}
             onChange={e => set('link', e.target.value)}
@@ -222,7 +212,7 @@ export function ScheduleSheet({ meeting, seed, people, rooms, onClose }: SheetPr
         <textarea
           id={ids.notes}
           className={styles['control']}
-          data-part="notes"
+          data-part="notesInput"
           rows={2}
           maxLength={2000}
           value={draft.notes}
@@ -242,18 +232,16 @@ function Group({
   label,
   htmlFor,
   labelled,
-  part = 'group',
   children,
 }: {
   label: string;
   htmlFor?: string;
   /** a group of controls is named by its own label rather than pointing at one control */
   labelled?: 'group';
-  part?: string;
   children: ReactNode;
 }) {
   return (
-    <div className={styles['group']} data-part={part}>
+    <div className={styles['group']} data-part="group">
       {labelled ? (
         <span className={styles['label']} data-part="label">
           {label}

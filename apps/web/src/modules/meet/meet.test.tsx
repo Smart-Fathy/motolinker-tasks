@@ -1,7 +1,7 @@
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { adminMe, deferred, json, teamMe } from '../../test/helpers';
+import { adminMe, choose, deferred, json, optionsOf, teamMe } from '../../test/helpers';
 import { open, type Answer } from '../../test/session';
 import { SAID, summaryOf, whenOf, type Meeting } from './model';
 
@@ -177,6 +177,7 @@ describe.each(['admin', 'team'] as const)('the Meet page, in the %s portal', por
   it('joins a meeting where it is held: its link, a bare domain made one, a huddle in the classic portal — and nothing where there is nothing to join', async () => {
     boot(portal, world());
     await waitFor(() => expect(rows()).toHaveLength(5));
+    const opened = vi.spyOn(window, 'open').mockReturnValue(null);
     const join = (i: number) => rows()[i]!.querySelector<HTMLAnchorElement>('[data-part=join]');
     expect(join(0)!.getAttribute('href')).toBe('https://meet.google.com/abc-defg-hij');
     expect(join(0)!.textContent).toBe('Join');
@@ -185,8 +186,12 @@ describe.each(['admin', 'team'] as const)('the Meet page, in the %s portal', por
       'noopener',
     ]);
     expect(join(1)!.textContent).toMatch(/Join huddle/);
-    expect(join(1)!.getAttribute('href')).toBe(
+    expect(join(1)!.tagName).toBe('BUTTON');
+    await userEvent.setup({ delay: null }).click(join(1)!);
+    expect(opened).toHaveBeenCalledWith(
       portal === 'admin' ? '/legacy/dashboard?chat=3' : '/legacy/employee?chat=3',
+      '_blank',
+      'noopener',
     );
     expect(join(2)!.getAttribute('href')).toBe('https://zoom.example/j/1');
     expect(join(3)).toBeNull();
@@ -278,8 +283,10 @@ describe('scheduling a meeting', () => {
       for (const name of ['Ana', 'Bo', 'Dee'])
         expect(within(sheet).getByRole('checkbox', { name })).toBeTruthy();
       expect((within(sheet).getByLabelText('Title') as HTMLInputElement).value).toBe('');
-      expect((within(sheet).getByLabelText('Duration') as HTMLSelectElement).value).toBe('30');
-      expect((within(sheet).getByLabelText('Where') as HTMLSelectElement).value).toBe('meet');
+      expect(within(sheet).getByLabelText('Duration').textContent).toBe('30 min');
+      expect(within(sheet).getByLabelText('Where').textContent).toBe(
+        'Google Meet — a link is created automatically',
+      );
       expect(within(sheet).getByRole('button', { name: 'Schedule' })).toBeTruthy();
     },
   );
@@ -294,7 +301,7 @@ describe('scheduling a meeting', () => {
     await user.type(within(sheet).getByLabelText('Date'), '2026-12-01');
     await user.clear(within(sheet).getByLabelText('Time'));
     await user.type(within(sheet).getByLabelText('Time'), '14:15');
-    await user.selectOptions(within(sheet).getByLabelText('Duration'), '90');
+    await choose(user, within(sheet).getByLabelText('Duration'), '90 min');
     await user.click(within(sheet).getByRole('checkbox', { name: 'Ana' }));
     await user.click(within(sheet).getByRole('checkbox', { name: 'Dee' }));
     await user.type(within(sheet).getByLabelText('Notes'), 'Numbers first');
@@ -353,10 +360,10 @@ describe('scheduling a meeting', () => {
     await user.click(await screen.findByRole('button', { name: /Schedule a meeting/ }));
     const sheet = await screen.findByRole('dialog');
     await user.type(within(sheet).getByLabelText('Title'), 'Huddle time');
-    await user.selectOptions(within(sheet).getByLabelText('Where'), 'huddle');
-    const room = within(sheet).getByLabelText('Huddle in') as HTMLSelectElement;
-    expect([...room.options].map(o => o.textContent)).toEqual(['Sales', 'Conversation']);
-    await user.selectOptions(room, '4');
+    await choose(user, within(sheet).getByLabelText('Where'), 'In-app huddle');
+    const room = within(sheet).getByLabelText('Huddle in');
+    expect(await optionsOf(user, room)).toEqual(['Sales', 'Conversation']);
+    await choose(user, room, 'Conversation');
     await user.click(within(sheet).getByRole('button', { name: 'Schedule' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     const posts = view.calls('/api/v1/meetings').filter(c => c.init.method === 'POST');
@@ -365,7 +372,7 @@ describe('scheduling a meeting', () => {
     await user.click(await screen.findByRole('button', { name: /Schedule a meeting/ }));
     const second = await screen.findByRole('dialog');
     await user.type(within(second).getByLabelText('Title'), 'Zoom call');
-    await user.selectOptions(within(second).getByLabelText('Where'), 'link');
+    await choose(user, within(second).getByLabelText('Where'), 'A link I already have');
     expect(within(second).queryByLabelText('Huddle in')).toBeNull();
     await user.type(within(second).getByLabelText('Link'), ' https://zoom.example/j/9 ');
     await user.click(within(second).getByRole('button', { name: 'Schedule' }));
@@ -379,10 +386,15 @@ describe('scheduling a meeting', () => {
     boot('team', world({ rooms: [], people: [] }));
     await user.click(await screen.findByRole('button', { name: /Schedule a meeting/ }));
     const sheet = await screen.findByRole('dialog');
-    const huddle = within(sheet).getByRole('option', {
-      name: 'In-app huddle (no chat rooms yet)',
-    }) as HTMLOptionElement;
-    expect(huddle.disabled).toBe(true);
+    await user.click(within(sheet).getByLabelText('Where'));
+    const huddle = screen.getByRole('option', { name: 'In-app huddle (no chat rooms yet)' });
+    expect(huddle.getAttribute('aria-disabled')).toBe('true');
+    // (it can be seen, and it cannot be chosen)
+    await user.click(huddle);
+    expect(within(sheet).getByLabelText('Where').textContent).toBe(
+      'Google Meet — a link is created automatically',
+    );
+    await user.keyboard('{Escape}');
     expect(within(sheet).getByText('No team members found')).toBeTruthy();
   });
 
@@ -392,9 +404,9 @@ describe('scheduling a meeting', () => {
     await user.click(await screen.findByRole('button', { name: /Schedule a meeting/ }));
     const sheet = await screen.findByRole('dialog');
     expect(within(sheet).getByText('No team members found')).toBeTruthy();
-    expect(
-      within(sheet).getByRole('option', { name: 'In-app huddle (no chat rooms yet)' }),
-    ).toBeTruthy();
+    expect(await optionsOf(user, within(sheet).getByLabelText('Where'))).toContain(
+      'In-app huddle (no chat rooms yet)',
+    );
   });
 });
 
@@ -408,8 +420,8 @@ describe('changing and cancelling a meeting', () => {
     expect((within(sheet).getByLabelText('Title') as HTMLInputElement).value).toBe(
       'Weekly sales sync',
     );
-    expect((within(sheet).getByLabelText('Duration') as HTMLSelectElement).value).toBe('45');
-    expect((within(sheet).getByLabelText('Where') as HTMLSelectElement).value).toBe('link');
+    expect(within(sheet).getByLabelText('Duration').textContent).toBe('45 min');
+    expect(within(sheet).getByLabelText('Where').textContent).toBe('A link I already have');
     expect((within(sheet).getByLabelText('Link') as HTMLInputElement).value).toBe(
       'https://meet.google.com/abc-defg-hij',
     );
@@ -436,8 +448,8 @@ describe('changing and cancelling a meeting', () => {
     await waitFor(() => expect(rows()).toHaveLength(5));
     await user.click(within(rows()[1]!).getByRole('button', { name: 'Edit' }));
     const sheet = await screen.findByRole('dialog');
-    expect((within(sheet).getByLabelText('Where') as HTMLSelectElement).value).toBe('huddle');
-    expect((within(sheet).getByLabelText('Huddle in') as HTMLSelectElement).value).toBe('3');
+    expect(within(sheet).getByLabelText('Where').textContent).toBe('In-app huddle');
+    expect(within(sheet).getByLabelText('Huddle in').textContent).toBe('Sales');
   });
 
   it('keeps the length of a meeting that is not one the sheet offers, rather than quietly making it fifteen minutes', async () => {
@@ -446,16 +458,16 @@ describe('changing and cancelling a meeting', () => {
     await waitFor(() => expect(rows()).toHaveLength(1));
     await user.click(within(rows()[0]!).getByRole('button', { name: 'Edit' }));
     const sheet = await screen.findByRole('dialog');
-    const length = within(sheet).getByLabelText('Duration') as HTMLSelectElement;
-    expect(length.value).toBe('25');
-    expect([...length.options].map(o => o.value)).toEqual([
-      '15',
-      '25',
-      '30',
-      '45',
-      '60',
-      '90',
-      '120',
+    const length = within(sheet).getByLabelText('Duration');
+    expect(length.textContent).toBe('25 min');
+    expect(await optionsOf(user, length)).toEqual([
+      '15 min',
+      '25 min',
+      '30 min',
+      '45 min',
+      '60 min',
+      '90 min',
+      '120 min',
     ]);
     await user.click(within(sheet).getByRole('button', { name: 'Save & re-sync calendars' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

@@ -345,10 +345,15 @@ describe.each(['admin', 'team'] as const)('the Calendar, in the %s portal', port
         'Joins the in-app huddle — audio in MotoLinker, no Google account needed.',
       ),
     ).toBeTruthy();
-    const join = within(huddle).getByRole('link', { name: /Join huddle/ });
-    expect(join.getAttribute('href')).toBe(
+    const opened = vi.spyOn(window, 'open').mockReturnValue(null);
+    await user.click(within(huddle).getByRole('button', { name: /Join huddle/ }));
+    expect(opened).toHaveBeenCalledWith(
       portal === 'admin' ? '/legacy/dashboard?chat=3' : '/legacy/employee?chat=3',
+      '_blank',
+      'noopener',
     );
+    // (the sheet goes behind it)
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('a task or a follow-up goes to where it is kept: Tasks, or Leads', async () => {
@@ -411,7 +416,7 @@ describe('who may do what on the calendar', () => {
     expect((within(sheet).getByLabelText('Title') as HTMLInputElement).value).toBe(
       'Weekly sales sync',
     );
-    expect((within(sheet).getByLabelText('Duration') as HTMLSelectElement).value).toBe('45');
+    expect(within(sheet).getByLabelText('Duration').textContent).toBe('45 min');
     await user.clear(within(sheet).getByLabelText('Title'));
     await user.type(within(sheet).getByLabelText('Title'), 'Moved sync');
     await user.click(within(sheet).getByRole('button', { name: 'Save & re-sync calendars' }));

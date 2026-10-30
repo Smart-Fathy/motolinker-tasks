@@ -9,6 +9,9 @@
     flex-direction: column;
     padding: 0;
   }
+  :global([data-portal='team']) .page {
+    max-width: 100%;
+  }
   .head {
     padding: 20px 28px 12px;
     border-bottom: 1px solid var(--border);
@@ -40,6 +43,8 @@
   }
   .google {
     text-decoration: none;
+  }
+  :global([data-portal='team']) .google {
     flex-shrink: 0;
   }
   .scroll {
@@ -58,6 +63,7 @@
     margin-bottom: 14px;
   }
   .nav {
+    user-select: none;
     background: var(--surface);
     border: 1px solid var(--border);
     color: var(--text);
@@ -116,6 +122,7 @@
     overflow: hidden;
   }
   .view {
+    user-select: none;
     background: none;
     border: none;
     color: var(--muted);
@@ -313,10 +320,6 @@
       padding: 3px;
       justify-content: center;
     }
-    .chip svg {
-      width: 9px;
-      height: 9px;
-    }
     .chipTime {
       display: none;
     }
@@ -336,11 +339,6 @@
     .more {
       min-height: 44px;
       min-width: 44px;
-    }
-  }
-  @media (max-width: 640px) {
-    :global([data-portal='admin']) .scroll {
-      padding: 16px;
     }
   }
 }

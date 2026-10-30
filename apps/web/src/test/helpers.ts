@@ -1,5 +1,7 @@
 import { normalisePermissions } from '@motolinker/contracts/permissions';
 import { adminActor, describeActor, employeeActor } from '@motolinker/contracts/access';
+import { screen } from '@testing-library/react';
+import type { UserEvent } from '@testing-library/user-event';
 import { vi } from 'vitest';
 import type { Me } from '../lib/api';
 import type { AuthApi } from '../lib/auth-api';
@@ -73,3 +75,17 @@ export const teamMe = (
     workspace: WORKSPACE,
     flags,
   }) as unknown as Me;
+
+/** Choose an option of the app's dropdown (a button that opens a panel of options): open it, and press the option. */
+export async function choose(user: UserEvent, trigger: HTMLElement, option: string): Promise<void> {
+  await user.click(trigger);
+  await user.click(screen.getByRole('option', { name: option }));
+}
+
+/** The options a dropdown offers, in order (it is opened to read them, and closed again). */
+export async function optionsOf(user: UserEvent, trigger: HTMLElement): Promise<string[]> {
+  await user.click(trigger);
+  const names = screen.getAllByRole('option').map(o => o.textContent ?? '');
+  await user.keyboard('{Escape}');
+  return names;
+}

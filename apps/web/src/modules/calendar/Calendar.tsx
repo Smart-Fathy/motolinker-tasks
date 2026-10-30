@@ -167,16 +167,16 @@ function MeetingSheet({
       footer={
         <>
           {room ? (
-            <BtnLink
+            <Btn
               kind="primary"
               data-part="join"
-              href={classicRoomUrl(portal, room)}
-              target="_blank"
-              rel="noopener"
-              onClick={onClose}
+              onClick={() => {
+                onClose();
+                window.open(classicRoomUrl(portal, room), '_blank', 'noopener');
+              }}
             >
               <Icon name={MEET_ICONS.huddle} size={14} /> Join huddle
-            </BtnLink>
+            </Btn>
           ) : href ? (
             <BtnLink kind="primary" data-part="join" href={href} target="_blank" rel="noopener">
               Join

@@ -83,10 +83,7 @@
   .wide {
     width: 100%;
     text-align: center;
-  }
-  .wide svg,
-  .listHead svg {
-    flex: none;
+    text-decoration: none;
   }
   .joinRow {
     display: flex;
@@ -95,14 +92,13 @@
   }
   .code {
     flex: 1;
-    min-width: 0;
     text-transform: lowercase;
     width: 100%;
     padding: 9px 12px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--hair, var(--border));
     border-radius: calc(8px * var(--r-k, 1));
     font-size: 13px;
-    background: var(--bg);
+    background: var(--field-bg, #0e0e10);
     color: var(--text);
     outline: none;
     transition: border-color 0.15s;

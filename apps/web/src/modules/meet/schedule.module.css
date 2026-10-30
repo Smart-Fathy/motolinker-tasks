@@ -6,6 +6,7 @@
     margin-bottom: 14px;
   }
   .label {
+    cursor: default;
     display: block;
     font-size: 12px;
     font-weight: 600;
@@ -31,10 +32,10 @@
   .control {
     width: 100%;
     padding: 9px 12px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--hair, var(--border));
     border-radius: calc(8px * var(--r-k, 1));
     font-size: 13px;
-    background: var(--bg);
+    background: var(--field-bg, #0e0e10);
     color: var(--text);
     outline: none;
     transition: border-color 0.15s;
@@ -57,38 +58,6 @@
     box-shadow:
       0 0 0 3px rgba(var(--alt-rgb, 124, 106, 255), 0.12),
       var(--glow, 0 0 #0000);
-  }
-  /* The brand dropdowns: dark and gold, a chevron of their own. */
-  select.control {
-    appearance: none;
-    background-color: var(--field-bg-2, #101013);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: calc(8px * var(--r-k, 1));
-    padding-right: 34px;
-    cursor: pointer;
-    color-scheme: var(--color-scheme, dark);
-    background-image: var(
-      --chev-select,
-      url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23c9a35e' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
-    );
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    transition:
-      border-color 0.15s,
-      box-shadow 0.15s;
-  }
-  select.control:hover {
-    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.45);
-  }
-  select.control:focus {
-    outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 201, 163, 94), 0.15);
-  }
-  select.control option {
-    background: var(--option-bg, #141416);
-    color: var(--text);
   }
   textarea.control {
     resize: vertical;
@@ -150,6 +119,7 @@
     .tick {
       width: 24px;
       height: 24px;
+      font-size: 16px;
     }
   }
   @media (max-width: 640px) {
@@ -161,6 +131,7 @@
   @media (max-width: 768px) {
     :global([data-portal='team']) .control {
       padding: 12px 14px;
+      font-size: 16px;
     }
   }
 }

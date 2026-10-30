@@ -15,7 +15,8 @@
     border: none;
     transition: all 0.2s ease;
     white-space: nowrap;
-    text-decoration: none;
+  }
+  button.btn {
     user-select: none;
   }
   .btn:disabled {

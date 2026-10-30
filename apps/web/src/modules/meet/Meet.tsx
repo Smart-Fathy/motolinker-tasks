@@ -24,16 +24,14 @@ function JoinButton({ meeting }: { meeting: Meeting }) {
   const room = huddleRoomOf(meeting.meet_link);
   if (room) {
     return (
-      <BtnLink
+      <Btn
         kind="primary"
         small
         data-part="join"
-        href={classicRoomUrl(portal, room)}
-        target="_blank"
-        rel="noopener"
+        onClick={() => window.open(classicRoomUrl(portal, room), '_blank', 'noopener')}
       >
         <Icon name={MEET_ICONS.huddle} size={13} /> Join huddle
-      </BtnLink>
+      </Btn>
     );
   }
   const href = linkUrl(meeting.meet_link);

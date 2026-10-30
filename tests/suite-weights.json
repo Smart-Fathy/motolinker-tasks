@@ -57,6 +57,8 @@
     "notifparity": 55,
     "subparity": 90,
     "issparity": 65,
+    "meetparity": 90,
+    "calparity": 80,
     "webshell": 47,
     "galleryaudit": 10,
     "embed": 34,
