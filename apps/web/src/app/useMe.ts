@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getMe, type Me, type MeResult } from '../lib/api';
 import type { Portal } from '../lib/env';
 import { clearToken, readToken, writeToken } from '../lib/session';
@@ -31,7 +31,14 @@ export function useMe(
   { storage, fetchImpl, initialToken }: UseMeDeps = {},
 ): {
   state: MeState;
+  /** the session the answer belongs to (null: nobody is signed in) */
+  token: string | null;
   retry: () => void;
+  /**
+   * Ask again who this is, without losing the screen: something said "no" (a call came back 401) and only the server's
+   * answer about the token itself decides whether the session is over. A server that cannot answer leaves things as they are.
+   */
+  recheck: () => void;
   /** a sign-in succeeded: keep the session (for the next load, and for the classic portal) and find out who it is */
   signedIn: (token: string) => void;
   /** leave: `notify` is told the session that is ending (to tell the server), then it is forgotten here */
@@ -42,17 +49,20 @@ export function useMe(
   );
   const [result, setResult] = useState<MeResult | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const quiet = useRef(false);
 
   useEffect(() => {
     if (!token) return;
     const ctl = new AbortController();
+    const asked = quiet.current;
+    quiet.current = false;
     getMe(token, { signal: ctl.signal, fetchImpl })
       .then(r => {
         if (ctl.signal.aborted) return;
         if (r.kind === 'unauthorized') {
           clearToken(portal, storage);
           setToken(null);
-        } else {
+        } else if (!asked || r.kind === 'ok') {
           setResult(r);
         }
       })
@@ -64,6 +74,11 @@ export function useMe(
 
   const retry = useCallback(() => {
     setResult(null);
+    setAttempt(a => a + 1);
+  }, []);
+
+  const recheck = useCallback(() => {
+    quiet.current = true;
     setAttempt(a => a + 1);
   }, []);
 
@@ -92,5 +107,5 @@ export function useMe(
   else if (result.kind === 'ok') state = { phase: 'signed-in', me: result.me };
   else if (result.kind === 'unavailable') state = { phase: 'unavailable', status: result.status };
   else state = { phase: 'network' };
-  return { state, retry, signedIn, signOut };
+  return { state, token, retry, recheck, signedIn, signOut };
 }

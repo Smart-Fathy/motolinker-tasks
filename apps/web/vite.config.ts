@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
@@ -8,6 +9,12 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   base: '/ui/',
   plugins: [react()],
+  resolve: {
+    // The one file that works out the workspace's look, shared with the server and the classic pages (see src/types/theme-core.d.ts).
+    alias: {
+      '@theme-core': fileURLToPath(new URL('../../public/assets/theme-core.js', import.meta.url)),
+    },
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

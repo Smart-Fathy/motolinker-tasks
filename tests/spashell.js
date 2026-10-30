@@ -28,7 +28,12 @@ if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log('
 const template = read('apps', 'web', 'index.html');
 const builtPage = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
 const assets = fs.readdirSync(path.join(dist, 'assets'));
-const jsFile = assets.find(f => f.endsWith('.js'));
+// The page names the two files it opens with. Anything else in the folder is loaded on demand (the gallery is a chunk of its
+// own), so which file is the app's is read from the page, never from the order of a listing.
+const jsFile = (builtPage.match(/<script type="module"[^>]*src="\/ui\/assets\/([^"]+\.js)"/) || [])[1];
+const cssFile = (builtPage.match(/<link rel="stylesheet"[^>]*href="\/ui\/assets\/([^"]+\.css)"/) || [])[1];
+const allJs = assets.filter(f => f.endsWith('.js'));
+const textOf = f => fs.readFileSync(path.join(dist, 'assets', f), 'utf8');
 
 // ── 1. The template and the built page keep the hooks the dressing code finds its places by ─────
 const HOOKS = [
@@ -53,7 +58,7 @@ check('what is swapped in for the team is, word for word, in the classic team pa
 check('the template marks the admin portal on <html>, and the team swap marks the team', template.includes('<html lang="en" data-portal="admin">') && SWAPS.team.some(([from, to]) => from === '<html lang="en" data-portal="admin">' && to === '<html lang="en" data-portal="team">'));
 // The layers rank in the order they are first named in the built sheet, so a component's sheet coming before base.css would put
 // `ui` under the reset and turn every padding and margin in the app to zero. Nothing else notices: the page still opens.
-const builtCss = fs.readFileSync(path.join(dist, 'assets', assets.find(f => f.endsWith('.css'))), 'utf8');
+const builtCss = textOf(cssFile);
 const layerOrder = css => { const seen = []; for (const m of css.matchAll(/@layer\s+([a-z][a-z0-9, -]*)\s*[{;]/gi)) for (const n of m[1].split(',').map(x => x.trim())) if (n && !seen.includes(n)) seen.push(n); return seen; };
 check('the built stylesheet ranks its layers reset, base, ui — the order they are named in, which the import order in main.tsx decides', layerOrder(builtCss).slice(0, 3).join() === 'reset,base,ui', layerOrder(builtCss).join());
 
@@ -110,7 +115,7 @@ db.install();
   check('…and the server remembers the choice for a year', next.cookies.length === 1 && next.cookies[0] === COOKIE_NEXT, next.cookies.join(' | '));
   check('…the page is not cached by anyone without asking the server first', /no-cache/.test(next.r.headers.get('cache-control') || ''));
   check('…it carries what the app is told about where it is: the portal and the workspace\'s name', (() => { const m = mlOf(next.text); return m.portal === 'admin' && m.ui === 'next' && m.v === 1 && m.workspace.name === 'MotoLinker'; })());
-  check('…its script and sheet are the built, hashed files under /ui/', new RegExp('/ui/assets/' + jsFile.replace('.', '\\.')).test(next.text));
+  check('…its script and sheet are the built, hashed files under /ui/', new RegExp('/ui/assets/' + jsFile.replace('.', '\\.')).test(next.text) && new RegExp('/ui/assets/' + cssFile.replace('.', '\\.')).test(next.text));
   check('…and the marker is gone, so no half-dressed page', !next.text.includes(BOOT_MARKER));
   const remembered = await page('/dashboard', { Cookie: 'ml_ui=next' });
   check('a browser that has the cookie gets the new app without asking again, and the cookie is not rewritten', isSpa(remembered.text) && remembered.cookies.length === 0);
@@ -148,9 +153,13 @@ db.install();
   // — addresses inside the new app —
   const deep = await page('/dashboard/leads/42', { Cookie: 'ml_ui=next' });
   check('an address inside the new app opens the new app (so a deep link survives a reload)', deep.status === 200 && isSpa(deep.text));
-  const deepClassic = await page('/dashboard/leads/42');
-  check('…and for a browser on the classic page it does not exist, as before', deepClassic.status === 404);
-  check('…nor does one under /employee', (await page('/employee/anything')).status === 404 && isSpa((await page('/employee/anything', { Cookie: 'ml_ui=next' })).text));
+  const where = async (url, headers) => { const r = await fetch(base + url, { redirect: 'manual', headers }); return r.status + ' ' + (r.headers.get('location') || ''); };
+  check('…and a browser on the classic page is sent to the classic page it stands for, not to a page that is not there',
+    (await where('/dashboard/leads/42')) === '302 /dashboard#customers' && (await where('/employee/leads')) === '302 /employee#leads' && (await where('/dashboard/approvals')) === '302 /dashboard#deletions');
+  check('…a chat room keeps its room, and safe mode is carried along', (await where('/dashboard/chat/r1')) === '302 /dashboard?chat=r1' && (await where('/employee/requests?safe=1')) === '302 /employee?safe=1#requests' && (await where('/dashboard/chat/r1?safe=1')) === '302 /dashboard?chat=r1&safe=1');
+  check('…and what is no screen of that portal (the gallery, a typo, the other portal\'s) is the portal itself',
+    (await where('/dashboard/__gallery')) === '302 /dashboard' && (await where('/employee/employees')) === '302 /employee' && (await where('/dashboard/nope/deep/path')) === '302 /dashboard');
+  check('…and the same for the browser that has just asked for the classic page by name', (await where('/dashboard/leads?ui=legacy', { Cookie: 'ml_ui=next' })) === '302 /dashboard#customers');
 
   // — the workspace's look —
   await put('/api/dashboard/workspace', { name: 'Acme Motors' });
@@ -191,13 +200,22 @@ db.install();
   check('…the unprocessed page is not one of them, nor a directory, nor a file that is not there, nor a way out of the folder',
     (await fetch(base + '/ui/index.html')).status === 404 && (await fetch(base + '/ui/')).status === 404 && (await fetch(base + '/ui/assets/nope.js')).status === 404 && (await fetch(base + '/ui/..%2f..%2fpackage.json')).status === 404);
   const gz = zlib.gzipSync(fs.readFileSync(path.join(dist, 'assets', jsFile))).length;
-  check('the app\'s JavaScript stays inside its budget (250 kB gzipped)', gz <= 250 * 1024, `${(gz / 1024).toFixed(1)} kB`);
-  check('…and does not carry zod, which the browser has no use for', !/ZodError|\$ZodType/.test(fs.readFileSync(path.join(dist, 'assets', jsFile), 'utf8')));
+  check('the JavaScript the page opens with stays inside its budget (250 kB gzipped)', gz <= 250 * 1024, `${(gz / 1024).toFixed(1)} kB`);
+  const withZod = allJs.filter(f => /ZodError|\$ZodType/.test(textOf(f)));
+  check('…no file the build writes, the ones loaded on demand included, carries zod, which the browser has no use for', allJs.length > 0 && withZod.length === 0, withZod.join());
+  // (a static `import … from "./x.js"` loads x up front; the `import("./x.js")` the entry makes when asked does not match)
+  const staticImport = f => new RegExp('(^|[;}\\n])\\s*import\\s*(?:[^;(]*?from\\s*)?["\'`]\\./' + f.replace('.', '\\.') + '["\'`]').test(textOf(jsFile));
+  const gallery = allJs.filter(f => /^Gallery-/.test(f));
+  const upFront = gallery.filter(f => builtPage.includes(f) || staticImport(f));
+  check('…the gallery is a chunk of its own that the page does not open with: a page of every screen weighs on nobody who has not asked for it', gallery.length === 1 && upFront.length === 0, `${gallery.join() || 'no gallery chunk'}${upFront.length ? ' (opened up front)' : ''}`);
+  const served = await Promise.all(assets.map(async f => [f, (await fetch(base + '/ui/assets/' + f)).status]));
+  check('every file the build writes is served, the chunks loaded on demand too', served.every(([, st]) => st === 200), served.filter(([, st]) => st !== 200).map(([f]) => f).join());
 
   // — it can never leave a page that does not open —
   fs.renameSync(path.join(dist, 'index.html'), path.join(dist, 'index.html.away'));
   const noBuild = await page('/dashboard?ui=next');
   check('with no build, a browser that asked for the new app gets the classic page, not an error', noBuild.status === 200 && isClassic(noBuild.text));
+  check('…and an address inside the app goes to the classic page it stands for', (await where('/dashboard/leads', { Cookie: 'ml_ui=next' })) === '302 /dashboard#customers');
   fs.renameSync(path.join(dist, 'index.html.away'), path.join(dist, 'index.html'));
   fs.writeFileSync(path.join(dist, 'index.html'), builtPage.replace(BOOT_MARKER, ''));
   const noHook = await page('/dashboard?ui=next');
@@ -208,7 +226,7 @@ db.install();
   // — what did not change —
   const manifest = await fetch(base + '/manifest-dashboard.json');
   check('the install manifests are as they were', manifest.status === 200 && JSON.parse(await manifest.text()).start_url === '/dashboard');
-  check('the classic pages still register their service worker at their own scope, and the new app registers none yet', /serviceWorker\.register\('\/sw-dashboard\.js'/.test(read('public', 'assets', 'dashboard.js')) && !/serviceWorker/.test(fs.readFileSync(path.join(dist, 'assets', jsFile), 'utf8')));
+  check('the classic pages still register their service worker at their own scope, and the new app registers none yet', /serviceWorker\.register\('\/sw-dashboard\.js'/.test(read('public', 'assets', 'dashboard.js')) && allJs.every(f => !/serviceWorker/.test(textOf(f))));
 
   fs.rmSync(dist, { recursive: true, force: true });
   console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);

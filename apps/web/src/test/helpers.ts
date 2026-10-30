@@ -1,4 +1,7 @@
+import { normalisePermissions } from '@motolinker/contracts/permissions';
+import { adminActor, describeActor, employeeActor } from '@motolinker/contracts/access';
 import { vi } from 'vitest';
+import type { Me } from '../lib/api';
 import type { AuthApi } from '../lib/auth-api';
 import type { MlEnv } from '../lib/env';
 
@@ -41,3 +44,32 @@ export function deferred<T>() {
   const promise = new Promise<T>(r => (resolve = r));
   return { promise, resolve };
 }
+
+const WORKSPACE = { name: 'Acme Motors', logo_url: '', updated_at: null };
+const DEPS = {
+  dealStages: ['lead', 'quoted', 'won', 'lost'],
+  normStatus: (s: unknown) => String(s).toLowerCase(),
+};
+
+/** What GET /api/v1/me answers for the admin. */
+export const adminMe = (flags: Record<string, boolean> = {}): Me =>
+  ({ ...describeActor(adminActor()), workspace: WORKSPACE, flags }) as unknown as Me;
+
+/** …and for a team member with these permissions as stored (the server normalises them, as it does at sign-in). */
+export const teamMe = (
+  permissions: Record<string, unknown> = {},
+  jobTitle = 'Sales',
+  flags: Record<string, boolean> = {},
+): Me =>
+  ({
+    ...describeActor(
+      employeeActor({
+        id: 4,
+        name: 'Sam',
+        job_title: jobTitle,
+        permissions: normalisePermissions(permissions, DEPS),
+      }),
+    ),
+    workspace: WORKSPACE,
+    flags,
+  }) as unknown as Me;
