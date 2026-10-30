@@ -1,0 +1,98 @@
+/* The design system on one page. It is a tool, not a screen: plain, wide, and out of the way of what it shows. */
+@layer ui {
+  .gallery {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 24px 20px 80px;
+    color: var(--text);
+  }
+  .bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .title {
+    font-size: 22px;
+    margin-right: auto;
+  }
+  .control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .control select {
+    background: var(--field-bg, var(--surface));
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font: inherit;
+  }
+  .section {
+    display: grid;
+    gap: 12px;
+    margin-top: 28px;
+  }
+  .section h2 {
+    font-size: 15px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+  .narrow {
+    display: grid;
+    gap: 12px;
+    max-width: 360px;
+  }
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px;
+  }
+  .swatch {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 56px;
+  }
+  .swatchName {
+    font-size: 11px;
+    color: var(--text);
+    background: var(--surface);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  .framed {
+    position: relative;
+    transform: translateZ(0);
+    height: 560px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .specimen {
+    position: relative;
+    transform: translateZ(0);
+    height: 640px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+  }
+  .page {
+    padding: 28px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+}

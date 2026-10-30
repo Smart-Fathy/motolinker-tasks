@@ -21,6 +21,7 @@ const express = require('express');
 const { renderShell, renderManifest, wordingOf, DEFAULT_NAME } = require('../lib/shell');
 const { makeRenderSpa } = require('../http/spa-shell');
 const { chooseUi, rememberCookie, defaultFor } = require('../http/ui-choice');
+const { classicUrlFor } = require('@motolinker/contracts/deeplinks');
 
 const renderSpa = makeRenderSpa({ renderShell, wordingOf, defaultName: DEFAULT_NAME });
 
@@ -116,11 +117,15 @@ function mountShell({ receiver, publicDir, profile, webDist }) {
     // The classic page, whatever the switch says: the way back, and what the new app shows for anything it does not do yet.
     receiver.router.get(page.classic, sendClassic);
 
-    // Addresses inside the new app. Only the new app has any; for a browser that has not chosen it they do not exist, as before.
-    receiver.router.get(page.inside, async (req, res, next) => {
+    // Addresses inside the new app. Only the new app has any, so a browser that has not chosen it (or a server with no build) is
+    // sent to the classic page the address stands for: a link kept from the new app, or a reload after going back, still opens
+    // something. (Safe mode is carried along; the switch's own cookie travels with the redirect.)
+    receiver.router.get(page.inside, async (req, res) => {
       const choice = choose(req, res);
       if (choice.ui === 'next' && spaBuilt() && await sendSpa(req, res)) return;
-      next();
+      const [target, hash] = classicUrlFor(page.kind, req.path.slice(page.routes[0].length)).split('#');
+      const safe = req.query.safe === '1' ? (target.includes('?') ? '&' : '?') + 'safe=1' : '';
+      res.redirect(302, target + safe + (hash ? '#' + hash : ''));
     });
 
     receiver.router.get('/' + page.manifest, async (req, res) => {

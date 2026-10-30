@@ -1,0 +1,1020 @@
+/* The frame of the signed-in app: the rail, the top bar, the phone's bottom bar. It is the classic portals' own, rule for
+   rule as they end up after their layers (dashboard.css or employee.css, then mobile.css after either), written once for the
+   two: unmarked rules are shared, and `[data-portal='admin']` / `[data-portal='team']` carry what is the portal's own, until
+   the redesign makes them one. tests/shellparity.js holds the result to the classic pages' computed style, value by value. */
+@layer ui {
+  .layout {
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ── The sidebar ─────────────────────────────────────────────────────────── */
+  /* The sidebar is its own surface: inside it the page's tokens are put back to the sidebar's own (--sb-*, from the workspace's
+     look), so every rule in here that reads --text, --muted, --gold or an rgba(var(--ov), a) overlay follows without being
+     rewritten. */
+  .sidebar {
+    --ov: var(--sb-ov, 255, 255, 255);
+    --strong: var(--sb-strong, #fff);
+    --text: var(--sb-text, #f3efe7);
+    --text-2: var(--sb-text-2, #b9b3a4);
+    --muted: var(--sb-muted, #8d897f);
+    --gold: var(--sb-accent, #c9a35e);
+    --primary: var(--sb-accent, #c9a35e);
+    --primary-text: var(--sb-accent, #c9a35e);
+    --primary-rgb: var(--sb-accent-rgb, 201, 163, 94);
+    --t-dim: var(--sb-t-dim);
+    --t-soft: var(--sb-t-soft);
+    --h-c9a35e: var(--sb-accent);
+    --h-6dd8a4: var(--sb-h-6dd8a4);
+    --h-9fb0bd: var(--sb-h-9fb0bd);
+    --h-94a3b8: var(--sb-h-94a3b8);
+    --h-f59e0b: var(--sb-h-f59e0b);
+    --h-c98b5e: var(--sb-h-c98b5e);
+    --h-a78bfa: var(--sb-h-a78bfa);
+    --hair: var(--sb-hair, rgba(255, 255, 255, 0.09));
+    --hair-gold: var(--sb-hair-gold, rgba(201, 163, 94, 0.22));
+    --border: var(--sb-hair, rgba(255, 255, 255, 0.09));
+    color: var(--text, #f3efe7);
+    position: fixed;
+    top: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  :global([data-portal='admin']) .sidebar {
+    width: 248px;
+    flex-shrink: 0;
+    bottom: 0;
+    background: var(--sidebar, #0f0f12);
+    border-right: 1px solid var(--hair);
+    z-index: 200;
+    overflow-y: auto;
+  }
+  :global([data-portal='team']) .sidebar {
+    --glass-border: var(--sb-glass-border, rgba(255, 255, 255, 0.07));
+    width: var(--sidebar-w);
+    height: 100vh;
+    background: var(--sidebar, var(--surface));
+    border-right: 1px solid var(--glass-border);
+    z-index: 100;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(24px) saturate(1.8);
+  }
+
+  /* The workspace's name and picture. The admin's block is the row itself; the team's holds one. */
+  .brand {
+    border-bottom: 1px solid var(--hair);
+  }
+  .brandRow {
+    display: contents;
+  }
+  :global([data-portal='admin']) .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 16px 14px;
+  }
+  :global([data-portal='team']) .brand {
+    padding: 22px 20px 18px;
+    border-bottom: 1px solid var(--glass-border);
+  }
+  :global([data-portal='team']) .brandRow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* The workspace's picture, round; the original mark when it has none. */
+  .mark,
+  .logo {
+    background: #0f0f11
+      var(
+        --ws-logo,
+        url('https://images.motolinkers.com/avatar-11-max-reev/05_logo_copy-1__1_-removebg-preview2.png')
+      )
+      center / contain no-repeat;
+    border: 1px solid var(--gold);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  :global([data-portal='admin']) .mark,
+  :global([data-portal='admin']) .logo {
+    color: transparent;
+    font-size: 0;
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-weight: 600;
+  }
+  :global([data-portal='team']) .mark {
+    color: #fff;
+  }
+  .mark {
+    width: 32px;
+    height: 32px;
+  }
+  .logo {
+    width: 36px;
+    height: 36px;
+  }
+  :global([data-portal='team']) .mark {
+    width: 38px;
+    height: 38px;
+  }
+  :global(.ws-custom-logo) .mark,
+  :global(.ws-custom-logo) .logo {
+    background-size: cover;
+  }
+
+  .brandText {
+    min-width: 0;
+  }
+  :global([data-portal='team']) .brandText {
+    flex: 1;
+  }
+  .brandName {
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+  :global([data-portal='admin']) .brandName {
+    color: var(--strong, #fff);
+    font-size: 15px;
+  }
+  :global([data-portal='team']) .brandName {
+    font-size: 19px;
+    line-height: 1.2;
+    letter-spacing: 1.5px;
+  }
+  .brandSub {
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+  :global([data-portal='admin']) .brandSub {
+    color: var(--primary-text, var(--gold));
+    font-weight: 600;
+    letter-spacing: 0.9px;
+  }
+  :global([data-portal='team']) .brandSub {
+    color: var(--muted);
+    margin-top: 2px;
+    letter-spacing: 0.05em;
+  }
+
+  .collapse,
+  .close,
+  .hamburger,
+  .bell,
+  .profileBtn,
+  .bottomItem,
+  .item {
+    user-select: none;
+  }
+  .collapse {
+    margin-left: auto;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: calc(6px * var(--r-k, 1));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .collapse svg {
+    width: 18px;
+    height: 18px;
+  }
+  :global([data-portal='admin']) .collapse {
+    color: rgba(var(--ov, 255, 255, 255), var(--t-dim, 0.45));
+  }
+  :global([data-portal='admin']) .collapse:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.08);
+    color: var(--strong, #fff);
+  }
+  :global([data-portal='team']) .collapse {
+    color: var(--muted);
+  }
+  :global([data-portal='team']) .collapse:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.06);
+    color: var(--text);
+  }
+
+  /* the phone's drawer closes with this; there is no room for the collapse button there */
+  .close {
+    display: none;
+  }
+
+  /* ── The list of sections ───────────────────────────────────────────────── */
+  .nav {
+    flex: 1;
+  }
+  :global([data-portal='admin']) .nav {
+    padding: 4px 10px 10px;
+  }
+  :global([data-portal='team']) .nav {
+    padding: calc(14px * var(--d-k, 1)) calc(12px * var(--d-k, 1));
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+  }
+
+  :global([data-portal='admin']) .group {
+    margin-bottom: 2px;
+  }
+  :global([data-portal='team']) .group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  /* One accent per section, carried as an inherited custom property so a rail item gets it whatever its selector. */
+  .group[data-group='management'] {
+    --nav-c: var(--h-c9a35e, #c9a35e);
+  }
+  .group[data-group='crm'] {
+    --nav-c: var(--h-6dd8a4, #6dd8a4);
+  }
+  .group[data-group='finance'] {
+    --nav-c: var(--h-a78bfa, #a78bfa);
+  }
+  .group[data-group='logistics'] {
+    --nav-c: var(--h-9fb0bd, #9fb0bd);
+  }
+  .group[data-group='integrations'] {
+    --nav-c: var(--h-94a3b8, #94a3b8);
+  }
+  .group[data-group='chat'] {
+    --nav-c: var(--h-f59e0b, #f59e0b);
+  }
+  .group[data-group='google'] {
+    --nav-c: var(--h-c98b5e, #c98b5e);
+  }
+  .group[data-group='system'] {
+    --nav-c: var(--muted, #8d897f);
+  }
+
+  .groupHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    user-select: none;
+  }
+  :global([data-portal='admin']) .groupHead {
+    color: var(--muted, #8d897f);
+    letter-spacing: 1px;
+    padding: 11px 10px 6px;
+    gap: 8px;
+  }
+  :global([data-portal='admin']) .groupOpen > .groupHead {
+    color: var(--text-2, #b9b3a4);
+  }
+  :global([data-portal='admin']) .groupHead:hover {
+    color: var(--text);
+  }
+  :global([data-portal='team']) .groupHead {
+    color: rgba(var(--ov, 255, 255, 255), var(--t-dim, 0.25));
+    letter-spacing: 1px;
+    padding: 12px 10px 6px;
+  }
+  :global([data-portal='team']) .groupHead:hover {
+    color: rgba(var(--ov, 255, 255, 255), var(--t-soft, 0.5));
+  }
+  :global([data-portal='admin']) .groupLabel {
+    flex: 1;
+  }
+  .groupCount {
+    font-size: 9.5px;
+    font-weight: 700;
+    color: var(--muted, #8d897f);
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+  }
+  .chevron {
+    width: 13px;
+    height: 13px;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+  .group:not(.groupOpen) .chevron {
+    transform: rotate(-90deg);
+  }
+  .groupItems {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.25s ease;
+  }
+  :global([data-portal='admin']) .groupOpen .groupItems {
+    max-height: 1200px;
+  }
+  :global([data-portal='team']) .groupItems {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  :global([data-portal='team']) .groupOpen .groupItems {
+    max-height: 640px;
+  }
+
+  .item {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  :global([data-portal='admin']) .item {
+    gap: 10px;
+    padding: calc(8px * var(--d-k, 1)) calc(10px * var(--d-k, 1));
+    border-radius: var(--r-md, calc(10px * var(--r-k, 1)));
+    color: rgba(var(--ov, 255, 255, 255), var(--t-soft, 0.6));
+    font-weight: 600;
+    margin-bottom: 2px;
+    transition:
+      background 0.2s ease,
+      color 0.2s ease;
+  }
+  :global([data-portal='admin']) .item:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.05);
+    color: var(--text, #f3efe7);
+  }
+  :global([data-portal='admin']) .item:active {
+    background: rgba(var(--primary-rgb, 201, 163, 94), 0.16);
+  }
+  :global([data-portal='admin']) .itemActive,
+  :global([data-portal='admin']) .itemActive:hover {
+    background: rgba(var(--primary-rgb, 201, 163, 94), 0.13);
+    color: var(--text);
+    box-shadow:
+      inset 0 0 0 1px rgba(var(--primary-rgb, 201, 163, 94), 0.26),
+      var(--glow, 0 0 #0000);
+  }
+  :global([data-portal='team']) .item {
+    gap: 12px;
+    padding: calc(11px * var(--d-k, 1)) calc(14px * var(--d-k, 1));
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+    color: var(--muted);
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    transition: all 0.2s ease;
+  }
+  :global([data-portal='team']) .item:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.04);
+    color: var(--text);
+  }
+  :global([data-portal='team']) .item:active {
+    background: var(--primary-glow-strong);
+  }
+  :global([data-portal='team']) .itemActive,
+  :global([data-portal='team']) .itemActive:hover {
+    background: var(--primary-glow);
+    color: var(--primary-text, var(--gold));
+    font-weight: 600;
+    box-shadow:
+      inset 0 0 0 1px rgba(var(--alt-rgb, 124, 106, 255), 0.15),
+      var(--glow, 0 0 #0000);
+  }
+
+  /* The icon is a chip, not a bare glyph: it is the thing you scan. */
+  .icon {
+    width: 24px;
+    height: 24px;
+    border-radius: calc(7px * var(--r-k, 1));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: color-mix(in srgb, var(--nav-c, #8d897f) 15%, transparent);
+    color: var(--nav-c, var(--muted));
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  :global([data-portal='admin']) .icon {
+    font-size: 16px;
+    text-align: center;
+  }
+  .icon svg {
+    width: 14px;
+    height: 14px;
+  }
+  .item:hover .icon {
+    color: var(--text);
+  }
+  /* …and Accounting's is a colourful brain among monochrome chips, on purpose. */
+  .iconAi {
+    background: linear-gradient(
+      135deg,
+      rgba(244, 114, 182, 0.22),
+      rgba(167, 139, 250, 0.22) 40%,
+      rgba(56, 189, 248, 0.22) 75%,
+      rgba(52, 211, 153, 0.22)
+    );
+  }
+  .item:hover .iconAi,
+  .itemActive .iconAi {
+    box-shadow:
+      0 0 0 1px rgba(167, 139, 250, 0.35),
+      0 0 12px rgba(167, 139, 250, 0.35);
+  }
+
+  .footer {
+    padding: 12px 10px;
+    border-top: 1px solid rgba(var(--ov, 255, 255, 255), 0.07);
+  }
+  .footerRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: calc(8px * var(--r-k, 1));
+    color: rgba(var(--ov, 255, 255, 255), var(--t-soft, 0.5));
+    font: inherit;
+    font-size: 13px;
+    letter-spacing: inherit;
+    background: none;
+    border: none;
+    text-align: start;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .footerRow:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger-text, #f87171);
+  }
+  .footerIcon svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* ── What the page sits in ──────────────────────────────────────────────── */
+  .content {
+    transition: margin-left 0.2s ease;
+  }
+  :global([data-portal='admin']) .content {
+    margin-left: 248px;
+    flex: 1;
+    min-width: 0;
+  }
+  :global([data-portal='team']) .content {
+    margin-left: var(--sidebar-w);
+    min-height: 100vh;
+    width: calc(100% - var(--sidebar-w));
+    transition:
+      margin-left 0.2s ease,
+      width 0.2s ease;
+  }
+  .page {
+    display: block;
+  }
+  :global([data-portal='team']) .page {
+    padding: calc(28px * var(--d-k, 1));
+    max-width: 100%;
+  }
+
+  /* ── The top bar ────────────────────────────────────────────────────────── */
+  .header,
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    padding-top: env(safe-area-inset-top);
+  }
+  .header {
+    background: var(--header-bg, rgba(12, 12, 14, 0.85));
+    border-bottom: 1px solid var(--hair-gold);
+    padding-left: 28px;
+    padding-right: 28px;
+    height: calc(64px + env(safe-area-inset-top));
+    z-index: 100;
+    backdrop-filter: blur(12px);
+  }
+  .headerLeft {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .headerName {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+  }
+  .headerBadge {
+    background: transparent;
+    color: var(--primary-text, var(--gold));
+    border: 1px solid var(--hair-gold);
+    white-space: nowrap;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: var(--r-pill, 99px);
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+  }
+  .headerRight {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .topbar {
+    height: var(--topbar-h);
+    background: var(--glass);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--glass-border);
+    padding-left: calc(28px * var(--d-k, 1));
+    padding-right: calc(28px * var(--d-k, 1));
+    z-index: 50;
+  }
+  .topbarLeft {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .topbarTitle {
+    font-size: 21px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    white-space: nowrap;
+  }
+  .topbarRight {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  /* The colour-mode button (the classic portals call every round icon button in the bar a bell). */
+  .bell {
+    position: relative;
+    background: none;
+    border: none;
+    color: var(--text);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: var(--r-md, calc(10px * var(--r-k, 1)));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+  }
+  .bell:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.06);
+  }
+  :global([data-portal='team']) .bell {
+    border-radius: 50%;
+  }
+
+  .hamburger {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text);
+  }
+  .hamburger svg {
+    width: 22px;
+    height: 22px;
+  }
+  :global([data-portal='admin']) .hamburger {
+    padding: 6px 8px;
+    border-radius: calc(8px * var(--r-k, 1));
+    font-size: 22px;
+    line-height: 1;
+    margin-right: 4px;
+  }
+  :global([data-portal='admin']) .hamburger:hover {
+    background: var(--bg);
+  }
+  :global([data-portal='team']) .hamburger {
+    padding: 8px;
+    border-radius: var(--radius-sm);
+  }
+  :global([data-portal='team']) .hamburger:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.05);
+  }
+
+  /* ── Your account (team: behind your own initials) ──────────────────────── */
+  .profileWrap {
+    position: relative;
+  }
+  .profileBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border-radius: 50%;
+    cursor: pointer;
+    background: none;
+    border: 1px solid transparent;
+    transition: border-color 0.15s ease;
+  }
+  .profileBtn:hover {
+    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.45);
+  }
+  .profileBtn[aria-expanded='true'] {
+    border-color: var(--gold);
+  }
+  .avatar {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--gold-soft, #d9bd7f), var(--primary));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--on-primary, #0c0c0e);
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .profileBtn .avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+  }
+  .avatarLg {
+    width: 44px;
+    height: 44px;
+    font-size: 15px;
+  }
+  .profileMenu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 268px;
+    max-width: 92vw;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: calc(12px * var(--r-k, 1));
+    box-shadow: var(--shadow-lg);
+    z-index: 200;
+    overflow: hidden;
+  }
+  .profileHead {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px;
+  }
+  .profileWho {
+    min-width: 0;
+    flex: 1;
+  }
+  .profileName {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .profileRole {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .profileActions {
+    border-top: 1px solid var(--border);
+    padding: 6px;
+  }
+  .profileItem {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: calc(8px * var(--r-k, 1));
+    cursor: pointer;
+    background: none;
+    border: 0;
+    color: var(--text);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    text-align: left;
+    text-decoration: none;
+  }
+  .profileItem:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.05);
+  }
+  .profileItem svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+  .danger {
+    color: var(--danger);
+  }
+  .danger:hover {
+    background: rgba(239, 68, 68, 0.08);
+  }
+
+  /* ── The phone's bottom bar ─────────────────────────────────────────────── */
+  .bottomNav {
+    display: none;
+  }
+
+  /* ── The curtain behind a drawer ────────────────────────────────────────── */
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+  }
+  .overlayVisible {
+    display: block;
+  }
+  :global([data-portal='admin']) .overlay {
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 150;
+  }
+  :global([data-portal='team']) .overlay {
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 99;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  :global([data-portal='team']) .overlayVisible {
+    opacity: 1;
+  }
+
+  /* ── A collapsed rail (desktop): icons only ─────────────────────────────── */
+  @media (min-width: 901px) {
+    :global([data-portal='admin']) .sidebar.collapsed {
+      width: 64px;
+    }
+    :global([data-portal='admin']) .contentWide {
+      margin-left: 64px;
+    }
+  }
+  @media (min-width: 769px) {
+    :global([data-portal='team']) .sidebar.collapsed {
+      width: 64px;
+    }
+    :global([data-portal='team']) .contentWide {
+      margin-left: 64px;
+      width: calc(100% - 64px);
+    }
+  }
+  @media (min-width: 901px) {
+    :global([data-portal='admin']) .sidebar.collapsed .brandText,
+    :global([data-portal='admin']) .sidebar.collapsed .groupHead {
+      display: none;
+    }
+  }
+  @media (min-width: 769px) {
+    :global([data-portal='team']) .sidebar.collapsed .brandText,
+    :global([data-portal='team']) .sidebar.collapsed .groupHead {
+      display: none;
+    }
+  }
+
+  /* ── Narrower than a desktop: the rail is a drawer ──────────────────────── */
+  @media (max-width: 900px) {
+    :global([data-portal='admin']) .sidebar {
+      transform: translateX(-248px);
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: none;
+    }
+    :global([data-portal='admin']) .sidebar.drawerOpen {
+      transform: translateX(0);
+      box-shadow: 4px 0 24px rgba(0, 0, 0, calc(0.25 * var(--sh-k, 1)));
+    }
+    :global([data-portal='admin']) .content {
+      margin-left: 0;
+    }
+    :global([data-portal='admin']) .hamburger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    :global([data-portal='admin']) .collapse {
+      display: none;
+    }
+  }
+  @media (max-width: 768px) {
+    :global([data-portal='team']) .sidebar {
+      transform: translateX(-100%);
+      width: 280px;
+      box-shadow: none;
+    }
+    :global([data-portal='team']) .sidebar.drawerOpen {
+      transform: translateX(0);
+      box-shadow: 8px 0 32px rgba(0, 0, 0, calc(0.5 * var(--sh-k, 1)));
+    }
+    :global([data-portal='team']) .content {
+      margin-left: 0;
+      width: 100%;
+      padding-bottom: calc(var(--bottomnav-h) + 8px);
+    }
+    :global([data-portal='team']) .topbar {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+    :global([data-portal='team']) .hamburger {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    :global([data-portal='team']) .collapse {
+      display: none;
+    }
+    :global([data-portal='team']) .page {
+      padding: 20px 16px;
+    }
+    :global([data-portal='team']) .bottomNav {
+      display: flex;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: var(--bottomnav-h);
+      background: var(--glass);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid var(--glass-border);
+      z-index: 90;
+      padding: 0 8px;
+      padding-bottom: env(safe-area-inset-bottom);
+      justify-content: space-around;
+      align-items: center;
+    }
+    :global([data-portal='team']) .bottomItem {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      transition: all 0.2s;
+      border: none;
+      background: none;
+      min-width: 56px;
+    }
+    :global([data-portal='team']) .bottomActive {
+      color: var(--primary-text, var(--primary));
+    }
+    :global([data-portal='team']) .bottomDot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--primary);
+      opacity: 0;
+      transform: scaleX(0);
+      transition: all 0.2s;
+    }
+    :global([data-portal='team']) .bottomActive .bottomDot {
+      opacity: 1;
+      transform: scaleX(1);
+    }
+  }
+  @media (max-width: 640px) {
+    .header {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+    .profileBtn {
+      width: 44px;
+      height: 44px;
+    }
+  }
+
+  /* ── Phone-sized: the shared mobile layer, which both classic portals load last ── */
+  @media (max-width: 700px) {
+    .headerLeft,
+    .headerRight,
+    .topbarLeft {
+      min-width: 0;
+    }
+    .headerLeft {
+      flex: 1 1 auto;
+      overflow: hidden;
+    }
+    .headerRight {
+      flex: 0 0 auto;
+      gap: 6px;
+    }
+    .headerName {
+      font-size: 15px;
+      letter-spacing: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .topbarTitle {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .headerBadge {
+      display: none;
+    }
+    .bell,
+    .hamburger {
+      min-width: 44px;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .item,
+    .bottomItem {
+      min-height: 44px;
+    }
+    :global([data-portal='team']) .item,
+    :global([data-portal='team']) .profileBtn {
+      min-width: 44px;
+    }
+    :global([data-portal='team']) .profileBtn {
+      min-height: 44px;
+    }
+    .close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 44px;
+      min-height: 44px;
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 26px;
+      line-height: 1;
+      cursor: pointer;
+      border-radius: 8px;
+    }
+    .close:active {
+      background: rgba(var(--ov, 255, 255, 255), 0.06);
+    }
+    :global([data-portal='admin']) .content,
+    :global([data-portal='team']) .content {
+      padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    }
+    .bottomNav,
+    :global([data-portal='team']) .bottomNav {
+      display: flex;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 90;
+      height: calc(64px + env(safe-area-inset-bottom));
+      padding: 0 4px env(safe-area-inset-bottom);
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      justify-content: space-around;
+      align-items: center;
+    }
+    .bottomItem,
+    :global([data-portal='team']) .bottomItem {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      flex: 1 1 0;
+      min-width: 56px;
+      padding: 6px 4px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .bottomActive,
+    :global([data-portal='team']) .bottomActive {
+      color: var(--primary);
+    }
+    .bottomActive .bottomDot,
+    :global([data-portal='team']) .bottomActive .bottomDot {
+      opacity: 1;
+    }
+    .bottomDot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--primary);
+      opacity: 0;
+    }
+  }
+}

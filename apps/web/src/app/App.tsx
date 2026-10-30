@@ -1,50 +1,11 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { SignIn } from '../auth/SignIn';
-import type { Me } from '../lib/api';
 import type { Arrival } from '../lib/arrival';
 import { makeAuthApi, type AuthApi } from '../lib/auth-api';
-import { classicUrl, readEnv, switchToClassicUrl, type MlEnv } from '../lib/env';
+import { readEnv, switchToClassicUrl, type MlEnv } from '../lib/env';
+import { galleryAt } from '../gallery/route';
+import { Session } from './Session';
 import { useMe, type UseMeDeps } from './useMe';
-
-function Who({ me, env, onSignOut }: { me: Me; env: MlEnv; onSignOut: () => void }) {
-  const { actor, caps, sections, workspace } = me;
-  return (
-    <>
-      <h2>Signed in as {actor.name || 'you'}</h2>
-      <dl className="facts">
-        <dt>Account</dt>
-        <dd>
-          {actor.kind === 'admin'
-            ? 'Administrator'
-            : `Team member${actor.jobTitle ? ` · ${actor.jobTitle}` : ''}`}
-        </dd>
-        <dt>Allowed to</dt>
-        <dd>
-          {caps === '*'
-            ? 'do everything'
-            : `${caps.length} ${caps.length === 1 ? 'action' : 'actions'}`}
-        </dd>
-        <dt>Sections</dt>
-        <dd>
-          {sections === '*' ? 'all of them' : sections.length ? sections.join(', ') : 'none yet'}
-        </dd>
-        <dt>Workspace</dt>
-        <dd>{workspace.name}</dd>
-      </dl>
-      <div className="actions">
-        <a className="btn" href={classicUrl(env.portal)}>
-          Open the classic portal
-        </a>
-        <button type="button" className="btn secondary" onClick={onSignOut}>
-          Sign out
-        </button>
-      </div>
-      <p className="muted">
-        The modules are still in the classic portal; they move here one at a time.
-      </p>
-    </>
-  );
-}
 
 export interface AppProps {
   env?: MlEnv;
@@ -53,18 +14,35 @@ export interface AppProps {
   deps?: UseMeDeps;
   /** for tests; the portal's own sign-in routes otherwise */
   api?: AuthApi;
+  /** for tests: keep the address in memory and open at these */
+  entries?: string[];
+}
+
+/** A chunk of its own: the page the app opens with does not carry the gallery (tests/spashell.js holds it to that). */
+const Gallery = lazy(() => import('../gallery/Gallery'));
+
+/** The product, or — at <portal>/__gallery, which needs no session — the page that shows its parts under any look. */
+export function App(props: AppProps) {
+  const [gallery] = useState(() => !props.entries && galleryAt(window.location.pathname));
+  return gallery ? (
+    <Suspense fallback={null}>
+      <Gallery portal={(props.env ?? readEnv()).portal} />
+    </Suspense>
+  ) : (
+    <Product {...props} />
+  );
 }
 
 /**
- * The foundation: it opens with the workspace's look and asks who you are. Nobody yet — the sign-in screens, with
- * everything the classic portal's has; somebody — who, and a way out. The modules come next.
+ * It opens in the workspace's look and asks who you are. Nobody yet — the sign-in screens, with everything the classic
+ * portal's has; somebody — their Session: the frame, with the screens that have moved in it.
  */
-export function App({ env = readEnv(), arrival, deps, api }: AppProps) {
+function Product({ env = readEnv(), arrival, deps, api, entries }: AppProps) {
   const calls = useMemo(
     () => api ?? makeAuthApi(env.portal, deps?.fetchImpl),
     [api, env.portal, deps?.fetchImpl],
   );
-  const { state, retry, signedIn, signOut } = useMe(env.portal, {
+  const { state, token, retry, recheck, signedIn, signOut } = useMe(env.portal, {
     ...deps,
     initialToken: arrival?.token,
   });
@@ -86,6 +64,24 @@ export function App({ env = readEnv(), arrival, deps, api }: AppProps) {
     );
   }
 
+  if (state.phase === 'signed-in' && token) {
+    return (
+      <Session
+        key={token}
+        env={env}
+        me={state.me}
+        token={token}
+        {...(deps?.fetchImpl ? { fetchImpl: deps.fetchImpl } : {})}
+        onUnauthorized={recheck}
+        signOut={() => {
+          setOpened({});
+          signOut(ending => void calls.signOut(ending));
+        }}
+        {...(entries ? { entries } : {})}
+      />
+    );
+  }
+
   return (
     <main className="page">
       <header className="header">
@@ -97,17 +93,6 @@ export function App({ env = readEnv(), arrival, deps, api }: AppProps) {
 
       <section className="card" aria-live="polite">
         {state.phase === 'loading' && <p role="status">Checking your session…</p>}
-
-        {state.phase === 'signed-in' && (
-          <Who
-            me={state.me}
-            env={env}
-            onSignOut={() => {
-              setOpened({});
-              signOut(ending => void calls.signOut(ending));
-            }}
-          />
-        )}
 
         {state.phase === 'unavailable' && (
           <>

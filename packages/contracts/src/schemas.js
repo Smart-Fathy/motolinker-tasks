@@ -31,6 +31,7 @@ const MeResponse = z.object({
     // true when the database could not be asked: the name is the default, not the real one
     degraded: z.boolean().optional(),
   }),
+  // What the server knows about this installation that changes what the app draws; `gchat`: Google Chat is set up.
   flags: z.record(z.string(), z.boolean()),
 });
 

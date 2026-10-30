@@ -733,7 +733,9 @@ src/routes/*.js       one module per feature (stock, suppliers, rfq, huddles, �
 src/http/             the new server code: the actor model's guards, /api/v1, the ml_ui switch and the new
                       app's page (see "Migrating to one codebase")
 packages/contracts/   what the server and the web app agree on: the permission catalogue and rules,
-                      actors (admin / employee, capabilities, scope), wire schemas (zod)
+                      actors (admin / employee, capabilities, scope), the app's screens (who gets each,
+                      where each stands in the navigation, what the classic portals called it), the links
+                      that already exist and where they land, wire schemas (zod)
 apps/web/             the new web app (Vite + React + TypeScript): built to apps/web/dist, served by the
                       server behind the ml_ui switch; apps/web/README.md
 public/*.html         page markup only (the legacy portals)
@@ -871,7 +873,21 @@ What exists so far, all of it invisible to users:
   (authenticator code or recovery code), the team's forgot-password and reset-from-the-email forms, Google's
   return, sign-out — with the classic portals' own screens, words and look, uses the session the classic
   portal keeps (same token keys, so a sign-in on either is a sign-in on both), asks `GET /api/v1/me` who you
-  are and says so; it has no modules yet. Nobody gets it unless they ask: see below.
+  are, and draws **the frame every screen will sit in**: the rail (the admin's sidebar, the team's rail), the top
+  bar and the phone's bottom bar, in the classic look (`tests/shellparity.js` compares every computed value to the
+  classic portal's, apart from a short list of named differences that are all things not built yet — the
+  search box, the arrange and workspace-settings buttons, the refresh, help and bell). The frame lists the
+  screens the classic portal would list for that person — all of them for the admin; for a team member what
+  their grants allow (`packages/contracts/src/modules.js` is the one catalogue of screens and who gets each) —
+  arranged the way the admin arranged the sidebar (names, groups, hidden items), and it remembers what the
+  classic portal remembers (collapsed rail, open groups, last page). Links that already exist in the world
+  (`/employee#requests`, `?chat=<room>`) land on the screen they name. The colour button works (and follows the
+  person across devices), a look the admin saves reaches an open page without a reload, and `?safe=1` is still
+  the way back to the original look. Home is the only screen built so far (who you are and what you may do);
+  every other screen in the rail opens a card that says it is still in the classic portal and links to it. The
+  design primitives are on one page, `/dashboard/__gallery` and `/employee/__gallery`, which
+  `tests/galleryaudit.js` measures for readability under all eight looks in both modes. Nobody gets the app
+  unless they ask: see below.
 
 #### Looking at the new app
 
@@ -887,13 +903,19 @@ the classic page instead, so the switch cannot leave a page that does not open.
 To change what a browser that has asked for nothing gets (staging, a pilot), set `ML_UI_DEFAULT` to `next`
 for both portals, or `ML_UI_DEFAULT_ADMIN` / `ML_UI_DEFAULT_TEAM` for one (`.env.example`). Unset, or
 anything but `next`, is the classic portals. While a browser has `ml_ui=next`, a notification tap opens the
-new app, which cannot open a chat yet: `?ui=legacy` is the way back.
+new app on the screen it names; a chat room has not moved yet, so it opens the card that links to the room in
+the classic portal (`?ui=legacy` is the way back to everything). A browser that has not asked for the new app and
+opens an address inside it (`/dashboard/leads`) is sent to the classic page that address stands for.
 
 Working on it: `npm run dev -w apps/web` serves it on its own (the API is proxied to a server on port
 3000), `npm run test:web` runs its unit tests, `npm run build` builds it, `tests/spashell.js` builds it and
 checks the server half, `tests/signinparity.js` holds its sign-in screens to the classic pages' look value by
-value, and `tests/webauth.js` signs in through the real server in a real browser. Details in
-`apps/web/README.md`.
+value, and `tests/webauth.js` signs in through the real server in a real browser. `tests/modules.js` holds the
+catalogue of screens to the classic portals' own navigation, permission code and emitted links,
+`tests/shellparity.js` holds the frame (rail, top bar, bottom bar) to the classic portals' computed style,
+`tests/webshell.js` runs the frame end to end on the real server (the rail it draws is the rail the classic portal
+draws for the same person; deep links; the colour button; a look saved while a page is open; the live stream), and
+`tests/galleryaudit.js` measures the gallery's contrast under every look. Details in `apps/web/README.md`.
 
 Rules for new server code: it goes in `src/http` or `src/modules` (linted, formatted, type-checked
 through JSDoc), takes its dependencies explicitly rather than through `ctx`, asks `can(actor, 'x.y')` /

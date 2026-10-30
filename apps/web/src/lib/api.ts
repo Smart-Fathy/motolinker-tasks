@@ -1,5 +1,6 @@
 import type { schemas } from '@motolinker/contracts';
 import type { z } from 'zod';
+import type { Portal } from './env';
 
 /** What GET /api/v1/me answers; the schema lives in packages/contracts, so the server and this app cannot drift. */
 export type Me = z.infer<typeof schemas.MeResponse>;
@@ -89,4 +90,103 @@ export async function getMe(
     return { kind: 'unavailable', status: res.status };
   }
   return isMe(body) ? { kind: 'ok', me: body } : { kind: 'unavailable', status: res.status };
+}
+
+/** What a call to the server came back with when it was not an answer: `status` 0 is "could not be reached". */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+  constructor(status: number, message: string, code?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export interface RequestOptions {
+  signal?: AbortSignal;
+}
+
+/** The server, as a signed-in screen asks it questions. */
+export interface Api {
+  /** the portal's own routes (`/api/dashboard`, `/api/employee`), for the screens that are not on /api/v1 yet */
+  readonly base: string;
+  get<T = unknown>(path: string, options?: RequestOptions): Promise<T>;
+  post<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
+  put<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
+  del<T = unknown>(path: string, options?: RequestOptions): Promise<T>;
+}
+
+export interface ApiDeps {
+  portal: Portal;
+  token: string;
+  /** a call came back 401; the owner of the session decides whether that is the token (see useMe) */
+  onUnauthorized?: () => void;
+  fetchImpl?: typeof fetch;
+}
+
+const SAY_UNREACHABLE = 'Cannot reach the server. Check the connection and try again.';
+
+export const portalBase = (portal: Portal): string =>
+  portal === 'team' ? '/api/employee' : '/api/dashboard';
+
+/**
+ * Asks the server as the person who is signed in. An answer that is not a success is an ApiError carrying the server's
+ * own words (`{ error }`); an unreadable body is not the end of the call. A 401 is reported to `onUnauthorized` and
+ * thrown: whether it means the session is over is not decided here — a screen's own route can refuse for its own
+ * reasons, and only the server's answer about the token itself (GET /api/v1/me) ends a session.
+ */
+export function makeApi({ portal, token, onUnauthorized, fetchImpl }: ApiDeps): Api {
+  const doFetch = fetchImpl ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
+  async function call<T>(
+    method: string,
+    path: string,
+    body: unknown,
+    { signal }: RequestOptions = {},
+  ): Promise<T> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    let res: Response;
+    try {
+      res = await doFetch(path, {
+        method,
+        headers,
+        body: body === undefined ? null : JSON.stringify(body),
+        signal: signal ?? null,
+      });
+    } catch (e) {
+      if (isAbort(e)) throw e;
+      throw new ApiError(0, SAY_UNREACHABLE);
+    }
+    let parsed: unknown;
+    try {
+      const text = await res.text();
+      parsed = text ? JSON.parse(text) : undefined;
+    } catch {
+      parsed = undefined;
+    }
+    if (res.ok) return parsed as T;
+    if (res.status === 401) onUnauthorized?.();
+    const said = isObject(parsed) ? parsed : {};
+    const message =
+      typeof said['error'] === 'string' && said['error']
+        ? said['error']
+        : `The server answered with an error (${res.status}).`;
+    throw new ApiError(
+      res.status,
+      message,
+      typeof said['code'] === 'string' ? said['code'] : undefined,
+    );
+  }
+  return {
+    base: portalBase(portal),
+    get: (path, options) => call('GET', path, undefined, options),
+    post: (path, body, options) => call('POST', path, body ?? {}, options),
+    put: (path, body, options) => call('PUT', path, body ?? {}, options),
+    del: (path, options) => call('DELETE', path, undefined, options),
+  };
 }

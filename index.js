@@ -1489,6 +1489,8 @@ const GOOGLE_CHAT_ENABLED = process.env.GOOGLE_CHAT_ENABLED === '1';
 const GOOGLE_CHAT_WANT_READ = process.env.GOOGLE_CHAT_READ !== '0';   // ask for message history
 const CHAT_CLIENT_ID     = process.env.GOOGLE_CHAT_CLIENT_ID     || GOOGLE_CLIENT_ID;
 const CHAT_CLIENT_SECRET = process.env.GOOGLE_CHAT_CLIENT_SECRET || GOOGLE_CLIENT_SECRET;
+// Whether Google Chat is set up here: the classic rails show its item only then, and so does the new app (the `gchat` flag of /api/v1/me).
+ctx.gchatConfigured = () => GOOGLE_CHAT_ENABLED && !!CHAT_CLIENT_ID;
 
 const CHAT_SCOPE_SPACES = 'https://www.googleapis.com/auth/chat.spaces.readonly';
 const CHAT_SCOPE_SEND   = 'https://www.googleapis.com/auth/chat.messages.create';

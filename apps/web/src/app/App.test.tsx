@@ -5,7 +5,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { admin, json, storageWith, team } from '../test/helpers';
 import { App } from './App';
 
-afterEach(cleanup);
+// (the app moves the real address and keeps the real storage; each test starts from neither)
+afterEach(() => {
+  cleanup();
+  window.history.replaceState({}, '', '/');
+  localStorage.clear();
+});
 
 const workspace = { name: 'Acme Motors', logo_url: '', updated_at: null };
 
@@ -29,11 +34,26 @@ const saraMe = {
 };
 
 type Answer = Response | Error | (() => Response | Promise<Response>);
+
+/** What the signed-in frame asks for on its own — the workspace, the person's colour choice, the sidebar's arrangement, the
+ *  live stream — answered quietly, so a test can say only what it is about. */
+const FRAME: Record<string, Answer> = {
+  '/api/workspace': () =>
+    json(200, { ...workspace, theme: {}, typography: {}, shape: {}, texts: {} }),
+  '/api/dashboard/ui-prefs': () => json(200, {}),
+  '/api/employee/ui-prefs': () => json(200, {}),
+  '/api/dashboard/nav-config': () => json(200, { groups: [] }),
+  '/api/employee/nav-config': () => json(200, { groups: [] }),
+  '/api/dashboard/notifications/stream?hd=2': () =>
+    new Response(new ReadableStream({ start() {} })),
+  '/api/employee/notifications/stream?hd=2': () => new Response(new ReadableStream({ start() {} })),
+};
+
 /** A server that answers by address: what each path says, and what it was asked, in order. */
 function server(routes: Record<string, Answer | Answer[]>) {
   const asked: Array<{ path: string; init: RequestInit; body: unknown }> = [];
   const queues = new Map(
-    Object.entries(routes).map(([k, v]) => [k, Array.isArray(v) ? [...v] : [v]]),
+    Object.entries({ ...FRAME, ...routes }).map(([k, v]) => [k, Array.isArray(v) ? [...v] : [v]]),
   );
   const fetchImpl = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const path = String(input);
@@ -48,7 +68,10 @@ function server(routes: Record<string, Answer | Answer[]>) {
     if (answer instanceof Error) throw answer;
     return typeof answer === 'function' ? answer() : answer.clone();
   }) as typeof fetch;
-  return { fetchImpl, asked, paths: () => asked.map(a => a.path) };
+  const paths = () => asked.map(a => a.path);
+  /** …without the frame's own questions: what was asked about signing in, and who is signed in */
+  const identity = () => paths().filter(p => !(p in FRAME));
+  return { fetchImpl, asked, paths, identity };
 }
 const bearer = (init: RequestInit) => (init.headers as Record<string, string>)['Authorization'];
 
@@ -83,8 +106,8 @@ describe('signing in', () => {
     expect(await screen.findByText('Signed in as Admin')).toBeTruthy();
     expect(storage.data.get('ml_admin_token')).toBe('tok-new');
     expect(storage.data.has('ml_emp_token')).toBe(false);
-    expect(s.paths()).toEqual(['/api/auth/login', '/api/v1/me']);
-    expect(bearer(s.asked[1]!.init)).toBe('Bearer tok-new');
+    expect(s.identity()).toEqual(['/api/auth/login', '/api/v1/me']);
+    expect(bearer(s.asked.find(a => a.path === '/api/v1/me')!.init)).toBe('Bearer tok-new');
   });
 
   it('signs a team member in on their own key, through the second step', async () => {
@@ -180,6 +203,7 @@ describe('arriving from Google', () => {
     await user.type(screen.getByLabelText('Authentication code'), '654321');
     await user.click(screen.getByRole('button', { name: 'Verify' }));
     await screen.findByText('Signed in as Sara');
+    await user.click(screen.getByRole('button', { name: 'Your account' }));
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
     expect(await screen.findByLabelText('Password')).toBeTruthy();
     expect(screen.queryByLabelText('Authentication code')).toBeNull();
@@ -298,7 +322,7 @@ describe('signing out', () => {
     });
     const user = userEvent.setup({ delay: null });
     render(<App env={admin} deps={{ storage, fetchImpl: s.fetchImpl }} />);
-    await user.click(await screen.findByRole('button', { name: 'Sign out' }));
+    await user.click(await screen.findByRole('button', { name: 'Sign Out' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Admin Access' })).toBeTruthy();
     expect(storage.removeItem).toHaveBeenCalledWith('ml_admin_token');
     expect(storage.data.size).toBe(0);
@@ -321,7 +345,8 @@ describe('signing out', () => {
         deps={{ storage: storageWith({ ml_emp_token: 'tok' }), fetchImpl: s.fetchImpl }}
       />,
     );
-    await user.click(await screen.findByRole('button', { name: 'Sign out' }));
+    await user.click(await screen.findByRole('button', { name: 'Your account' }));
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
     await screen.findByLabelText('Username');
     expect(s.paths()).toContain('/api/employee/logout');
   });
@@ -333,7 +358,7 @@ describe('signing out', () => {
       const s = server({ '/api/v1/me': json(200, adminMe), '/api/auth/logout': answer });
       const user = userEvent.setup({ delay: null });
       render(<App env={admin} deps={{ storage, fetchImpl: s.fetchImpl }} />);
-      await user.click(await screen.findByRole('button', { name: 'Sign out' }));
+      await user.click(await screen.findByRole('button', { name: 'Sign Out' }));
       expect(await screen.findByLabelText('Username')).toBeTruthy();
       expect(storage.data.size).toBe(0);
     }
@@ -347,7 +372,7 @@ describe('signing out', () => {
     });
     const user = userEvent.setup({ delay: null });
     render(<App env={admin} deps={{ storage, fetchImpl: s.fetchImpl }} />);
-    await user.click(await screen.findByRole('button', { name: 'Sign out' }));
+    await user.click(await screen.findByRole('button', { name: 'Sign Out' }));
     expect(await screen.findByLabelText('Username')).toBeTruthy();
     expect(storage.data.size).toBe(0);
   });
@@ -373,7 +398,7 @@ describe('the app, when the session is not good', () => {
     expect(screen.queryByLabelText('Username')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Signed in as Admin')).toBeTruthy();
-    expect(s.paths()).toEqual(['/api/v1/me', '/api/v1/me']);
+    expect(s.identity()).toEqual(['/api/v1/me', '/api/v1/me']);
   });
 
   it('says it cannot reach the server when it cannot, and keeps the token', async () => {
@@ -412,5 +437,66 @@ describe('the way back', () => {
         .filter(a => a.getAttribute('href') === '/dashboard?ui=legacy');
       expect(links.length, JSON.stringify(routes)).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('the gallery', () => {
+  it('is at <portal>/__gallery, needs no session, and asks the server for nothing', async () => {
+    window.history.pushState({}, '', '/dashboard/__gallery');
+    try {
+      const s = server({});
+      render(<App env={admin} deps={{ storage: storageWith(), fetchImpl: s.fetchImpl }} />);
+      expect(await screen.findByRole('heading', { name: 'Gallery' })).toBeTruthy();
+      expect(document.querySelector('[data-step]')).toBeNull();
+      expect(s.asked).toEqual([]);
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
+});
+
+describe('a call that comes back 401 while the app is open', () => {
+  const refusedStream = {
+    '/api/dashboard/notifications/stream?hd=2': () => new Response(null, { status: 401 }),
+  };
+
+  it('asks the server who the token belongs to, and keeps the person where they are if the server cannot say', async () => {
+    const storage = storageWith({ ml_admin_token: 'tok' });
+    const s = server({
+      ...refusedStream,
+      '/api/v1/me': [
+        json(200, adminMe),
+        json(503, { error: 'db down' }),
+        json(503, { error: 'db down' }),
+      ],
+    });
+    render(<App env={admin} deps={{ storage, fetchImpl: s.fetchImpl }} />);
+    expect(await screen.findByText('Signed in as Admin')).toBeTruthy();
+    await waitFor(() =>
+      expect(s.identity().filter(p => p === '/api/v1/me').length).toBeGreaterThan(1),
+    );
+    expect(screen.getByText('Signed in as Admin')).toBeTruthy();
+    expect(screen.queryByText('The server cannot answer just now')).toBeNull();
+    expect(storage.removeItem).not.toHaveBeenCalled();
+  });
+
+  it('shows the sign-in when the server says the token is not a session', async () => {
+    const storage = storageWith({ ml_admin_token: 'tok' });
+    const s = server({
+      ...refusedStream,
+      '/api/v1/me': [json(200, adminMe), json(401, { error: 'Unauthorized' })],
+    });
+    render(<App env={admin} deps={{ storage, fetchImpl: s.fetchImpl }} />);
+    expect(await screen.findByLabelText('Username')).toBeTruthy();
+    expect(storage.removeItem).toHaveBeenCalledWith('ml_admin_token');
+  });
+
+  it('takes a fresh look at who the person is when the server says they are still signed in', async () => {
+    const storage = storageWith({ ml_admin_token: 'tok' });
+    const before = { ...adminMe, actor: { ...adminMe.actor, name: 'Before' } };
+    const after = { ...adminMe, actor: { ...adminMe.actor, name: 'After' } };
+    const s = server({ ...refusedStream, '/api/v1/me': [json(200, before), json(200, after)] });
+    render(<App env={admin} deps={{ storage, fetchImpl: s.fetchImpl }} />);
+    expect(await screen.findByText('Signed in as After')).toBeTruthy();
   });
 });
