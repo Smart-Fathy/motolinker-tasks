@@ -22,6 +22,10 @@ const used = new Set();
 for (const f of sources) {
   for (const m of fs.readFileSync(f, 'utf8').matchAll(/process\.env\.([A-Z0-9_]+)/g)) used.add(m[1]);
 }
+// src/http is the new server code, which takes the environment as a parameter (`env.NAME`) so it can be tested.
+for (const f of fs.readdirSync('src/http').filter(f => f.endsWith('.js'))) {
+  for (const m of fs.readFileSync('src/http/' + f, 'utf8').matchAll(/\benv\.([A-Z][A-Z0-9_]+)/g)) used.add(m[1]);
+}
 
 c('.env.example exists', fs.existsSync('.env.example'));
 const ex = fs.readFileSync('.env.example', 'utf8');

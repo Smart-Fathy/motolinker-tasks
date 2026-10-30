@@ -730,9 +730,12 @@ index.js              boot, config, auth, Google tokens, chat/notifications core
 src/ctx.js            the shared context feature modules pull their deps from
 src/lib/constants.js  domain vocabulary used across features
 src/routes/*.js       one module per feature (stock, suppliers, rfq, huddles, …)
-src/http/             the actor model's server half: requireCan, /api/v1 (see "Migrating to one codebase")
+src/http/             the new server code: the actor model's guards, /api/v1, the ml_ui switch and the new
+                      app's page (see "Migrating to one codebase")
 packages/contracts/   what the server and the web app agree on: the permission catalogue and rules,
                       actors (admin / employee, capabilities, scope), wire schemas (zod)
+apps/web/             the new web app (Vite + React + TypeScript): built to apps/web/dist, served by the
+                      server behind the ml_ui switch; apps/web/README.md
 public/*.html         page markup only (the legacy portals)
 public/assets/*.{css,js}   the portals' styles and application code
 public/assets/theme-core.js   the look: presets, contrast, tokens (browser and server)
@@ -810,8 +813,9 @@ pull request.
 ### How production is built
 
 Railway builds this repository with Railpack: it copies every `package.json` and the lockfile,
-runs `npm install`, copies the source over, runs `npm run build` if there is one (a no-op until the
-web app lands) and starts `npm run start`. `tests/deployconfig.js` pins the three things that depend on:
+runs `npm install`, copies the source over, runs `npm run build` (which builds the web app: a type-check,
+then Vite; a failure stops the deploy and the previous release keeps serving) and starts `npm run start`.
+`tests/deployconfig.js` pins what depends on it:
 
 - **The Node version** comes from `engines.node` (`22.x`, which Railpack resolves to the latest 22.x),
   and CI reads the same line, so the suites run on what production runs on. There is deliberately **no
@@ -861,6 +865,31 @@ What exists so far, all of it invisible to users:
   list, so none is skipped by accident.
 - **Tooling and CI** — see "Tests" above; `tools/parity/shoot-legacy.js` photographs all 52 pages of
   the legacy portals (light and dark, desktop and phone) as the baseline the new app is compared with.
+- **`apps/web`, the new app's foundation** — a Vite + React 19 + TypeScript workspace, built by
+  `npm run build` and served by this server. For now it opens in the workspace's look from the first paint
+  (the same code that dresses the classic pages dresses its page), uses the session the classic portal
+  keeps (same token keys), asks `GET /api/v1/me` who you are and says so; it has no modules yet. Nobody
+  gets it unless they ask: see below.
+
+#### Looking at the new app
+
+Everybody gets the classic portals. A browser asks for the new app by opening the portal's address with
+`?ui=next`: `/dashboard?ui=next` (admin) or `/employee?ui=next` (team). The server remembers the answer in
+a cookie (`ml_ui`, a year, this browser only), so it stays until the browser asks again with
+`?ui=legacy` — which is also the link in the new app's footer. The classic page is always available at
+`/legacy/dashboard` and `/legacy/employee`, whatever the switch says, and the new app has no sign-in
+screen yet: sign in on the classic portal (same browser) and come back. `?safe=1` still means the
+original look. Anything that stops the new app being sent — no build, a page that cannot be dressed — sends
+the classic page instead, so the switch cannot leave a page that does not open.
+
+To change what a browser that has asked for nothing gets (staging, a pilot), set `ML_UI_DEFAULT` to `next`
+for both portals, or `ML_UI_DEFAULT_ADMIN` / `ML_UI_DEFAULT_TEAM` for one (`.env.example`). Unset, or
+anything but `next`, is the classic portals. While a browser has `ml_ui=next`, a notification tap opens the
+new app, which cannot open a chat yet: `?ui=legacy` is the way back.
+
+Working on it: `npm run dev -w apps/web` serves it on its own (the API is proxied to a server on port
+3000), `npm run test:web` runs its unit tests, `npm run build` builds it, `tests/spashell.js` builds it and
+checks the server half. Details in `apps/web/README.md`.
 
 Rules for new server code: it goes in `src/http` or `src/modules` (linted, formatted, type-checked
 through JSDoc), takes its dependencies explicitly rather than through `ctx`, asks `can(actor, 'x.y')` /

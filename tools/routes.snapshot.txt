@@ -1,11 +1,16 @@
 USE query
 USE expressInit
 USE compression
+USE serveWebAssets
 GET /dashboard
 GET /dashboard.html
+GET /legacy/dashboard
+GET /dashboard/*
 GET /manifest-dashboard.json
 GET /employee
 GET /employee.html
+GET /legacy/employee
+GET /employee/*
 GET /manifest-employee.json
 USE serveStatic
 GET /sw-employee.js

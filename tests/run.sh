@@ -93,6 +93,7 @@ run contracts   node tests/contracts.js
 run actor       node tests/actor.js
 run deployconfig node tests/deployconfig.js
 run shards       node tests/shards.js
+run spashell     node tests/spashell.js
 run webunit      node tools/run-web-tests.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js

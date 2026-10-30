@@ -27,6 +27,13 @@ let currentRoute = '(startup)';
 process.on('unhandledRejection', e => crashes.push(currentRoute + ' :: ' + String(e && e.message || e).split('\n')[0]));
 process.on('uncaughtException',  e => crashes.push(currentRoute + ' :: ' + String(e && e.message || e).split('\n')[0]));
 
+// The new app's page exists only for a browser that asked for it (?ui=next, remembered in a cookie) and only
+// once apps/web has been built, so there are routes that answer 404 to anybody else, on purpose. They are asked
+// below as a browser that did ask, against a directory shaped like a build: the template is a valid page for
+// the code that dresses it. (tests/spashell.js tests the switch itself, against a real build.)
+const webDist = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'ml-smoke-web-'));
+require('fs').copyFileSync(require('path').join(process.cwd(), 'apps', 'web', 'index.html'), require('path').join(webDist, 'index.html'));
+process.env.ML_WEB_DIST = webDist;
 const receiver = require(process.cwd() + '/index.js');
 
 const seen = [];
@@ -117,10 +124,11 @@ setTimeout(async () => {
   // the handler body ran, so it says nothing about whether that body works.
   const REJECTED = /"error"\s*:\s*"(Unauthorized|Not permitted|Not allowed)"/;
 
-  const call = async (method, url, auth) => {
+  const asNewApp = new Set(['GET /dashboard/*', 'GET /employee/*']);
+  const call = async (method, url, auth, cookie) => {
     const opts = {
       method: method.toUpperCase(),
-      headers: { Authorization: 'Bearer ' + auth, 'Content-Type': 'application/json' },
+      headers: { Authorization: 'Bearer ' + auth, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
       body: body(method),
     };
     try {
@@ -135,12 +143,13 @@ setTimeout(async () => {
   const blind = [];
   const hit = {};
   for (const [method, p] of targets) {
-    const url = base + p.replace(/:[A-Za-z_]+/g, '1');
+    const url = base + p.replace(/:[A-Za-z_]+/g, '1').replace('*', 'smoke');
     currentRoute = method.toUpperCase() + ' ' + p;
+    const cookie = asNewApp.has(currentRoute) ? 'ml_ui=next' : null;
     // Which token a route wants is not reliably its path prefix, so try the admin
     // session and fall back to the employee one rather than assuming.
-    let r = await call(method, url, token);
-    if (REJECTED.test(r.text)) r = await call(method, url, empToken);
+    let r = await call(method, url, token, cookie);
+    if (REJECTED.test(r.text)) r = await call(method, url, empToken, cookie);
     const out = r.text;
     if (out === '__timeout__') continue;
     hit[method] = (hit[method] || 0) + 1;
