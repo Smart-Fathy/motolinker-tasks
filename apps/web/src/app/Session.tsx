@@ -8,6 +8,7 @@ import { makeQueryClient } from '../lib/query';
 import { createStream } from '../lib/sse';
 import { throttle } from '../lib/throttle';
 import { Theme } from '../lib/theme';
+import { createToasts } from '../lib/toasts';
 import { accessOf } from './access';
 import { SessionContext, type SessionValue } from './context';
 import { AppRoutes } from './routes';
@@ -53,6 +54,7 @@ export function Session({
     () => safe ?? new URLSearchParams(window.location.search).get('safe') === '1',
   );
   const [client] = useState(makeQueryClient);
+  const [toasts] = useState(createToasts);
   const access = useMemo(() => accessOf(me), [me]);
 
   // (the owner of the session — App — hands this over unchanged between renders)
@@ -130,10 +132,11 @@ export function Session({
       api,
       theme,
       stream,
+      toasts,
       signOut,
       recheck: asked,
     }),
-    [portal, env, me, access, isSafe, api, theme, stream, signOut, asked],
+    [portal, env, me, access, isSafe, api, theme, stream, toasts, signOut, asked],
   );
 
   const routes = <AppRoutes />;

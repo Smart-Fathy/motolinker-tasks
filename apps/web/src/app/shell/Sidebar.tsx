@@ -1,6 +1,7 @@
 import ThemeCore from '@theme-core';
 import { NavLink, useNavigate } from 'react-router';
 import { switchToClassicUrl } from '../../lib/env';
+import { badgeText, useUnreadCount } from '../../modules/notifications';
 import { cx } from '../../ui/cx';
 import { useAppTo, useSession, useTheme } from '../context';
 import type { RailGroup } from '../nav';
@@ -61,6 +62,7 @@ function Brand({ state }: { state: ShellState }) {
 
 export function Sidebar({ rail, active, state }: SidebarProps) {
   const { portal, signOut } = useSession();
+  const unread = useUnreadCount();
   const to = useAppTo();
   const navigate = useNavigate();
   const admin = portal === 'admin';
@@ -122,6 +124,11 @@ export function Sidebar({ rail, active, state }: SidebarProps) {
                         <Icon name={item.icon} />
                       </span>
                       <span className={styles['itemLabel']}>{item.label}</span>
+                      {item.id === 'notifications' && unread > 0 && (
+                        <span className={styles['navBadge']} data-part="navBadge">
+                          {badgeText(unread)}
+                        </span>
+                      )}
                     </>
                   );
                   return admin ? (
