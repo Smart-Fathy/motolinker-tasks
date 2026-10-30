@@ -77,9 +77,10 @@ function startProxy(target, port) {
 
   // ── the browser ───────────────────────────────────────────────────────────────────────────
   // Every host but this machine is unreachable at once (fonts, icon libraries): nothing waits on the internet, and a font that
-  // cannot be had must not matter to the worker.
+  // cannot be had must not matter to the worker. (No proxy either: through one that a machine has set up, "unreachable" can
+  // take as long as the proxy likes, and a font request still open in the classic worker keeps the app's worker from taking over.)
   const puppeteer = require('puppeteer');
-  const browser = await puppeteer.launch({ executablePath: chromePath(), headless: 'new', args: ['--no-sandbox', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1'] });
+  const browser = await puppeteer.launch({ executablePath: chromePath(), headless: 'new', args: ['--no-sandbox', '--no-proxy-server', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1'] });
 
   const STUBS = () => {
     // (the classic pages draw their icons with lucide and their charts with Chart.js, both from a CDN)
