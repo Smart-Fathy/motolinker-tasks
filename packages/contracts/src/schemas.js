@@ -150,6 +150,43 @@ const IssueReportBody = z
   });
 const IssueReportResult = z.object({ ok: z.literal(true), file: z.string() });
 
+// A scheduled meeting: when, for how long, who is in it, and where it happens. `meet_link` is where to join — empty (Google makes a
+// Meet link when the meeting is written to the calendar), a web address, or `huddle:<room>` for an in-app huddle. The server keeps
+// the Google event ids to itself.
+const Meeting = z.object({
+  id: z.number().int(),
+  title: z.string(),
+  description: z.string(),
+  // an instant, as ISO 8601
+  starts_at: z.string(),
+  duration_min: z.number().int(),
+  // employee ids, as text
+  attendee_ids: z.array(z.string()),
+  meet_link: z.string(),
+  // 'admin' or 'employee_<id>'
+  created_by: z.string(),
+  created_at: z.string(),
+});
+
+// GET /api/v1/meetings — the upcoming meetings and the recent past, soonest first, a hundred at most.
+const MeetingList = z.object({ items: z.array(Meeting) });
+
+// POST /api/v1/meetings, PUT /api/v1/meetings/:id — a title and a start; the length is 5 to 480 minutes (30 when it is left out).
+const MeetingBody = z.strictObject({
+  title: z.string().trim().min(1, { error: 'Title is required' }).max(200),
+  starts_at: z.iso.datetime({ offset: true, error: 'A valid start time is required' }),
+  duration_min: z.number().int().min(5).max(480).optional(),
+  attendee_ids: z
+    .array(z.string().regex(/^\d{1,18}$/, { error: 'An attendee is an employee id' }))
+    .max(200)
+    .optional(),
+  meet_link: z.string().trim().max(2048).optional(),
+  description: z.string().max(2000).optional(),
+});
+
+// DELETE /api/v1/meetings/:id — cancelled (or already was).
+const MeetingDeleteResult = z.object({ ok: z.literal(true) });
+
 // What /api/v1 answers when it says no: words for a person, a word for a program, and what was wrong with the request.
 const ApiError = z.object({
   error: z.string(),
@@ -178,5 +215,9 @@ module.exports = {
   IssueCommentBody,
   IssueReportBody,
   IssueReportResult,
+  Meeting,
+  MeetingList,
+  MeetingBody,
+  MeetingDeleteResult,
   ApiError,
 };

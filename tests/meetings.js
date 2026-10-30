@@ -262,6 +262,192 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     reset();
   }
 
+
+  // ═══ 2. /api/v1/meetings: the same meetings through the same service, strict about what it is sent ═══════
+  const { schemas } = require(process.cwd() + '/packages/contracts');
+  const V1 = '/api/v1/meetings';
+  const words = res => JSON.stringify(res.body);
+  const noDbWords = res => !/simulated|XX000|PGRST|rows returned/.test(words(res));
+
+  // ── the list ──
+  reset();
+  {
+    const classic = await call('GET', CLASSIC.team, TEAM);
+    db.log.length = 0;
+    const ana = await call('GET', V1, TEAM);
+    check('a team member lists the meetings as { items }: the same ones, in the same order, as the classic page', ana.status === 200 && Object.keys(ana.body).join() === 'items' && JSON.stringify(ids(ana.body.items)) === JSON.stringify(ids(classic.body)) && JSON.stringify(ids(ana.body.items)) === '[2,3,4]', words(ana));
+    check('…every meeting is what the contract says a meeting is', schemas.MeetingList.safeParse(ana.body).success);
+    check('…asked of the database exactly as the classic page asks', /^\?select=\*&starts_at=gte\..+&order=starts_at\.asc&limit=100$/.test(queries('GET', 'meetings')[0] || ''), queries('GET', 'meetings').join());
+    check('…the Google event ids stay on the server', ana.body.items.every(m => !('calendar_events' in m)) && !/co-ev|ev-2/.test(words(ana)));
+    check('…and the huddle link and the attendees come as stored', ana.body.items[2].meet_link === 'huddle:3' && ana.body.items[0].attendee_ids.join() === '61,62' && ana.body.items[1].attendee_ids.join() === '62,64');
+    const admin = await call('GET', V1, ADMIN), bo = await call('GET', V1, TOKEN[62]);
+    check('the admin reads them too, and so does a team member who may only see them', admin.status === 200 && admin.body.items.length === 3 && bo.status === 200 && bo.body.items.length === 3);
+    const cy = await call('GET', V1, TOKEN[63]);
+    check('one without the Meet section is refused', cy.status === 403 && cy.body.error === 'Not permitted', words(cy));
+    const nobody = await call('GET', V1, null), unknown = await call('GET', V1, 'mt-nobody');
+    check('nobody, and a token nobody issued, are 401', nobody.status === 401 && unknown.status === 401);
+
+    db.tables.meetings.push({ id: 9, title: null, description: null, starts_at: at(5), duration_min: null, attendee_ids: null, meet_link: null, calendar_events: null, created_by: null, created_at: at(-1) });
+    const odd = (await call('GET', V1, TEAM)).body.items.find(m => m.id === 9);
+    check('a meeting whose columns are null has them empty, thirty minutes long and nobody in it — so a client never has to ask', odd && odd.title === '' && odd.description === '' && odd.duration_min === 30 && odd.attendee_ids.length === 0 && odd.meet_link === '' && odd.created_by === '' && schemas.Meeting.safeParse(odd).success, words({ body: odd }));
+    db.failing.add('meetings');
+    const down = await call('GET', V1, TEAM);
+    check('a database that cannot be asked is a 503 that says so, without its own words (the classic route answered 500 with them)', down.status === 503 && down.body.code === 'unavailable' && noDbWords(down), words(down));
+    db.failing.clear();
+  }
+
+  // ── scheduling ──
+  reset();
+  {
+    google.company = 'co-token';
+    const made = await call('POST', V1, TEAM, body({ title: '  Weekly sales sync  ', description: 'Agenda', meet_link: '  https://meet.google.com/xyz  ', attendee_ids: ['64', '65', '61'] }));
+    check('a team member schedules a meeting: 201, the stored meeting as the contract has it, its words trimmed', made.status === 201 && schemas.Meeting.safeParse(made.body).success && Number.isInteger(made.body.id) && made.body.title === 'Weekly sales sync' && made.body.meet_link === 'https://meet.google.com/xyz' && made.body.created_by === 'employee_61' && made.body.duration_min === 30, words(made));
+    check('…the Google event ids are not in the answer', !('calendar_events' in made.body));
+    const stored = row(made.body.id);
+    check('…and the row is what the classic route would have stored', stored && stored.starts_at === new Date(body().starts_at).toISOString() && stored.attendee_ids.join() === '64,65,61' && stored.created_by === 'employee_61' && db.tables.meetings.length === 5);
+    await synced(made.body.id);
+    await until(() => db.tables.notifications.length >= 2);
+    const company = google.calls.filter(c => c.via === 'fetch');
+    check('behind the answer it does what the classic route does: the company\'s calendar invites the attendees who have an email, and the one who connected her own calendar has it written there', company.length === 1 && company[0].method === 'POST' && JSON.stringify(company[0].body.attendees) === '[{"email":"ana@example.com"},{"email":"dee@example.com"},{"email":"eli@example.com"}]' && google.calls.filter(c => c.via === 'upsert').length === 1, JSON.stringify(google.calls.map(c => c.via)));
+    check('…and every attendee but the scheduler is told, in the classic words', JSON.stringify(db.tables.notifications.map(n => n.member_key).sort()) === '["employee_64","employee_65"]' && db.tables.notifications.every(n => n.title === 'Ana scheduled a meeting' && n.url === '/employee#meet'), JSON.stringify(db.tables.notifications.map(n => n.member_key)));
+
+    reset();
+    const minimal = await call('POST', V1, TEAM, { title: 'Just a title', starts_at: at(3) });
+    check('only a title and a start are needed: thirty minutes, nobody invited, no link', minimal.status === 201 && minimal.body.duration_min === 30 && minimal.body.attendee_ids.length === 0 && minimal.body.meet_link === '' && minimal.body.description === '');
+    const offset = await call('POST', V1, TEAM, { title: 'Offset start', starts_at: '2030-05-01T09:30:00+02:00' });
+    check('a start with an offset is an instant like any other, and is stored as UTC', offset.status === 201 && offset.body.starts_at === '2030-05-01T07:30:00.000Z', words(offset));
+    const edges = [];
+    for (const d of [5, 480]) { const r = await call('POST', V1, TEAM, body({ duration_min: d })); if (r.status !== 201 || r.body.duration_min !== d) edges.push(`${d}: ${r.status}`); }
+    check('five minutes and eight hours are the edges of how long a meeting is', edges.length === 0, edges.join('; '));
+    const admin = await call('POST', V1, ADMIN, body({ attendee_ids: ['61'] }));
+    await until(() => db.tables.notifications.length >= 1);
+    check('the admin schedules one too: made by admin, announced as "Admin"', admin.status === 201 && admin.body.created_by === 'admin' && db.tables.notifications.some(n => n.title === 'Admin scheduled a meeting' && n.member_key === 'employee_61'));
+
+    reset();
+    const viewer = await call('POST', V1, TOKEN[62], body()), none = await call('POST', V1, TOKEN[63], body());
+    check('one who may only see meetings, and one without the section, cannot schedule: 403, nothing stored', viewer.status === 403 && none.status === 403 && viewer.body.error === 'Not permitted' && db.tables.meetings.length === 4);
+    const nobody = await call('POST', V1, null, body()), unknown = await call('POST', V1, 'mt-nobody', body());
+    check('nobody, and a token nobody issued, are 401', nobody.status === 401 && unknown.status === 401);
+
+    // what v1 refuses that the classic route let through (it cut, coerced or ignored them)
+    const refused = [];
+    const tooMany = Array.from({ length: 201 }, (_, i) => String(i + 1));
+    for (const [label, b, field] of [
+      ['no title', body({ title: undefined }), 'title'],
+      ['a blank title', body({ title: '   ' }), 'title'],
+      ['a title of more than 200 characters', body({ title: 'T'.repeat(201) }), 'title'],
+      ['a title that is not text', body({ title: 5 }), 'title'],
+      ['no start', body({ starts_at: undefined }), 'starts_at'],
+      ['an empty start', body({ starts_at: '' }), 'starts_at'],
+      ['a start that is not a time', body({ starts_at: 'next tuesday' }), 'starts_at'],
+      ['a start with no zone (which instant would it be?)', body({ starts_at: '2030-05-01T09:30:00' }), 'starts_at'],
+      ['a start that is a number', body({ starts_at: 1893456000000 }), 'starts_at'],
+      ['a length under five minutes', body({ duration_min: 4 }), 'duration_min'],
+      ['a length over eight hours', body({ duration_min: 481 }), 'duration_min'],
+      ['a length that is not whole', body({ duration_min: 45.5 }), 'duration_min'],
+      ['a length that is text', body({ duration_min: '45' }), 'duration_min'],
+      ['an attendee that is not an id', body({ attendee_ids: ['64', 'x'] }), 'attendee_ids'],
+      ['an attendee that is empty', body({ attendee_ids: ['64', ''] }), 'attendee_ids'],
+      ['an attendee that is a number', body({ attendee_ids: [64] }), 'attendee_ids'],
+      ['an attendee that is null', body({ attendee_ids: [null] }), 'attendee_ids'],
+      ['attendees that are not a list', body({ attendee_ids: '64' }), 'attendee_ids'],
+      ['more than two hundred attendees', body({ attendee_ids: tooMany }), 'attendee_ids'],
+      ['a link of more than 2048 characters', body({ meet_link: 'h'.repeat(2049) }), 'meet_link'],
+      ['notes of more than 2000 characters', body({ description: 'n'.repeat(2001) }), 'description'],
+      ['a field the sheet does not offer: an id', body({ id: 999 }), ''],
+      ['…an owner', body({ created_by: 'admin' }), ''],
+      ['…the calendar\'s event ids', body({ calendar_events: { company: 'x' } }), ''],
+    ]) {
+      const r = await call('POST', V1, TEAM, b);
+      const said = r.body && r.body.error;
+      if (r.status !== 400 || r.body.code !== 'invalid' || !Array.isArray(r.body.issues) || !r.body.issues.length || !said || !noDbWords(r)) refused.push(`${label}: ${r.status} ${words(r)}`);
+      else if (field && r.body.issues[0].path.split('.')[0] !== field) refused.push(`${label}: the first thing wrong was ${r.body.issues[0].path}, not ${field}`);
+    }
+    check('a meeting with no title, a start that is not a clear instant, a length outside 5–480, attendees that are not employee ids, an oversize field or a field it was not offered is a 400 that says what was wrong', refused.length === 0, refused.join(' | '));
+    const titleWords = (await call('POST', V1, TEAM, body({ title: '' }))).body.error, startWords = (await call('POST', V1, TEAM, body({ starts_at: 'x' }))).body.error;
+    check('…in words a person can read, naming the title or the start', /title/i.test(titleWords) && /start/i.test(startWords), `${titleWords} / ${startWords}`);
+    const none2 = await call('POST', V1, TEAM), array = await call('POST', V1, TEAM, [body()]);
+    check('no body at all, and a list instead of an object, are the same 400', none2.status === 400 && none2.body.code === 'invalid' && array.status === 400 && array.body.code === 'invalid');
+    check('…and a meeting that is refused is not stored, written to Google or announced', db.tables.meetings.length === 4 && google.calls.length === 0 && db.tables.notifications.length === 0);
+
+    google.fail = true;
+    const refusedByGoogle = await call('POST', V1, TEAM, body({ attendee_ids: ['64'] }));
+    await sleep(300);
+    check('Google refusing the company event does not undo the meeting, as on the classic route', refusedByGoogle.status === 201 && row(refusedByGoogle.body.id) && !(row(refusedByGoogle.body.id).calendar_events || {}).company);
+    google.fail = false;
+
+    reset();
+    db.failing.add('meetings');
+    const down = await call('POST', V1, TEAM, body({ attendee_ids: ['64'] }));
+    check('a database that cannot be asked is a 503 without its own words, and nobody is told of a meeting that was not kept', down.status === 503 && down.body.code === 'unavailable' && noDbWords(down) && (await sleep(150), db.tables.notifications.length === 0 && google.calls.length === 0), words(down));
+    db.failing.clear();
+  }
+
+  // ── editing ──
+  reset();
+  {
+    google.company = null;
+    const put = await call('PUT', `${V1}/3`, TEAM, body({ title: 'Moved', attendee_ids: ['65'], description: '' }));
+    check('a team member edits a meeting: 200, the stored meeting comes back changed, still made by whoever made it', put.status === 200 && schemas.Meeting.safeParse(put.body).success && put.body.id === 3 && put.body.title === 'Moved' && put.body.created_by === 'employee_61' && !('calendar_events' in put.body), words(put));
+    check('…and nobody is told again', (await sleep(150), db.tables.notifications.length === 0));
+    const lost = await call('PUT', `${V1}/999`, TEAM, body());
+    check('a meeting that is not there is a 404 in the one error shape (the classic route answered 500 with the database\'s words)', lost.status === 404 && lost.body.code === 'not_found' && noDbWords(lost), words(lost));
+    const badId = [];
+    for (const id of ['abc', '1.5', '-1', '99999999999999999999']) { const r = await call('PUT', `${V1}/${id}`, TEAM, body()); if (r.status !== 400 || r.body.code !== 'invalid') badId.push(`${id}: ${r.status}`); }
+    check('an id that is not digits is a 400', badId.length === 0, badId.join('; '));
+    const invalid = await call('PUT', `${V1}/3`, TEAM, body({ title: '' }));
+    check('the same strict checks apply as when scheduling', invalid.status === 400 && invalid.body.code === 'invalid' && (await call('PUT', `${V1}/3`, TEAM, body({ starts_at: 'x' }))).status === 400 && (await call('PUT', `${V1}/3`, TEAM, { ...body(), created_by: 'admin' })).status === 400 && row(3).title === 'Moved');
+    const viewer = await call('PUT', `${V1}/3`, TOKEN[62], body()), none = await call('PUT', `${V1}/3`, TOKEN[63], body()), nobody = await call('PUT', `${V1}/3`, null, body());
+    check('one who may only see meetings, and one without the section, cannot edit (403); nobody is 401', viewer.status === 403 && none.status === 403 && nobody.status === 401 && row(3).title === 'Moved');
+    const admin = await call('PUT', `${V1}/3`, ADMIN, body({ title: 'By the admin' }));
+    check('the admin edits any', admin.status === 200 && row(3).title === 'By the admin' && row(3).created_by === 'employee_61');
+    db.failing.add('meetings');
+    const down = await call('PUT', `${V1}/3`, TEAM, body());
+    check('a database that cannot be asked is a 503 without its own words', down.status === 503 && down.body.code === 'unavailable' && noDbWords(down), words(down));
+    db.failing.clear();
+
+    reset();
+    google.company = 'co-token';
+    const first = await call('POST', V1, TEAM, body({ attendee_ids: ['64'] }));
+    await synced(first.body.id);
+    google.calls.length = 0;
+    await call('PUT', `${V1}/${first.body.id}`, TEAM, body({ title: 'Renamed', attendee_ids: ['64'] }));
+    await until(() => google.calls.some(c => c.via === 'upsert'));
+    const patched = google.calls.filter(c => c.via === 'fetch')[0];
+    check('editing writes to the event it already made, rather than making another', patched && patched.method === 'PATCH' && /events\/co-ev-1\?sendUpdates=all/.test(patched.url) && google.calls.filter(c => c.via === 'upsert')[0].existingId === 'personal-tok-64');
+    reset();
+  }
+
+  // ── cancelling ──
+  reset();
+  {
+    const made = await call('POST', V1, TEAM, body({ attendee_ids: ['64'] }));
+    await synced(made.body.id);
+    google.calls.length = 0; db.log.length = 0;
+    const del = await call('DELETE', `${V1}/${made.body.id}`, TEAM);
+    check('a team member cancels a meeting: { ok: true }, and it is gone', del.status === 200 && schemas.MeetingDeleteResult.safeParse(del.body).success && !row(made.body.id));
+    check('…read first, then deleted by id', queries('GET', 'meetings').join() === `?select=*&id=eq.${made.body.id}` && queries('DELETE', 'meetings').join() === `?id=eq.${made.body.id}`, `${queries('GET', 'meetings')} ${queries('DELETE', 'meetings')}`);
+    await until(() => google.calls.filter(c => c.method === 'DELETE').length >= 2);
+    const deletes = google.calls.filter(c => c.method === 'DELETE');
+    check('…and its events are removed from the company\'s calendar and from each personal one', deletes.length === 2 && deletes.some(c => c.token === 'Bearer co-token' && /events\/co-ev-1\?sendUpdates=all$/.test(c.url)) && deletes.some(c => c.token === 'Bearer tok-64' && /events\/personal-tok-64$/.test(c.url)), JSON.stringify(deletes.map(c => [c.token, c.url])));
+    const again = await call('DELETE', `${V1}/${made.body.id}`, TEAM);
+    check('cancelling what is already gone is ok too, and writes nothing to Google', again.status === 200 && again.body.ok === true && (await sleep(150), google.calls.filter(c => c.method === 'DELETE').length === 2));
+    reset();
+
+    const viewer = await call('DELETE', `${V1}/2`, TOKEN[62]), none = await call('DELETE', `${V1}/2`, TOKEN[63]), nobody = await call('DELETE', `${V1}/2`, null);
+    check('one who may only see meetings, and one without the section, cannot cancel (403); nobody is 401', viewer.status === 403 && none.status === 403 && nobody.status === 401 && row(2));
+    const badId = [];
+    for (const id of ['abc', '1.5', '-1', '99999999999999999999']) { const r = await call('DELETE', `${V1}/${id}`, TEAM); if (r.status !== 400 || r.body.code !== 'invalid') badId.push(`${id}: ${r.status}`); }
+    check('an id that is not digits is a 400', badId.length === 0 && db.tables.meetings.length === 4, badId.join('; '));
+    const admin = await call('DELETE', `${V1}/2`, ADMIN);
+    check('the admin cancels any', admin.status === 200 && !row(2));
+    reset();
+    db.failing.add('meetings');
+    const down = await call('DELETE', `${V1}/2`, TEAM);
+    check('a database that cannot be asked is a 503 without its own words', down.status === 503 && down.body.code === 'unavailable' && noDbWords(down) && google.calls.length === 0, words(down));
+    db.failing.clear();
+  }
+
   global.fetch = realFetch;
   console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);
   process.exit(results.every(Boolean) ? 0 : 1);

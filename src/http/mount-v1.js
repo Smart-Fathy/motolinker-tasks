@@ -17,6 +17,7 @@ const { fileUpload } = require('./uploads');
 const { createNotificationsService, mountNotifications } = require('../modules/notifications');
 const { createSubmissionsService, mountSubmissions } = require('../modules/submissions');
 const { createIssuesService, mountIssues } = require('../modules/issues');
+const { createMeetingsService, mountMeetings } = require('../modules/meetings');
 
 /** @type {{ method: string, path: string, cap: string | null, public: boolean }[]} */
 const routes = [];
@@ -114,6 +115,21 @@ function mountV1({ receiver, ctx }) {
     }),
     json: jsonBody(),
     upload: fileUpload(ctx.multer, { field: 'file', maxBytes: 10 * 1024 * 1024 }),
+  });
+
+  // The scheduled meetings (the Meet page, and what the calendar draws). The classic routes use the same service. Google is
+  // reached through the context at the moment it is needed: it is wired in after this file is loaded.
+  mountMeetings({
+    v1,
+    service: createMeetingsService({
+      supabase: ctx.supabase,
+      notify: (/** @type {any[]} */ ...a) => ctx.createNotification(...a),
+      getCalendarToken: (/** @type {any[]} */ ...a) => ctx.getCalendarToken(...a),
+      getEmployeeCalendarToken: (/** @type {any[]} */ ...a) => ctx.getEmployeeCalendarToken(...a),
+      upsertCalendarEvent: (/** @type {any[]} */ ...a) => ctx.upsertCalendarEvent(...a),
+      fetch: (/** @type {any[]} */ ...a) => globalThis.fetch(.../** @type {[any, any]} */ (a)),
+    }),
+    json: jsonBody(),
   });
 }
 
