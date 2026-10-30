@@ -5,8 +5,9 @@
 // in by their exact text. Then src/lib/shell.js — the code that dresses the classic pages — does what it always
 // does: the workspace's name, picture and look, the early light/dark script, the wording an admin replaced. The new
 // app therefore opens in the same look as the classic page would, from the first paint, with no flash of the
-// original, and `?safe=1` still means the original look. Last, the marker in <head> becomes `window.__ML__`,
-// the little the app is told about where it is.
+// original, and `?safe=1` still means the original look. Last, the marker in <head> becomes `window.__ML__`, the
+// little the app is told about where it is: the portal, the workspace's name, and the wording an admin replaced (the
+// classic pages are dressed by markers in their HTML, which an app that draws its own text has none of).
 //
 // Every swap is by exact text and a missing one is an error, not a quiet miss: a template that has lost a hook
 // would otherwise open undressed. tests/spashell.js holds the template and the built page to this.
@@ -18,6 +19,8 @@ const BOOT_MARKER = '<!--ml:boot-->';
 const SWAPS = {
   admin: [],
   team: [
+    // which portal's defaults the stylesheet starts from (apps/web/src/styles/portal-team.css)
+    ['<html lang="en" data-portal="admin">', '<html lang="en" data-portal="team">'],
     ['<meta name="theme-color" content="#1e2130">', '<meta name="theme-color" content="#0a0b10">'],
     [
       '<meta name="apple-mobile-web-app-status-bar-style" content="default">',
@@ -47,9 +50,13 @@ const scriptJson = (/** @type {unknown} */ value) =>
 /**
  * The renderer, given the code that dresses a page (src/lib/shell.js, which src/routes/shell.js hands in: this file
  * takes what it needs rather than reaching into the legacy server).
- * @param {{ renderShell: (html: string, ws: Record<string, any>, opts: { safe?: boolean }) => string, defaultName: string }} deps
+ * @param {{
+ *   renderShell: (html: string, ws: Record<string, any>, opts: { safe?: boolean }) => string,
+ *   wordingOf: (ws: Record<string, any>, opts: { safe?: boolean }) => Record<string, string>,
+ *   defaultName: string,
+ * }} deps
  */
-function makeRenderSpa({ renderShell, defaultName }) {
+function makeRenderSpa({ renderShell, wordingOf, defaultName }) {
   /**
    * @param {string} template the text of apps/web/dist/index.html
    * @param {Record<string, any>} ws the workspace profile (as src/routes/shell.js is handed it)
@@ -71,7 +78,12 @@ function makeRenderSpa({ renderShell, defaultName }) {
     const name = ws.custom_name ? ws.name : defaultName;
     const boot =
       '<script>window.__ML__=' +
-      scriptJson({ v: 1, portal: kind, ui: 'next', workspace: { name } }) +
+      scriptJson({
+        v: 1,
+        portal: kind,
+        ui: 'next',
+        workspace: { name, texts: wordingOf(ws, { safe }) },
+      }) +
       ';</script>';
     return html.replace(BOOT_MARKER, () => boot);
   };

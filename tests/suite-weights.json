@@ -44,7 +44,9 @@
     "permsui": 6,
     "securityui": 5,
     "navtest": 5,
-    "spashell": 9,
-    "webunit": 6
+    "spashell": 2,
+    "webunit": 4,
+    "signinparity": 18,
+    "webauth": 18
   }
 }

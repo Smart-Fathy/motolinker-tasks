@@ -1,0 +1,91 @@
+/* A labelled text input, as the classic sign-in screens have them: the admin's has a bare input with a placeholder
+   (the label is there for screen readers only); the team's has an uppercase label above it. */
+@layer ui {
+  .field {
+    display: block;
+  }
+  .label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .input {
+    display: inline-block;
+    width: 100%;
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--hair);
+    border-radius: calc(8px * var(--r-k, 1));
+    background: var(--field-bg, #0e0e10);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+  }
+  .input:focus {
+    border-color: var(--gold);
+    box-shadow:
+      0 0 0 3px rgba(var(--primary-rgb, 201, 163, 94), 0.14),
+      var(--glow, 0 0 #0000);
+  }
+
+  :global([data-portal='team']) .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  :global([data-portal='team']) .label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip-path: none;
+    white-space: normal;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  :global([data-portal='team']) .input {
+    display: block;
+    margin-bottom: 0;
+    padding: 11px 14px;
+    border-color: var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    font-family: var(--font);
+    transition:
+      border 0.2s,
+      box-shadow 0.2s;
+  }
+  :global([data-portal='team']) .input:focus {
+    border-color: var(--primary);
+    box-shadow:
+      0 0 0 3px rgba(var(--alt-rgb, 124, 106, 255), 0.12),
+      var(--glow, 0 0 #0000);
+  }
+
+  @media (max-width: 700px) {
+    .input {
+      font-size: 16px;
+    }
+    :global([data-portal='team']) .input {
+      padding: 12px 14px;
+    }
+  }
+  @media (max-width: 640px) {
+    .input {
+      padding: 12px 14px;
+      border-radius: calc(10px * var(--r-k, 1));
+    }
+    :global([data-portal='team']) .input {
+      border-radius: var(--radius-sm);
+    }
+  }
+}

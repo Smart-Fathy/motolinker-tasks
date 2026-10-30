@@ -18,11 +18,11 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { renderShell, renderManifest, DEFAULT_NAME } = require('../lib/shell');
+const { renderShell, renderManifest, wordingOf, DEFAULT_NAME } = require('../lib/shell');
 const { makeRenderSpa } = require('../http/spa-shell');
 const { chooseUi, rememberCookie, defaultFor } = require('../http/ui-choice');
 
-const renderSpa = makeRenderSpa({ renderShell, defaultName: DEFAULT_NAME });
+const renderSpa = makeRenderSpa({ renderShell, wordingOf, defaultName: DEFAULT_NAME });
 
 const PAGES = [
   { kind: 'admin', file: 'dashboard.html', routes: ['/dashboard', '/dashboard.html'], inside: '/dashboard/*', classic: '/legacy/dashboard', manifest: 'manifest-dashboard.json' },

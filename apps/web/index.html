@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-portal="admin">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -19,7 +19,7 @@
 <body>
   <!--
     This file is a template. src/lib/spa-shell.js (the server) writes the rest of the page: for the team portal
-    it swaps the admin values above (title, manifest, theme colour, app title, the noscript link) for the team's,
+    it swaps the admin values above (portal, title, manifest, theme colour, app title, the noscript link) for the team's,
     then src/lib/shell.js writes the workspace's name, picture and look into it exactly as it does for the classic
     portals, and the marker in <head> becomes `window.__ML__`. The head markup has to stay as the classic pages
     have it, because that code finds its places by their text; tests/spashell.js fails if one goes missing.

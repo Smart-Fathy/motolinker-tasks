@@ -82,6 +82,13 @@ function renderShell(html, ws, { safe = false } = {}) {
   return out;
 }
 
+// The wording an admin replaced, as data. The classic pages are dressed by markers in their HTML (above); the new
+// app draws its text by script, out of the markers' reach, so it is told the wording instead, from the same place
+// and with the same rule for safe mode: the original look has the original wording.
+function wordingOf(ws, { safe = false } = {}) {
+  return { ...(safe ? ORIGINAL_LOOK : ThemeCore.normalize(ws)).texts };
+}
+
 // The install manifest. The workspace's name and, if it has chosen colours, its page
 // colour; everything else (icons, scope, start page) is the file as it ships.
 function renderManifest(base, ws, kind, { safe = false } = {}) {
@@ -100,4 +107,4 @@ function renderManifest(base, ws, kind, { safe = false } = {}) {
   return m;
 }
 
-module.exports = { renderShell, renderManifest, esc, DEFAULT_NAME };
+module.exports = { renderShell, renderManifest, wordingOf, esc, DEFAULT_NAME };

@@ -6,6 +6,7 @@ export const TOKEN_KEY: Record<Portal, string> = { admin: 'ml_admin_token', team
 
 type Reader = Pick<Storage, 'getItem'>;
 type Remover = Pick<Storage, 'removeItem'>;
+type Writer = Pick<Storage, 'setItem'>;
 
 // Storage can be missing or can throw (a private window, blocked site data): that is "no token", not a crash.
 function browserStorage(): Storage | null {
@@ -25,6 +26,24 @@ export function readToken(
     return t ? t : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Keep the token for the next page load (and for the classic portal, which reads the same key). Storage can refuse —
+ * the caller keeps the token in memory either way, so a refusal costs a reload's worth of sign-in, not the sign-in.
+ */
+export function writeToken(
+  portal: Portal,
+  token: string,
+  storage: Writer | null = browserStorage(),
+): boolean {
+  try {
+    if (!storage) return false;
+    storage.setItem(TOKEN_KEY[portal], token);
+    return true;
+  } catch {
+    return false;
   }
 }
 

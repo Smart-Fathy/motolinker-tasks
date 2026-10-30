@@ -1,0 +1,22 @@
+/* Where the team portal's classic sheet starts from a different value than the admin's, and the few names only the
+   team's sheet has. The server marks the page (<html data-portal="team">, src/http/spa-shell.js), so the one app wears
+   each portal's own defaults until the redesign makes them one. The workspace's look (<style id="ws-theme">) still
+   wins over all of it. src/styles/tokens.test.ts holds these to employee.css, and fails if a token the app defines
+   starts from a different value in employee.css than in dashboard.css without being listed here. */
+@layer base {
+  :root[data-portal='team'],
+  [data-portal='team'] .on-dark {
+    --bg: #0b0b0d;
+    --surface: #131316;
+    --radius: calc(8px * var(--r-k, 1));
+    --radius-sm: calc(6px * var(--r-k, 1));
+    --font: var(--font-body, 'Manrope', system-ui, sans-serif);
+    --glass-border: rgba(255, 255, 255, 0.07);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, calc(0.4 * var(--sh-k, 1)));
+  }
+
+  [data-portal='team'] body {
+    font-family: var(--font);
+    letter-spacing: normal;
+  }
+}

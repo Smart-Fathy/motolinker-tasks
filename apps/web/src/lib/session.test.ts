@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { clearToken, readToken, TOKEN_KEY } from './session';
+import { clearToken, readToken, TOKEN_KEY, writeToken } from './session';
 
 const fakeStorage = (initial: Record<string, string> = {}) => {
   const data = new Map(Object.entries(initial));
   return {
     getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => void data.set(k, v),
     removeItem: (k: string) => void data.delete(k),
     data,
   };
@@ -44,5 +45,23 @@ describe('the session token', () => {
     const s = fakeStorage({ ml_admin_token: 'a', ml_emp_token: 't' });
     clearToken('team', s);
     expect([...s.data.keys()]).toEqual(['ml_admin_token']);
+  });
+
+  it('is written to the portal’s own key, where the classic portal reads it, and reported as kept', () => {
+    const s = fakeStorage();
+    expect(writeToken('team', 'abc', s)).toBe(true);
+    expect([...s.data]).toEqual([['ml_emp_token', 'abc']]);
+    expect(readToken('team', s)).toBe('abc');
+    expect(readToken('admin', s)).toBeNull();
+  });
+
+  it('is reported as not kept, not a crash, when storage refuses or is missing', () => {
+    const refusing = {
+      setItem: () => {
+        throw new Error('QuotaExceededError');
+      },
+    };
+    expect(writeToken('admin', 'abc', refusing)).toBe(false);
+    expect(writeToken('admin', 'abc', null)).toBe(false);
   });
 });
