@@ -1017,4 +1017,10 @@
       opacity: 0;
     }
   }
+  /* A classic page shown in a frame (src/legacy) takes the whole page area, edge to edge: the team's padding would
+     otherwise leave a ring of empty space around a page that has its own. (After the team's rules, and stronger.) */
+  .page:has([data-part='legacyFrame']),
+  :global([data-portal='team']) .page:has([data-part='legacyFrame']) {
+    padding: 0;
+  }
 }

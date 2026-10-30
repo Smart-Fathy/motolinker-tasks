@@ -1,9 +1,8 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Me } from '../lib/api';
-import { admin, adminMe, json, team, teamMe } from '../test/helpers';
-import { Session } from './Session';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { adminMe, json, teamMe } from '../test/helpers';
+import { open, PROFILE } from '../test/session';
 
 beforeEach(() => {
   localStorage.clear();
@@ -14,74 +13,6 @@ afterEach(() => {
   cleanup();
   document.body.style.overflow = '';
 });
-
-const PROFILE = {
-  name: 'Acme Motors',
-  logo_url: '',
-  updated_at: '2026-10-01T00:00:00.000Z',
-  theme: { preset: 'moto', default_mode: 'dark' },
-  typography: {},
-  shape: {},
-  texts: {},
-};
-
-/** The frame's own questions, and a live stream the test can write to. */
-function frame(portal: 'admin' | 'team', more: Record<string, () => Response> = {}) {
-  const base = portal === 'admin' ? '/api/dashboard' : '/api/employee';
-  let push: (text: string) => void = () => undefined;
-  const asked: { path: string; init: RequestInit }[] = [];
-  const routes: Record<string, () => Response> = {
-    '/api/workspace': () => json(200, PROFILE),
-    [`${base}/ui-prefs`]: () => json(200, {}),
-    [`${base}/nav-config`]: () => json(200, { groups: [] }),
-    [`${base}/notifications/stream?hd=2`]: () =>
-      new Response(
-        new ReadableStream<Uint8Array>({
-          start(ctl) {
-            const enc = new TextEncoder();
-            push = text => ctl.enqueue(enc.encode(text));
-          },
-        }),
-      ),
-    ...more,
-  };
-  const fetchImpl = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
-    const path = String(input);
-    asked.push({ path, init });
-    const answer = routes[path];
-    if (!answer) throw new TypeError('no answer for ' + path);
-    return answer();
-  }) as typeof fetch;
-  return {
-    fetchImpl,
-    asked,
-    push: (t: string) => push(t),
-    calls: (p: string) => asked.filter(a => a.path === p),
-  };
-}
-
-function open(
-  portal: 'admin' | 'team',
-  me: Me,
-  { entries = ['/'], safe = false, more = {} as Record<string, () => Response> } = {},
-) {
-  const f = frame(portal, more);
-  const signOut = vi.fn();
-  const onUnauthorized = vi.fn();
-  const view = render(
-    <Session
-      env={portal === 'admin' ? admin : team}
-      me={me}
-      token="tok"
-      signOut={signOut}
-      onUnauthorized={onUnauthorized}
-      fetchImpl={f.fetchImpl}
-      entries={entries}
-      safe={safe}
-    />,
-  );
-  return { ...f, ...view, signOut, onUnauthorized };
-}
 
 const rail = () => screen.getByRole('navigation', { name: 'Sections' });
 const names = (el: HTMLElement) =>
@@ -133,18 +64,30 @@ describe("the admin's frame", () => {
     await screen.findByText(/Signed in as Admin/);
     await user.click(within(rail()).getByRole('button', { name: /^CRM/ }));
     await user.click(screen.getByRole('link', { name: 'Leads' }));
-    expect(await screen.findByRole('heading', { name: 'Leads' })).toBeTruthy();
+    expect(await screen.findByTitle('Leads (classic page)')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Leads' }).getAttribute('aria-current')).toBe('page');
     expect(localStorage.getItem('ml_page')).toBe('customers');
   });
 
-  it('says a screen has not moved yet and sends the person to the classic portal for it, not a dead end', async () => {
+  it('shows a screen that has not moved as its classic page, in a frame, and Home is one click away', async () => {
     const user = userEvent.setup({ delay: null });
     open('admin', adminMe(), { entries: ['/leads'] });
-    expect(await screen.findByRole('heading', { name: 'Leads' })).toBeTruthy();
-    expect(screen.getByText(/has not moved to the new app yet/)).toBeTruthy();
-    const classic = screen.getByRole('link', { name: /Open Leads in the classic portal/ });
-    expect(classic.getAttribute('href')).toBe('/legacy/dashboard#customers');
+    const frame = await screen.findByTitle('Leads (classic page)');
+    expect(frame.getAttribute('src')).toBe('/legacy/dashboard?embed=1#customers');
+    expect(screen.getByRole('link', { name: 'Leads' }).getAttribute('aria-current')).toBe('page');
+    await user.click(screen.getByRole('link', { name: 'Home' }));
+    expect(await screen.findByText(/Signed in as Admin/)).toBeTruthy();
+    expect(document.querySelector('iframe')).toBeNull();
+  });
+
+  it('says why a screen cannot be shown in a frame and sends the person to the classic portal for it, not a dead end', async () => {
+    const user = userEvent.setup({ delay: null });
+    open('admin', adminMe(), { entries: ['/chat'] });
+    expect(await screen.findByRole('heading', { name: 'Chat' })).toBeTruthy();
+    expect(screen.getByText(/live connection to the server/)).toBeTruthy();
+    expect(document.querySelector('iframe')).toBeNull();
+    const classic = screen.getByRole('link', { name: /Open Chat in the classic portal/ });
+    expect(classic.getAttribute('href')).toBe('/legacy/dashboard#chat');
     await user.click(screen.getByRole('link', { name: 'Home' }));
     expect(await screen.findByText(/Signed in as Admin/)).toBeTruthy();
   });
@@ -263,15 +206,13 @@ describe('what a team member is given', () => {
 
   it('opens a screen they were granted', async () => {
     open('team', teamMe({ deals: true }), { entries: ['/deals'] });
-    expect(await screen.findByRole('heading', { name: 'Deals' })).toBeTruthy();
-    expect(
-      screen.getByRole('link', { name: /Open Deals in the classic portal/ }).getAttribute('href'),
-    ).toBe('/legacy/employee#deals');
+    const frame = await screen.findByTitle('Deals (classic page)');
+    expect(frame.getAttribute('src')).toBe('/legacy/employee?embed=1#deals');
   });
 
   it('names the page in the top bar as the classic team portal does', async () => {
     open('team', teamMe({ submissions: true }), { entries: ['/submissions'] });
-    await screen.findByRole('heading', { name: 'Website Submissions' });
+    await screen.findByTitle('Website Submissions (classic page)');
     expect(document.querySelector('[data-part=title]')?.textContent).toBe('Website Submissions');
   });
 
@@ -301,7 +242,7 @@ describe('what a team member is given', () => {
 describe('links that already exist', () => {
   it("opens the screen a hash names, in either portal's words, and lets go of the hash", async () => {
     open('admin', adminMe(), { entries: ['/#customers'] });
-    expect(await screen.findByRole('heading', { name: 'Leads' })).toBeTruthy();
+    expect(await screen.findByTitle('Leads (classic page)')).toBeTruthy();
   });
 
   it('opens a chat room from a notification click', async () => {
@@ -314,7 +255,7 @@ describe('links that already exist', () => {
 
   it('opens the hours page for the team\'s old "log" hash', async () => {
     open('team', teamMe({ hours: true, hoursActions: { log: true } }), { entries: ['/#log'] });
-    expect(await screen.findByRole('heading', { name: 'Hours Log' })).toBeTruthy();
+    expect(await screen.findByTitle('Hours Log (classic page)')).toBeTruthy();
   });
 
   it('opens Home for a hash that is nothing', async () => {
@@ -325,7 +266,7 @@ describe('links that already exist', () => {
   it('opens where the person was last, if they still may, and Home if not', async () => {
     localStorage.setItem('ml_emp_page', 'requests');
     open('team', teamMe({ requests: true }));
-    expect(await screen.findByRole('heading', { name: 'Requests' })).toBeTruthy();
+    expect(await screen.findByTitle('Requests (classic page)')).toBeTruthy();
     cleanup();
     localStorage.setItem('ml_emp_page', 'leads');
     open('team', teamMe({}));

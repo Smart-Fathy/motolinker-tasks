@@ -110,8 +110,19 @@ export function Session({
   }, [stream, theme, asked]);
 
   const value = useMemo<SessionValue>(
-    () => ({ portal, env, me, access, safe: isSafe, api, theme, stream, signOut }),
-    [portal, env, me, access, isSafe, api, theme, stream, signOut],
+    () => ({
+      portal,
+      env,
+      me,
+      access,
+      safe: isSafe,
+      api,
+      theme,
+      stream,
+      signOut,
+      recheck: asked,
+    }),
+    [portal, env, me, access, isSafe, api, theme, stream, signOut, asked],
   );
 
   const routes = <AppRoutes />;
