@@ -757,12 +757,51 @@
   }
 
   /* ── A collapsed rail (desktop): icons only ─────────────────────────────── */
+  /* The classic portals' rules for it, at their breakpoints (dashboard.css and employee.css, "Collapsed rail"). Every section's
+     items show, whether it is open or not: the headings that open and close a section are gone. */
   @media (min-width: 901px) {
     :global([data-portal='admin']) .sidebar.collapsed {
       width: 64px;
     }
     :global([data-portal='admin']) .contentWide {
       margin-left: 64px;
+    }
+    :global([data-portal='admin']) .sidebar.collapsed .brandText,
+    :global([data-portal='admin']) .sidebar.collapsed .groupHead {
+      display: none;
+    }
+    /* the admin's block is the row itself: the picture, then the button under it */
+    :global([data-portal='admin']) .sidebar.collapsed .brand {
+      flex-direction: column;
+      gap: 10px;
+      padding: 18px 0 14px;
+    }
+    :global([data-portal='admin']) .sidebar.collapsed .collapse {
+      margin: 0;
+    }
+    :global([data-portal='admin']) .sidebar.collapsed .groupItems {
+      max-height: none !important;
+    }
+    :global([data-portal='admin']) .sidebar.collapsed .item {
+      font-size: 0;
+      justify-content: center;
+      padding: 11px 0;
+      gap: 0;
+    }
+    :global([data-portal='admin']) .sidebar.collapsed .item .icon {
+      font-size: 16px;
+    }
+    /* A bare glyph rather than a chip, except Accounting's brain: its colour is how the collapsed rail says "Accounting". */
+    :global([data-portal='admin']) .sidebar.collapsed .item .icon:not(.iconAi) {
+      background: none;
+    }
+    :global([data-portal='admin']) .sidebar.collapsed .footerRow {
+      font-size: 0;
+      justify-content: center;
+      gap: 0;
+    }
+    :global([data-portal='admin']) .sidebar.collapsed .footerIcon {
+      font-size: 16px;
     }
   }
   @media (min-width: 769px) {
@@ -786,6 +825,25 @@
     :global([data-portal='team']) .sidebar.collapsed .groupHead,
     :global([data-portal='team']) .sidebar.collapsed .navBadge {
       display: none;
+    }
+    :global([data-portal='team']) .sidebar.collapsed .brandRow {
+      flex-direction: column;
+      gap: 10px;
+    }
+    :global([data-portal='team']) .sidebar.collapsed .collapse {
+      margin: 0;
+    }
+    :global([data-portal='team']) .sidebar.collapsed .groupItems {
+      max-height: none !important;
+    }
+    :global([data-portal='team']) .sidebar.collapsed .item {
+      font-size: 0;
+      justify-content: center;
+      padding: 11px 0;
+      gap: 0;
+    }
+    :global([data-portal='team']) .sidebar.collapsed .item .icon {
+      font-size: 16px;
     }
   }
 

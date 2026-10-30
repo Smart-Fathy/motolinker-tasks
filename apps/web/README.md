@@ -112,9 +112,11 @@ initials button: Security, the classic portal, Sign out) and the bottom bar on a
   `tests/webshell.js` pins it.
 
 `tests/shellparity.js` opens the classic portal and the new app in a real browser, signed in as the same person,
-in both modes and two looks, at four widths, and compares the computed style of every named part; `tests/webshell.js`
-runs the frame on the real server and compares the rail with the rail the classic portal's own code draws for the
-same person (the admin, and three team members with different grants, with and without an arrangement saved).
+in both modes and two looks, at four widths, and compares the computed style of every named part; then it collapses the
+rail (the button on each side, clicked) and compares what the rail draws again, at the widths a rail can be collapsed
+at (from 901px for the admin, 769px for the team). `tests/webshell.js` runs the frame on the real server and compares
+the rail with the rail the classic portal's own code draws for the same person (the admin, and three team members with
+different grants, with and without an arrangement saved).
 
 ## Screens that have not moved
 
