@@ -4,6 +4,7 @@ const path       = require('path');
 const express    = require('express');
 const compression = require('compression');
 const multer     = require('multer');
+const { createIssuesService, AttachmentFailed, IssueForbidden, IssueInvalid, IssueNotFound } = require('./src/modules/issues');
 const webpush    = require('web-push');
 const nodemailer = require('nodemailer');
 
@@ -632,7 +633,7 @@ receiver.router.get('/api/dashboard/stats', requireAuth, async (_req, res) => {
 });
 
 // Sales & revenue analytics  → src/routes/reports.js
-Object.assign(ctx, { GOOGLE_CLIENT_ID, crypto, driveCanUpload: (...a) => driveCanUpload(...a), driveTokens, express, getCalendarToken, getDriveToken, getEmployeeCalendarToken, multer, parseCSV, receiver, requireAuth, requireEmployeeAuth, supabase, syncTaskToCalendar, upload, upsertCalendarEvent: (...a) => upsertCalendarEvent(...a) });
+Object.assign(ctx, { GOOGLE_CLIENT_ID, safeFileUrl, crypto, driveCanUpload: (...a) => driveCanUpload(...a), driveTokens, express, getCalendarToken, getDriveToken, getEmployeeCalendarToken, multer, parseCSV, receiver, requireAuth, requireEmployeeAuth, supabase, syncTaskToCalendar, upload, upsertCalendarEvent: (...a) => upsertCalendarEvent(...a) });
 Object.assign(ctx, require('./src/routes/reports'));
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── Sales (one sold car; the Deals → Sales tab) ───────────────────────────────
@@ -923,145 +924,49 @@ receiver.router.post('/api/employee/requests/:id/comments', requireEmployeeAuth,
   postRequestComment(parseInt(req.params.id), `employee_${req.employee.id}`, req.employee.name, req.body, res);
 });
 
-// ── Report an Issue (employee → CTO) ──────────────────────────────────────────
+// ── Report an Issue (employee → CTO) · Issues center · Issue comments ──────────────────────────────────────────
+// The tickets, who is told about them and the conversation on each are one piece of code for these routes and for /api/v1
+// (src/modules/issues); these adapt it to what the team portal's page has always been told. The Issues center is granted by
+// permission now, not only by job title; empCan still lets any CTO through on their title alone, so that is strictly a
+// widening. A ticket's replies are readable by anyone who may see the center and by the person who reported the ticket —
+// otherwise the CTO's reply lands where nobody can read it.
+const issues = createIssuesService({ supabase, notify: (...a) => ctx.createNotification(...a), safeFileUrl });
 const issueUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+// What a ticket's replies answer when the ticket is not there or is not theirs to see: 404 and 403, as ever; and when the
+// table cannot be read (migration 017 not taken yet), an empty thread rather than a broken page.
+function issueProblem(res, e) {
+  if (e instanceof IssueNotFound) return res.status(404).json({ error: 'Issue not found' });
+  if (e instanceof IssueForbidden) return res.status(403).json({ error: 'Not permitted' });
+  if (e instanceof IssueInvalid) return res.status(400).json({ error: e.message });
+  return null;
+}
+
 receiver.router.post('/api/employee/report-issue', requireEmployeeAuth, issueUpload.single('file'), async (req, res) => {
   try {
-    const title = String(req.body?.title || '').trim().slice(0, 150);
-    const description = String(req.body?.description || '').trim().slice(0, 2000);
-    if (!title && !description) return res.status(400).json({ error: 'Please describe the issue' });
-    let fileUrl = '';
-    if (req.file) {
-      const safe = (req.file.originalname || 'attachment').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
-      const p = `issues/${Date.now()}_${safe}`;
-      const { data, error } = await supabase.storage.from('chat-files').upload(p, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
-      if (error) return res.status(500).json({ error: 'Attachment upload failed: ' + error.message });
-      const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(data.path);
-      fileUrl = urlData?.publicUrl || '';
-    }
-    const bodyTxt = [description || title, fileUrl ? `Attachment: ${fileUrl}` : ''].filter(Boolean).join('\n');
-    // Persist the ticket so the CTO can view/manage it in the Issues center (best-effort)
-    try {
-      await supabase.from('issues').insert({
-        title: title || 'System issue', description, file_url: fileUrl,
-        reporter_id: req.employee.id, reporter_name: req.employee.name, status: 'open',
-      });
-    } catch (e) { console.warn('[issues] persist failed:', e.message); }
-    // Route to every employee whose job title is Chief Technical Officer (fallback: admin)
-    const { data: ctos } = await supabase.from('employees').select('id,name').ilike('job_title', '%chief technical officer%');
-    if (ctos?.length) {
-      for (const cto of ctos) {
-        await ctx.createNotification(`employee_${cto.id}`, {
-          type: 'issue',
-          title: `Issue reported by ${req.employee.name}: ${title || 'System issue'}`,
-          body: bodyTxt,
-          url: '/employee#issues',
-        }, 'always');
-      }
-    } else {
-      await ctx.createNotification('admin', {
-        type: 'issue',
-        title: `Issue reported by ${req.employee.name}: ${title || 'System issue'}`,
-        body: bodyTxt,
-        url: '/dashboard#notif',
-      }, 'always');
-    }
-    res.json({ ok: true, file: fileUrl });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const out = await issues.report(req.actor, { title: req.body?.title, description: req.body?.description, file: req.file });
+    res.json({ ok: true, file: out.file });
+  } catch (e) {
+    if (e instanceof IssueInvalid) return res.status(400).json({ error: e.message });
+    if (e instanceof AttachmentFailed) return res.status(500).json({ error: 'Attachment upload failed: ' + e.message });
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ── Issues center ─────────────────────────────────────────────────────────────
-// Granted by permission now, not only by job title. empCan still lets any CTO
-// through on their title alone, so this is strictly a widening.
-
 receiver.router.get('/api/employee/issues', requireEmployeeAuth, requirePerm('issues', 'view'), async (_req, res) => {
-  const { data, error } = await supabase.from('issues').select('*').order('created_at', { ascending: false }).limit(200);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+  try { res.json(await issues.list()); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 receiver.router.put('/api/employee/issues/:id', requireEmployeeAuth, requirePerm('issues', 'resolve'), express.json(), async (req, res) => {
   const status = req.body?.status === 'resolved' ? 'resolved' : 'open';
-  const closer = req.employee ? req.employee.name : 'Admin';
-  const { data: before } = await supabase.from('issues').select('*').eq('id', req.params.id).single();
-  // resolved_at / resolved_by arrive with migration 017; on a database that has not
-  // taken it yet the write is retried without them so resolving still works.
-  const stamped = status === 'resolved'
-    ? { status, resolved_at: new Date().toISOString(), resolved_by: closer }
-    : { status, resolved_at: null, resolved_by: '' };
-  let { data, error } = await supabase.from('issues').update(stamped).eq('id', req.params.id).select().single();
-  if (error) ({ data, error } = await supabase.from('issues').update({ status }).eq('id', req.params.id).select().single());
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-  // Tell whoever reported it that it is closed — they never hear back otherwise.
-  try {
-    const wasOpen = String(before?.status || 'open') !== 'resolved';
-    if (status === 'resolved' && wasOpen && before?.reporter_id) {
-      await ctx.createNotification(`employee_${before.reporter_id}`, {
-        type: 'issue',
-        title: `Solved: ${before.title || 'System issue'}`,
-        body: `${closer} marked the issue you reported as solved.`,
-        url: '/employee#issues',
-      }, 'always');
-    }
-  } catch (e) { console.warn('[issues] resolve notify failed:', e.message); }
+  try { res.json(await issues.setStatus(req.actor, req.params.id, status)); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Issue comments ────────────────────────────────────────────────────────────
-// Readable by anyone who may see the issues centre, and by the person who
-// reported the ticket — otherwise the CTO's reply lands where nobody can read it.
-async function issueForComment(req, res) {
-  const id = parseInt(req.params.id, 10);
-  const { data } = id ? await supabase.from('issues').select('*').eq('id', id).single() : {};
-  if (!data) { res.status(404).json({ error: 'Issue not found' }); return null; }
-  if (!req.employee) return data;                                    // admin session
-  if (ctx.empCan(req.employee, 'issues', 'view')) return data;
-  if (String(data.reporter_id || '') === String(req.employee.id)) return data;
-  res.status(403).json({ error: 'Not permitted' });
-  return null;
-}
-
 receiver.router.get('/api/employee/issues/:id/comments', requireEmployeeAuth, async (req, res) => {
-  const issue = await issueForComment(req, res);
-  if (!issue) return;
-  const { data, error } = await supabase.from('issue_comments')
-    .select('*').eq('issue_id', issue.id).order('created_at', { ascending: true }).limit(200);
-  if (error) return res.json([]);   // table not migrated yet — an empty thread, not a broken page
-  res.json(data || []);
+  try { res.json(await issues.comments(req.actor, req.params.id)); } catch (e) { if (!issueProblem(res, e)) res.json([]); }
 });
 
 receiver.router.post('/api/employee/issues/:id/comments', requireEmployeeAuth, express.json(), async (req, res) => {
-  const issue = await issueForComment(req, res);
-  if (!issue) return;
-  const p = req.body || {};
-  const text = String(p.body || '').trim().slice(0, 2000);
-  const file_url = safeFileUrl(p.file_url);
-  if (p.file_url && !file_url) return res.status(400).json({ error: ATTACH_REFUSED });
-  if (!text && !file_url) return res.status(400).json({ error: 'Comment is empty' });
-  const authorKey = req.employee ? `employee_${req.employee.id}` : 'admin';
-  const authorName = req.employee ? req.employee.name : 'Admin';
-  const { data, error } = await supabase.from('issue_comments').insert({
-    issue_id: issue.id, author_key: authorKey, author_name: authorName, body: text,
-    file_url, file_name: String(p.file_name || ''), file_size: p.file_size || null, file_type: String(p.file_type || ''),
-  }).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-  // Both ends of the ticket hear about a reply: the reporter, and every CTO.
-  try {
-    const recipients = new Set();
-    if (issue.reporter_id) recipients.add(`employee_${issue.reporter_id}`);
-    const { data: ctos } = await supabase.from('employees').select('id').ilike('job_title', '%chief technical officer%');
-    (ctos || []).forEach(c => recipients.add(`employee_${c.id}`));
-    recipients.delete(authorKey);
-    for (const key of recipients) {
-      await ctx.createNotification(key, {
-        type: 'issue',
-        title: `${authorName} commented on: ${issue.title || 'System issue'}`,
-        body: text || `\u{1F4CE} ${p.file_name || 'attachment'}`,
-        url: '/employee#issues',
-      });
-    }
-  } catch (e) { console.warn('[issues] comment notify failed:', e.message); }
+  try { res.json(await issues.addComment(req.actor, req.params.id, req.body || {})); } catch (e) { if (!issueProblem(res, e)) res.status(500).json({ error: e.message }); }
 });
 
 // ── Employee profile: status, avatar, username ────────────────────────────────

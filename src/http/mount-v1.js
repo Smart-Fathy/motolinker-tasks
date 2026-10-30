@@ -13,8 +13,10 @@
 const contracts = require('@motolinker/contracts');
 const { requireCan } = require('./actor');
 const { jsonBody } = require('./errors');
+const { fileUpload } = require('./uploads');
 const { createNotificationsService, mountNotifications } = require('../modules/notifications');
 const { createSubmissionsService, mountSubmissions } = require('../modules/submissions');
+const { createIssuesService, mountIssues } = require('../modules/issues');
 
 /** @type {{ method: string, path: string, cap: string | null, public: boolean }[]} */
 const routes = [];
@@ -101,6 +103,18 @@ function mountV1({ receiver, ctx }) {
 
   // What the website's form sent us (the Submissions page). The classic routes use the same service.
   mountSubmissions({ v1, service: createSubmissionsService({ supabase: ctx.supabase }) });
+
+  // The Issues centre: tickets the team reports to the CTO. The team portal's classic routes use the same service.
+  mountIssues({
+    v1,
+    service: createIssuesService({
+      supabase: ctx.supabase,
+      notify: (/** @type {any[]} */ ...a) => ctx.createNotification(...a),
+      safeFileUrl: ctx.safeFileUrl,
+    }),
+    json: jsonBody(),
+    upload: fileUpload(ctx.multer, { field: 'file', maxBytes: 10 * 1024 * 1024 }),
+  });
 }
 
 module.exports = { mountV1, routes, register };
