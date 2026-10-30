@@ -60,7 +60,7 @@ function unitTests() {
     { id: 2, name: 'Omar', username: 'omar', email: '', password_hash: 'x', job_title: 'Ops', permissions: everyAction(false), avatar_url: '', status_text: '', status_emoji: '' },
     { id: 3, name: 'Hana', username: 'hana', email: '', password_hash: 'x', job_title: 'Finance', permissions: everyAction(true), avatar_url: '', status_text: '', status_emoji: '' },
   ];
-  const db = createFakeSupabase({ employees, sessions: [], quotation_settings: [], google_tokens: [], push_subscriptions: [], notifications: [] });
+  const db = createFakeSupabase({ employees, sessions: [], quotation_settings: [], google_tokens: [], push_subscriptions: [], notifications: [], form_submissions: [] });
   db.install();
   const base = await bootApp({ port: process.env.PORT || 3992 });
   const ctx = require(process.cwd() + '/src/ctx');
@@ -167,6 +167,7 @@ function unitTests() {
   // 4. The matrix: each kind of actor asks each route that can be asked without parameters.
   const NOT_IN_MATRIX = {     // 'METHOD /path': why it cannot be asked generically — an entry here is a decision, reviewed
     'POST /api/v1/notifications/read': 'it changes data and needs a body naming a row; tests/notifications.js asks it as nobody, an unknown token, the admin and employees',
+    'DELETE /api/v1/submissions/:id': 'it changes data and names a row; tests/submissions.js asks it as nobody, an unknown token, the admin and employees with and without the section',
   };
   const kinds = [
     ['nobody', null], ['a token nobody issued', 'x-nobody'], ['the admin', 't-admin'],

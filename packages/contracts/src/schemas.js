@@ -64,6 +64,28 @@ const NotificationReadBody = z.union(
 );
 const NotificationReadResult = z.object({ ok: z.literal(true) });
 
+// A website submission: what the public form sent, and the name of the lead it was matched to (or made). Nobody writes one
+// here — the website does — so there is nothing to create or edit.
+const Submission = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  email: z.string(),
+  phone: z.string(),
+  message: z.string(),
+  car_interest: z.string(),
+  source: z.string(),
+  // the lead it belongs to, when it has one; `lead_name` is that lead's name, or empty
+  customer_id: z.number().int().nullable(),
+  lead_name: z.string(),
+  created_at: z.string(),
+});
+
+// GET /api/v1/submissions — the newest two hundred, newest first.
+const SubmissionList = z.object({ items: z.array(Submission) });
+
+// DELETE /api/v1/submissions/:id — gone (or already was).
+const SubmissionDeleteResult = z.object({ ok: z.literal(true) });
+
 // What /api/v1 answers when it says no: words for a person, a word for a program, and what was wrong with the request.
 const ApiError = z.object({
   error: z.string(),
@@ -80,5 +102,8 @@ module.exports = {
   NotificationList,
   NotificationReadBody,
   NotificationReadResult,
+  Submission,
+  SubmissionList,
+  SubmissionDeleteResult,
   ApiError,
 };

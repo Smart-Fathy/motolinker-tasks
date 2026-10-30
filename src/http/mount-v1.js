@@ -14,6 +14,7 @@ const contracts = require('@motolinker/contracts');
 const { requireCan } = require('./actor');
 const { jsonBody } = require('./errors');
 const { createNotificationsService, mountNotifications } = require('../modules/notifications');
+const { createSubmissionsService, mountSubmissions } = require('../modules/submissions');
 
 /** @type {{ method: string, path: string, cap: string | null, public: boolean }[]} */
 const routes = [];
@@ -97,6 +98,9 @@ function mountV1({ receiver, ctx }) {
     service: createNotificationsService({ supabase: ctx.supabase }),
     json: jsonBody(),
   });
+
+  // What the website's form sent us (the Submissions page). The classic routes use the same service.
+  mountSubmissions({ v1, service: createSubmissionsService({ supabase: ctx.supabase }) });
 }
 
 module.exports = { mountV1, routes, register };
