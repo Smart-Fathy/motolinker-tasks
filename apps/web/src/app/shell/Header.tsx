@@ -33,7 +33,7 @@ function ModeToggle() {
 }
 
 /** The team portal keeps your account behind your own initials, top right. */
-function ProfileMenu() {
+function ProfileMenu({ onReportIssue }: { onReportIssue: () => void }) {
   const { me, signOut } = useSession();
   const to = useAppTo();
   const [open, setOpen] = useState(false);
@@ -85,6 +85,17 @@ function ProfileMenu() {
             </div>
           </div>
           <div className={styles['profileActions']}>
+            <button
+              type="button"
+              className={styles['profileItem']}
+              data-part="reportIssue"
+              onClick={() => {
+                setOpen(false);
+                onReportIssue();
+              }}
+            >
+              <Icon name="bug" /> Report an issue
+            </button>
             <NavLink
               to={to('/security')}
               className={styles['profileItem']}
@@ -117,9 +128,11 @@ interface HeaderProps {
   state: ShellState;
   /** the team portal's top bar names the page it is on */
   title: string;
+  /** "Report an issue", in the team portal's account menu */
+  onReportIssue: () => void;
 }
 
-export function Header({ state, title }: HeaderProps) {
+export function Header({ state, title, onReportIssue }: HeaderProps) {
   const { portal } = useSession();
   const { name, texts } = useTheme();
   const hamburger = (
@@ -146,7 +159,7 @@ export function Header({ state, title }: HeaderProps) {
         <div className={styles['topbarRight']}>
           <ModeToggle />
           <NotificationBell />
-          <ProfileMenu />
+          <ProfileMenu onReportIssue={onReportIssue} />
         </div>
       </header>
     );

@@ -103,12 +103,14 @@ run signinparity node tests/signinparity.js
 run shellparity  node tests/shellparity.js
 run notifparity node tests/notifparity.js
 run subparity   node tests/subparity.js
+run issparity   node tests/issparity.js
 run webshell     node tests/webshell.js
 run galleryaudit node tests/galleryaudit.js
 run embed        node tests/embed.js
 run webframe     node tests/webframe.js
 run webpwa       node tests/webpwa.js
 run webnotifs    node tests/webnotifs.js
+run webissues    node tests/webissues.js
 run webauth      node tests/webauth.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js

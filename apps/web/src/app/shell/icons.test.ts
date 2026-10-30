@@ -1,5 +1,6 @@
 import { BOTTOM_NAV, NAV, presentation, screenOf } from '@motolinker/contracts/modules';
 import { describe, expect, it } from 'vitest';
+import { ISSUE_ICONS } from '../../modules/issues/model';
 import { TYPE_ICONS } from '../../modules/notifications/model';
 import { ICONS } from './icons';
 
@@ -15,6 +16,7 @@ describe('the icons', () => {
     }
     wanted.add('log-out').add('arrow-left').add('shield-check').add('bell');
     for (const icon of Object.values(TYPE_ICONS)) wanted.add(icon);
+    for (const icon of Object.values(ISSUE_ICONS)) wanted.add(icon);
     wanted.delete('brain-ai');
     expect([...wanted].filter(name => !(name in ICONS))).toEqual([]);
   });
@@ -25,6 +27,7 @@ describe('the icons', () => {
       'arrow-left',
       'shield-check',
       ...Object.values(TYPE_ICONS),
+      ...Object.values(ISSUE_ICONS),
     ]);
     for (const portal of portals) {
       for (const g of NAV[portal])

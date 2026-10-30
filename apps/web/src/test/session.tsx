@@ -17,15 +17,15 @@ export const PROFILE = {
   texts: {},
 };
 
+/** What answers a path: it is given the request (the method and the body) to tell a reading from a writing at the same address. */
+export type Answer = (init: RequestInit) => Response | Promise<Response>;
+
 /** The frame's own questions, and a live stream the test can write to. */
-export function frame(
-  portal: 'admin' | 'team',
-  more: Record<string, () => Response | Promise<Response>> = {},
-) {
+export function frame(portal: 'admin' | 'team', more: Record<string, Answer> = {}) {
   const base = portal === 'admin' ? '/api/dashboard' : '/api/employee';
   let push: (text: string) => void = () => undefined;
   const asked: { path: string; init: RequestInit }[] = [];
-  const routes: Record<string, () => Response | Promise<Response>> = {
+  const routes: Record<string, Answer> = {
     '/api/workspace': () => json(200, PROFILE),
     [`${base}/ui-prefs`]: () => json(200, {}),
     [`${base}/nav-config`]: () => json(200, { groups: [] }),
@@ -46,7 +46,7 @@ export function frame(
     asked.push({ path, init });
     const answer = routes[path];
     if (!answer) throw new TypeError('no answer for ' + path);
-    return answer();
+    return answer(init);
   }) as typeof fetch;
   return {
     fetchImpl,
@@ -59,12 +59,7 @@ export function frame(
 export function open(
   portal: 'admin' | 'team',
   me: Me,
-  {
-    entries = ['/'],
-    safe = false,
-    browser = false,
-    more = {} as Record<string, () => Response | Promise<Response>>,
-  } = {},
+  { entries = ['/'], safe = false, browser = false, more = {} as Record<string, Answer> } = {},
 ) {
   const f = frame(portal, more);
   const signOut = vi.fn();

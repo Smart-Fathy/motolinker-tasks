@@ -1,0 +1,488 @@
+/* The Issues centre: the classic team portal's rules for it (public/assets/employee.css, "Issues centre" and the Requests chips it
+   borrows). The admin portal had no such page; it gets this one, which takes the colours, the radius and the type of whichever
+   portal it is drawn in from the same variables. tests/issparity.js holds the team's side to the classic page's computed style. */
+@layer ui {
+  /* ── The page ────────────────────────────────────────────────────────────── */
+  /* (the team portal's frame pads the page it holds, as its .page does; the admin's does not, and the page does it itself) */
+  :global([data-portal='admin']) .page {
+    padding: calc(28px * var(--d-k, 1));
+    max-width: 100%;
+  }
+  .head {
+    margin-bottom: 14px;
+  }
+  .title {
+    margin: 0;
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-size: 30px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    line-height: 1.05;
+  }
+  .sub {
+    margin: 5px 0 0;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+
+  /* ── The chips: all, open, resolved ──────────────────────────────────────── */
+  .chips {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border-radius: calc(8px * var(--r-k, 1));
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid rgba(var(--ov, 255, 255, 255), 0.1);
+    background: var(--bg);
+    color: var(--text-2, #b9b3a4);
+    user-select: none;
+  }
+  .chip:hover {
+    border-color: rgba(var(--ov, 255, 255, 255), 0.2);
+  }
+  .chipOn {
+    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.5);
+    background: var(--primary-glow);
+    color: var(--gold-lite, #e8cd93);
+  }
+  .count {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .chipOn .count {
+    color: var(--gold-lite, #e8cd93);
+  }
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dotOpen {
+    background: var(--pri-high);
+  }
+  .dotDone {
+    background: var(--pri-low);
+  }
+
+  /* ── The queue and the reading pane ──────────────────────────────────────── */
+  .split {
+    display: grid;
+    grid-template-columns: minmax(280px, 380px) 1fr;
+    gap: 14px;
+    align-items: start;
+  }
+  .list {
+    display: grid;
+    gap: 8px;
+  }
+  .card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    padding: 11px 13px;
+    border-radius: calc(11px * var(--r-k, 1));
+    cursor: pointer;
+    font-family: inherit;
+    background: var(--surface);
+    border: 1px solid var(--glass-border, var(--border));
+    color: var(--text);
+    user-select: none;
+  }
+  .card:hover {
+    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.3);
+  }
+  .cardSel {
+    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.55);
+    background: var(--primary-glow);
+  }
+  .cardDone {
+    opacity: 0.62;
+  }
+  .stripe {
+    width: 3px;
+    align-self: stretch;
+    min-height: 30px;
+    border-radius: 99px;
+    flex-shrink: 0;
+  }
+  .stripeOpen {
+    background: var(--pri-high);
+  }
+  .stripeDone {
+    background: var(--pri-low);
+  }
+  .cardMain {
+    flex: 1;
+    min-width: 0;
+    display: block;
+  }
+  .cardTitle {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cardMeta {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+    background: color-mix(in srgb, var(--c) 12%, transparent);
+    color: var(--c);
+  }
+  .pill i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--c);
+    flex-shrink: 0;
+  }
+  .pillOpen {
+    --c: var(--pri-high);
+  }
+  .pillDone {
+    --c: var(--pri-low);
+  }
+
+  .detail {
+    padding: 18px 20px;
+    border-radius: calc(13px * var(--r-k, 1));
+    background: var(--surface);
+    border: 1px solid var(--border);
+    min-height: 280px;
+  }
+  .paneEmpty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 240px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .paneEmpty svg {
+    width: 26px;
+    height: 26px;
+    opacity: 0.5;
+  }
+  .dHead {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .dTitle {
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  .dBy {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .av {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 800;
+    background: var(--primary-glow);
+    color: var(--primary-text, var(--primary));
+  }
+  .dBy strong {
+    color: var(--text);
+    font-weight: 600;
+    display: block;
+    font-size: 12.5px;
+  }
+  .dWhen {
+    display: block;
+    font-size: 11px;
+    margin-top: 1px;
+  }
+  .dBody {
+    font-size: 13px;
+    line-height: 1.65;
+    margin-top: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .dBodyMuted {
+    color: var(--muted);
+    font-style: italic;
+  }
+  .link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    color: var(--primary-text, var(--gold));
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .link:hover {
+    text-decoration: underline;
+  }
+  .link svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+  }
+  .dSolved {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--pri-low);
+  }
+  .dSolved svg {
+    width: 13px;
+    height: 13px;
+  }
+  .dSep {
+    height: 1px;
+    background: var(--border);
+    margin: 16px 0 14px;
+  }
+  .dLabel {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .thread {
+    display: grid;
+    gap: 9px;
+    max-height: 340px;
+    overflow-y: auto;
+  }
+  .msg {
+    background: rgba(var(--ov, 255, 255, 255), 0.03);
+    border: 1px solid var(--border);
+    border-radius: calc(10px * var(--r-k, 1));
+    padding: 9px 12px;
+  }
+  .msgHead {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .msgHead strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .msgBody {
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .none {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    padding: 12px;
+  }
+  .reply {
+    margin-top: 12px;
+  }
+  .reply textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: calc(10px * var(--r-k, 1));
+    background: var(--bg);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.6;
+    outline: none;
+    resize: vertical;
+  }
+  .reply textarea:focus {
+    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.4);
+  }
+  .replyRow {
+    display: flex;
+    gap: 8px;
+    margin-top: 9px;
+    flex-wrap: wrap;
+  }
+
+  /* ── Buttons: the classic .btn.btn-sm, primary and outline ───────────────── */
+  .btn {
+    padding: 6px 14px;
+    border-radius: var(--radius-sm, calc(8px * var(--r-k, 1)));
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s ease;
+    font-family: var(--font, inherit);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+  }
+  .btnPrimary {
+    background: linear-gradient(135deg, var(--gold-soft, #d9bd7f), var(--primary));
+    color: var(--on-primary, #0c0c0e);
+    box-shadow:
+      0 2px 10px rgba(var(--primary-rgb, 201, 163, 94), 0.22),
+      var(--glow, 0 0 #0000);
+  }
+  .btnPrimary:hover {
+    box-shadow: 0 4px 16px rgba(var(--alt-rgb, 124, 106, 255), 0.35);
+    transform: translateY(-1px);
+  }
+  .btnPrimary:active {
+    transform: translateY(0);
+  }
+  .btnOutline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btnOutline:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.04);
+    border-color: rgba(var(--ov, 255, 255, 255), 0.12);
+  }
+
+  /* ── The loader and the empty queue ──────────────────────────────────────── */
+  .loading {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .empty {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* ── Smaller screens ─────────────────────────────────────────────────────── */
+  @media (min-width: 901px) {
+    .split {
+      align-items: stretch;
+      min-height: calc(100vh - var(--topbar-h) - 210px);
+    }
+    .list {
+      align-content: start;
+      overflow-y: auto;
+    }
+  }
+  @media (max-width: 900px) {
+    .split {
+      grid-template-columns: 1fr;
+    }
+    .thread {
+      max-height: none;
+    }
+  }
+  @media (max-width: 768px) {
+    :global([data-portal='admin']) .page {
+      padding: 20px 16px;
+    }
+  }
+  /* The phone layer both classic sheets load last: every button is a 44px target, a .btn is centred, and a field is 16px (under that a
+     phone zooms the page on focus). The small buttons keep their size, with a little more padding than on a desktop. */
+  @media (max-width: 700px) {
+    .chip,
+    .card,
+    .btn {
+      min-width: 44px;
+      min-height: 44px;
+    }
+    .btn {
+      padding: 8px 14px;
+      font-size: 12px;
+      justify-content: center;
+    }
+    .reply textarea {
+      font-size: 16px;
+    }
+  }
+  @media (max-width: 640px) {
+    .title {
+      font-size: 26px;
+    }
+    .chip {
+      min-height: 44px;
+    }
+    .card {
+      min-height: 52px;
+    }
+  }
+}

@@ -31,7 +31,7 @@ if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log('
 // Screens a frame cannot hold (apps/web/src/legacy/frameable.ts): they say why, and where the classic page is.
 const NOT_FRAMED = ['chat', 'security'];
 // Screens that have moved into the app: their page is the app's own, not the classic page in a frame.
-const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[data-part=submissionsPage]' };
+const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[data-part=submissionsPage]', issues: '[data-part=issuesPage]' };
 
 (async () => {
   const db = createFakeSupabase(seedTables(parseSchema()));
@@ -103,7 +103,7 @@ const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[d
       const rail = (await railOf(page)).filter(id => id !== 'home');
       const framed = rail.filter(id => !NOT_FRAMED.includes(id) && !Object.hasOwn(MOVED, id));
       const cards = rail.filter(id => NOT_FRAMED.includes(id));
-      check(`${p.portal}: the rail lists the screens the portal has (${rail.length} besides Home, ${framed.length} of them framed)`, framed.length >= 20, rail.join());
+      check(`${p.portal}: the rail lists the screens the portal has (${rail.length} besides Home, ${framed.length} of them framed)`, rail.length >= 20 && framed.length >= 10, rail.join());
 
       // all of them, one after the other, through the rail: the first opens the frame, the rest are asked of it
       const problems = [];

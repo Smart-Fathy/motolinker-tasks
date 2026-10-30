@@ -113,7 +113,7 @@ const rows = () => {
 
 (async () => {
   process.env.ML_WEB_DIST = dist;
-  const { base, db, portals } = await bootDemo({ port: process.env.PORT || 3962 });
+  const { base, db, portals } = await bootDemo({ port: process.env.PORT || 3966 });
   const browser = await launch();
   const adminToken = portals.find(p => p.who === 'admin').token;
 

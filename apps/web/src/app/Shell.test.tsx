@@ -35,7 +35,7 @@ describe("the admin's frame", () => {
       'Tools4',
       'Chat2',
       'Google5',
-      'System2',
+      'System3',
     ]);
     expect(screen.getByRole('link', { name: 'Home' }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('link', { name: 'Tasks' }).getAttribute('aria-current')).toBeNull();
@@ -67,6 +67,23 @@ describe("the admin's frame", () => {
     expect(await screen.findByTitle('Leads (classic page)')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Leads' }).getAttribute('aria-current')).toBe('page');
     expect(localStorage.getItem('ml_page')).toBe('customers');
+  });
+
+  it("does not keep a screen the classic admin portal never had as the person's place: that portal would have no page to open on", async () => {
+    open('admin', adminMe(), {
+      entries: ['/issues'],
+      more: { '/api/v1/issues': () => json(200, { items: [] }) },
+    });
+    await screen.findByText('No issues here — all clear! 🎉');
+    expect(localStorage.getItem('ml_page')).toBeNull();
+    cleanup();
+    // …where the classic team portal has it, it is kept
+    open('team', teamMe({}, 'Chief Technical Officer'), {
+      entries: ['/issues'],
+      more: { '/api/v1/issues': () => json(200, { items: [] }) },
+    });
+    await screen.findByText('No issues here — all clear! 🎉');
+    expect(localStorage.getItem('ml_emp_page')).toBe('issues');
   });
 
   it('shows a screen that has not moved as its classic page, in a frame, and Home is one click away', async () => {
@@ -197,11 +214,6 @@ describe('what a team member is given', () => {
       open('team', teamMe({}), { entries: [entry] });
       expect(await screen.findByText(/Signed in as Sam/), entry).toBeTruthy();
     }
-  });
-
-  it('does not open a screen that belongs to the other portal, even for somebody who may open everything', async () => {
-    open('admin', adminMe({ gchat: true }), { entries: ['/issues'] });
-    expect(await screen.findByText(/Signed in as Admin/)).toBeTruthy();
   });
 
   it('opens a screen they were granted', async () => {

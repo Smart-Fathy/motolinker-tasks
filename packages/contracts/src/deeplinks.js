@@ -5,7 +5,7 @@
 // knows both, in both directions: the new app reads old links with it, and the server sends a browser that has not chosen
 // the new app from a new-app address to the classic page it stands for.
 
-const { screenIdFromLegacy, screenOf, legacyIdOf, inPortal } = require('./modules');
+const { screenIdFromLegacy, screenOf, legacyIdOf, inPortal, isNewTo } = require('./modules');
 
 /** @typedef {import('./modules').Portal} Portal */
 
@@ -45,7 +45,7 @@ function linkTarget(url, portal) {
 
 /**
  * The classic page for an address inside the new app: '/dashboard/leads' -> '/dashboard#customers'. What is not a screen
- * ('/dashboard/__gallery', a mistyped path) is the portal itself.
+ * ('/dashboard/__gallery', a mistyped path), or is a screen the classic portal never had, is the portal itself.
  * @param {Portal} portal
  * @param {string} path  the part after the portal's own address, e.g. '/leads' or '/chat/abc'
  * @returns {string}
@@ -54,7 +54,7 @@ function classicUrlFor(portal, path) {
   const bare = String(path || '').split(/[?#]/)[0] || '';
   const parts = bare.split('/').filter(Boolean);
   const screen = parts.length ? screenOf(parts[0] || '') : undefined;
-  if (!screen || !inPortal(screen, portal)) return BASE[portal];
+  if (!screen || !inPortal(screen, portal) || isNewTo(screen, portal)) return BASE[portal];
   if (screen.id === 'chat' && parts[1] && ROOM.test(parts[1]))
     return BASE[portal] + '?chat=' + parts[1];
   return BASE[portal] + '#' + legacyIdOf(screen, portal);

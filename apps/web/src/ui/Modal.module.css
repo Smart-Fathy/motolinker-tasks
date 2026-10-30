@@ -1,0 +1,57 @@
+/* The classic portals' dialog (public/employee.html draws each of its dialogs with the same inline style). */
+@layer ui {
+  .curtain {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: calc(16px * var(--r-k, 1));
+    padding: 28px;
+    width: 100%;
+    max-width: 440px;
+    margin: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    outline: none;
+  }
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .title {
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+  }
+  .hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+  .body {
+    display: grid;
+    gap: 16px;
+  }
+  .foot {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 22px;
+  }
+}

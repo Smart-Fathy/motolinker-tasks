@@ -32,7 +32,7 @@ if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log('
 
 // Where the two differ on purpose or by necessity, and why. Each must still differ, or it is stale and fails.
 const ACCEPTED = {
-  'nav._h': 'the classic rail has a search box and a row of shortcuts above the list, which come with Cmd+K and the favourites; the list is taller here. Collapsed, the classic rail hides those, and the two lists differ by what only the classic rail has: the admin\'s Help item (it opens the help panel, which is not built yet) and the team\'s footer (its Report an Issue button is hidden when collapsed, and leaves an empty box)',
+  'nav._h': 'the classic rail has a search box and a row of shortcuts above the list, which come with Cmd+K and the favourites; the list is taller here. Collapsed, the classic rail hides those, and the two lists differ by what only the classic rail has: the admin\'s Help item (it opens the help panel, which is not built yet) and the team\'s Help item likewise',
   'footer._h': 'the classic footer also holds Arrange sections and the workspace settings, which are not in the new app yet',
   'content._h': 'what is under the header is the screen itself, and the classic Home is a page of widgets',
   'title._w': 'at a phone\'s width the classic header\'s right-hand cluster (refresh, help, bell, Refresh) leaves its name six pixels to be squeezed into; the new one has the bell and not yet the rest',
@@ -91,6 +91,9 @@ const ROLES = {
     item: part('#nav-tasks', '[data-group=management] [data-part=item]', 'nav'),
     icon: part('#nav-tasks .nav-icon', '[data-group=management] [data-part=item] [data-part=icon]', 'nav'),
     iconSvg: part('#nav-tasks .nav-icon svg', '[data-group=management] [data-part=item] [data-part=icon] svg', 'nav'),
+    footer: part('.sidebar-footer', '[data-part=teamFooter]', 'none'),
+    reportIssue: part('.sidebar-footer .btn', '[data-part=reportIssue]', 'none', null, true),
+    reportIcon: part('.sidebar-footer .btn svg', '[data-part=reportIssue] svg', 'none'),
     content: part('.content', '[data-part=content]'),
     header: part('.content > .topbar', '[data-part=header]'),
     hamburger: part('#hamburger-btn', '[data-part=hamburger]'),
@@ -110,7 +113,7 @@ const WIDTHS = [390, 670, 800, 1100];
 // with no collapse button). What is read of it then is the roles drawn in the rail, and the page area its width pushes aside.
 const COLLAPSES_FROM = { admin: 901, team: 769 };
 const RAIL = ['sidebar', 'brand', 'mark', 'brandName', 'brandSub', 'collapse', 'close', 'nav', 'group', 'groupHead', 'groupLabel', 'groupCount',
-  'chevron', 'itemActive', 'item', 'icon', 'iconSvg', 'footer', 'signOut', 'content'];
+  'chevron', 'itemActive', 'item', 'icon', 'iconSvg', 'footer', 'signOut', 'reportIssue', 'reportIcon', 'content'];
 // Read in the collapsed rail only, for what collapsing does that the roles above do not reach:
 //  - CRM is not the section Home is in, so the new app draws it closed, and a collapsed rail shows what is in it all the same (every
 //    section's items, open or not). It is not in ROLES because, expanded, the classic team portal opens every section that has anything

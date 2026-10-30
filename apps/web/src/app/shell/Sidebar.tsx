@@ -13,6 +13,8 @@ interface SidebarProps {
   rail: RailGroup[];
   active: string | null;
   state: ShellState;
+  /** the team portal's "Report an Issue" button, at the foot of its rail */
+  onReportIssue: () => void;
 }
 
 /** The workspace's picture (a round mark), its name and what the portal calls itself. */
@@ -60,7 +62,7 @@ function Brand({ state }: { state: ShellState }) {
   );
 }
 
-export function Sidebar({ rail, active, state }: SidebarProps) {
+export function Sidebar({ rail, active, state, onReportIssue }: SidebarProps) {
   const { portal, signOut } = useSession();
   const unread = useUnreadCount();
   const to = useAppTo();
@@ -167,6 +169,18 @@ export function Sidebar({ rail, active, state }: SidebarProps) {
           );
         })}
       </nav>
+      {!admin && (
+        <div className={styles['teamFooter']} data-part="teamFooter">
+          <button
+            type="button"
+            className={styles['reportIssue']}
+            data-part="reportIssue"
+            onClick={onReportIssue}
+          >
+            <Icon name="bug" size={14} /> Report an Issue
+          </button>
+        </div>
+      )}
       {admin && (
         <div className={styles['footer']} data-part="footer">
           <a
