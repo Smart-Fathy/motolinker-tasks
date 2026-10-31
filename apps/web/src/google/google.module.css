@@ -1,0 +1,530 @@
+/* What My Drive and My Sheets are drawn with: the classic portals' own rules for them, which are inline styles for the most part
+   (public/assets/dashboard.js and employee.js, "Drive / Sheets") over .email-connect-card, .table-card, .error-msg and .btn of
+   dashboard.css, and .card, .table-scroll and .btn of employee.css. The two pages are two markups of one idea and are kept as
+   two looks (the team's under [data-portal='team'], which the server writes on <html>) until the redesign makes them one.
+   tests/gdparity.js holds the result to the classic pages' computed style, value by value. */
+@layer ui {
+  /* ── The page ────────────────────────────────────────────────────────────── */
+  /* the team's #drive-content has 28px of its own all round; the admin's has none (its connected view has .page-body) */
+  .teamPage {
+    padding: 28px;
+  }
+  .adminBody {
+    padding: calc(28px * var(--d-k, 1));
+    width: 100%;
+  }
+
+  /* ── The loader ──────────────────────────────────────────────────────────── */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 64px;
+    color: var(--muted);
+    font-size: 14px;
+    gap: 10px;
+  }
+  :global([data-portal='team']) .loading {
+    display: block;
+    text-align: center;
+    padding: 48px 20px;
+    gap: normal;
+    align-items: normal;
+    justify-content: normal;
+  }
+  .spinner {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  :global([data-portal='team']) .spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* ── Nothing to browse yet: the admin's card, the team's lines ───────────── */
+  .connectCard {
+    background: var(--panel, var(--surface));
+    border: 1px solid var(--hair, var(--border));
+    border-radius: calc(4px * var(--r-k, 1));
+    box-shadow: none;
+    padding: 32px;
+    text-align: center;
+    max-width: 480px;
+    margin: 40px auto;
+  }
+  .connectIcon {
+    font-size: 48px;
+    margin-bottom: 12px;
+  }
+  .connectTitle {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .connectSub {
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+  /* the admin's button fills the card; the team's is the usual one (an <a> in both, so it takes no underline) */
+  .connectCard .connectBtn {
+    width: 100%;
+    justify-content: center;
+    padding: 11px;
+  }
+  /* (an <a> in the classic page: it takes the page's face and its spacing, and its text can be selected) */
+  .connectBtn {
+    text-decoration: none;
+    font-family: inherit;
+    letter-spacing: inherit;
+  }
+  .connectCard .connectBtn,
+  .centre .connectBtn {
+    user-select: auto;
+  }
+  .centre {
+    text-align: center;
+    padding: 60px 20px;
+  }
+  .centreIcon {
+    font-size: 40px;
+    margin-bottom: 12px;
+  }
+  .centreTitle {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .centreSub {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .centreSubGap {
+    margin-bottom: 20px;
+  }
+
+  /* ── Whose account it is ─────────────────────────────────────────────────── */
+  .account {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .who {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .avatar {
+    width: 36px;
+    height: 36px;
+    background: var(--primary);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: var(--on-primary-w, #fff);
+    font-size: 15px;
+  }
+  :global([data-portal='team']) .avatar {
+    width: 34px;
+    height: 34px;
+    font-size: inherit;
+  }
+  .name {
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .email {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .account .disconnect {
+    font-size: 12px;
+  }
+
+  /* ── A link made before uploads were asked for (the admin's page only) ───── */
+  .notice {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.32);
+    color: var(--error-text, #f88);
+    border-radius: var(--r-md, calc(10px * var(--r-k, 1)));
+    padding: 12px 16px;
+    font-size: 13px;
+    margin-bottom: 16px;
+    display: block;
+  }
+  .noticeLink {
+    color: var(--primary-text, var(--primary));
+  }
+
+  /* ── Why the files could not be had ──────────────────────────────────────── */
+  .errorMsg {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.32);
+    color: var(--error-text, #f88);
+    border-radius: var(--r-md, calc(10px * var(--r-k, 1)));
+    padding: 12px 16px;
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  .teamError {
+    padding: 20px;
+    color: var(--danger);
+    font-size: 13px;
+  }
+
+  /* ── The files ───────────────────────────────────────────────────────────── */
+  .tableCard {
+    background: var(--panel, var(--surface));
+    border: 1px solid var(--hair, var(--border));
+    border-radius: calc(4px * var(--r-k, 1));
+    box-shadow: none;
+    overflow: hidden;
+  }
+  .tableHeader {
+    padding: calc(16px * var(--d-k, 1)) calc(20px * var(--d-k, 1));
+    border-color: var(--hair, var(--border));
+    border-bottom: 1px solid var(--hair, var(--border));
+    background: transparent;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+  .tableTitle {
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .count {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .teamCard {
+    background: var(--card);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    padding: 0;
+    margin-bottom: calc(20px * var(--d-k, 1));
+    box-shadow: 0 2px 12px rgba(0, 0, 0, calc(0.25 * var(--sh-k, 1)));
+    overflow: hidden;
+    user-select: none;
+  }
+  .teamHead {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .teamTitle {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .none {
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .tableScroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  /* the admin's sheet gives every header cell the look of a sortable column (this table does not sort) */
+  .th {
+    padding: 10px 16px;
+    font-size: 11px;
+    color: var(--muted);
+    text-align: left;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    background: var(--thead-bg, #101012);
+    border-bottom: 1px solid var(--hair-gold, var(--border));
+    cursor: pointer;
+    user-select: none;
+  }
+  .thBlank {
+    font-weight: 700;
+  }
+  /* the team's sheet: a plain header row (a tint, an em of tracking, no sorting) */
+  :global([data-portal='team']) .table {
+    min-width: 460px;
+  }
+  @media (max-width: 768px) {
+    :global([data-portal='team']) .table {
+      font-size: 12px;
+    }
+  }
+  :global([data-portal='team']) .th {
+    padding: 9px 16px;
+    background: rgba(var(--ov, 255, 255, 255), 0.03);
+    letter-spacing: 0.05em;
+    white-space: normal;
+    border-bottom: 1px solid var(--border);
+    cursor: auto;
+  }
+  :global([data-portal='team']) .thBlank {
+    font-weight: 600;
+  }
+  .row {
+    border-bottom: 1px solid var(--hair, var(--border));
+  }
+  /* (these are inline styles in the classic pages, which beat the phone's rules below: so they are written to beat them here) */
+  .table .cellName {
+    padding: 12px 16px;
+    font-size: 13px;
+  }
+  .table .cellDate {
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .table .cellActions {
+    padding: 12px 16px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  :global([data-portal='team']) .table .cellName,
+  :global([data-portal='team']) .table .cellDate,
+  :global([data-portal='team']) .table .cellActions {
+    padding: 11px 16px;
+  }
+  :global([data-portal='team']) .table .cellDate {
+    white-space: nowrap;
+  }
+  /* (the team's sheet rules every cell off, until a phone makes each row a card) */
+  @media (min-width: 701px) {
+    :global([data-portal='team']) .cellName,
+    :global([data-portal='team']) .cellDate,
+    :global([data-portal='team']) .cellActions {
+      border-bottom: 1px solid rgba(var(--ov, 255, 255, 255), 0.04);
+    }
+  }
+  :global([data-portal='team']) .row {
+    border-bottom: 1px solid rgba(var(--ov, 255, 255, 255), 0.04);
+  }
+  /* the first column stays put when the team's table scrolls sideways */
+  .tableScroll table thead th:first-child,
+  .tableScroll table tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--surface);
+    box-shadow: 1px 0 0 var(--border);
+  }
+  .tableScroll table thead th:first-child {
+    z-index: 3;
+  }
+  .cellActions .view,
+  .cellActions .open {
+    font-size: 11px;
+    padding: 4px 10px;
+  }
+  .cellActions .view {
+    margin-right: 5px;
+  }
+  .cellActions .open {
+    text-decoration: none;
+  }
+
+  /* ── What a file looks like ──────────────────────────────────────────────── */
+  .fileGlyph {
+    vertical-align: middle;
+  }
+  .tone-success {
+    color: var(--success);
+  }
+  .tone-info {
+    color: var(--info);
+  }
+  .tone-warning {
+    color: var(--warning);
+  }
+  .tone-danger {
+    color: var(--danger);
+  }
+  .tone-primary {
+    color: var(--primary-text, var(--primary));
+  }
+
+  /* ── The inline viewer ───────────────────────────────────────────────────── */
+  .viewer {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 800;
+    display: flex;
+    flex-direction: column;
+  }
+  .viewer:focus {
+    outline: none;
+  }
+  .viewerBar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .viewerTitle {
+    font-weight: 600;
+    font-size: 14px;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .viewerBar .viewerOpen {
+    text-decoration: none;
+    flex-shrink: 0;
+  }
+  .viewerClose {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 24px;
+    line-height: 1;
+    padding: 2px 6px;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  /* (mobile.css: nothing under a thumb's size) */
+  @media (max-width: 700px) {
+    .viewerClose {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+  .viewerFrame {
+    flex: 1;
+    border: none;
+    background: #fff;
+  }
+
+  /* ── On a phone ──────────────────────────────────────────────────────────── */
+  /* (mobile.css, below 700px: a table in a scroller or a table card is read as a card for each row — its head gives way to a label on
+     each cell, and the frozen first column is meaningless once there is nothing to scroll. The labels are the team's alone: mobile.js
+     writes them on the cells of a scroller's table, and the admin's table card has none, so its labels are empty blocks.) */
+  @media (max-width: 700px) {
+    .tableScroll {
+      overflow-x: visible;
+    }
+    .tableScroll table,
+    .tableCard table,
+    :global([data-portal='team']) .table {
+      min-width: 0;
+    }
+    .tableScroll thead,
+    .tableCard thead {
+      display: none;
+    }
+    .tableScroll table,
+    .tableScroll tbody,
+    .tableScroll tr,
+    .tableScroll td,
+    .tableCard table,
+    .tableCard tbody,
+    .tableCard tr,
+    .tableCard td {
+      display: block;
+    }
+    .tableScroll tr,
+    .tableCard tr {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .tableScroll td,
+    .tableCard td {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 6px 0;
+      border: none;
+      white-space: normal;
+      max-width: none;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+    .tableScroll td + td,
+    .tableCard td + td {
+      border-top: 1px solid rgba(var(--ov, 255, 255, 255), 0.05);
+    }
+    .tableScroll td::before,
+    .tableCard td::before {
+      content: attr(data-label);
+      flex: 0 0 38%;
+      max-width: 38%;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding-top: 2px;
+    }
+    .tableScroll td:not([data-label]):empty,
+    .tableScroll td[data-label='']:empty {
+      display: none;
+    }
+    .tableScroll table thead th:first-child,
+    .tableScroll table tbody td:first-child {
+      position: static;
+      box-shadow: none;
+    }
+  }
+
+  /* (mobile.css, below 700px: card and table titles are smaller than the sheet's display face makes them) */
+  @media (max-width: 700px) {
+    .tableTitle {
+      font-size: 14px;
+    }
+  }
+  /* (dashboard.css, below 640px: the page and the head of a table card take less room, the head stacks, and a table is set smaller) */
+  @media (max-width: 640px) {
+    .adminBody {
+      padding: 16px;
+    }
+    .tableHeader {
+      padding: 12px 16px;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .table {
+      font-size: 12px;
+    }
+  }
+}

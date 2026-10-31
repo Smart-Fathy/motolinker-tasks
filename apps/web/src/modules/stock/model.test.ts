@@ -31,7 +31,7 @@ import {
   withoutVin,
   type Vehicle,
 } from './model';
-import { oneAtATime } from './wrongly';
+import { oneAtATime } from '../../test/wrongly';
 
 const unit = (over: Record<string, unknown> = {}) => ({
   consignee: '',
