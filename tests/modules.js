@@ -84,6 +84,9 @@ for (const portal of ['admin', 'team']) {
 
 // A screen the catalogue calls new to a portal (Issues, in the admin's) is the one thing the comparison above leaves out. So that
 // the allowance cannot outlive the truth, the classic page must really not have it, and the app must draw it itself.
+check('a panel (opened over a page, as #security is) is in no portal\'s rail and no bottom bar: it is not a page to go to',
+  M.SCREENS.filter(s => M.isPanel(s)).every(s => [...M.NAV.admin, ...M.NAV.team].every(g => !g.items.includes(s.id)) && [...M.BOTTOM_NAV.admin, ...M.BOTTOM_NAV.team].every(b => b.id !== s.id)));
+check('security is the panel, and nothing else is yet', M.SCREENS.filter(s => M.isPanel(s)).map(s => s.id).join() === 'security');
 check('only a screen a portal is in can be new to it', M.SCREENS.every(s => !s.fresh || s.fresh.every(p => M.inPortal(s, p))));
 for (const portal of ['admin', 'team']) {
   const html = read('public', FILE[portal]);

@@ -56,7 +56,7 @@ function unitTests() {
     return p;
   };
   const employees = [
-    { id: 1, name: 'Nada', username: 'nada', email: '', password_hash: 'x', job_title: 'Sales', permissions: { leads: true, leadsActions: { view: true, edit: true } }, avatar_url: '', status_text: '', status_emoji: '' },
+    { id: 1, name: 'Nada', username: 'nada', email: '', password_hash: 'x', job_title: 'Sales', permissions: { leads: true, leadsActions: { view: true, edit: true } }, avatar_url: 'https://cdn.example.test/nada.png', status_text: 'In a meeting', status_emoji: '📅' },
     { id: 2, name: 'Omar', username: 'omar', email: '', password_hash: 'x', job_title: 'Ops', permissions: everyAction(false), avatar_url: '', status_text: '', status_emoji: '' },
     { id: 3, name: 'Hana', username: 'hana', email: '', password_hash: 'x', job_title: 'Finance', permissions: everyAction(true), avatar_url: '', status_text: '', status_emoji: '' },
   ];
@@ -97,6 +97,9 @@ function unitTests() {
   check('…whose permissions come fresh from their record, not from the copy the session was opened with', nada.body.caps.includes('leads.view') && nada.body.caps.includes('leads.edit') && !nada.body.caps.includes('leads.delete') && nada.body.sections.includes('leads'), JSON.stringify(nada.body.caps.filter(c => c.startsWith('leads'))));
   check('…and the session itself is brought up to date, as /check does', ctx.employeeSessions.get('t-nada').permissions.leads === true);
   check('…an employee answer is a valid /me response too', C.schemas.MeResponse.safeParse(nada.body).success);
+  check('…it carries what the account menu shows: the username, the picture and the status, as the record has them',
+    JSON.stringify(nada.body.profile) === JSON.stringify({ username: 'nada', avatarUrl: 'https://cdn.example.test/nada.png', statusText: 'In a meeting', statusEmoji: '📅' }), JSON.stringify(nada.body.profile));
+  check('…the administrator has no profile to carry', !('profile' in admin.body));
   const omar = await get('/api/v1/me', 't-omar');
   check('an employee with nothing granted has no capability and no section', omar.status === 200 && omar.body.caps.length === 0 && omar.body.sections.length === 0, JSON.stringify(omar.body.caps.slice(0, 3)));
   const expired = await get('/api/v1/me', 't-old');

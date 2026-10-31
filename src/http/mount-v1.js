@@ -70,14 +70,24 @@ function mountV1({ receiver, ctx }) {
   v1({ method: 'get', path: '/api/v1/me' }, async (req, res) => {
     try {
       let actor = req.actor;
+      /** @type {{ username: string, avatarUrl: string, statusText: string, statusEmoji: string } | undefined} */
+      let profile;
       if (actor && actor.kind === 'employee' && req.employee) {
-        await ctx.refreshEmployeeFromDb(req);
+        const read = await ctx.refreshEmployeeFromDb(req);
         actor = contracts.employeeActor(req.employee);
+        // (a database that did not answer leaves the picture and the status empty, and the session's own username standing)
+        profile = {
+          username: req.employee.username || '',
+          avatarUrl: read.avatar_url || '',
+          statusText: read.status_text || '',
+          statusEmoji: read.status_emoji || '',
+        };
       }
       const ws = await ctx.workspaceProfile({ patience: 1500 });
       res.json(
         contracts.schemas.MeResponse.parse({
           ...contracts.describeActor(/** @type {any} */ (actor)),
+          ...(profile ? { profile } : {}),
           workspace: {
             name: ws.name,
             logo_url: ws.logo_url,

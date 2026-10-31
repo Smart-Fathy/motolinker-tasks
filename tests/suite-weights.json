@@ -48,6 +48,7 @@
     "notifications": 1,
     "submissions": 1,
     "meetings": 2,
+    "account": 3,
     "calendar": 2,
     "issues": 4,
     "spashell": 2,
