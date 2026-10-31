@@ -1,0 +1,635 @@
+/* What RFQs and purchase orders are drawn with: the classic portals' own rules for them. public/assets/procurement.js draws both
+   documents into both portals, mostly with inline styles, from classes that live in the admin's sheet alone (.po-lbl, .po-th,
+   .po-td — the team's sheet never had them: its documents draw those bare) and in both (.form-input, .btn, the .hd-* of the
+   small sheet, the document viewer's markup). The page around each list is each portal's own markup. tests/docparity.js holds
+   the result to the classic pages' computed style, value by value. */
+@layer ui {
+  /* ── The page ────────────────────────────────────────────────────────────── */
+  .pageHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: calc(24px * var(--d-k, 1)) calc(28px * var(--d-k, 1)) 0;
+  }
+  .pageTitle {
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-size: 30px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+  .adminBody {
+    padding: 0 28px 28px;
+  }
+  .lead {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-top: 14px;
+  }
+  .list {
+    margin-top: 14px;
+  }
+  .teamBody {
+    padding: 28px;
+  }
+  .teamHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .cardTitle {
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--text);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .cardHint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .teamActions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  /* ── The loader, an error, nothing yet ───────────────────────────────────── */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 64px;
+    color: var(--muted);
+    font-size: 14px;
+    gap: 10px;
+  }
+  :global([data-portal='team']) .loading {
+    display: block;
+    text-align: center;
+    padding: 48px 20px;
+    gap: normal;
+    align-items: normal;
+    justify-content: normal;
+  }
+  .spinner {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  :global([data-portal='team']) .spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .errorBox {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.32);
+    color: var(--error-text, #f88);
+    border-radius: var(--r-md, calc(10px * var(--r-k, 1)));
+    padding: 12px 16px;
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  .hintSmall {
+    font-size: 12px;
+  }
+  .none {
+    color: var(--muted);
+    padding: 24px;
+    text-align: center;
+    font-size: 13px;
+  }
+
+  /* ── The list ─────────────────────────────────────────────────────────────── */
+  .tableScroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .headRow {
+    text-align: left;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+  }
+  .th {
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    background: var(--thead-bg, #101012);
+    border-bottom: 1px solid var(--hair-gold, var(--border));
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  .row {
+    border-bottom: 1px solid var(--hair, var(--border));
+    transition: background 0.1s;
+  }
+  .td {
+    padding: 8px 10px;
+    vertical-align: middle;
+  }
+  .num {
+    font-family: monospace;
+    font-weight: 600;
+  }
+  .right {
+    text-align: right;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .actions {
+    text-align: right;
+    white-space: nowrap;
+  }
+  .rowButton {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  /* The team's sheet puts less on a table: no sorting cursor, a heading that may wrap, a faint rule under every cell. */
+  :global([data-portal='team']) .th {
+    background: rgba(var(--ov, 255, 255, 255), 0.03);
+    border-bottom-color: var(--border);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    white-space: normal;
+    cursor: auto;
+    user-select: auto;
+  }
+  :global([data-portal='team']) .tableScroll .table thead th:first-child {
+    background: var(--surface);
+  }
+  :global([data-portal='team']) .row {
+    border-bottom-color: var(--border);
+    transition: none;
+  }
+  :global([data-portal='team']) .row > td {
+    border-bottom: 1px solid rgba(var(--ov, 255, 255, 255), 0.04);
+  }
+  .tableScroll .table thead th:first-child,
+  .tableScroll .table tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    box-shadow: 1px 0 0 var(--border);
+  }
+  .tableScroll .table tbody td:first-child {
+    background: var(--surface);
+  }
+  .tableScroll .table thead th:first-child {
+    z-index: 3;
+  }
+
+  /* ── A document's form ────────────────────────────────────────────────────── */
+  .form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    max-height: 66vh;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .fieldGrid {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+  }
+  :global([data-portal='admin']) .lbl {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 3px;
+    font-weight: 600;
+  }
+  .lbl.lblSpaced {
+    margin-bottom: 6px;
+  }
+  .lblHint {
+    color: var(--muted);
+    font-weight: 400;
+  }
+  /* The sheets' .form-input: the admin's is a 13px field in the theme's field colours, the team's a 14px one in its own. */
+  .input {
+    width: 100%;
+    padding: 7px 12px;
+    border: 1px solid var(--hair, var(--border));
+    border-radius: calc(8px * var(--r-k, 1));
+    font-size: 13px;
+    background: var(--field-bg, #0e0e10);
+    color: var(--text);
+    outline: none;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
+    font-family: inherit;
+  }
+  .input:focus {
+    border-color: var(--gold);
+    box-shadow:
+      0 0 0 3px rgba(var(--primary-rgb, 201, 163, 94), 0.14),
+      var(--glow, 0 0 #0000);
+  }
+  textarea.input {
+    resize: vertical;
+  }
+  :global([data-portal='team']) .input {
+    background-color: var(--field-bg-2, #101013);
+    border: 1px solid var(--border);
+    padding: 11px 14px;
+    font-size: 14px;
+    font-family: var(--font);
+    color-scheme: var(--color-scheme, dark);
+  }
+  :global([data-portal='team']) .input:focus {
+    border-color: var(--primary);
+    box-shadow:
+      0 0 0 3px rgba(var(--primary-rgb, 201, 163, 94), 0.15),
+      var(--glow, 0 0 #0000);
+  }
+  :global([data-portal='team']) .input::placeholder {
+    color: var(--muted);
+  }
+  :global([data-portal='team']) .input[readonly] {
+    color: var(--muted);
+    cursor: default;
+  }
+  /* On a phone: no zooming by the browser when a field is focused (the classic mobile.css, for both portals) … */
+  @media (max-width: 700px) {
+    .input,
+    :global([data-portal='team']) .input {
+      font-size: 16px;
+    }
+  }
+  /* … and, for the administrator's, a field the size of a thumb (the team's keeps its padding). */
+  @media (max-width: 640px) {
+    :global([data-portal='admin']) .input {
+      padding: 12px 14px;
+      border-radius: calc(10px * var(--r-k, 1));
+    }
+  }
+  .errorLine {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.32);
+    color: var(--error-text, #f88);
+    border-radius: var(--r-md, calc(10px * var(--r-k, 1)));
+    padding: 12px 16px;
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+
+  /* the extra fields of a kind of document */
+  .extrasHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .extrasButtons {
+    display: flex;
+    gap: 6px;
+  }
+  .extrasGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0 12px;
+  }
+  .extrasNone {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ── The lines ────────────────────────────────────────────────────────────── */
+  .gridFrame {
+    overflow-x: auto;
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: calc(10px * var(--r-k, 1));
+  }
+  .grid {
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .linesBar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .linesButton {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  .linesAdd {
+    margin-top: 8px;
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  .linesCatalogue {
+    margin-top: 8px;
+    margin-left: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  .linesCatalogueIn {
+    margin-left: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  .linesTotal {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--primary-text, var(--primary));
+  }
+
+  /* ── The small sheet that picks from the catalogue ───────────────────────── */
+  .catSearch {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: calc(8px * var(--r-k, 1));
+    padding: 8px 11px;
+    font-size: 13px;
+    font-family: inherit;
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  .catList {
+    display: grid;
+    gap: 2px;
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: calc(9px * var(--r-k, 1));
+    padding: 6px;
+  }
+  .catRow {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 13px;
+    padding: 5px 7px;
+    border-radius: calc(6px * var(--r-k, 1));
+    cursor: pointer;
+  }
+  .catRow:hover {
+    background: var(--bg);
+  }
+  .catRow input[type='checkbox'] {
+    accent-color: var(--primary);
+  }
+  .catText {
+    flex: 1;
+    min-width: 0;
+  }
+  .catName {
+    display: block;
+  }
+  .catSub {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .catNone {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 8px;
+  }
+
+  /* ── The document viewer ──────────────────────────────────────────────────── */
+  .viewerCurtain {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 1200;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px;
+    overflow-y: auto;
+  }
+  .viewerCard {
+    border-radius: calc(16px * var(--r-k, 1));
+    width: 100%;
+    max-width: 1100px;
+    overflow: hidden;
+    outline: none;
+  }
+  :global([data-portal='admin']) .viewerCard {
+    background: var(--doc-bg, #1a1d35);
+    border: 1px solid rgba(var(--ov, 255, 255, 255), 0.08);
+  }
+  :global([data-portal='team']) .viewerCard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .viewerHead {
+    padding: 16px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  :global([data-portal='admin']) .viewerHead {
+    border-bottom: 1px solid rgba(var(--ov, 255, 255, 255), 0.08);
+  }
+  :global([data-portal='team']) .viewerHead {
+    border-bottom: 1px solid var(--border);
+  }
+  .viewerTitle {
+    font-size: 15px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .viewerIcon {
+    flex-shrink: 0;
+    display: inline-flex;
+  }
+  .viewerText {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .viewerButtons {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .viewerBody {
+    padding: 12px;
+  }
+  .viewerLoading {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .viewerSpinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    margin: 0 auto 10px;
+  }
+  :global([data-portal='team']) .viewerSpinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
+    margin: 0 8px 0 0;
+  }
+  .viewerFrame {
+    display: block;
+    width: 100%;
+    background: #fff;
+  }
+  :global([data-portal='admin']) .viewerFrame {
+    min-height: 72vh;
+    border: none;
+    border-radius: calc(8px * var(--r-k, 1));
+  }
+  :global([data-portal='team']) .viewerFrame {
+    height: 78vh;
+    border: 0;
+    border-radius: calc(10px * var(--r-k, 1));
+  }
+
+  /* (mobile.css: a checkbox is 24px, and a field is not zoomed into) */
+  @media (max-width: 700px) {
+    .catRow input[type='checkbox'] {
+      width: 24px;
+      height: 24px;
+      font-size: 16px;
+    }
+  }
+
+  /* The page on a phone (dashboard.css at 640px, employee.css and mobile.css at 700px): the admin's header stacks and its title
+     steps down, and a table is read as a card for each row. */
+  @media (max-width: 700px) {
+    .pageTitle {
+      font-size: 20px;
+    }
+  }
+  @media (max-width: 640px) {
+    .pageHeader {
+      padding: 16px 16px 0;
+      flex-wrap: wrap;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+    }
+  }
+  @media (max-width: 700px) {
+    .tableScroll {
+      overflow-x: visible;
+    }
+    .table,
+    .table tbody,
+    .row {
+      display: block;
+    }
+    .table {
+      min-width: 0;
+    }
+    .table thead {
+      display: none;
+    }
+    .row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-bottom-color: var(--hair, var(--border));
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .row > td {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      border: none;
+      white-space: normal;
+      max-width: none;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+    .row > td + td {
+      border-top: 1px solid rgba(var(--ov, 255, 255, 255), 0.05);
+    }
+    .row > td::before {
+      content: attr(data-label);
+      flex: 0 0 38%;
+      max-width: 38%;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding-top: 2px;
+      box-shadow: none;
+    }
+    /* (a cell with no heading and nothing in it is a spacer, and a row's buttons run across the foot of the card) */
+    .row > td[data-label='']:empty {
+      display: none;
+    }
+    .row > td[data-label='Actions'] {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .row > td[data-label='Actions']::before {
+      display: none;
+    }
+    .row > td[data-label='Actions'] button {
+      flex: 1 1 auto;
+    }
+    :global([data-portal='team']) .row > td {
+      border-bottom: none;
+    }
+    .row > td.actions {
+      white-space: nowrap;
+    }
+    .tableScroll .table thead th:first-child,
+    .tableScroll .table tbody td:first-child {
+      position: static;
+      box-shadow: none;
+    }
+  }
+}

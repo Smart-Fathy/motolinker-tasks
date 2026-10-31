@@ -11,7 +11,7 @@ import type { Columns } from './useColumns';
 // ── In a header ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** The two buttons above a table that has editable columns ("Columns" and "+ Field"); nothing for those who may not edit. */
-export function ColumnsBar({ columns }: { columns: Columns }) {
+export function ColumnsBar({ columns, spaced }: { columns: Columns; spaced?: boolean }) {
   if (!columns.canEdit) return null;
   const small: CSSProperties = { padding: '4px 10px', fontSize: 12 };
   return (
@@ -19,9 +19,11 @@ export function ColumnsBar({ columns }: { columns: Columns }) {
       <Btn style={small} data-part="colsButton" onClick={e => columns.openPicker(e)}>
         Columns
       </Btn>
+      {spaced && ' '}
       <Btn style={small} data-part="fieldButton" onClick={() => columns.openAdd()}>
         + Field
       </Btn>
+      {spaced && ' '}
     </>
   );
 }
@@ -267,15 +269,20 @@ const AREA_STYLE: CSSProperties = { fontSize: 11.5, padding: '5px 6px', resize: 
  * One cell of a grid of lines (a supplier's catalogue, the lines of an order), drawn for its configured type. A change is
  * handed over when it is made — a dropdown or a box at once, text when it is left or Enter is pressed (the browser's own
  * "change") — and the cell keeps what was typed; it is not drawn again from what the server answers.
+ *
+ * A grid that is part of a form (the lines of a document) is `live`: the cell shows what it is given and hands over every
+ * keystroke, so the form's own state is the one place the lines are.
  */
 export function GridInput({
   col,
   value,
   onCommit,
+  live = false,
 }: {
   col: Column;
   value: unknown;
   onCommit: (value: string | boolean) => void;
+  live?: boolean;
 }) {
   const field = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const commit = useRef(onCommit);
@@ -284,15 +291,19 @@ export function GridInput({
   });
   useEffect(() => {
     const el = field.current;
-    if (!el) return;
+    if (!el || live) return;
     const onChange = () =>
       commit.current(
         el instanceof HTMLInputElement && el.type === 'checkbox' ? el.checked : el.value,
       );
     el.addEventListener('change', onChange);
     return () => el.removeEventListener('change', onChange);
-  }, []);
+  }, [live]);
   const text = value == null ? '' : String(value);
+  // (what the cell holds: its own, until it is told otherwise — or, in a form, whatever the form says)
+  const held = live
+    ? { value: text, onChange: (e: { target: { value: string } }) => onCommit(e.target.value) }
+    : { defaultValue: text };
 
   if (col.type === 'select' || col.type === 'radio') {
     const options = [
@@ -318,7 +329,9 @@ export function GridInput({
           ref={field as React.RefObject<HTMLInputElement>}
           type="checkbox"
           className={styles['accent']}
-          defaultChecked={isTicked(value)}
+          {...(live
+            ? { checked: isTicked(value), onChange: e => onCommit(e.target.checked) }
+            : { defaultChecked: isTicked(value) })}
           data-part="gridBox"
         />
       </td>
@@ -333,7 +346,7 @@ export function GridInput({
           className={styles['gridInput']}
           style={AREA_STYLE}
           rows={2}
-          defaultValue={text}
+          {...held}
           data-part="gridArea"
         />
       </td>
@@ -356,7 +369,7 @@ export function GridInput({
         type={type}
         {...(type === 'number' ? { min: 0 } : {})}
         {...(type === 'url' ? { inputMode: 'url' as const, placeholder: 'https://…' } : {})}
-        defaultValue={text}
+        {...held}
         data-part="gridInput"
       />
     </td>
