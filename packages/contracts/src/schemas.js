@@ -905,6 +905,38 @@ const ContainerCarLinked = z.object({ ok: z.literal(true), vin: z.string() });
 // What a delete of a vehicle, a box or a link says: the same as a document's.
 const Deleted = DocDeleted;
 
+// ── Google: the link to a person's account, and the files of My Drive and My Sheets ──────────────────────────────────────────
+
+// What a Google link says of itself, the same in both portals: no Google project is set up here, one is set up but nobody has
+// connected, or somebody has (and `email` and `name` are theirs, as Google gave them — it may give neither).
+const GoogleNotConfigured = z.object({ configured: z.literal(false) });
+const GoogleNotConnected = z.object({ configured: z.literal(true), connected: z.literal(false) });
+// A Drive link also says whether the grant reaches far enough to upload (a connection made before uploads were asked for does not).
+const DriveConnected = z.object({
+  configured: z.literal(true),
+  connected: z.literal(true),
+  email: z.string().optional(),
+  name: z.string().optional(),
+  canUpload: z.boolean(),
+});
+const DriveStatus = z.union([GoogleNotConfigured, GoogleNotConnected, DriveConnected]);
+
+// A file as Drive lists it (the fields the server asks for): a document, a sheet or a slide deck has no size; a file nobody can
+// open on the web has no link.
+const DriveFile = z.object({
+  id: z.string(),
+  name: z.string(),
+  mimeType: z.string(),
+  modifiedTime: z.string().optional(),
+  webViewLink: z.string().optional(),
+  iconLink: z.string().optional(),
+  size: z.string().optional(),
+});
+const DriveFileList = z.array(DriveFile);
+
+// Letting a Google link go.
+const GoogleDisconnected = z.object({ ok: z.literal(true) });
+
 // What /api/v1 answers when it says no: words for a person, a word for a program, and what was wrong with the request.
 const ApiError = z.object({
   error: z.string(),
@@ -1015,6 +1047,13 @@ module.exports = {
   ContainerRefreshed,
   ContainerRegistered,
   ContainerCarLinked,
+  GoogleNotConfigured,
+  GoogleNotConnected,
+  DriveConnected,
+  DriveStatus,
+  DriveFile,
+  DriveFileList,
+  GoogleDisconnected,
   Deleted,
   ApiError,
 };

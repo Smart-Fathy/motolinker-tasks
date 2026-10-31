@@ -54,6 +54,7 @@
     "contractdocs": 8,
     "stockroutes": 6,
     "containerroutes": 6,
+    "driveroutes": 5,
     "calendar": 2,
     "issues": 4,
     "spashell": 2,
