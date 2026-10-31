@@ -896,8 +896,11 @@ What exists so far, all of it invisible to users:
   the rail's item, the toast when one arrives live, and the Notification Center), as are **Submissions** (what the
   website's form sent us), **Issues** (the Chief Technical Officer's centre — new to the admin portal, which never
   had one — with "Report an Issue" in the team's rail and account menu) and Home (who you are and what you
-  may do), and **Security** with the team's account menu (the panel over the page — two-factor, devices, sign-ins,
-  the password — and the picture, username, status and password dialogs behind a person's own face);
+  may do), **Security** with the team's account menu (the panel over the page — two-factor, devices, sign-ins,
+  the password — and the picture, username, status and password dialogs behind a person's own face), and **Suppliers**
+  (the register behind the supplier pickers, as cards with each supplier's figures or as the table the administrator
+  arranges; a supplier's catalogue, paperwork and purchases; and the column editor that every register-style table will
+  share — the menu behind a header, the Columns list, the dialogs that add a field or change its type, options and colours);
   every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
   (`/legacy/<portal>?embed=1`; the live chat, which a frame cannot hold, opens a card that says so and
   links to the classic page), so the whole portal is reachable from the new app while the screens move one at a
@@ -945,7 +948,12 @@ style; the rail's "Report an Issue" button is in `tests/shellparity.js`) and `te
 (the real server, the built app, a real browser). Security and the account menu have them too: `tests/account.js` (the picture,
 status, username and password routes and the Security answers, each held to its schema in `packages/contracts`),
 `tests/secparity.js` and `tests/acctparity.js` (the panel and the menu with its dialogs against the classic portals' computed
-style) and `tests/websecurity.js` (the real server, the built app, a real browser). What each classic screen did, row by row, and where each row is held, is `docs/parity/`.
+style) and `tests/websecurity.js` (the real server, the built app, a real browser). Suppliers has them too: `tests/suppliers.js` (the
+register, the catalogue, the documents, the purchases and the column-configuration routes of both portals — who may ask for each,
+what is kept, what is refused, what a configuration is cleaned to — each answer held to its schema), `tests/supparity.js` (the register,
+the form, a supplier's pages and the column editor against the classic portals' computed style) and `tests/websuppliers.js` (the real
+server, the built app, a real browser, Google Drive stood in for). What each classic screen did, row by row, and where each row is held,
+is `docs/parity/`.
 Details in `apps/web/README.md`.
 
 **Editing the classic portals' scripts while they still exist:** in a frame, `public/assets/dashboard.js` and

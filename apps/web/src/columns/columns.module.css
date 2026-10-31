@@ -1,0 +1,418 @@
+/* The column editor, as public/assets/columns.js draws it and the two sheets style it (the same rules, copied, in both): the
+   floating menu a header opens and the "Columns" list (.lead-menu), the editor's own dialog layer that stacks above whatever is
+   open (.ce-modal-*), the type chips, a coloured badge, a link cell, and the cells of a grid of lines (.po-th, .po-td and the
+   .form-input in them). Everything takes its colours from the theme's variables. */
+@layer ui {
+  /* ── The floating menu ─────────────────────────────────────────────────────── */
+  .menu {
+    position: fixed;
+    z-index: 10060;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: calc(10px * var(--r-k, 1));
+    box-shadow: 0 8px 32px rgba(0, 0, 0, calc(0.55 * var(--sh-k, 1)));
+    min-width: 190px;
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 6px;
+  }
+  .menu button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 12.5px;
+    padding: 8px 10px;
+    border-radius: calc(6px * var(--r-k, 1));
+    cursor: pointer;
+    user-select: none;
+  }
+  .menu button:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.06);
+  }
+  .menu button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .menu button.danger {
+    color: var(--danger);
+  }
+  .sep {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 6px;
+  }
+  .pickHead {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 6px 10px 4px;
+  }
+  /* the "Columns" list: the label shows and hides, the pencil opens the field's editor */
+  .menu .row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-right: 4px;
+  }
+  .menu .row .eye {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .menu button.eye {
+    color: var(--text);
+  }
+  .menu button.eye svg {
+    color: var(--primary-text, var(--primary));
+  }
+  .menu button.eye.colHidden {
+    color: var(--muted);
+  }
+  .menu button.eye.colHidden svg {
+    color: var(--muted);
+  }
+  .menu button.pencil {
+    width: auto;
+    flex: 0 0 auto;
+    padding: 6px;
+    color: var(--muted);
+    border-radius: calc(5px * var(--r-k, 1));
+  }
+  .menu button.pencil:hover {
+    color: var(--primary-text, var(--primary));
+    background: rgba(var(--ov, 255, 255, 255), 0.07);
+  }
+
+  /* ── The editor's dialog layer ─────────────────────────────────────────────── */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 10100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: calc(14px * var(--r-k, 1));
+    width: min(540px, 96vw);
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, calc(0.6 * var(--sh-k, 1)));
+  }
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .x {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+    user-select: none;
+  }
+  .x:hover {
+    color: var(--text);
+  }
+  .body {
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .foot {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* field types as chips (a native popup inside the stacked dialog painted behind it in some browsers) */
+  .types {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .type {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: calc(20px * var(--r-k, 1));
+    font-size: 12.5px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-family: inherit;
+    user-select: none;
+  }
+  .type:hover {
+    color: var(--text);
+  }
+  .type.on {
+    background: rgba(var(--primary-rgb, 201, 163, 94), 0.16);
+    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.5);
+    color: var(--primary-text, var(--primary));
+    font-weight: 600;
+  }
+
+  /* a dropdown's options: a label, a colour, and a way to take it out */
+  .optRow {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+    align-items: center;
+  }
+  .swatch {
+    width: 34px;
+    height: 32px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: calc(6px * var(--r-k, 1));
+    background: none;
+    cursor: pointer;
+  }
+  .optX {
+    background: rgba(239, 68, 68, 0.1);
+    border: none;
+    border-radius: calc(6px * var(--r-k, 1));
+    color: var(--danger);
+    cursor: pointer;
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .hint {
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .hintField {
+    margin: 8px 0 12px;
+  }
+  .hintOptions {
+    margin-top: 10px;
+  }
+  .tick {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .widthLabel {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+  }
+  .accent {
+    accent-color: var(--primary);
+  }
+
+  /* ── A header's chevron ─────────────────────────────────────────────────────── */
+  .chev {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 2px;
+    margin-left: 3px;
+    border-radius: calc(4px * var(--r-k, 1));
+    opacity: 0.7;
+    vertical-align: middle;
+  }
+
+  /* ── What a value looks like ─────────────────────────────────────────────────── */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.5;
+    white-space: nowrap;
+    background: rgba(var(--ov, 255, 255, 255), 0.06);
+    color: var(--muted);
+    border: 1px solid rgba(var(--ov, 255, 255, 255), 0.12);
+  }
+  /* A colour somebody picked is data, not a theme token: on a light page it is mixed toward the text colour so the label
+     stays readable. (Its wash and rim are set on the badge, from the same colour.) */
+  .pill.coloured {
+    color: var(--ce-c);
+  }
+  :global(html[data-mode='light']) .pill.coloured {
+    color: oklch(from var(--ce-c, #888888) min(l, 0.44) c h);
+  }
+  .link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    color: var(--primary-text, var(--gold));
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .link:hover {
+    text-decoration: underline;
+  }
+  .link svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+  }
+  .cell {
+    padding: 8px 10px;
+  }
+  .centre {
+    text-align: center;
+  }
+  .star {
+    color: var(--danger);
+  }
+  .tickLabel {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  /* ── A grid of lines ─────────────────────────────────────────────────────────── */
+  /* (.po-th and .po-td, which the admin's sheet has and the team's never did: a team grid is drawn with the sheet's bare th, td
+     and tr. Exported for the screens that draw a table of their own beside it — see grid.ts.) */
+  :global([data-portal='admin']) .gridHead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--thead-bg, #101012);
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding: 8px 6px;
+    text-align: left;
+    border-bottom: 1px solid var(--hair-gold, var(--border));
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  :global([data-portal='admin']) .gridCell {
+    padding: 4px 5px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  :global([data-portal='admin']) .gridRow {
+    border-bottom: 1px solid var(--hair, var(--border));
+  }
+  :global([data-portal='team']) .gridHead {
+    background: rgba(var(--ov, 255, 255, 255), 0.03);
+    padding: calc(11px * var(--d-k, 1)) calc(16px * var(--d-k, 1));
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+  }
+  :global([data-portal='team']) .gridCell {
+    padding: calc(13px * var(--d-k, 1)) calc(16px * var(--d-k, 1));
+    border-bottom: 1px solid rgba(var(--ov, 255, 255, 255), 0.04);
+    vertical-align: middle;
+  }
+  .gridInput {
+    padding: 7px 12px;
+    border: 1px solid var(--hair, var(--border));
+    border-radius: calc(8px * var(--r-k, 1));
+    font-size: 13px;
+    background: var(--field-bg, #0e0e10);
+    color: var(--text);
+    outline: none;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
+    width: 100%;
+    font-family: inherit;
+  }
+  .gridInput:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 201, 163, 94), 0.14);
+  }
+  /* (the team's sheet gives a text field of a grid the same dark treatment as its dropdowns, at its own size) */
+  :global([data-portal='team']) .gridInput {
+    background: var(--field-bg-2, #101013);
+    border-color: var(--border);
+    padding: 11px 14px;
+    font-size: 14px;
+    font-family: var(--font);
+    color-scheme: var(--color-scheme, dark);
+  }
+  :global([data-portal='team']) .gridInput:focus {
+    border-color: var(--primary);
+    box-shadow:
+      0 0 0 3px rgba(var(--primary-rgb, 201, 163, 94), 0.15),
+      var(--glow, 0 0 #0000);
+  }
+  :global([data-portal='team']) .gridInput::placeholder {
+    color: var(--muted);
+  }
+
+  /* On a phone (mobile.css): every button is a thumb's size, and a field is not zoomed into by the browser when it is focused. */
+  @media (max-width: 700px) {
+    .menu button,
+    .x,
+    .type,
+    .optX {
+      min-width: 44px;
+      min-height: 44px;
+    }
+    .swatch {
+      font-size: 16px;
+    }
+    .accent,
+    .tick input,
+    .tickLabel input {
+      width: 24px;
+      height: 24px;
+      font-size: 16px;
+    }
+  }
+  @media (max-width: 700px) {
+    :global([data-portal='team']) .gridHead,
+    :global([data-portal='team']) .gridCell {
+      padding: 10px 12px;
+    }
+  }
+  /* (a text field is not zoomed into, and takes the sheet's rounder corner: the grid sets its own size and padding inline) */
+  @media (max-width: 640px) {
+    :global([data-portal='admin']) .gridInput {
+      border-radius: calc(10px * var(--r-k, 1));
+    }
+  }
+}

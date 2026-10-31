@@ -53,7 +53,8 @@
     border-radius: var(--radius-sm);
     font-weight: 600;
     font-family: var(--font);
-    white-space: normal;
+    /* (the team's sheet gives a button no rule for this: it takes the line's, as text does) */
+    white-space: inherit;
   }
   :global([data-portal='team']) .primary {
     background: linear-gradient(135deg, var(--gold-soft, #d9bd7f), var(--primary));

@@ -11,7 +11,8 @@
 #                                             five machines (tools/shard-plan.js deals them out by tests/suite-weights.json)
 #   bash tests/run.sh --list                  print the suite names and run nothing (also with --only / --shard)
 #
-# `secparity` (the Security panel against the classic one, 8 looks of 2 portals) runs as two, one per portal, for the same reason.
+# `secparity` (the Security panel against the classic one, 8 looks of 2 portals) runs as two, one per portal, for the same reason;
+# so does `supparity` (Suppliers).
 # `themeaudit`, the contrast audit, is the longest suite and runs as three (themeaudit1..3) so that it can be
 # spread over machines; --only themeaudit asks for all three. Every suite's seconds go to
 # ${TMPDIR:-/tmp}/ml-suite-times.txt, which is what tests/suite-weights.json is refreshed from.
@@ -36,7 +37,7 @@ if [ -n "$shard" ]; then
 fi
 expanded=()
 for n in "${asked[@]}"; do
-  case "$n" in themeaudit) expanded+=(themeaudit1 themeaudit2 themeaudit3) ;; secparity) expanded+=(secparityadmin secparityteam) ;; *) expanded+=("$n") ;; esac
+  case "$n" in themeaudit) expanded+=(themeaudit1 themeaudit2 themeaudit3) ;; secparity) expanded+=(secparityadmin secparityteam) ;; supparity) expanded+=(supparityadmin supparityteam) ;; *) expanded+=("$n") ;; esac
 done
 asked=("${expanded[@]}")
 if [ $only_given -eq 1 ]; then only=","; for n in "${asked[@]}"; do only="$only$n,"; done; fi
@@ -93,6 +94,7 @@ run permstest   node tests/permstest.js
 run contracts   node tests/contracts.js
 run actor       node tests/actor.js
 run account     node tests/account.js
+run suppliers   node tests/suppliers.js
 run notifications node tests/notifications.js
 run submissions  node tests/submissions.js
 run meetings     node tests/meetings.js
@@ -112,6 +114,8 @@ run meetparity  node tests/meetparity.js
 run calparity   node tests/calparity.js
 run secparityadmin node tests/secparity.js --only=admin
 run secparityteam  node tests/secparity.js --only=team
+run supparityadmin node tests/supparity.js --only=admin
+run supparityteam  node tests/supparity.js --only=team
 run acctparity  node tests/acctparity.js
 run webshell     node tests/webshell.js
 run galleryaudit node tests/galleryaudit.js
@@ -122,6 +126,7 @@ run webnotifs    node tests/webnotifs.js
 run webissues    node tests/webissues.js
 run webmeet      node tests/webmeet.js
 run websecurity  node tests/websecurity.js
+run websuppliers node tests/websuppliers.js
 run webauth      node tests/webauth.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js

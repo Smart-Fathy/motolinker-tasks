@@ -344,6 +344,158 @@ const ChangePasswordResult = z.object({
   warning: z.string().optional(),
 });
 
+// ── Suppliers (both portals' own routes: …/suppliers, …/supplier-vehicles, …/columns/:entity; one handler each) ───────────────
+// What the register keeps about a supplier, and what hangs off it. Text columns have a default of '' in the database, so they
+// are strings; they are said to be possibly null because a row that was written some other way may have none. `custom_fields`
+// carries the fields an administrator added to the register's columns (and is absent where migration 009 was never applied).
+const CustomFields = z.record(z.string(), z.unknown()).nullable().optional();
+
+const Supplier = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  contact: z.string().nullable(),
+  address: z.string().nullable(),
+  country: z.string().nullable(),
+  notes: z.string().nullable(),
+  custom_fields: CustomFields,
+  created_by: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+const SupplierList = z.array(Supplier);
+
+// POST / PUT …/suppliers — the name is required (a 400 without it); the others are trimmed.
+const SupplierBody = z.object({
+  name: z.string(),
+  contact: z.string().optional(),
+  address: z.string().optional(),
+  country: z.string().optional(),
+  notes: z.string().optional(),
+  custom_fields: z.record(z.string(), z.unknown()).optional(),
+});
+
+// What a supplier offers: a vehicle with a quoted price and lead time. `fob_price` and `model_year` are numbers or nothing.
+const SupplierVehicle = z.object({
+  id: z.number().int(),
+  supplier_id: z.number().int(),
+  brand: z.string(),
+  model: z.string(),
+  trim: z.string().nullable(),
+  model_year: z.number().int().nullable(),
+  availability: z.string().nullable(),
+  fob_price: z.number().nullable(),
+  currency: z.string(),
+  lead_time: z.string().nullable(),
+  accessories: z.string().nullable(),
+  notes: z.string().nullable(),
+  custom_fields: CustomFields,
+  created_by: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+const SupplierVehicleList = z.array(SupplierVehicle);
+// GET …/supplier-vehicles — every vehicle any supplier offers, with the supplier's name beside it (the pickers of the RFQ and
+// purchase-order lines read it, and the register counts it).
+const SupplierOffer = SupplierVehicle.extend({ supplier_name: z.string() });
+const SupplierOfferList = z.array(SupplierOffer);
+
+// POST / PUT …/suppliers/:id/vehicles — brand or model is required (a 400 without either); a price or a year may be typed as text.
+const SupplierVehicleBody = z.object({
+  brand: z.string().optional(),
+  model: z.string().optional(),
+  trim: z.string().optional(),
+  model_year: z.union([z.string(), z.number()]).optional(),
+  availability: z.string().optional(),
+  fob_price: z.union([z.string(), z.number()]).optional(),
+  currency: z.string().optional(),
+  lead_time: z.string().optional(),
+  accessories: z.string().optional(),
+  notes: z.string().optional(),
+  custom_fields: z.record(z.string(), z.unknown()).optional(),
+});
+
+// A supplier's paperwork: the file is in Google Drive, the row says where.
+const SupplierDoc = z.object({
+  id: z.number().int(),
+  supplier_id: z.number().int(),
+  name: z.string(),
+  drive_file_id: z.string().nullable(),
+  web_link: z.string().nullable(),
+  mime_type: z.string().nullable(),
+  size_bytes: z.number().nullable(),
+  uploaded_by: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+});
+const SupplierDocList = z.array(SupplierDoc);
+
+// GET …/suppliers/:id/purchases — what was actually bought from a supplier, worked out from the stock units and the purchase
+// orders pointed at them (never typed in): the cars received, the lines ordered, and the figures over both.
+const SupplierPurchases = z.object({
+  units: z.array(
+    z.object({
+      stock_id: z.number().int(),
+      make: z.string().nullable(),
+      model: z.string().nullable(),
+      trim: z.string().nullable(),
+      vin: z.string(),
+      colour: z.string(),
+      status: z.string(),
+      price: z.number(),
+    }),
+  ),
+  poLines: z.array(
+    z.object({
+      po_id: z.number().int(),
+      po_number: z.string().nullable(),
+      po_date: z.string().nullable(),
+      currency: z.string().nullable(),
+      brand: z.string(),
+      model: z.string(),
+      trim: z.string(),
+      qty: z.number(),
+      price: z.number(),
+      lead_time: z.string(),
+    }),
+  ),
+  totals: z.object({
+    vehicles: z.number().int(),
+    ordered: z.number(),
+    avg_unit_price: z.number(),
+    avg_po_price: z.number(),
+    lead_times: z.array(z.string()),
+  }),
+});
+
+// ── The column engine's configuration (GET / PUT …/columns/:entity) ──────────────────────────────────────────────────────────
+// Which fields a table or form has, in what order, of what type: one list per entity (`suppliers`, `supplier_vehicles`,
+// `rfq_items`, `po_doc`, `stock`, `leads`, …), kept in the quotation settings. The server cleans it on the way in and on the
+// way out, so what is read is always this shape: a column with an unknown type is text, a key with a quote or an angle
+// bracket in it is dropped, an option's colour is #rrggbb or nothing. `columns` is null where nothing was ever saved: the
+// screen's own built-in columns stand.
+const ColumnOption = z.object({
+  key: z.string(),
+  label: z.string(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-f]{6}$/)
+    .optional(),
+});
+const Column = z.object({
+  key: z.string(),
+  label: z.string(),
+  type: z.enum(['text', 'number', 'date', 'link', 'select', 'radio', 'checkbox', 'virtual']),
+  // a column the screen has of its own (and cannot lose, only hide or soft-delete), against one somebody added (`cf_…`)
+  builtin: z.boolean(),
+  visible: z.boolean(),
+  deleted: z.literal(true).optional(),
+  required: z.literal(true).optional(),
+  width: z.number().int().min(40).max(800).optional(),
+  options: z.array(ColumnOption).optional(),
+});
+const ColumnsResponse = z.object({ columns: z.array(Column).nullable(), entity: z.string() });
+const ColumnsBody = z.object({ columns: z.array(z.unknown()) });
+const ColumnsSaved = z.object({ ok: z.literal(true), columns: z.array(Column) });
+
 // What /api/v1 answers when it says no: words for a person, a word for a program, and what was wrong with the request.
 const ApiError = z.object({
   error: z.string(),
@@ -396,5 +548,21 @@ module.exports = {
   UsernameResult,
   ChangePasswordBody,
   ChangePasswordResult,
+  Supplier,
+  SupplierList,
+  SupplierBody,
+  SupplierVehicle,
+  SupplierVehicleList,
+  SupplierOffer,
+  SupplierOfferList,
+  SupplierVehicleBody,
+  SupplierDoc,
+  SupplierDocList,
+  SupplierPurchases,
+  ColumnOption,
+  Column,
+  ColumnsResponse,
+  ColumnsBody,
+  ColumnsSaved,
   ApiError,
 };

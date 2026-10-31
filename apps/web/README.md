@@ -21,13 +21,16 @@ src/legacy/         a screen that has not moved, shown as its classic page in a 
                     protocol with the page), frameable.ts (the screens a frame cannot hold)
 src/sw/             the service worker: sw.ts (wiring), logic.ts (every decision, testable), shared.ts (what the
                     worker and the pages agree on); built to dist/sw.js by sw-plugin.ts
-src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues, meet, calendar, security
+src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues, meet, calendar, security, suppliers
+src/columns/        the column editor every register-style table shares: how a saved list is read against a screen's own
+                    columns, the menu behind a header, the Columns list, the dialogs, the inputs (model.ts, data.ts, useColumns.ts,
+                    Layer.tsx, Fields.tsx)
 src/auth/           the sign-in: SignIn.tsx (which step, and what carries between them) and a component per
                     step: PasswordStep, CodeStep (second step), ForgotStep, ResetStep; copy.ts holds every
                     line they say
 src/ui/             the design primitives: Button, Field, Alert, AuthLayout, Modal (the team's dialog), Sheet (the shared
-                    dialog both portals open their forms in), Btn (the in-page button), BrandSelect (the dropdown), ToastHost
-                    (CSS Modules, in the `ui` layer)
+                    dialog both portals open their forms in), Form (a form's group, label and control), Btn (the in-page
+                    button), BrandSelect (the dropdown), ToastHost (CSS Modules, in the `ui` layer)
 src/gallery/        <portal>/__gallery: the primitives, the frame and the colours under any look (lazy chunk)
 src/lib/            env.ts (what the server tells the page: window.__ML__ — the portal, the workspace's name
                     and its replaced wording), session.ts (the token, under the classic portals' own keys),
@@ -361,6 +364,34 @@ Security, and the picture, status, username and password routes have no twin —
   dialogs); `tests/secparity.js` and `tests/acctparity.js` (look), `tests/websecurity.js` (the real thing), `tests/account.js` (the
   routes and the answers' shapes).
 
+## Suppliers and the column editor
+
+`modules/suppliers` is the register behind the supplier pickers of the RFQ, purchase-order and stock screens; `src/columns` is the
+column editor that comes with it and that every register-style table will share. Both portals have both; what a person may do is
+the grants (`suppliers.view|create|edit|delete|catalogue|docs|purchases`), and what they may not do is not drawn.
+
+- **The data** (`modules/suppliers/data.ts`) is the portals' own routes (`/api/dashboard/…`, `/api/employee/…`, which are one handler
+  for both) read through the session's `api.base`: the register, the two lists a card's figures come from (`supplier-vehicles` and
+  `stock` — they belong to other sections, so a refusal is a dash on the card, never a zero), a supplier's catalogue, documents and
+  purchases, and the writes. The register is asked for each time the screen opens and again after every change; an answer is
+  checked (`model.ts`, held to the schemas in `packages/contracts` by `model.test.ts`: the bundle does not carry zod) and one that
+  is not what it should be is said, not drawn.
+- **The register** (`Suppliers.tsx`): cards or a table (`ml_sup_view`, the classic page's own key), the count line, the form
+  (`SupplierForm.tsx`), and a supplier's pages in a wide sheet (`Detail.tsx`: *Vehicles*, *Documents*, *Purchases*, each a grant).
+  A form is made of the register's own columns, in the order, names and types the administrator gave them; **what it does not show
+  it keeps** (a hidden column's value and an added field that is not on the form are sent back as they were). A catalogue cell saves
+  the whole vehicle, for the same reason.
+- **The engine** (`src/columns`): `useColumns(entity, builtins)` reads the saved list (`GET …/columns/:entity`, `null` where nothing
+  was arranged) against the screen's own columns and offers what the editor does to it; a screen draws from `columns.shown`,
+  puts `<ColumnsBar>` over its table, `<ColumnHeader>` in its head and `<ColumnsLayer>` anywhere in its tree. Only the administrator
+  may change a list (the server refuses everyone else, so nobody else is offered the controls); each change is one PUT of the
+  whole list, and one that is not kept is said and taken back. `model.ts` holds the rules as plain functions — merging, renaming,
+  moving, hiding, deleting, a dropdown's options, a link, a badge — and `model.test.ts` runs each of them **against the classic
+  engine on the same lists**. The editor's dialogs are their own layer above whatever is open (a sheet being filled in), close back
+  to it on Escape or a press on the curtain, and keep Tab among themselves.
+- Tests: `model.test.ts` (both modules), `suppliers.test.tsx` and `columns.test.tsx` (every state, grant and refusal);
+  `tests/supparity.js` (look), `tests/websuppliers.js` (the real thing), `tests/suppliers.js` (the routes, both portals).
+
 ## The gallery
 
 `/dashboard/__gallery` and `/employee/__gallery` (with `?ui=next`; it needs no session) show the design system on
@@ -385,9 +416,10 @@ Opened from the dev server there is no `window.__ML__`; the app falls back to th
 
 The suites that hold it, from the root: `tests/modules.js` (the catalogue against the classic portals), `tests/spashell.js`
 (the build and the server half), `tests/signinparity.js` and `tests/shellparity.js` (look, value by value),
-`tests/webauth.js`, `tests/webshell.js`, `tests/webnotifs.js` and `tests/webissues.js` (the real server, a real browser),
-`tests/notifparity.js`, `tests/subparity.js` and `tests/issparity.js` (the pages, value by value), `tests/notifications.js`,
-`tests/submissions.js` and `tests/issues.js` (the routes behind them), `tests/galleryaudit.js` (readability),
+`tests/webauth.js`, `tests/webshell.js`, `tests/webnotifs.js`, `tests/webissues.js` and `tests/websuppliers.js` (the real server, a real
+browser), `tests/notifparity.js`, `tests/subparity.js`, `tests/issparity.js` and `tests/supparity.js` (the pages, value by value),
+`tests/notifications.js`, `tests/submissions.js`, `tests/issues.js` and `tests/suppliers.js` (the routes behind them),
+`tests/galleryaudit.js` (readability),
 `tests/embed.js` (the classic pages as guests), `tests/webframe.js` (every unmoved screen in its frame) and
 `tests/webpwa.js` (the service worker, offline and in turns with the classic one).
 The parity suites compare against the classic portals, so they go when the classic portals do. (Vitest's module cache is

@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -28,6 +29,8 @@ interface Props {
   'aria-label'?: string;
   /** named for a test or a style that needs to find it */
   part?: string;
+  /** what the classic page copied from the select onto its button (a cell of a grid is smaller than a field of a form) */
+  style?: CSSProperties;
 }
 
 /** A list longer than this gets a search box (the classic dropdown's own rule: the leads list is long). */
@@ -40,7 +43,7 @@ const SEARCH_ABOVE = 8;
  * the part of the screen that can be seen, and closed by Escape (which closes only it, not the dialog it may be in), by a click
  * elsewhere, by choosing, and by the page getting narrower or wider.
  */
-export function BrandSelect({ id, value, options, onChange, part, ...rest }: Props) {
+export function BrandSelect({ id, value, options, onChange, part, style, ...rest }: Props) {
   const own = useId();
   const triggerId = id ?? own;
   const trigger = useRef<HTMLButtonElement>(null);
@@ -187,6 +190,7 @@ export function BrandSelect({ id, value, options, onChange, part, ...rest }: Pro
         type="button"
         className={cx(styles['trigger'], open && styles['open'])}
         data-part={part}
+        style={style}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={rest['aria-label']}
