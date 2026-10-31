@@ -38,8 +38,9 @@ async function openPage(browser, base, p, mode, next, stub) {
   page.on('request', async r => {
     const u = r.url();
     // What the server would say, said instead where a suite needs a state a real one cannot be put in:
-    // `stub(url, method)` answers { status, body } or nothing (the request goes to the server).
+    // `stub(url, method)` answers { status, body }, { abort: true } (the server cannot be reached) or nothing (the request goes to the server).
     const said = stub && u.startsWith(base) ? await stub(u, r.method()) : null;
+    if (said && said.abort) return r.abort('failed');   // the server cannot be reached at all
     if (said) return r.respond({ status: said.status || 200, contentType: 'application/json', body: JSON.stringify(said.body) });
     if (/unpkg|jsdelivr|fonts\.g|gstatic/.test(u)) return r.respond({ status: 200, contentType: 'text/plain', body: '' });
     if (/^https?:/.test(u) && !u.startsWith(base)) return r.abort('internetdisconnected');
