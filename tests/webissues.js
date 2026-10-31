@@ -170,7 +170,7 @@ fs.writeFileSync(PNG, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
 
     await type(page, '[data-part=summary]', 'Cannot log hours');
     await type(page, '[data-part=details]', 'The button does nothing.');
-    await (await page.$('input[type=file]')).uploadFile(PNG);
+    await (await page.$('[data-part=dialog] input[type=file]')).uploadFile(PNG);
     check('a chosen file is named under the paperclip', await until(page, () => /shot\.png/.test(document.querySelector('[data-part=fileHint]')?.textContent || '')));
     await press(page, '[data-part=submit]');
     check('sending stores the ticket under her name, with the file in the store', await waitFor(() => db.tables.issues.some(i => i.title === 'Cannot log hours' && i.reporter_id === 71 && i.reporter_name === 'Ana' && i.status === 'open' && /\/storage\/v1\/object\/public\/chat-files\/issues\/\d+_shot\.png$/.test(i.file_url))), JSON.stringify(db.tables.issues.map(i => [i.id, i.title, i.file_url])));

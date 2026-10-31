@@ -1,5 +1,6 @@
 import { SCREENS } from '@motolinker/contracts/modules';
 import { describe, expect, it } from 'vitest';
+import { NOT_FRAMED } from '../legacy/frameable';
 import { defineModule } from './define-module';
 import { registry, registryFrom } from './registry';
 
@@ -61,6 +62,10 @@ describe('the registry', () => {
       'security',
       'submissions',
     ]);
+  });
+
+  it('is not asked to frame a screen that has moved (the list of what a frame cannot hold is only for what is still classic)', () => {
+    expect(Object.keys(NOT_FRAMED).filter(id => registry.has(id))).toEqual([]);
   });
 
   it('has a module for every screen that is new to a portal: the classic portal has no page for a frame to show', () => {

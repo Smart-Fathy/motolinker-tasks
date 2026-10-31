@@ -28,8 +28,9 @@ const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'ml-frame-'));
 const build = spawnSync(process.execPath, [path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'), 'build', '--outDir', dist, '--emptyOutDir'], { cwd: path.join(ROOT, 'apps', 'web'), encoding: 'utf8' });
 if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log(' FAIL the web app builds'); process.exit(1); }
 
-// Screens a frame cannot hold (apps/web/src/legacy/frameable.ts): they say why, and where the classic page is.
-const NOT_FRAMED = ['chat', 'security'];
+// Screens a frame cannot hold (apps/web/src/legacy/frameable.ts): they say why, and where the classic page is. (Security was one
+// until it moved: it is a panel over the page, tested in tests/websecurity.js.)
+const NOT_FRAMED = ['chat'];
 // Screens that have moved into the app: their page is the app's own, not the classic page in a frame.
 const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[data-part=submissionsPage]', issues: '[data-part=issuesPage]', meet: '[data-part=meetPage]', calendar: '[data-part=calendarPage]' };
 
@@ -131,7 +132,7 @@ const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[d
       }
       check(`${p.portal}: a screen that has moved (${Object.keys(MOVED).join(', ')}) is in the rail and is the app's own page, not a frame`, moved.length === 0, moved.join('; '));
 
-      // the ones a frame cannot hold say why and where to go (Security is not in the rail: it is in the footer and the account menu)
+      // the ones a frame cannot hold say why and where to go
       const cardProblems = [];
       for (const id of NOT_FRAMED) {
         await page.goto(base + p.route + '/' + id, { waitUntil: 'domcontentloaded' });

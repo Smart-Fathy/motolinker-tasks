@@ -896,8 +896,10 @@ What exists so far, all of it invisible to users:
   the rail's item, the toast when one arrives live, and the Notification Center), as are **Submissions** (what the
   website's form sent us), **Issues** (the Chief Technical Officer's centre — new to the admin portal, which never
   had one — with "Report an Issue" in the team's rail and account menu) and Home (who you are and what you
-  may do); every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
-  (`/legacy/<portal>?embed=1`; the live chat and Security, which a frame cannot hold, open a card that says so and
+  may do), and **Security** with the team's account menu (the panel over the page — two-factor, devices, sign-ins,
+  the password — and the picture, username, status and password dialogs behind a person's own face);
+  every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
+  (`/legacy/<portal>?embed=1`; the live chat, which a frame cannot hold, opens a card that says so and
   links to the classic page), so the whole portal is reachable from the new app while the screens move one at a
   time. The app has its own **service worker** (a start without a network, a new build taken at once, push shown and
   a tap on it taken to the right screen), which takes turns with the classic portal's worker in the same scope. The
@@ -940,7 +942,10 @@ server, the built app, a real browser). Submissions, Issues, Meet and Calendar h
 `tests/submissions.js`, `tests/issues.js`, `tests/meetings.js` and `tests/calendar.js` (the routes), `tests/subparity.js`,
 `tests/issparity.js`, `tests/meetparity.js` and `tests/calparity.js` (the pages against the classic pages' computed
 style; the rail's "Report an Issue" button is in `tests/shellparity.js`) and `tests/webissues.js` and `tests/webmeet.js`
-(the real server, the built app, a real browser). What each classic screen did, row by row, and where each row is held, is `docs/parity/`.
+(the real server, the built app, a real browser). Security and the account menu have them too: `tests/account.js` (the picture,
+status, username and password routes and the Security answers, each held to its schema in `packages/contracts`),
+`tests/secparity.js` and `tests/acctparity.js` (the panel and the menu with its dialogs against the classic portals' computed
+style) and `tests/websecurity.js` (the real server, the built app, a real browser). What each classic screen did, row by row, and where each row is held, is `docs/parity/`.
 Details in `apps/web/README.md`.
 
 **Editing the classic portals' scripts while they still exist:** in a frame, `public/assets/dashboard.js` and
