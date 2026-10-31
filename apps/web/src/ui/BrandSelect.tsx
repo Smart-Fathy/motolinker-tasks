@@ -8,6 +8,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './BrandSelect.module.css';
@@ -31,6 +32,11 @@ interface Props {
   part?: string;
   /** what the classic page copied from the select onto its button (a cell of a grid is smaller than a field of a form) */
   style?: CSSProperties;
+  /**
+   * A button of the page's own that opens the list (a toolbar's "Filter"), instead of a select's: its class and what it says.
+   * The list under it is the same; choosing is what the page hears.
+   */
+  look?: { className: string; children: ReactNode };
 }
 
 /** A list longer than this gets a search box (the classic dropdown's own rule: the leads list is long). */
@@ -43,7 +49,7 @@ const SEARCH_ABOVE = 8;
  * the part of the screen that can be seen, and closed by Escape (which closes only it, not the dialog it may be in), by a click
  * elsewhere, by choosing, and by the page getting narrower or wider.
  */
-export function BrandSelect({ id, value, options, onChange, part, style, ...rest }: Props) {
+export function BrandSelect({ id, value, options, onChange, part, style, look, ...rest }: Props) {
   const own = useId();
   const triggerId = id ?? own;
   const trigger = useRef<HTMLButtonElement>(null);
@@ -188,7 +194,7 @@ export function BrandSelect({ id, value, options, onChange, part, style, ...rest
         ref={trigger}
         id={triggerId}
         type="button"
-        className={cx(styles['trigger'], open && styles['open'])}
+        className={look ? look.className : cx(styles['trigger'], open && styles['open'])}
         data-part={part}
         style={style}
         aria-haspopup="listbox"
@@ -197,7 +203,11 @@ export function BrandSelect({ id, value, options, onChange, part, style, ...rest
         onClick={() => (open ? close() : setOpen(true))}
         onKeyDown={onTriggerKey}
       >
-        <span className={styles['label']}>{chosen ? chosen.label : ' '}</span>
+        {look ? (
+          look.children
+        ) : (
+          <span className={styles['label']}>{chosen ? chosen.label : ' '}</span>
+        )}
       </button>
       {open &&
         createPortal(

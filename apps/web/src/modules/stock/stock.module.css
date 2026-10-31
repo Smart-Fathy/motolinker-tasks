@@ -1,0 +1,1563 @@
+/* Inventory & Logistics: the classic portals' own rules for it. public/assets/procurement.js (the Models tab) and
+   public/assets/logistics.js (the Tracking tab) draw the register and the board into both portals, mostly from classes that live
+   in both sheets (.stk-*, .mix-*, .stock-*, .lb-*, .logi-*) — and in each sheet's own way for the page around them (the admin's
+   header and deal tabs, the team's card title and tab strip). The page around the register is each portal's own markup.
+   tests/stparity.js holds the result to the classic pages' computed style, value by value. */
+@layer ui {
+  /* ── The page ────────────────────────────────────────────────────────────── */
+  .headActions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .teamSearch {
+    max-width: 240px;
+  }
+  .adminSearch {
+    max-width: 360px;
+    margin-top: 16px;
+  }
+  /* (the team's sheet draws this box as its .form-control — the surface, a small radius — not as the documents' .form-input) */
+  :global([data-portal='team']) input.teamSearch,
+  :global([data-portal='team']) input.trackInputTeam {
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+  }
+  @media (max-width: 768px) {
+    :global([data-portal='team']) input.teamSearch,
+    :global([data-portal='team']) input.trackInputTeam {
+      padding: 12px 14px;
+      font-size: 16px;
+    }
+  }
+  :global([data-portal='team']) input.teamSearch:focus,
+  :global([data-portal='team']) input.trackInputTeam:focus {
+    border-color: var(--primary);
+    box-shadow:
+      0 0 0 3px rgba(var(--alt-rgb, 124, 106, 255), 0.12),
+      var(--glow, 0 0 #0000);
+  }
+
+  /* The admin's tabs: the Deals page's own (.deal-tabs, .deal-tab). */
+  .dealTabs {
+    display: flex;
+    gap: 4px;
+    margin-top: 18px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dealTab {
+    user-select: none;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  .dealTab:hover {
+    color: var(--text);
+  }
+  .dealTab.active {
+    color: var(--primary-text, var(--primary));
+    border-bottom-color: var(--primary);
+  }
+  /* …and the team's: a strip of tabs with an icon each. */
+  .tabStrip {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 14px;
+    margin-bottom: -1px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    flex: none;
+    transition: all 0.2s;
+  }
+  .tab svg {
+    width: 14px;
+    height: 14px;
+    flex: none;
+  }
+  .tab:hover {
+    color: var(--text);
+  }
+  .tab.active {
+    color: var(--primary-text, var(--primary));
+    border-bottom-color: var(--primary);
+    font-weight: 700;
+  }
+  .paneSummaryAdmin {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+  }
+  /* (the team's #stock-summary is a .stats-grid until its script draws the band — the loader and the error are drawn below it, with
+     its margin held inside the grid — and the band drops the class) */
+  .paneSummaryTeam {
+    margin-bottom: 16px;
+  }
+  .statsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: calc(12px * var(--d-k, 1));
+  }
+  .paneTableAdmin {
+    margin-top: 14px;
+  }
+  .none {
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .errorBox {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.32);
+    color: var(--error-text, #f88);
+    border-radius: var(--r-md, calc(10px * var(--r-k, 1)));
+    padding: 12px 16px;
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+
+  /* ── Where the cars are (the band over the register) ─────────────────────── */
+  .mixBand {
+    display: flex;
+    align-items: center;
+    gap: 26px;
+    flex-wrap: wrap;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-xl, calc(14px * var(--r-k, 1)));
+    padding: 16px 20px;
+    margin-bottom: 14px;
+  }
+  .mixTotal {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  /* Numbers move to Manrope with tabular lining figures, so they line up in a column (the classic sheets' .num, .stat-value). */
+  .num {
+    font-family: var(--font-num, 'Manrope', system-ui, -apple-system, sans-serif);
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings:
+      'tnum' 1,
+      'lnum' 1;
+    letter-spacing: -0.03em;
+  }
+  /* (the team's sheet says it with !important, so no rule of its own for a number can take it back) */
+  :global([data-portal='team']) .num {
+    font-family: var(--font-num, 'Manrope', system-ui, -apple-system, sans-serif);
+    letter-spacing: -0.03em;
+  }
+  .statValue {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 0.9;
+    margin-bottom: 5px;
+  }
+  .mixUnit {
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .mixBody {
+    flex: 1;
+    min-width: 260px;
+  }
+  .mixBar {
+    display: flex;
+    height: 10px;
+    border-radius: var(--r-pill, 99px);
+    overflow: hidden;
+    background: var(--bg);
+  }
+  .mixBar span {
+    display: block;
+  }
+  .mixLegend {
+    display: flex;
+    gap: 18px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .mixKey {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .mixKey i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .mixKey b {
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .mixSide {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+  }
+  .mixSideV {
+    font-size: 14px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .mixSideL {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  :global([data-portal='team']) .mixBand {
+    gap: 22px;
+    border-radius: calc(14px * var(--r-k, 1));
+    padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+  :global([data-portal='team']) .mixBody {
+    min-width: 220px;
+  }
+  :global([data-portal='team']) .mixBar {
+    height: 8px;
+    border-radius: 99px;
+    gap: 2px;
+    background: rgba(var(--ov, 255, 255, 255), 0.05);
+  }
+  :global([data-portal='team']) .mixKey {
+    font-weight: 400;
+    white-space: normal;
+    color: var(--muted);
+  }
+  :global([data-portal='team']) .mixKey b {
+    color: var(--text);
+  }
+  :global([data-portal='team']) .statValue {
+    font-weight: 800;
+    margin-bottom: 0;
+  }
+  :global([data-portal='team']) .mixUnit {
+    font-size: 12px;
+  }
+
+  /* Cars an older save counted and nobody named. */
+  .notice {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    margin-top: 12px;
+    padding: 11px 14px;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: calc(10px * var(--r-k, 1));
+    font-size: 12.5px;
+    color: var(--notice-text, #e9c98a);
+  }
+  .notice svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: var(--warning, #f59e0b);
+  }
+  .notice span {
+    flex: 1;
+    min-width: 0;
+  }
+  .notice strong {
+    color: var(--notice-strong, #f8dfae);
+  }
+  .notice .review {
+    flex-shrink: 0;
+    padding: 5px 12px;
+    font-size: 12px;
+  }
+  .legacy {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 9px 12px;
+    border: 1px solid var(--warning);
+    border-radius: calc(9px * var(--r-k, 1));
+    background: rgba(var(--primary-rgb, 201, 163, 94), 0.08);
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text);
+  }
+  .legacy svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: var(--warning);
+  }
+
+  /* ── The views (All vehicles · By status · By model) and what narrows them ─ */
+  .views {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  .viewTab {
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 11px 14px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .viewTab svg {
+    width: 14px;
+    height: 14px;
+  }
+  .viewTab:hover {
+    color: var(--text);
+  }
+  .viewTab.active {
+    color: var(--primary-text, var(--gold));
+    font-weight: 700;
+    border-bottom-color: var(--gold);
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .tbar {
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border-radius: calc(9px * var(--r-k, 1));
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    background: var(--surface);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .tbar svg {
+    width: 14px;
+    height: 14px;
+  }
+  .tbar:hover {
+    color: var(--text);
+    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.35);
+  }
+  .tbar.on {
+    font-weight: 700;
+    background: rgba(var(--primary-rgb, 201, 163, 94), 0.12);
+    color: var(--primary-text, var(--gold));
+    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.4);
+  }
+  .chip {
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid var(--hair-gold, var(--border));
+    border-radius: calc(14px * var(--r-k, 1));
+    background: rgba(var(--primary-rgb, 201, 163, 94), 0.08);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .chip:hover {
+    border-color: var(--primary);
+    color: var(--primary-text, var(--primary));
+  }
+  .chip span {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1;
+  }
+  .chip:hover span {
+    color: var(--primary-text, var(--primary));
+  }
+
+  /* ── All vehicles: a row for each car ────────────────────────────────────── */
+  .tableCard {
+    background: var(--panel, var(--surface));
+    border: 1px solid var(--hair, var(--border));
+    border-radius: calc(4px * var(--r-k, 1));
+    box-shadow: none;
+    overflow: hidden;
+  }
+  .tableScroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  .table thead th {
+    text-align: left;
+    color: var(--muted);
+    font-weight: 700;
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 4px 6px;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--hair-gold, var(--border));
+    background: var(--thead-bg, #101012);
+    cursor: pointer;
+    user-select: none;
+  }
+  .table tbody tr {
+    border-bottom: 1px solid var(--hair, var(--border));
+    transition: background 0.1s;
+  }
+  .table tbody tr:hover {
+    background: rgba(var(--primary-rgb, 201, 163, 94), 0.05);
+  }
+  .table td {
+    padding: 5px 6px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .tableScroll table thead th:first-child,
+  .tableScroll table tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    box-shadow: 1px 0 0 var(--border);
+  }
+  .tableScroll table tbody td:first-child {
+    background: var(--surface);
+  }
+  .tableScroll table thead th:first-child {
+    z-index: 3;
+  }
+  :global([data-portal='team']) .tableCard {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: calc(12px * var(--r-k, 1));
+  }
+  :global([data-portal='team']) .table thead th {
+    background: rgba(var(--ov, 255, 255, 255), 0.03);
+    cursor: auto;
+    user-select: auto;
+    border-bottom-color: var(--border);
+  }
+  :global([data-portal='team']) .tableScroll table thead th:first-child {
+    background: var(--surface);
+  }
+  :global([data-portal='team']) .table tbody tr {
+    border-bottom: none;
+    transition: none;
+  }
+  :global([data-portal='team']) .table tbody tr:hover {
+    background: none;
+  }
+  :global([data-portal='team']) .table tbody tr:hover td {
+    background: rgba(var(--ov, 255, 255, 255), 0.02);
+  }
+  .veh {
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .vtrim {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .vin {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .colour {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+  .colour i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid rgba(var(--ov, 255, 255, 255), 0.22);
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .price {
+    text-align: right;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums lining-nums;
+    white-space: nowrap;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    background: color-mix(in srgb, var(--c) 13%, transparent);
+    color: var(--c);
+    border: 1px solid color-mix(in srgb, var(--c) 28%, transparent);
+  }
+  .editBtn {
+    padding: 4px 9px;
+    font-size: 11px;
+  }
+  .editBtn svg {
+    width: 13px;
+    height: 13px;
+  }
+  /* (each sheet's own .btn rules — the team's padding, the admin's 14px at 640px — come before .stk-edit and it wins them all; here
+     they are more specific, so it is said again) */
+  :global([data-portal]) .editBtn.editBtn {
+    padding: 4px 9px;
+    font-size: 11px;
+  }
+  .group {
+    margin-bottom: 18px;
+  }
+  .groupHead {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .groupN {
+    background: rgba(var(--ov, 255, 255, 255), 0.06);
+    border-radius: 99px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  /* ── By status: a lane for each status ───────────────────────────────────── */
+  .board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+  .lane {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg, calc(12px * var(--r-k, 1)));
+    overflow: hidden;
+    min-height: 180px;
+  }
+  .laneHead {
+    padding: 13px 13px 12px;
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--c) 14%, transparent),
+      rgba(var(--surface-rgb, 20, 20, 22), 0)
+    );
+  }
+  .laneTop {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 9px;
+  }
+  .laneN {
+    margin-left: auto;
+    min-width: 22px;
+    text-align: center;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--muted-w, var(--muted));
+    background: rgba(var(--ov, 255, 255, 255), 0.06);
+    border-radius: var(--r-pill, 99px);
+    padding: 1px 7px;
+  }
+  .laneVal {
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .laneShare {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--muted-w, var(--muted));
+    margin-left: 7px;
+  }
+  .laneBody {
+    padding: 0 11px 11px;
+    display: grid;
+    gap: 9px;
+  }
+  .laneCard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md, calc(10px * var(--r-k, 1)));
+    padding: 12px 13px;
+    cursor: pointer;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .laneCard:hover {
+    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.35);
+  }
+  .laneName {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 7px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .laneMeta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--muted);
+    margin-bottom: 3px;
+    min-width: 0;
+  }
+  .laneMeta span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .laneMeta svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+  }
+  .laneBudget {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--primary-text, var(--gold));
+    margin: 9px 0 0;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .laneFoot {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid rgba(var(--ov, 255, 255, 255), 0.06);
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  :global([data-portal='team']) .lane {
+    border-radius: calc(12px * var(--r-k, 1));
+  }
+  :global([data-portal='team']) .laneN {
+    border-radius: 99px;
+  }
+  :global([data-portal='team']) .laneCard {
+    border-radius: calc(10px * var(--r-k, 1));
+    cursor: auto;
+  }
+  :global([data-portal='team']) .laneCard:hover {
+    border-color: var(--border);
+  }
+
+  /* ── By model: a card for each ───────────────────────────────────────────── */
+  .modelGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
+  }
+  .modelCard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: calc(14px * var(--r-k, 1));
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+  }
+  .modelHead {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .modelTitle {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+  .modelTrim {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .qty {
+    flex-shrink: 0;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: calc(11px * var(--r-k, 1));
+    white-space: nowrap;
+  }
+  .qty.in {
+    background: rgba(var(--primary-rgb, 201, 163, 94), 0.15);
+    color: var(--primary-text, var(--primary));
+  }
+  .qty.out {
+    background: rgba(220, 38, 38, 0.14);
+    color: var(--danger-text, #f87171);
+  }
+  .modelPrice {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--primary-text, var(--primary));
+    margin: 8px 0 12px;
+  }
+  .sec {
+    margin-top: 12px;
+  }
+  .secLabel {
+    font-size: 10px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .notes {
+    margin-top: 11px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .units {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  .units th {
+    text-align: left;
+    color: var(--muted);
+    font-weight: 700;
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 4px 6px;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+  }
+  .units td {
+    padding: 5px 6px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .units thead th {
+    border-bottom-color: var(--hair-gold, var(--border));
+    background: var(--thead-bg, #101012);
+    cursor: pointer;
+    user-select: none;
+  }
+  .units tbody tr {
+    border-bottom: 1px solid var(--hair, var(--border));
+  }
+  :global([data-portal='team']) .units thead th {
+    background: rgba(var(--ov, 255, 255, 255), 0.03);
+    border-bottom-color: var(--border);
+    cursor: auto;
+    user-select: auto;
+  }
+  :global([data-portal='team']) .tableScroll .units thead th:first-child {
+    background: var(--surface);
+  }
+  .modelActions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .small {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  .small svg {
+    width: 13px;
+    height: 13px;
+  }
+  /* ── The loader ──────────────────────────────────────────────────────────── */
+  .loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 32px 28px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* ── The sheets ──────────────────────────────────────────────────────────── */
+  .form {
+    display: grid;
+    gap: 12px;
+  }
+  .formPair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  /* (the form's fields are bare blocks, not .form-group columns: the team's .form-label is an inline there, with no margin) */
+  :global([data-portal='team']) label.formLabel {
+    display: inline;
+  }
+  .hintInline {
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .hintSmall {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .csvForm {
+    display: grid;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .csvForm p {
+    color: var(--muted);
+    margin: 0;
+  }
+  .csvDone {
+    background: #d1fae5;
+    border: 1px solid #6ee7b7;
+    color: #065f46;
+    padding: 10px 14px;
+    border-radius: calc(8px * var(--r-k, 1));
+    font-size: 13px;
+  }
+  .csvWarn {
+    color: var(--warning);
+  }
+  .csvBusy {
+    color: var(--muted);
+  }
+
+  /* ── On a phone ──────────────────────────────────────────────────────────── */
+  @media (max-width: 700px) {
+    /* (mobile.css: the admin's header buttons take the whole row, one each — its inline flex wins over the grid the sheet meant; a
+       tab, like any button, is a thumb's size) */
+    .headActions {
+      width: 100%;
+    }
+    .headActions > * {
+      width: 100%;
+    }
+    .dealTab,
+    .tab,
+    .viewTab,
+    .tbar,
+    .chip {
+      min-width: 44px;
+      min-height: 44px;
+    }
+    .statValue {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .modelGrid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    /* (mobile.css: a table in a scroller is read as a card for each row — its head gives way to a label on each cell, and the frozen
+       first column is meaningless once there is nothing to scroll) */
+    .tableScroll {
+      overflow-x: visible;
+    }
+    .tableScroll table,
+    .tableCard table {
+      min-width: 0;
+    }
+    .tableScroll thead,
+    .tableCard thead {
+      display: none;
+    }
+    .tableScroll table,
+    .tableScroll tbody,
+    .tableScroll tr,
+    .tableScroll td,
+    .tableCard table,
+    .tableCard tbody,
+    .tableCard tr,
+    .tableCard td {
+      display: block;
+    }
+    .tableScroll tr,
+    .tableCard tr {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .tableScroll tr:hover td,
+    .tableCard tr:hover td {
+      background: none;
+    }
+    .tableScroll td,
+    .tableCard td {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 6px 0;
+      border: none;
+      white-space: normal;
+      max-width: none;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+    .tableScroll td + td,
+    .tableCard td + td {
+      border-top: 1px solid rgba(var(--ov, 255, 255, 255), 0.05);
+    }
+    .tableScroll td::before,
+    .tableCard td::before {
+      content: attr(data-label);
+      flex: 0 0 38%;
+      max-width: 38%;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding-top: 2px;
+    }
+    .tableScroll td:not([data-label]):empty,
+    .tableScroll td[data-label='']:empty {
+      display: none;
+    }
+    .tableScroll table thead th:first-child,
+    .tableScroll table tbody td:first-child {
+      position: static;
+      box-shadow: none;
+    }
+    :global([data-portal='admin']) .mixBand {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 14px;
+      padding: 14px;
+    }
+    :global([data-portal='admin']) .mixBody {
+      min-width: 0;
+    }
+    /* (mobile.css: the figures over the register are a grid of two — the admin's inline flex wins it back, the team's has nothing to) */
+    .paneSummaryTeam {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    /* …and a card keeps its foot line where the team's table had taken it away from its rows */
+    :global([data-portal='team']) .table tbody tr {
+      border-bottom: 1px solid var(--border);
+    }
+  }
+  @media (max-width: 640px) {
+    .views {
+      overflow-x: auto;
+    }
+    .controls .tbar,
+    .review {
+      min-height: 44px;
+    }
+    :global([data-portal='admin']) .chip {
+      min-height: 36px;
+    }
+    .mixSide {
+      align-items: flex-start;
+    }
+    .notice {
+      flex-wrap: wrap;
+    }
+    .board {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ═══ Tracking: the boxes on the water (logistics.js injects these into both portals) ═══ */
+  .trackAdmin {
+    margin-top: 18px;
+  }
+  .bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .trackInput {
+    max-width: 300px;
+    text-transform: uppercase;
+  }
+  .trackInputTeam {
+    max-width: 270px;
+  }
+  .trackInput::placeholder {
+    text-transform: none;
+  }
+  .result {
+    margin-bottom: 18px;
+  }
+  .hint {
+    font-size: 12px;
+    color: var(--muted, #8d897f);
+  }
+  .empty {
+    padding: 26px 18px;
+    text-align: center;
+    color: var(--muted, #8d897f);
+    font-size: 13px;
+    border: 1px dashed var(--border, rgba(255, 255, 255, 0.12));
+    border-radius: calc(12px * var(--r-k, 1));
+  }
+  .emptyHead {
+    font-weight: 700;
+    color: var(--text, #f3efe7);
+    margin-bottom: 6px;
+  }
+  .emptyWhy {
+    margin: 0 auto 12px;
+    max-width: 620px;
+  }
+  .emptyActions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .diagHead {
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .diagNote {
+    font-size: 11.5px;
+    color: var(--muted, #8d897f);
+  }
+  .diagList {
+    margin: 6px 0 0 18px;
+    font-size: 11.5px;
+    color: var(--muted, #8d897f);
+  }
+  .diagPre {
+    margin: 8px 0 0;
+    padding: 10px 12px;
+    background: rgba(var(--ov, 255, 255, 255), 0.05);
+    border-radius: calc(8px * var(--r-k, 1));
+    overflow-x: auto;
+    font-size: 12px;
+  }
+  .grid3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+  }
+  .formHeading {
+    font-size: 12px;
+    font-weight: 700;
+    margin: 14px 0 6px;
+  }
+
+  /* The container card: one field per row, icon then label then value, which is the shape the carrier's own card uses. */
+  .ctGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  .ct {
+    border: 1px solid var(--primary, #c9a35e);
+    border-radius: calc(16px * var(--r-k, 1));
+    overflow: hidden;
+    background: var(--card, #18181b);
+    display: flex;
+    flex-direction: column;
+  }
+  .ctBody {
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .ctRow {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+  }
+  .ctIc {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    color: var(--text, #f3efe7);
+    opacity: 0.75;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ctIc svg {
+    width: 22px;
+    height: 22px;
+  }
+  .ctK {
+    font-size: 11.5px;
+    color: var(--muted, #8d897f);
+    line-height: 1.3;
+  }
+  .ctV {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ctPill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px;
+    border-radius: calc(20px * var(--r-k, 1));
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .carrier {
+    font-size: 11px;
+    color: var(--muted, #8d897f);
+  }
+  .accent {
+    color: var(--primary-text, var(--primary, #c9a35e));
+    display: flex;
+  }
+  .muted {
+    color: var(--muted, #8d897f);
+  }
+  .strong {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 700;
+    margin-top: 2px;
+    color: var(--text, #f3efe7);
+  }
+  .warn {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11.5px;
+    color: var(--warning, #c9a35e);
+    margin-top: 8px;
+  }
+  .ctFoot {
+    padding: 14px 20px;
+    background: rgba(var(--ov, 255, 255, 255), 0.04);
+    border-top: 1px solid var(--border, rgba(255, 255, 255, 0.09));
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .ctFoot .ctRow {
+    flex: 1;
+    min-width: 0;
+  }
+  .ctActions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .ctBtn {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+    background: none;
+    color: var(--muted, #8d897f);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+  }
+  .ctBtn:hover {
+    color: var(--primary-text, var(--primary, #c9a35e));
+    border-color: var(--primary, #c9a35e);
+  }
+
+  /* The voyage strip, under the container card: ship, leg, and where on it. */
+  .voy {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border, rgba(255, 255, 255, 0.09));
+  }
+  .voyShip {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 14px;
+    min-width: 0;
+  }
+  .voyName {
+    font-size: 14.5px;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .voyImo {
+    font-size: 11px;
+    color: var(--muted, #8d897f);
+    flex-shrink: 0;
+  }
+  .voyEnds {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--muted, #8d897f);
+  }
+  .voyCodes {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 15px;
+    font-weight: 800;
+    margin-top: 2px;
+  }
+  .voyTrack {
+    position: relative;
+    height: 22px;
+    margin: 8px 0 4px;
+  }
+  .voyLine {
+    position: absolute;
+    top: 9px;
+    left: 6px;
+    right: 6px;
+    height: 3px;
+    border-radius: 2px;
+    background-image: radial-gradient(circle, var(--muted, #8d897f) 1.3px, transparent 1.4px);
+    background-size: 9px 3px;
+    opacity: 0.65;
+  }
+  .voyDone {
+    position: absolute;
+    top: 9px;
+    left: 6px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--primary, #c9a35e);
+  }
+  .voyDot {
+    position: absolute;
+    top: 4px;
+    left: 0;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--primary, #c9a35e);
+  }
+  .voyEnd {
+    position: absolute;
+    top: 3px;
+    right: 0;
+    color: var(--muted, #8d897f);
+    display: flex;
+  }
+  .voyEnd svg {
+    width: 15px;
+    height: 15px;
+  }
+  .voyShipIc {
+    position: absolute;
+    top: 0;
+    color: var(--primary-text, var(--primary, #c9a35e));
+    display: flex;
+    transform: translateX(-50%);
+  }
+  .voyShipIc svg {
+    width: 19px;
+    height: 19px;
+  }
+  .voyTimes {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 11.5px;
+    margin-top: 9px;
+  }
+  .voyNone {
+    font-size: 12px;
+    color: var(--muted, #8d897f);
+    padding: 4px 0;
+  }
+
+  /* The port-call log, collapsed. */
+  .moves {
+    border-top: 1px solid var(--line, #2b2926);
+    padding: 0;
+  }
+  .moves > summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 9px 14px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    color: var(--muted, #8d897f);
+    user-select: none;
+  }
+  .moves > summary::-webkit-details-marker {
+    display: none;
+  }
+  .moves > summary:hover {
+    color: var(--text, #f3efe7);
+  }
+  .moves > summary span {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    background: var(--chip, #26241f);
+    border-radius: calc(9px * var(--r-k, 1));
+    padding: 1px 7px;
+  }
+  .moves ul {
+    list-style: none;
+    margin: 0;
+    padding: 0 14px 12px;
+  }
+  .move {
+    display: grid;
+    grid-template-columns: 68px 1fr auto;
+    gap: 8px;
+    align-items: baseline;
+    padding: 5px 0;
+    font-size: 11.5px;
+    border-top: 1px solid var(--line, #2b2926);
+  }
+  .moveAt {
+    color: var(--muted, #8d897f);
+    font-variant-numeric: tabular-nums;
+  }
+  .moveWhat {
+    color: var(--text, #f3efe7);
+    min-width: 0;
+  }
+  .moveWhat em {
+    font-style: normal;
+    font-size: 10px;
+    color: var(--muted, #8d897f);
+    border: 1px solid var(--line, #2b2926);
+    border-radius: calc(8px * var(--r-k, 1));
+    padding: 0 5px;
+    margin-left: 5px;
+  }
+  .moveWhere {
+    color: var(--muted, #8d897f);
+    text-align: right;
+    font-size: 10.5px;
+  }
+  .moveEst .moveWhat,
+  .moveEst .moveAt {
+    opacity: 0.62;
+  }
+
+  /* Where the ship is: the map is only mounted for a box that has a fix. */
+  .pos {
+    border-top: 1px solid var(--border, rgba(255, 255, 255, 0.09));
+  }
+  .posHead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px 8px;
+    font-size: 11.5px;
+    flex-wrap: wrap;
+  }
+  .posCo {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+    color: var(--text, #f3efe7);
+    white-space: nowrap;
+  }
+  .posAge {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: calc(20px * var(--r-k, 1));
+    white-space: nowrap;
+  }
+  .fresh {
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--success, #8a9a86);
+  }
+  .aging {
+    background: rgba(245, 158, 11, 0.12);
+    color: var(--warning, #c9a35e);
+  }
+  .stale {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--danger, #c97d6e);
+  }
+  .map {
+    height: 190px;
+    width: 100%;
+    background: rgba(var(--ov, 255, 255, 255), 0.03);
+  }
+  .mapFallback {
+    padding: 14px 20px;
+    font-size: 12px;
+    color: var(--muted, #8d897f);
+  }
+  .mapFallback a {
+    color: var(--primary-text, var(--primary, #c9a35e));
+  }
+  .shipMarker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary-text, var(--primary, #c9a35e));
+    filter: drop-shadow(0 0 3px rgba(0, 0, 0, calc(0.8 * var(--sh-k, 1))));
+  }
+  .map :global(.leaflet-tile) {
+    filter: brightness(0.72) saturate(0.75) contrast(1.05);
+  }
+  .map :global(.leaflet-container) {
+    background: #0d1b2a;
+  }
+  .map :global(.leaflet-control-attribution) {
+    background: rgba(0, 0, 0, 0.55);
+    color: #9aa;
+    font-size: 9px;
+  }
+  .map :global(.leaflet-control-attribution a) {
+    color: #bcd;
+  }
+
+  /* The cars inside. */
+  .cars {
+    border-top: 1px solid var(--border, rgba(255, 255, 255, 0.09));
+    padding: 12px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .carsLabel {
+    font-size: 11px;
+    color: var(--muted, #8d897f);
+  }
+  .chipCar {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+    border-radius: calc(20px * var(--r-k, 1));
+    padding: 3px 10px;
+  }
+  .chipCar button {
+    background: none;
+    border: none;
+    color: var(--muted, #8d897f);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+    user-select: none;
+  }
+  @media (max-width: 700px) {
+    /* (mobile.css: every button is a thumb's size) */
+    .ctBtn,
+    .chipCar button {
+      min-width: 44px;
+      min-height: 44px;
+    }
+    .ctGrid {
+      grid-template-columns: 1fr;
+    }
+    .ctBody {
+      padding: 14px 15px;
+      gap: 12px;
+    }
+    .ctV {
+      font-size: 15px;
+    }
+    .voy,
+    .ctFoot,
+    .cars {
+      padding-left: 15px;
+      padding-right: 15px;
+    }
+    .grid3 {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}
