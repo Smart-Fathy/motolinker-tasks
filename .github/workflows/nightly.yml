@@ -40,11 +40,13 @@ jobs:
           CI: 'true'
           TZ: UTC
           LIVE_TURN: '1'
+      # Each suite's failed checks first, then its tail (which cuts the top off a long suite): see the
+      # same step in ci.yml.
       - name: What the red suites printed
         if: failure()
         run: |
           for f in /tmp/ml-suite-*.txt; do
             [ -e "$f" ] || continue
-            echo "::group::$f"; tail -n 120 "$f"; echo "::endgroup::"
+            echo "::group::$f"; grep -n ' FAIL ' "$f" || true; tail -n 120 "$f"; echo "::endgroup::"
           done
           echo "::group::coturn log"; cat /tmp/turnserver.log 2>/dev/null || true; echo "::endgroup::"
