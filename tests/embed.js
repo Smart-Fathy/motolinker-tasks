@@ -35,12 +35,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const PORTALS = [
     {
       name: 'admin', token: 'embed-admin', key: 'ml_admin_token', classic: '/legacy/dashboard', api: '/api/dashboard', check: '/api/auth/check', call: 'apiFetch',
-      start: 'customers', other: 'deals', sessions: ctx.sessions, js: 'dashboard.js', stamp: '155', chrome: ['.sidebar', '.header'],
+      start: 'customers', other: 'deals', sessions: ctx.sessions, js: 'dashboard.js', stamp: '156', chrome: ['.sidebar', '.header'],
       session: { username: 'admin', pwv: ctx.ADMIN_PW_VERSION, createdAt: Date.now() },
     },
     {
       name: 'team', token: 'embed-sara', key: 'ml_emp_token', classic: '/legacy/employee', api: '/api/employee', check: '/api/employee/check', call: 'ef',
-      start: 'leads', other: 'deals', sessions: ctx.employeeSessions, js: 'employee.js', stamp: '135', chrome: ['.sidebar', '.topbar'],
+      start: 'leads', other: 'deals', sessions: ctx.employeeSessions, js: 'employee.js', stamp: '136', chrome: ['.sidebar', '.topbar'],
       session: { id: SARA.id, name: SARA.name, username: 'sara', job_title: SARA.title, permissions: normEmpPerms(SARA.raw), createdAt: Date.now() },
     },
   ];

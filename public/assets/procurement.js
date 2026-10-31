@@ -439,6 +439,7 @@
     if (!_ldProfile) return;
     const cid = _ldProfile.customer.id;
     closeLeadProfile();
+    if (window.mlEmbed) window.mlEmbed.forLead(cid);   // (framed by the new app: its contracts screen makes the contract for this lead)
     navigate('contracts');
     openContractForm(null, cid);
   }
