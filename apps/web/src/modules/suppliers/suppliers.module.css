@@ -152,6 +152,7 @@
     color: var(--muted);
     border-bottom: 2px solid transparent;
     white-space: nowrap;
+    user-select: none;
   }
   .viewTab svg {
     width: 14px;
@@ -279,6 +280,7 @@
     font-size: 11.5px;
     font-weight: 600;
     cursor: pointer;
+    user-select: none;
   }
   .go:hover {
     color: var(--primary-text, var(--gold));
@@ -385,6 +387,9 @@
     gap: 4px;
     border-bottom: 1px solid var(--border);
     margin-bottom: 14px;
+  }
+  .tab {
+    user-select: none;
   }
   :global([data-portal='admin']) .tab {
     background: none;
