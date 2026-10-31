@@ -71,8 +71,15 @@ async function openPage(browser, base, p, mode, next, stub) {
   return page;
 }
 
+// Two animation frames have come (or a second and a half has gone, for a page that is not drawing): a classic dialog focuses its
+// first field in the frame after it opens, so on a loaded machine that frame is late, and a field settled before it was focused again.
+const frames = page => page.evaluate(() => Promise.race([
+  new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+  new Promise(r => setTimeout(r, 1500)),
+]));
+
 // Nothing is moving, nothing has the pointer or the focus: a hover or focus transition is not read half-way.
-const settle = page => page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); document.getAnimations().forEach(a => a.cancel()); }).then(() => page.mouse.move(0, 0)).then(() => sleep(80));
+const settle = page => frames(page).then(() => page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); document.getAnimations().forEach(a => a.cancel()); })).then(() => page.mouse.move(0, 0)).then(() => sleep(80));
 
 // The computed style of every named part, on one side ('classic' or 'next').
 const readRoles = (page, roles, which, props = PROPS) => page.evaluate((roles, which, props) => {
