@@ -6,7 +6,8 @@
 // whether the page really is in a frame, and gives the rest of the page (and the app) one way to talk:
 //
 //   page -> app   { ml: 'embed', v: 1, type: 'ready',        page }   the first page is on screen
-//                 { ml: 'embed', v: 1, type: 'navigated',    page }   the person moved to another page, in the frame
+//                 { ml: 'embed', v: 1, type: 'navigated',    page, lead? }   the person moved to another page, in the frame
+//                                                                     (`lead`: a lead's page sent them there to make a document for it)
 //                 { ml: 'embed', v: 1, type: 'unauthorized' }         the session is gone: the app decides what to do
 //   app -> page   { ml: 'embed', v: 1, type: 'navigate',     page }   show that page (no reload)
 //                 { ml: 'embed', v: 1, type: 'look',         profile } the workspace's look changed
@@ -29,11 +30,19 @@
 
   let shown = null;          // the page the app was last told about
   let lastNoSession = 0;
+  let lead = null;           // the lead whose document the next page change is for, until it is told
   window.mlEmbed = {
+    // A lead's page is about to send the person to a page that makes a document for that lead (a request for quotation, a purchase
+    // order): the app, which may have rebuilt that page, is told whose it is with the next page change.
+    forLead(id) {
+      lead = Number.isInteger(id) && id > 0 ? id : null;
+    },
     // navigate() calls this each time a page is put on screen.
     navigated(page) {
+      const whose = lead;
+      lead = null;
       if (shown === page) return;
-      send(shown === null ? 'ready' : 'navigated', { page });
+      send(shown === null ? 'ready' : 'navigated', whose === null ? { page } : { page, lead: whose });
       shown = page;
     },
     // Every call that fails for a dead session ends up here; the app needs telling once.

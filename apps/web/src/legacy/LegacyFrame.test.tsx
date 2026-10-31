@@ -192,6 +192,37 @@ describe('following the frame', () => {
     expect(window.location.search).toBe('');
   });
 
+  it("takes the lead along when a lead's page sent the person on to make a document for it", async () => {
+    window.history.replaceState(null, '', '/dashboard/leads');
+    open('admin', adminMe(), { browser: true });
+    await opened('Leads (classic page)');
+    speak(page('ready', 'customers'));
+    speak({ ...page('navigated', 'contracts'), lead: 7 });
+    await waitFor(() => expect(window.location.pathname).toBe('/dashboard/contracts'));
+    expect(window.location.search).toBe('?lead=7');
+  });
+
+  it('…beside the original look, if the app was opened in it', async () => {
+    window.history.replaceState(null, '', '/dashboard/leads?safe=1');
+    open('admin', adminMe(), { safe: true, browser: true });
+    await opened('Leads (classic page)');
+    speak(page('ready', 'customers'));
+    speak({ ...page('navigated', 'contracts'), lead: 7 });
+    await waitFor(() => expect(window.location.pathname).toBe('/dashboard/contracts'));
+    expect(new URLSearchParams(window.location.search).get('safe')).toBe('1');
+    expect(new URLSearchParams(window.location.search).get('lead')).toBe('7');
+  });
+
+  it('names nobody when no lead was named, or one that is not a lead', async () => {
+    window.history.replaceState(null, '', '/dashboard/leads');
+    open('admin', adminMe(), { browser: true });
+    await opened('Leads (classic page)');
+    speak(page('ready', 'customers'));
+    speak({ ...page('navigated', 'contracts'), lead: -1 });
+    await waitFor(() => expect(window.location.pathname).toBe('/dashboard/contracts'));
+    expect(window.location.search).toBe('');
+  });
+
   it('follows the team portal\'s old "log" page to the hours screen', async () => {
     open('team', teamMe({ leads: true, hours: true, hoursActions: { log: true } }), {
       entries: ['/leads'],

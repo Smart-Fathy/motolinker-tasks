@@ -286,6 +286,20 @@ if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log('
     const orders = await open(ADMIN, 'purchaseorders?lead=7');
     check('a purchase order made for a lead: client and consignee are the lead, the car is theirs', await formOpen(orders) && (await orders.$eval(cell(1, 2) + 'input', e => e.value)) === 'Mona Saleh' && (await orders.$eval(cell(1, 3) + 'input', e => e.value)) === 'Mona Saleh' && (await orders.$eval(cell(1, 5) + 'input', e => e.value)) === 'BYD' && (await orders.$eval(cell(1, 6) + 'input', e => e.value)) === 'Seal Max');
     await orders.shut();
+
+    // …and from the classic Leads page, still framed: the buttons of a lead's drawer hand the lead over to the new screens
+    for (const [kind, button, form, car] of [['an RFQ', 'ldGenerateRfq', 'rfq', 3], ['a purchase order', 'ldGeneratePo', 'purchaseorders', 6]]) {
+      const framed = await open(ADMIN, 'leads');
+      await until(framed, () => (document.querySelector('iframe') || {}).dataset && document.querySelector('iframe').dataset.state === 'ready', null, 30000);
+      const inside = framed.frames().find(f => /\/legacy\/dashboard/.test(f.url()));
+      await inside.evaluate(fn => { _ldProfile = { customer: { id: 7 } }; window[fn](); }, button);
+      check(`the lead drawer's button for ${kind}, in the framed classic Leads page, takes the person to the new screen with the form made for that lead`,
+        await until(framed, () => /\/dashboard\/(rfq|purchaseorders)/.test(location.pathname) && !!document.querySelector('[data-part=dialog] [data-part=docForm]') && !document.querySelector('iframe'), null, 30000)
+        && framed.url().includes('/dashboard/' + form) && (await framed.$eval(cell(1, 2) + 'input', e => e.value)) !== undefined, framed.url());
+      check('…seeded from the lead (their name and their car) — and the address is cleaned', await until(framed, () => !location.search, null)
+        && (await framed.$eval(cell(1, car) + 'input', e => e.value)) === 'Seal Max', framed.url());
+      await framed.shut();
+    }
   }
 
   // ═══ 7. the supplier catalogue ═══════════════════════════════════════════════════════════
