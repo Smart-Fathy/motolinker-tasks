@@ -35,13 +35,15 @@
   .headBare {
     margin-bottom: 18px;
   }
-  /* the dialogs of the account menu that have no ×: a smaller title, close to the hint */
+  /* the dialogs of the account menu that have no ×: a smaller title, close to the hint, on a line of its own */
   .headPlain {
-    margin-bottom: 4px;
+    display: block;
+    margin-bottom: 0;
   }
   .titlePlain {
     font-size: 16px;
     font-weight: 700;
+    margin-bottom: 4px;
   }
   .close {
     background: none;
@@ -50,6 +52,7 @@
     cursor: pointer;
     font-size: 20px;
     line-height: 1;
+    user-select: none;
   }
   .hint {
     font-size: 12px;
@@ -68,5 +71,11 @@
     gap: 10px;
     justify-content: flex-end;
     margin-top: 22px;
+  }
+  @media (max-width: 700px) {
+    .close {
+      min-width: 44px;
+      min-height: 44px;
+    }
   }
 }

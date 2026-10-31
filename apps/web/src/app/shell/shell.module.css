@@ -726,6 +726,7 @@
     border-radius: 50%;
     flex-shrink: 0;
     line-height: 0;
+    user-select: none;
   }
   .profileAvEdit {
     position: absolute;
@@ -756,6 +757,7 @@
     cursor: pointer;
     padding: 1px;
     display: inline-flex;
+    user-select: none;
   }
   .profilePencil:hover {
     color: var(--primary-text, var(--gold));
@@ -811,6 +813,7 @@
     font-weight: 600;
     text-align: left;
     text-decoration: none;
+    user-select: none;
   }
   .profileItem:hover {
     background: rgba(var(--ov, 255, 255, 255), 0.05);
@@ -1108,6 +1111,13 @@
     }
     .item,
     .bottomItem {
+      min-height: 44px;
+    }
+    /* every button, not a list of them: the picture that changes the picture, and the pencil by the name */
+    .profileAv,
+    .profilePencil,
+    .profileItem {
+      min-width: 44px;
       min-height: 44px;
     }
     :global([data-portal='team']) .item,

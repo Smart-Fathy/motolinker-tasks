@@ -228,6 +228,24 @@ describe('the status', () => {
   });
 });
 
+describe('one dialog at a time', () => {
+  it('is not undone by a dialog that was still waiting for the server when the next one was opened', async () => {
+    const user = userEvent.setup({ delay: null });
+    const wait = deferred<Response>();
+    boot({ '/status': () => wait.promise });
+    await menu(user);
+    await user.click(part('status')!);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    // (the status is on its way; she opens the username dialog in the meantime)
+    await menu(user);
+    await user.click(part('changeUsername')!);
+    expect(screen.getByRole('dialog', { name: 'Change Username' })).toBeTruthy();
+    wait.resolve(json(200, { status_text: 'x', status_emoji: '' }));
+    await screen.findByText('Status updated');
+    expect(screen.getByRole('dialog', { name: 'Change Username' })).toBeTruthy();
+  });
+});
+
 describe('the username', () => {
   const dialog = () => screen.queryByRole('dialog', { name: 'Change Username' });
 

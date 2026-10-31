@@ -298,6 +298,22 @@
     margin-bottom: 6px;
   }
 
+  /* the shared mobile layer of the classic portals (public/assets/mobile.css): nothing under a thumb's size, a checkbox that is a box */
+  @media (max-width: 700px) {
+    .btn,
+    .x {
+      min-width: 44px;
+      min-height: 44px;
+    }
+    /* (a text field keeps its 14px: .sec-input is a class, which the layer's bare `input` rule does not outrank; a checkbox,
+       which has no class, takes the layer's 16px) */
+    .check input {
+      width: 24px;
+      height: 24px;
+      font-size: 16px;
+    }
+  }
+
   @media (max-width: 560px) {
     .box {
       padding: 16px 14px;

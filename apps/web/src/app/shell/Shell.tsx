@@ -65,7 +65,12 @@ export function Shell({
   // The panels and dialogs the frame owns: one is open at a time, and anything inside the app can ask for one.
   const [panel, setPanel] = useState<FramePanel | null>(null);
   const frame = useMemo<Frame>(() => ({ open: setPanel }), []);
-  const endPanel = useCallback(() => setPanel(null), []);
+  // A panel puts itself away, and only while it is the one that is open: a dialog that was still waiting for the server when
+  // another was opened must not take that one with it when the answer comes.
+  const endPanel = useCallback(
+    (which: FramePanel) => setPanel(open => (open === which ? null : open)),
+    [],
+  );
 
   // Where the person was, for next time (under the key the classic portal keeps it in, as that portal's page name). A screen
   // the classic portal never had is not a page it could open, so it is not remembered for it; a panel is not a page at all.
@@ -101,10 +106,10 @@ export function Shell({
           </main>
         </div>
         <BottomNav items={bottom} active={active} state={state} />
-        {panel === 'report' && <ReportIssue onClose={endPanel} />}
-        {panel === 'security' && <SecurityPanel onClose={endPanel} />}
+        {panel === 'report' && <ReportIssue onClose={() => endPanel('report')} />}
+        {panel === 'security' && <SecurityPanel onClose={() => endPanel('security')} />}
         {(panel === 'status' || panel === 'username' || panel === 'password') && (
-          <AccountDialogs which={panel} onClose={endPanel} />
+          <AccountDialogs which={panel} onClose={() => endPanel(panel)} />
         )}
         <ToastHost toasts={toasts} />
       </div>

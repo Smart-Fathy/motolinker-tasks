@@ -149,6 +149,19 @@
       0 0 0 3px rgba(var(--alt-rgb, 124, 106, 255), 0.12),
       var(--glow, 0 0 #0000);
   }
+  @media (max-width: 700px) {
+    .preset {
+      min-width: 44px;
+      min-height: 44px;
+    }
+    .input {
+      font-size: 16px;
+    }
+    /* (the emoji's size was written on the field itself, which the layer cannot outrank) */
+    .emoji {
+      font-size: 17px;
+    }
+  }
   @media (max-width: 768px) {
     .control {
       padding: 12px 14px;
