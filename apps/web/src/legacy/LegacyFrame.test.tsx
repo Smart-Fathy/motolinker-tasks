@@ -192,13 +192,15 @@ describe('following the frame', () => {
     expect(window.location.search).toBe('');
   });
 
+  // (The page the lead is handed to is one that still has no screen of its own: the screens that make a document consume their
+  // own ?lead= and clear it — tests/webdocs.js holds those. The frame attaches the lead to whichever address it moves to.)
   it("takes the lead along when a lead's page sent the person on to make a document for it", async () => {
     window.history.replaceState(null, '', '/dashboard/leads');
     open('admin', adminMe(), { browser: true });
     await opened('Leads (classic page)');
     speak(page('ready', 'customers'));
-    speak({ ...page('navigated', 'contracts'), lead: 7 });
-    await waitFor(() => expect(window.location.pathname).toBe('/dashboard/contracts'));
+    speak({ ...page('navigated', 'reports'), lead: 7 });
+    await waitFor(() => expect(window.location.pathname).toBe('/dashboard/reports'));
     expect(window.location.search).toBe('?lead=7');
   });
 
@@ -207,8 +209,8 @@ describe('following the frame', () => {
     open('admin', adminMe(), { safe: true, browser: true });
     await opened('Leads (classic page)');
     speak(page('ready', 'customers'));
-    speak({ ...page('navigated', 'contracts'), lead: 7 });
-    await waitFor(() => expect(window.location.pathname).toBe('/dashboard/contracts'));
+    speak({ ...page('navigated', 'reports'), lead: 7 });
+    await waitFor(() => expect(window.location.pathname).toBe('/dashboard/reports'));
     expect(new URLSearchParams(window.location.search).get('safe')).toBe('1');
     expect(new URLSearchParams(window.location.search).get('lead')).toBe('7');
   });
@@ -218,8 +220,8 @@ describe('following the frame', () => {
     open('admin', adminMe(), { browser: true });
     await opened('Leads (classic page)');
     speak(page('ready', 'customers'));
-    speak({ ...page('navigated', 'contracts'), lead: -1 });
-    await waitFor(() => expect(window.location.pathname).toBe('/dashboard/contracts'));
+    speak({ ...page('navigated', 'reports'), lead: -1 });
+    await waitFor(() => expect(window.location.pathname).toBe('/dashboard/reports'));
     expect(window.location.search).toBe('');
   });
 

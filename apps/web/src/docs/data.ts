@@ -14,9 +14,9 @@ const SAY_NOT_KNOWN = 'came back in a form this app does not know.';
 /** What differs between one kind of document and the next: where it lives on the server and how its answers are read. */
 export interface DocSpec<Row, Full, Defaults> {
   /** the cache key's part, and the words in the notices */
-  key: 'rfq' | 'po';
+  key: 'rfq' | 'po' | 'contract';
   /** under the portal's base */
-  path: 'rfqs' | 'purchase-orders';
+  path: 'rfqs' | 'purchase-orders' | 'contracts';
   /** "RFQ", "purchase order" — what a notice calls it */
   noun: string;
   isList: (v: unknown) => v is Row[];
@@ -163,6 +163,16 @@ export async function buildPdf(
   payload: Record<string, unknown>,
 ): Promise<{ pdf: string; name?: string }> {
   const out = await api.post<unknown>(`${api.base}/purchase-orders/pdf`, payload);
+  if (!isPdf(out)) throw new ApiError(502, `The document ${SAY_NOT_KNOWN}`);
+  return out;
+}
+
+/** A contract as a PDF, from its data as the form (or the saved record) holds it. */
+export async function buildContractPdf(
+  api: Api,
+  data: Record<string, unknown>,
+): Promise<{ pdf: string; name?: string }> {
+  const out = await api.post<unknown>(`${api.base}/contracts/pdf`, { data });
   if (!isPdf(out)) throw new ApiError(502, `The document ${SAY_NOT_KNOWN}`);
   return out;
 }

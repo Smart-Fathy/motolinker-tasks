@@ -1,15 +1,7 @@
 import { useRef, useState } from 'react';
 import { useSession } from '../../app/context';
 import { Icon } from '../../app/shell/icons';
-import {
-  isTicked,
-  missingRequired,
-  useColumns,
-  ColumnsBar,
-  ColumnsLayer,
-  type Column,
-  type Columns,
-} from '../../columns';
+import { missingRequired, useColumns, ColumnsBar, ColumnsLayer, type Columns } from '../../columns';
 import { Catalogue } from '../../docs/Catalogue';
 import { Extras } from '../../docs/Extras';
 import { Area, Field, Grid, Input, Lbl, Pick, StatusPick } from '../../docs/Fields';
@@ -18,6 +10,7 @@ import { LinesGrid } from '../../docs/Lines';
 import { buildXlsx, useDocStart, useDocWrites, useLeads, useOfferLoader } from '../../docs/data';
 import {
   DOC_ICONS,
+  extrasOf,
   RFQ_LINE_COLUMNS,
   rfqLineFilled,
   savedLines,
@@ -35,18 +28,6 @@ import styles from '../../docs/docs.module.css';
 const NO_STARTS = () => ({});
 const text = (rec: Record<string, unknown>, key: string): string =>
   rec[key] == null ? '' : String(rec[key]);
-
-/** What the extras of the form start with: what the document has under each shown field. */
-function extrasOf(shown: readonly Column[], fields: unknown): Record<string, string | boolean> {
-  const have = (fields ?? {}) as Record<string, unknown>;
-  const out: Record<string, string | boolean> = {};
-  for (const c of shown) {
-    if (c.builtin) continue;
-    const raw = have[c.key];
-    out[c.key] = c.type === 'checkbox' ? isTicked(raw) : raw == null ? '' : String(raw);
-  }
-  return out;
-}
 
 /** An RFQ line made of a vehicle of a supplier's catalogue. */
 export const lineOfOffer = (v: Offer): Line => ({

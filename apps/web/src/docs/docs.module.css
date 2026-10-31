@@ -307,6 +307,72 @@
     margin-bottom: 18px;
   }
 
+  /* ── The contract's form ──────────────────────────────────────────────────── */
+  .ctForm {
+    display: grid;
+    gap: 16px;
+    max-height: 66vh;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  /* the sheets' label.form-label: each portal's own */
+  :global([data-portal='admin']) .ctLabel {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  :global([data-portal='team']) .ctLabel {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .ctGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+  }
+  .ctCaption {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 3px;
+  }
+  .ctPair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .payRow {
+    display: grid;
+    grid-template-columns: 150px 1fr 34px;
+    gap: 8px;
+    margin-bottom: 6px;
+    align-items: center;
+  }
+  .payFixed {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    gap: 8px;
+    margin-bottom: 6px;
+    align-items: center;
+  }
+  .payNote {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .autoPill {
+    font-size: 10.5px;
+    color: var(--primary-text, var(--primary));
+    border: 1px solid var(--primary);
+    border-radius: 8px;
+    padding: 1px 6px;
+  }
+
   /* the extra fields of a kind of document */
   .extrasHead {
     display: flex;
@@ -531,6 +597,41 @@
     height: 78vh;
     border: 0;
     border-radius: calc(10px * var(--r-k, 1));
+  }
+
+  /* The administrator's contract preview (#ct-modal) is the document viewer with a few things its own: a lighter curtain over
+     less, a roomier heading worded for a contract, a shorter frame. */
+  .viewerCurtainContract {
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 1000;
+  }
+  .viewerCardContract {
+    max-width: 900px;
+  }
+  .viewerHeadContract {
+    padding: 18px 24px;
+    gap: normal;
+  }
+  .viewerTitleContract {
+    font-size: 16px;
+    min-width: auto;
+  }
+  /* (the classic heading is an icon and a bare piece of text in a flex row: on a phone the text wraps and the icon is squeezed
+     before anything is cut off) */
+  .viewerIconContract {
+    display: contents;
+  }
+  .viewerTextContract {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  .viewerButtonsContract {
+    flex-shrink: 1;
+  }
+  :global([data-portal='admin']) .viewerFrameContract {
+    display: inline;
+    min-height: 70vh;
   }
 
   /* (mobile.css: a checkbox is 24px, and a field is not zoomed into) */

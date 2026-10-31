@@ -32,7 +32,8 @@ export function DocPage({
   sheets,
 }: {
   title: string;
-  hint: string;
+  /** the line under the title: words, with whatever is set in bold among them */
+  hint: ReactNode;
   /** the button that makes a new document, for those who may */
   add: { label: string; onClick: () => void } | null;
   children: ReactNode;

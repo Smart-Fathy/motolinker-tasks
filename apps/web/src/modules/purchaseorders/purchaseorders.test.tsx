@@ -659,6 +659,20 @@ describe('the purchase-order screen', () => {
       await waitFor(() => expect(card()).toBeNull());
       expect(blobs.revoke).toHaveBeenCalledWith('blob:pdf-1');
     });
+    it('stays shut when it was closed while its PDF was being made — the PDF that comes later is not shown', async () => {
+      const blobs = stubBlobs();
+      const gate = deferred<void>();
+      boot('admin', ALL, { pdfGate: gate.promise });
+      await loaded();
+      await userEvent.click(within(rows()[0]!).getByRole('button', { name: 'PDF' }));
+      expect(await screen.findByText(/Rendering PDF…/)).toBeTruthy();
+      await userEvent.click(within(card()!).getByRole('button', { name: 'Close' }));
+      expect(card()).toBeNull();
+      gate.resolve();
+      await new Promise(r => setTimeout(r, 80));
+      expect(card()).toBeNull();
+      expect(blobs.create).not.toHaveBeenCalled();
+    });
     it('says why in the viewer when it could not be made — it is not a silent nothing', async () => {
       stubBlobs();
       boot('admin', ALL, { pdf: 'failing' });
