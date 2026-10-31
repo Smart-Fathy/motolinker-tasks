@@ -92,7 +92,10 @@ require('nodemailer').createTransport = () => ({ sendMail: async m => { mails.pu
 
   // ── the browser ─────────────────────────────────────────────────────────────────────────
   const puppeteer = require('puppeteer');
-  const browser = await puppeteer.launch({ executablePath: chromePath(), headless: 'new', args: ['--no-sandbox'] });
+  // Nothing leaves this machine. The pages refuse every other host themselves (see open() below), but a service worker's own
+  // requests do not pass through the page: the classic worker, which answers the fonts' and libraries' hosts, would go to the real
+  // internet, and what this suite sees would depend on how fast that is on the day. Those names do not resolve here.
+  const browser = await puppeteer.launch({ executablePath: chromePath(), headless: 'new', args: ['--no-sandbox', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1'] });
   const errors = [];
   // A person's browser: one profile, which keeps its storage across the pages it opens.
   const person = async () => {
@@ -120,7 +123,11 @@ require('nodemailer').createTransport = () => ({ sendMail: async m => { mails.pu
       }
       await page.setCookie({ name: 'ml_ui', value: next ? 'next' : 'legacy', url: base });
       // The classic portals hold a stream open once someone is signed in, so the network is never quiet there.
-      await page.goto(base + url, { waitUntil: next ? 'load' : 'domcontentloaded' });
+      await page.goto(base + url, { waitUntil: next ? 'load' : 'domcontentloaded' }).catch(e => {
+        // A page that does not finish loading says what it had asked for by then (the page's own requests: a worker answers some itself).
+        console.log('   ' + url + ' did not finish loading; it had asked for: ' + page.asked.slice(-15).join(' '));
+        throw e;
+      });
       return page;
     };
     return { context, open, close: () => context.close() };
@@ -144,13 +151,37 @@ require('nodemailer').createTransport = () => ({ sendMail: async m => { mails.pu
   // Signing out from inside the frame: the admin's button is in the sidebar's footer; the team's is in the account menu
   // behind their initials. (Clicked from the page, so it works whatever width the page was opened at.)
   const signOut = async page => {
-    await page.waitForSelector('[data-part=signOut], [data-part=profileBtn]', { timeout: 15000 });
+    await page.waitForSelector('[data-part=signOut], [data-part=profileBtn]', { timeout: 15000 }).catch(async e => {
+      // A page that never drew its shell says what it was instead: where it was, what it had, and which worker was in charge.
+      const seen = await page.evaluate(async () => {
+        const r = await navigator.serviceWorker.getRegistration('/').catch(() => null);
+        const one = w => (w ? new URL(w.scriptURL).pathname + ':' + w.state : null);
+        const regs = await navigator.serviceWorker.getRegistrations().catch(() => []);
+        return {
+          at: location.pathname + location.search, ready: document.readyState, signedIn: !!(localStorage.getItem('ml_admin_token') || localStorage.getItem('ml_emp_token')),
+          controller: navigator.serviceWorker.controller ? new URL(navigator.serviceWorker.controller.scriptURL).pathname : null,
+          registrations: regs.map(g => ({ scope: new URL(g.scope).pathname, installing: one(g.installing), waiting: one(g.waiting), active: one(g.active) })),
+          root: (document.getElementById('root') || { innerHTML: '(no #root)' }).innerHTML.slice(0, 200), body: document.body.innerText.slice(0, 200), r: !!r,
+        };
+      }).catch(x => ({ unreadable: String(x) }));
+      console.log('   the shell never drew: ' + JSON.stringify(seen) + '\n   last requests: ' + (page.asked || []).slice(-12).join(' '));
+      throw e;
+    });
     if (await page.$('[data-part=signOut]')) return page.evaluate(() => document.querySelector('[data-part=signOut]').click());
     await page.evaluate(() => document.querySelector('[data-part=profileBtn]').click());
     await page.waitForSelector('[data-part=profileMenu]', { timeout: 8000 });
     return page.evaluate(() => [...document.querySelectorAll('[data-part=profileMenu] button')].find(b => /sign out/i.test(b.textContent)).click());
   };
   const alertText = (page, ms) => waitFor(page, '[role=alert]', /./, ms);
+  // A classic page registers its service worker once it has loaded, and that worker takes the scope the app's worker holds (they
+  // take turns: whichever portal's page was opened last is in charge, tests/webpwa.js). Until it has installed and activated,
+  // the other worker is still in charge, and then is taken from under whatever is loading — so a visit to a classic page is not
+  // over until its worker is in charge, or the next page opens in the middle of the swap.
+  // (The classic page is at /legacy/…, outside the scope its worker holds, so the registration is asked for by the scope's own address.)
+  const workerInCharge = (page, scope, script) => page.waitForFunction(async (scope, want) => {
+    const g = await navigator.serviceWorker.getRegistration(scope);
+    return !!g && !g.installing && !g.waiting && !!g.active && g.active.state === 'activated' && new URL(g.active.scriptURL).pathname === want;
+  }, { timeout: 15000, polling: 50 }, scope, script).then(() => true, () => false);
   const sessionsOf = id => T.sessions.filter(s => s.kind === 'employee' && s.payload && s.payload.id === id).length;
 
   // ═══ A. the admin portal ═══════════════════════════════════════════════════════════════
@@ -172,6 +203,7 @@ require('nodemailer').createTransport = () => ({ sendMail: async m => { mails.pu
     await page.waitForFunction(() => document.getElementById('auth-screen') && document.getElementById('app'), { timeout: 8000 });
     await page.waitForFunction(() => getComputedStyle(document.getElementById('app')).display !== 'none', { timeout: 8000 }).catch(() => {});
     c('a session started in the new app is a session in the classic portal', await page.evaluate(() => getComputedStyle(document.getElementById('auth-screen')).display === 'none'));
+    c('…and the classic page puts its own worker in charge of the scope', await workerInCharge(page, '/dashboard', '/sw-dashboard.js'));
     await page.close();
     page = await p.open('/dashboard');
     await signedInAs(page, 'Admin');
@@ -199,6 +231,7 @@ require('nodemailer').createTransport = () => ({ sendMail: async m => { mails.pu
     c('a session started in the new app is a session in the classic portal', await page.evaluate(() => getComputedStyle(document.getElementById('auth-wrap')).display === 'none'));
     await page.waitForFunction(() => true, { timeout: 100 }).catch(() => {});
     await sleep(1500);   // the classic page's loaders go on after it shows the app
+    c('…and the classic page puts its own worker in charge of the scope', await workerInCharge(page, '/employee', '/sw-employee.js'));
     // The classic team portal is also at /legacy/employee, and the script it shares with the admin portal used to tell the two
     // apart by the address: from here it asked the ADMIN's route for the person's preferences, was refused, and the team portal
     // read the refusal as "signed out" — and ended the session in both apps.
