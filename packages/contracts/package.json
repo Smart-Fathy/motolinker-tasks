@@ -14,6 +14,7 @@
     "./permissions": "./src/permissions.js",
     "./modules": "./src/modules.js",
     "./deeplinks": "./src/deeplinks.js",
-    "./documents": "./src/documents.js"
+    "./documents": "./src/documents.js",
+    "./logistics": "./src/logistics.js"
   }
 }

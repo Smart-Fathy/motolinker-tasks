@@ -52,6 +52,8 @@
     "suppliers": 4,
     "rfqpo": 8,
     "contractdocs": 8,
+    "stockroutes": 6,
+    "containerroutes": 6,
     "calendar": 2,
     "issues": 4,
     "spashell": 2,

@@ -684,6 +684,227 @@ const LeadOption = z
   .catchall(z.unknown());
 const LeadOptionList = z.array(LeadOption);
 
+// ─── Stock: the register of cars ──────────────────────────────────────────────────────────────────────────────────────
+
+// A number may be stored as text by an older save: the screen reads either.
+const Amount = z.union([z.number(), z.string()]);
+
+// One car in a model's row. The eight columns are what a save writes; a row saved before a column existed lacks it, and the
+// columns an administrator added ride in the same object, flat — so nothing here is required and nothing else is refused.
+const StockUnit = z.object({
+  consignee: z.string().optional(),
+  colour: z.string().optional(),
+  vin: z.string().optional(),
+  status: z.string().optional(),
+  price_list: Amount.optional(),
+  discounted: Amount.optional(),
+  logistics: z.string().optional(),
+  supplier: z.string().optional(),
+});
+
+// GET …/stock — a row per make, model and trim; the cars are the count (`quantity` is how many there are). A row from before the
+// cars were recorded has none and keeps the count it was given (`legacy_count`).
+const StockVehicle = z.object({
+  id: z.number().int(),
+  make: z.string(),
+  model: z.string(),
+  trim: z.string().nullable(),
+  price: Amount.nullable(),
+  quantity: z.number().int(),
+  units: z.array(StockUnit).nullish(),
+  notes: z.string().nullable(),
+  legacy_count: z.number().int().nullish(),
+  created_by: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+const StockList = z.array(StockVehicle);
+
+// POST / PUT …/stock — make and model are required (a 400 without either); the cars may be sent as a list or, from a CSV, as one
+// text "VIN:Colour:Status | VIN:Colour:Status". The count is never sent: the cars are the count.
+const StockBody = z.object({
+  make: z.string(),
+  model: z.string(),
+  trim: z.string().optional(),
+  price: Loose,
+  units: z.union([z.array(z.record(z.string(), z.unknown())), z.string()]).optional(),
+  notes: z.string().optional(),
+  legacy_count: z.number().int().nullable().optional(),
+});
+
+// POST …/stock/bulk (the administrator's CSV) — how many rows went in, and why the others did not ("Row 3: Model is required").
+const StockBulkResult = z.object({ inserted: z.number().int(), errors: z.array(z.string()) });
+
+// ─── Containers: the board of boxes on the water ──────────────────────────────────────────────────────────────────────
+
+// The check on a container number: its shape, whether the last digit is the one the others call for, and that digit.
+const ContainerCheck = z.object({
+  no: z.string(),
+  valid: z.boolean(),
+  checkOk: z.boolean(),
+  expected: z.number().int().nullable(),
+});
+
+// One line of a box's port-call log (newest first; at most sixty).
+const ContainerMove = z.object({
+  at: z.string(),
+  event: z.string(),
+  place: z.string(),
+  vessel: z.string(),
+});
+
+// A car that is in a box: linked by its VIN, which may be one nobody has recorded (`unrecorded`).
+const ContainerCar = z.object({
+  vin: z.string(),
+  unrecorded: z.boolean().optional(),
+  stock_id: z.number().int().optional(),
+  make: z.string().optional(),
+  model: z.string().optional(),
+  trim: z.string().optional(),
+  colour: z.string().optional(),
+  status: z.string().optional(),
+  consignee: z.string().optional(),
+});
+
+// A box, as the table keeps it. The ship's position (the last seven) is from migrations/020: a database that has not had it applied
+// answers without them.
+const ContainerBase = z.object({
+  id: z.number().int(),
+  container_no: z.string(),
+  container_type: z.string().nullable(),
+  bl_number: z.string().nullable(),
+  carrier: z.string().nullable(),
+  status: z.string(),
+  latest_move: z.string().nullable(),
+  latest_move_at: z.string().nullable(),
+  pod_eta: z.string().nullable(),
+  vessel_name: z.string().nullable(),
+  vessel_imo: z.string().nullable(),
+  pol_code: z.string().nullable(),
+  pol_name: z.string().nullable(),
+  pod_code: z.string().nullable(),
+  pod_name: z.string().nullable(),
+  atd: z.string().nullable(),
+  eta: z.string().nullable(),
+  moves: z.array(ContainerMove).nullable(),
+  po_id: z.number().int().nullable(),
+  supplier: z.string().nullable(),
+  notes: z.string().nullable(),
+  source: z.string().nullable().optional(),
+  last_synced_at: z.string().nullable().optional(),
+  created_by: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+  vessel_lat: Amount.nullable().optional(),
+  vessel_lon: Amount.nullable().optional(),
+  vessel_position_at: z.string().nullable().optional(),
+  vessel_course: Amount.nullable().optional(),
+  vessel_speed: Amount.nullable().optional(),
+  vessel_mmsi: z.string().nullable().optional(),
+  position_source: z.string().nullable().optional(),
+});
+// GET …/containers and …/containers/:id — the box and the cars in it.
+const Container = ContainerBase.extend({ units: z.array(ContainerCar) });
+const ContainerList = z.array(Container);
+// POST / PUT …/containers — the box as saved (without its cars), and what the number's check said: never a refusal.
+const ContainerSaved = ContainerBase.extend({ check: ContainerCheck });
+
+// POST / PUT …/containers — only the number is required (a 400 without a good one: four letters then seven digits). A PUT writes
+// only the columns it carries, so the port-call log and the purchase order survive a corrected ETA.
+const ContainerBody = z.object({
+  container_no: z.string(),
+  container_type: z.string().optional(),
+  bl_number: z.string().optional(),
+  carrier: z.string().optional(),
+  status: z.string().optional(),
+  latest_move: z.string().optional(),
+  latest_move_at: z.string().nullable().optional(),
+  pod_eta: z.string().nullable().optional(),
+  vessel_name: z.string().optional(),
+  vessel_imo: z.string().optional(),
+  pol_code: z.string().optional(),
+  pol_name: z.string().optional(),
+  pod_code: z.string().optional(),
+  pod_name: z.string().optional(),
+  atd: z.string().nullable().optional(),
+  eta: z.string().nullable().optional(),
+  moves: z.array(z.record(z.string(), z.unknown())).optional(),
+  po_id: Loose,
+  supplier: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+// GET …/containers/lookup/:no — a box we track, or what the carrier's feed could say about one we do not (a prefill for the form:
+// nothing is saved by looking), why it could not (`code`: a word the screen turns into a sentence) and whether it may be registered.
+const ContainerLookupFound = z.object({
+  found: z.literal(true),
+  check: ContainerCheck,
+  container: Container,
+});
+const ContainerLookupMissing = z.object({
+  found: z.literal(false),
+  check: ContainerCheck,
+  prefill: z.record(z.string(), z.unknown()).nullable(),
+  // 'ok' where the feed answered; otherwise what it gave as the reason (a feed that gives none leaves it out)
+  provider: z.string().optional(),
+  code: z.string(),
+  detail: z.string().nullable(),
+  provider_name: z.string(),
+  can_register: z.boolean(),
+});
+const ContainerLookup = z.discriminatedUnion('found', [
+  ContainerLookupFound,
+  ContainerLookupMissing,
+]);
+
+// GET …/containers/provider-status — what the tracking settings amount to; with ?probe=1 also what a real call to the carrier said.
+const ContainerProviderStatus = z.object({
+  provider: z.string(),
+  configured: z.boolean(),
+  auth_header: z.string(),
+  carrier_has_position: z.boolean(),
+  ais: z.string(),
+  webhook_ready: z.boolean(),
+  probe: z.string().optional(),
+  reachable: z.boolean().optional(),
+  http: z.number().nullable().optional(),
+  detail: z.string().nullable().optional(),
+  auth: z.unknown().optional(),
+});
+
+// POST …/containers/:id/refresh — each feed is tried and reported on its own: the carrier's milestones, the ship's position.
+const ContainerFeedResult = z.object({
+  ok: z.boolean(),
+  code: z.string().optional(),
+  reason: z.string().optional(),
+  detail: z.string().nullable().optional(),
+  at: z.string().optional(),
+});
+const ContainerRefreshed = z.object({
+  ok: z.boolean(),
+  carrier: ContainerFeedResult.nullable(),
+  position: ContainerFeedResult.nullable(),
+  changed: z.number().int(),
+  container: ContainerBase,
+});
+
+// POST …/containers/register — the carrier's platform is asked to watch a box. A refusal is an answer (200), not an error.
+const ContainerRegistered = z.union([
+  z.object({ ok: z.literal(true), status: z.unknown().optional(), provider: z.string() }),
+  z.object({
+    ok: z.literal(false),
+    code: z.string(),
+    reason: z.string().optional(),
+    detail: z.string().nullable().optional(),
+  }),
+]);
+
+// POST …/containers/:id/units (a car put in the box, by VIN) and DELETE …/containers/:id/units/:vin (taken out: `Deleted`).
+const ContainerCarLinked = z.object({ ok: z.literal(true), vin: z.string() });
+
+// What a delete of a vehicle, a box or a link says: the same as a document's.
+const Deleted = DocDeleted;
+
 // What /api/v1 answers when it says no: words for a person, a word for a program, and what was wrong with the request.
 const ApiError = z.object({
   error: z.string(),
@@ -774,5 +995,26 @@ module.exports = {
   DocDeleted,
   LeadOption,
   LeadOptionList,
+  Amount,
+  StockUnit,
+  StockVehicle,
+  StockList,
+  StockBody,
+  StockBulkResult,
+  ContainerCheck,
+  ContainerMove,
+  ContainerCar,
+  ContainerBase,
+  Container,
+  ContainerList,
+  ContainerSaved,
+  ContainerBody,
+  ContainerLookup,
+  ContainerProviderStatus,
+  ContainerFeedResult,
+  ContainerRefreshed,
+  ContainerRegistered,
+  ContainerCarLinked,
+  Deleted,
   ApiError,
 };
