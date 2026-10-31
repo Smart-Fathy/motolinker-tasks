@@ -222,6 +222,8 @@ fs.writeFileSync(CSV_FILE, 'make,model,trim,price,units,notes\nKia,Sportage,GT,1
 
     // delete
     await sheetGone(page);
+    // (a save asks for the register again, and the page gives way to the loader while it does: its views are there again in a moment)
+    await registerReady(page);
     await press(page, `${part('views')} > :nth-child(3)`);
     await until(page, () => document.querySelectorAll('[data-part=modelCard]').length === 4, null);
     const before = T.stock_vehicles.length;
@@ -290,6 +292,7 @@ fs.writeFileSync(CSV_FILE, 'make,model,trim,price,units,notes\nKia,Sportage,GT,1
 
     // a car in, a car out
     await sheetGone(page);
+    await boardReady(page);
     await press(page, `${part('container')}:nth-child(2) ${part('link')}`);
     await sheetOpen(page);
     await press(page, part('carPick'));
