@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useSyncExternalStore } from 'react';
 import type { To } from 'react-router';
-import type { Api, Me } from '../lib/api';
+import type { Api, Me, Profile } from '../lib/api';
 import type { MlEnv, Portal } from '../lib/env';
 import type { Stream, StreamMessage } from '../lib/sse';
 import type { Theme, ThemeState } from '../lib/theme';
@@ -21,6 +21,10 @@ export interface SessionValue {
   /** the small messages at the foot of the screen */
   toasts: Toasts;
   signOut: () => void;
+  /** the person changed something about themselves (their picture, status or username): shown at once, the server having it already */
+  updateProfile: (changes: Partial<Profile>) => void;
+  /** this device's push subscription, told to the server again (it forgets a person's subscriptions when it signs their other devices out) */
+  resubscribePush: () => void;
   /** something said the session may be over (a framed page's call came back 401): ask the server, quietly; at most every few seconds */
   recheck: () => void;
 }
@@ -30,6 +34,22 @@ export const SessionContext = createContext<SessionValue | null>(null);
 export function useSession(): SessionValue {
   const value = useContext(SessionContext);
   if (!value) throw new Error('useSession: this is only available inside a signed-in session');
+  return value;
+}
+
+/** The panels and dialogs the frame owns, which a screen may ask it to open (the profile menu, the Security panel's own button). */
+export type FramePanel = 'report' | 'security' | 'status' | 'username' | 'password';
+
+export interface Frame {
+  /** open a panel; one is open at a time, so this puts away whichever was */
+  open: (panel: FramePanel) => void;
+}
+
+export const FrameContext = createContext<Frame | null>(null);
+
+export function useFrame(): Frame {
+  const value = useContext(FrameContext);
+  if (!value) throw new Error('useFrame: this is only available inside the frame of the app');
   return value;
 }
 

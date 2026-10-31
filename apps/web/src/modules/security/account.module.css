@@ -1,0 +1,158 @@
+/* The team portal's account dialogs — Set status, Change Username, Change Password — as public/employee.html draws them (each is
+   inline style over the portal's .form-input, .form-control, .form-group, .form-label, .btn and .st-preset of employee.css). */
+@layer ui {
+  /* the emoji and the words, side by side */
+  .statusRow {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .input {
+    background-color: var(--field-bg-2, #101013);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: calc(8px * var(--r-k, 1));
+    padding: 11px 14px;
+    font-size: 14px;
+    width: 100%;
+    outline: none;
+    font-family: var(--font);
+    color-scheme: var(--color-scheme, dark);
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
+  }
+  .input:focus {
+    border-color: var(--primary);
+    box-shadow:
+      0 0 0 3px rgba(var(--primary-rgb, 201, 163, 94), 0.15),
+      var(--glow, 0 0 #0000);
+  }
+  .input::placeholder {
+    color: var(--muted);
+  }
+  .emoji {
+    width: 56px;
+    text-align: center;
+    font-size: 17px;
+    flex-shrink: 0;
+  }
+  .words {
+    flex: 1;
+  }
+  .gap {
+    margin-bottom: 16px;
+  }
+  .presetsLabel {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+  }
+  .presets {
+    display: grid;
+    gap: 2px;
+    margin-bottom: 18px;
+  }
+  .preset {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 13.5px;
+    padding: 10px 12px;
+    border-radius: calc(8px * var(--r-k, 1));
+    cursor: pointer;
+    user-select: none;
+  }
+  .preset:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.05);
+  }
+  .note {
+    color: var(--muted);
+  }
+  .foot {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+  .footFill {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .fill {
+    flex: 1;
+  }
+
+  /* what the server or the form had to say */
+  .err,
+  .ok {
+    padding: 10px 14px;
+    border-radius: calc(8px * var(--r-k, 1));
+    font-size: 12px;
+  }
+  .err {
+    background: rgba(248, 113, 113, 0.08);
+    border: 1px solid rgba(248, 113, 113, 0.25);
+    color: var(--danger);
+  }
+  .ok {
+    background: rgba(52, 211, 153, 0.08);
+    border: 1px solid rgba(52, 211, 153, 0.25);
+    color: var(--success);
+  }
+  .close {
+    margin-bottom: 12px;
+  }
+  .wide {
+    margin-bottom: 14px;
+  }
+
+  /* the password dialog's fields */
+  .group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .control {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 11px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    outline: none;
+    transition:
+      border 0.2s,
+      box-shadow 0.2s;
+    width: 100%;
+    font-family: var(--font);
+  }
+  .control:focus {
+    border-color: var(--primary);
+    box-shadow:
+      0 0 0 3px rgba(var(--alt-rgb, 124, 106, 255), 0.12),
+      var(--glow, 0 0 #0000);
+  }
+  @media (max-width: 768px) {
+    .control {
+      padding: 12px 14px;
+      font-size: 16px;
+    }
+  }
+}

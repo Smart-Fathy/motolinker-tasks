@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router';
 import { switchToClassicUrl } from '../../lib/env';
 import { badgeText, useUnreadCount } from '../../modules/notifications';
 import { cx } from '../../ui/cx';
-import { useAppTo, useSession, useTheme } from '../context';
+import { useAppTo, useFrame, useSession, useTheme } from '../context';
 import type { RailGroup } from '../nav';
 import { ChevronDown, Icon, PanelLeftClose } from './icons';
 import styles from './shell.module.css';
@@ -13,8 +13,6 @@ interface SidebarProps {
   rail: RailGroup[];
   active: string | null;
   state: ShellState;
-  /** the team portal's "Report an Issue" button, at the foot of its rail */
-  onReportIssue: () => void;
 }
 
 /** The workspace's picture (a round mark), its name and what the portal calls itself. */
@@ -62,8 +60,9 @@ function Brand({ state }: { state: ShellState }) {
   );
 }
 
-export function Sidebar({ rail, active, state, onReportIssue }: SidebarProps) {
+export function Sidebar({ rail, active, state }: SidebarProps) {
   const { portal, signOut } = useSession();
+  const frame = useFrame();
   const unread = useUnreadCount();
   const to = useAppTo();
   const navigate = useNavigate();
@@ -175,7 +174,7 @@ export function Sidebar({ rail, active, state, onReportIssue }: SidebarProps) {
             type="button"
             className={styles['reportIssue']}
             data-part="reportIssue"
-            onClick={onReportIssue}
+            onClick={() => frame.open('report')}
           >
             <Icon name="bug" size={14} /> Report an Issue
           </button>
@@ -193,17 +192,20 @@ export function Sidebar({ rail, active, state, onReportIssue }: SidebarProps) {
             </span>{' '}
             Classic portal
           </a>
-          <NavLink
-            to={to('/security')}
+          <button
+            type="button"
             className={styles['footerRow']}
             data-part="footerRow"
-            onClick={() => state.setDrawer(false)}
+            onClick={() => {
+              state.setDrawer(false);
+              frame.open('security');
+            }}
           >
             <span className={styles['footerIcon']}>
               <Icon name="shield-check" />
             </span>{' '}
             Security
-          </NavLink>
+          </button>
           <button
             type="button"
             className={styles['footerRow']}

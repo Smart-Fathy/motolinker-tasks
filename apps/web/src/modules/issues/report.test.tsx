@@ -33,6 +33,8 @@ const summary = () => screen.getByPlaceholderText("e.g. Can't log hours");
 const details = () => screen.getByPlaceholderText('What happened? What did you expect?');
 const submit = () => screen.getByRole('button', { name: /Submit Ticket|Sending…/ });
 const dialog = () => screen.queryByRole('dialog', { name: 'Report an Issue' });
+/** The report's own file input (the account menu has one too, for the picture). */
+const fileInput = () => dialog()!.querySelector<HTMLInputElement>('input[type=file]')!;
 
 describe('the ways in', () => {
   it("is a button at the foot of the team's rail, and a line in the account menu", async () => {
@@ -78,9 +80,7 @@ describe('the form', () => {
     expect(summary().getAttribute('maxlength')).toBe('150');
     expect(details().getAttribute('maxlength')).toBe('2000');
     expect(box.getByText('Click to attach a screenshot or file')).toBeTruthy();
-    expect(document.querySelector<HTMLInputElement>('input[type=file]')!.accept).toBe(
-      'image/*,.pdf,.log,.txt,.zip,.mp4',
-    );
+    expect(fileInput().accept).toBe('image/*,.pdf,.log,.txt,.zip,.mp4');
   });
 
   it('says what has been chosen under the paperclip', async () => {
@@ -88,7 +88,7 @@ describe('the form', () => {
     boot();
     await user.click(await screen.findByRole('button', { name: /Report an Issue/ }));
     const file = new File([new Uint8Array(1.5 * 1024 * 1024)], 'shot.png', { type: 'image/png' });
-    await user.upload(document.querySelector('input[type=file]')!, file);
+    await user.upload(fileInput(), file);
     expect(screen.getByText('shot.png · 1.5 MB')).toBeTruthy();
   });
 
@@ -110,10 +110,7 @@ describe('sending it', () => {
     await user.click(await screen.findByRole('button', { name: /Report an Issue/ }));
     await user.type(summary(), '  Cannot log hours  ');
     await user.type(details(), 'The button does nothing.\n');
-    await user.upload(
-      document.querySelector('input[type=file]')!,
-      new File(['x'], 'shot.png', { type: 'image/png' }),
-    );
+    await user.upload(fileInput(), new File(['x'], 'shot.png', { type: 'image/png' }));
     await user.click(submit());
     expect(await screen.findByText(SAID.sent)).toBeTruthy();
     expect(dialog()).toBeNull();
@@ -154,7 +151,7 @@ describe('sending it', () => {
     await user.type(summary(), 'Big one');
     const big = new File(['x'], 'big.png', { type: 'image/png' });
     Object.defineProperty(big, 'size', { value: MAX_FILE_BYTES + 1 });
-    await user.upload(document.querySelector('input[type=file]')!, big);
+    await user.upload(fileInput(), big);
     await user.click(submit());
     expect(await screen.findByText('File must be under 10 MB')).toBeTruthy();
     expect(s.sent()).toHaveLength(0);

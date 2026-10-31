@@ -62,6 +62,7 @@ export const teamMe = (
   permissions: Record<string, unknown> = {},
   jobTitle = 'Sales',
   flags: Record<string, boolean> = {},
+  profile: Partial<NonNullable<Me['profile']>> = {},
 ): Me =>
   ({
     ...describeActor(
@@ -72,6 +73,7 @@ export const teamMe = (
         permissions: normalisePermissions(permissions, DEPS),
       }),
     ),
+    profile: { username: 'sam', avatarUrl: '', statusText: '', statusEmoji: '', ...profile },
     workspace: WORKSPACE,
     flags,
   }) as unknown as Me;

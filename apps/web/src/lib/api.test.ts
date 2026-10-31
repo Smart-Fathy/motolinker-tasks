@@ -16,6 +16,12 @@ const employeeMe = () => ({
       permissions: { leads: true, leadsActions: { view: true, edit: true } },
     }),
   ),
+  profile: {
+    username: 'sara',
+    avatarUrl: 'https://cdn.example.test/sara.png',
+    statusText: 'In a meeting',
+    statusEmoji: '📅',
+  },
   workspace: { ...workspace, updated_at: '2026-03-04T10:00:00.000Z' },
   flags: { preview: true },
 });
@@ -36,6 +42,23 @@ describe('the /me answer the app accepts', () => {
     ['an employee', employeeMe()],
     ['a degraded workspace', { ...adminMe(), workspace: { ...workspace, degraded: true } }],
     ['a field the app does not know', { ...adminMe(), somethingNew: 1 }],
+    [
+      'an employee with a profile that has an empty picture and status',
+      {
+        ...employeeMe(),
+        profile: { username: 'sara', avatarUrl: '', statusText: '', statusEmoji: '' },
+      },
+    ],
+    [
+      'a profile with no username',
+      { ...employeeMe(), profile: { ...employeeMe().profile, username: undefined } },
+    ],
+    [
+      'a profile whose picture is a number',
+      { ...employeeMe(), profile: { ...employeeMe().profile, avatarUrl: 3 } },
+    ],
+    ['a profile that is a string', { ...employeeMe(), profile: 'sara' }],
+    ['a profile that is null', { ...employeeMe(), profile: null }],
     ['nothing', undefined],
     ['null', null],
     ['an array', []],

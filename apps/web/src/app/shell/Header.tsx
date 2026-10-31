@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink } from 'react-router';
 import ThemeCore from '@theme-core';
 import { switchToClassicUrl } from '../../lib/env';
 import { MODE_NAMES } from '../../lib/theme';
 import { cx } from '../../ui/cx';
-import { useAppTo, useSession, useTheme } from '../context';
+import { useFrame, useSession, useTheme, type FramePanel } from '../context';
+import { ACCOUNT_ICONS } from '../../modules/security/model';
+import { useAccount } from '../../modules/security';
 import { Icon, Menu, ModeIcon } from './icons';
 import { NotificationBell } from './NotificationBell';
 import styles from './shell.module.css';
@@ -32,12 +33,35 @@ function ModeToggle() {
   );
 }
 
-/** The team portal keeps your account behind your own initials, top right. */
-function ProfileMenu({ onReportIssue }: { onReportIssue: () => void }) {
+/** What a person looks like in the account menu: their picture where they have set one, their initials where they have not. */
+function Face({ large }: { large?: boolean }) {
+  const { me } = useSession();
+  const name = me.actor.name || '?';
+  const initials = name
+    .split(' ')
+    .map(w => w[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  const picture = me.profile?.avatarUrl;
+  return (
+    <span
+      className={cx(styles['avatar'], large && styles['avatarLg'])}
+      data-part={large ? 'avatarLarge' : 'avatar'}
+    >
+      {picture ? <img className={styles['avatarImg']} src={picture} alt="" /> : initials}
+    </span>
+  );
+}
+
+/** The team portal keeps your account behind your own face, top right: your picture, name and status, and what you may do. */
+function ProfileMenu() {
   const { me, signOut } = useSession();
-  const to = useAppTo();
+  const frame = useFrame();
+  const account = useAccount();
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!open) return;
     const away = (e: MouseEvent) => {
@@ -54,12 +78,12 @@ function ProfileMenu({ onReportIssue }: { onReportIssue: () => void }) {
     };
   }, [open]);
   const name = me.actor.name || '?';
-  const initials = name
-    .split(' ')
-    .map(w => w[0] ?? '')
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+  const status = [me.profile?.statusEmoji, me.profile?.statusText].filter(Boolean).join(' ').trim();
+  // Anything in the menu that opens a dialog puts the menu away first: it would sit behind the curtain otherwise.
+  const ask = (panel: FramePanel) => () => {
+    setOpen(false);
+    frame.open(panel);
+  };
   return (
     <div className={styles['profileWrap']} ref={wrap}>
       <button
@@ -71,17 +95,63 @@ function ProfileMenu({ onReportIssue }: { onReportIssue: () => void }) {
         aria-label="Your account"
         onClick={() => setOpen(o => !o)}
       >
-        <span className={styles['avatar']} data-part="avatar">
-          {initials}
-        </span>
+        <Face />
       </button>
+      <input
+        ref={picker}
+        type="file"
+        accept="image/*"
+        hidden
+        data-part="avatarFile"
+        onChange={e => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          void account.uploadAvatar(file);
+        }}
+      />
       {open && (
         <div className={styles['profileMenu']} data-part="profileMenu">
           <div className={styles['profileHead']}>
-            <span className={cx(styles['avatar'], styles['avatarLg'])}>{initials}</span>
+            <button
+              type="button"
+              className={styles['profileAv']}
+              data-part="changePicture"
+              title="Change profile picture"
+              onClick={() => picker.current?.click()}
+            >
+              <Face large />
+              <span className={styles['profileAvEdit']}>
+                <Icon name={ACCOUNT_ICONS.picture} />
+              </span>
+            </button>
             <div className={styles['profileWho']}>
-              <div className={styles['profileName']}>{name}</div>
+              <div className={styles['profileName']} data-part="name">
+                {name}{' '}
+                <button
+                  type="button"
+                  className={styles['profilePencil']}
+                  data-part="changeUsername"
+                  title="Change username"
+                  aria-label="Change username"
+                  onClick={ask('username')}
+                >
+                  <Icon name={ACCOUNT_ICONS.username} />
+                </button>
+              </div>
               <div className={styles['profileRole']}>{me.actor.jobTitle || 'Employee'}</div>
+              <div
+                className={cx(styles['profileStatus'], status && styles['hasStatus'])}
+                data-part="status"
+                role="button"
+                tabIndex={0}
+                title="Set a status"
+                onClick={ask('status')}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') ask('status')();
+                }}
+              >
+                {status || '＋ Set status'}
+              </div>
             </div>
           </div>
           <div className={styles['profileActions']}>
@@ -89,20 +159,26 @@ function ProfileMenu({ onReportIssue }: { onReportIssue: () => void }) {
               type="button"
               className={styles['profileItem']}
               data-part="reportIssue"
-              onClick={() => {
-                setOpen(false);
-                onReportIssue();
-              }}
+              onClick={ask('report')}
             >
               <Icon name="bug" /> Report an issue
             </button>
-            <NavLink
-              to={to('/security')}
+            <button
+              type="button"
               className={styles['profileItem']}
-              onClick={() => setOpen(false)}
+              data-part="changePassword"
+              onClick={ask('password')}
+            >
+              <Icon name={ACCOUNT_ICONS.password} /> Change password
+            </button>
+            <button
+              type="button"
+              className={styles['profileItem']}
+              data-part="security"
+              onClick={ask('security')}
             >
               <Icon name="shield-check" /> Security
-            </NavLink>
+            </button>
             <a
               className={styles['profileItem']}
               data-part="classicLink"
@@ -128,11 +204,9 @@ interface HeaderProps {
   state: ShellState;
   /** the team portal's top bar names the page it is on */
   title: string;
-  /** "Report an issue", in the team portal's account menu */
-  onReportIssue: () => void;
 }
 
-export function Header({ state, title, onReportIssue }: HeaderProps) {
+export function Header({ state, title }: HeaderProps) {
   const { portal } = useSession();
   const { name, texts } = useTheme();
   const hamburger = (
@@ -159,7 +233,7 @@ export function Header({ state, title, onReportIssue }: HeaderProps) {
         <div className={styles['topbarRight']}>
           <ModeToggle />
           <NotificationBell />
-          <ProfileMenu onReportIssue={onReportIssue} />
+          <ProfileMenu />
         </div>
       </header>
     );

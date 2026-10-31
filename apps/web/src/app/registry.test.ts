@@ -51,13 +51,14 @@ describe('the registry', () => {
     );
   });
 
-  it('finds, in this app, the modules that have moved: Calendar, Home, Issues, Meet, Notifications and Submissions so far', () => {
+  it('finds, in this app, the modules that have moved: Calendar, Home, Issues, Meet, Notifications, Security and Submissions so far', () => {
     expect([...registry.keys()].sort()).toEqual([
       'calendar',
       'home',
       'issues',
       'meet',
       'notifications',
+      'security',
       'submissions',
     ]);
   });

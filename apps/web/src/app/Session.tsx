@@ -1,7 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, MemoryRouter } from 'react-router';
-import { makeApi, portalBase, type Me } from '../lib/api';
+import { makeApi, portalBase, type Me, type Profile } from '../lib/api';
 import type { MlEnv, Portal } from '../lib/env';
 import { refreshPush } from '../lib/pwa';
 import { makeQueryClient } from '../lib/query';
@@ -34,6 +34,7 @@ export function basenameFor(portal: Portal, pathname: string): string {
 }
 
 const RECHECK_EVERY_MS = 5000;
+const NO_CHANGES: Partial<Profile> = {};
 
 /**
  * Everything one signed-in session owns, and nothing that outlives it: its data (a new session starts empty, so one person's
@@ -56,6 +57,25 @@ export function Session({
   const [client] = useState(makeQueryClient);
   const [toasts] = useState(createToasts);
   const access = useMemo(() => accessOf(me), [me]);
+  // What the person has just changed about themselves is shown before the server is asked again; a fresh answer from the
+  // server (a new `me`) replaces it, the server being the one that knows.
+  const [changes, setChanges] = useState<{ for: Me; profile: Partial<Profile> }>({
+    for: me,
+    profile: NO_CHANGES,
+  });
+  const own = changes.for === me ? changes.profile : NO_CHANGES;
+  const shown = useMemo(
+    () => (me.profile ? { ...me, profile: { ...me.profile, ...own } } : me),
+    [me, own],
+  );
+  const updateProfile = useCallback(
+    (more: Partial<Profile>) =>
+      setChanges(c => ({
+        for: me,
+        profile: { ...(c.for === me ? c.profile : NO_CHANGES), ...more },
+      })),
+    [me],
+  );
 
   // (the owner of the session — App — hands this over unchanged between renders)
   const asked = useMemo(() => throttle(onUnauthorized, RECHECK_EVERY_MS), [onUnauthorized]);
@@ -93,6 +113,11 @@ export function Session({
     );
     return () => done.abort();
   }, [api]);
+  // …and again when the server has forgotten it (it clears a person's subscriptions with the sessions it signs out).
+  const resubscribePush = useCallback(
+    () => void refreshPush(subscription => api.post(`${api.base}/push/subscribe`, subscription)),
+    [api],
+  );
 
   // The live stream: the admin changing the look reaches every open page; a refusal about the session is asked about.
   useEffect(() => {
@@ -126,7 +151,7 @@ export function Session({
     () => ({
       portal,
       env,
-      me,
+      me: shown,
       access,
       safe: isSafe,
       api,
@@ -134,9 +159,25 @@ export function Session({
       stream,
       toasts,
       signOut,
+      updateProfile,
+      resubscribePush,
       recheck: asked,
     }),
-    [portal, env, me, access, isSafe, api, theme, stream, toasts, signOut, asked],
+    [
+      portal,
+      env,
+      shown,
+      access,
+      isSafe,
+      api,
+      theme,
+      stream,
+      toasts,
+      signOut,
+      updateProfile,
+      resubscribePush,
+      asked,
+    ],
   );
 
   const routes = <AppRoutes />;
