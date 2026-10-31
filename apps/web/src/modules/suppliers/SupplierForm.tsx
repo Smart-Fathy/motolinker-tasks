@@ -62,9 +62,7 @@ export function SupplierForm({
       // (what the supplier has under fields that are not on the form stays)
       custom_fields: {
         ...(supplier?.custom_fields ?? {}),
-        ...Object.fromEntries(
-          custom.map(c => [c.key, values[c.key] ?? (c.type === 'checkbox' ? false : '')]),
-        ),
+        ...Object.fromEntries(custom.map(c => [c.key, values[c.key] ?? ''])),
       },
     };
     if (!body.name) return setError('Supplier name is required.');

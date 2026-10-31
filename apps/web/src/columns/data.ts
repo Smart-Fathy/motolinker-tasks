@@ -22,9 +22,8 @@ async function fetchColumns(
   try {
     const body = await api.get<unknown>(`${api.base}/columns/${entity}`, { signal });
     return isColumnsResponse(body) ? body.columns : null;
-  } catch (e) {
-    // (a cancelled request is not an answer; anything else is "nothing arranged")
-    if (e instanceof DOMException && e.name === 'AbortError') throw e;
+  } catch {
+    // (a list that cannot be had is "nothing arranged")
     return null;
   }
 }

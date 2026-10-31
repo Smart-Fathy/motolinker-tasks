@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { adminMe, json } from '../test/helpers';
 import { open, type Answer } from '../test/session';
+import { FieldInput } from './Fields';
 import type { Column } from './model';
 
 beforeEach(() => {
@@ -233,6 +234,23 @@ describe("a column's menu", () => {
     await waitFor(() =>
       expect(find(lastSaved(s), 'notes')).toMatchObject({ deleted: true, visible: false }),
     );
+  });
+});
+
+describe("a column's menu from the keyboard", () => {
+  it('opens with Enter or Space on the chevron, and for no other key', async () => {
+    const user = userEvent.setup();
+    boot();
+    await table();
+    chevron('Name').focus();
+    await user.keyboard('a');
+    expect(menu()).toBeNull();
+    await user.keyboard('{Enter}');
+    expect(menu()).toBeTruthy();
+    await user.keyboard('{Escape}');
+    expect(menu()).toBeNull();
+    await user.keyboard(' ');
+    expect(menu()).toBeTruthy();
   });
 });
 
@@ -523,6 +541,27 @@ describe("the editor's dialogs", () => {
     expect(screen.getByRole('dialog')).toBeTruthy();
   });
 
+  it('wraps Tab from the last control of a dialog to the first, and Shift+Tab from the first to the last', async () => {
+    const user = userEvent.setup();
+    boot();
+    await table();
+    await user.click(screen.getByRole('button', { name: '+ Field' }));
+    await screen.findByRole('dialog');
+    const reachable = [
+      ...dialog().querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled])',
+      ),
+    ];
+    const first = reachable[0]!;
+    const last = reachable.at(-1)!;
+    expect(first).not.toBe(last);
+    last.focus();
+    await user.tab();
+    expect(document.activeElement).toBe(first);
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(last);
+  });
+
   it("takes Escape for itself over another dialog: the supplier's sheet stays open", async () => {
     const user = userEvent.setup();
     boot();
@@ -586,6 +625,15 @@ describe('what a person sees of a column', () => {
               notes: '',
               custom_fields: { cf_vip: false, cf_site: '' },
             },
+            {
+              id: 4,
+              name: 'D',
+              contact: '',
+              address: '',
+              country: '',
+              notes: '',
+              custom_fields: { cf_vip: 'false', cf_site: 'ftp://example.com/x' },
+            },
           ]),
       },
     );
@@ -603,6 +651,25 @@ describe('what a person sees of a column', () => {
     expect(within(row('B')).getByText('zz').getAttribute('style')).toBeNull();
     expect(within(row('B')).getByText('✓')).toBeTruthy();
     expect(within(row('C')).getAllByText('—').length).toBeGreaterThanOrEqual(2);
+    // a box stored as the word "false" is not ticked, and only http and https are links
+    expect(within(row('D')).queryByText('✓')).toBeNull();
+    expect(within(row('D')).queryByRole('link')).toBeNull();
+    expect(within(row('D')).getByText('ftp://example.com/x')).toBeTruthy();
+  });
+
+  it("shows, in a form, a stored value that is no longer one of its dropdown's options as empty", () => {
+    const grade = col('cf_grade', {
+      label: 'Grade',
+      type: 'select',
+      options: [{ key: 'a', label: 'Gold' }],
+    });
+    const { unmount } = render(
+      <FieldInput id="f" col={grade} value="zzz" onChange={() => undefined} />,
+    );
+    expect(screen.getByRole('button').textContent?.trim()).toBe('—');
+    unmount();
+    render(<FieldInput id="f" col={grade} value="a" onChange={() => undefined} />);
+    expect(screen.getByRole('button').textContent?.trim()).toBe('Gold');
   });
 });
 

@@ -63,7 +63,6 @@ function ColumnMenu({ columns, col }: { columns: Columns; col: Column }) {
   const shown = visibleColumns(columns.all);
   const at = shown.findIndex(c => c.key === col.key);
   const canType = col.type !== 'virtual';
-  if (!columns.canEdit) return null;
   return (
     <>
       {canType && (
@@ -143,7 +142,7 @@ function Picker({ columns }: { columns: Columns }) {
               <Icon name={c.visible ? COLUMN_ICONS.shown : COLUMN_ICONS.hidden} size={14} />
               {c.label}
             </button>
-            {columns.canEdit && c.type !== 'virtual' && (
+            {c.type !== 'virtual' && (
               <button
                 type="button"
                 className={styles['pencil']}
@@ -159,22 +158,18 @@ function Picker({ columns }: { columns: Columns }) {
             )}
           </div>
         ))}
-      {columns.canEdit && (
-        <>
-          <Sep />
-          <button
-            type="button"
-            data-part="pickAdd"
-            onClick={e => {
-              e.stopPropagation();
-              columns.openAdd();
-            }}
-          >
-            <Icon name={COLUMN_ICONS.add} size={13} />
-            Add field
-          </button>
-        </>
-      )}
+      <Sep />
+      <button
+        type="button"
+        data-part="pickAdd"
+        onClick={e => {
+          e.stopPropagation();
+          columns.openAdd();
+        }}
+      >
+        <Icon name={COLUMN_ICONS.add} size={13} />
+        Add field
+      </button>
     </>
   );
 }
@@ -498,7 +493,7 @@ function AddDialog({ columns }: { columns: Columns }) {
       columns.saveNew({
         label,
         type,
-        options: hasOptions(type) ? parseOptionLines(lines) : [],
+        options: parseOptionLines(lines),
         required,
         width: widthOf(width),
       }),

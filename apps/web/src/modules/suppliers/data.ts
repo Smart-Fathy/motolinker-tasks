@@ -45,8 +45,7 @@ async function fetchSuppliers(api: Api, signal: AbortSignal): Promise<Supplier[]
 async function fetchOrNull(api: Api, path: string, signal: AbortSignal): Promise<unknown> {
   try {
     return await api.get<unknown>(`${api.base}${path}`, { signal });
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') throw e;
+  } catch {
     return null;
   }
 }

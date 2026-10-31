@@ -606,8 +606,9 @@ const configs = () => [
     compared += n;
     check(`${key}: ${n} values are the classic page's`, bad.length === 0, PRINT ? '\n      ' + bad.join('\n      ') : bad.slice(0, 4).join(' | ') + (bad.length > 4 ? ` … and ${bad.length - 4} more` : ''));
   }
-  if (!ONLY && !STATE_FILTER.length) {
-    check('it compared a real number of values (a comparison that found nothing would pass everything)', compared > 600000, String(compared));
+  if (!STATE_FILTER.length) {
+    // (CI runs a half per suite, so a half has its own floor: a half that compared nothing must not pass)
+    check('it compared a real number of values (a comparison that found nothing would pass everything)', compared > (ONLY ? 300000 : 600000), String(compared));
     check('every accepted difference still differs, so the list is not hiding anything that got fixed', stale.size === 0, [...stale].join(', '));
   }
   fs.rmSync(dist, { recursive: true, force: true });

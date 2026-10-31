@@ -555,6 +555,38 @@ describe('what a person fills in, and what the classic dialogs make of it', () =
     }
   });
 
+  it('takes "required" and a width off a field when the editor unticks and empties them, as the classic editor does', () => {
+    const cols: Column[] = [
+      {
+        key: 'cf_req',
+        label: 'Req',
+        type: 'text',
+        builtin: false,
+        visible: true,
+        required: true,
+        width: 120,
+      },
+    ];
+    const E = engineWith(cols);
+    E.openFieldModal('cf_req');
+    expect(q<HTMLInputElement>('#ce-required').checked).toBe(true);
+    expect(q<HTMLInputElement>('#ce-width').value).toBe('120');
+    q<HTMLInputElement>('#ce-required').checked = false;
+    fill('#ce-width', '');
+    E.saveField();
+    const mine = editField(cols, 'cf_req', {
+      label: 'Req',
+      type: 'text',
+      options: [],
+      required: false,
+      width: undefined,
+    });
+    if ('problem' in mine) throw new Error('the edit was refused: ' + mine.problem);
+    same(mine.cols, E.cols);
+    expect(mine.cols[0]).not.toHaveProperty('required');
+    expect(mine.cols[0]).not.toHaveProperty('width');
+  });
+
   const typeChanges = [
     { key: 'country', type: 'text', lines: '' },
     { key: 'country', type: 'select', lines: 'China\nJapan\nKorea' },

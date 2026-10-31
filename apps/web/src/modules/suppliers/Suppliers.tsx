@@ -103,7 +103,7 @@ function Card({
         <div className={styles['stat']}>
           <span>Value</span>
           <b className="num" data-part="figure">
-            {stats.haveStock ? (f.value ? 'EGP ' + shortEgp(f.value) : '—') : '—'}
+            {f.value ? 'EGP ' + shortEgp(f.value) : '—'}
           </b>
         </div>
         <div className={styles['stat']}>

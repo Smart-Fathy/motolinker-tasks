@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Column } from '../../columns';
@@ -141,6 +141,10 @@ interface World {
   failWrites: boolean;
   /** what the server says to a save or a delete of a supplier */
   saveStatus: number;
+  /** the catalogue's columns are answered when this is settled (at once where there is none) */
+  vehicleColumnsGate: Promise<void> | null;
+  /** a document is taken when this is settled (at once where there is none) */
+  docGate: Promise<void> | null;
 }
 const EMPTY_BOUGHT = {
   units: [],
@@ -174,6 +178,8 @@ function boot(
     writes: [],
     failWrites: false,
     saveStatus: 200,
+    vehicleColumnsGate: null,
+    docGate: null,
     ...init,
   };
   const base = portal === 'admin' ? '/api/dashboard' : '/api/employee';
@@ -207,9 +213,11 @@ function boot(
         return json(200, { ok: true, columns: body.columns });
       }
       const saved = entity === 'suppliers' ? w.columns : w.vehicleColumns;
-      return saved === 'failing'
-        ? json(500, { error: 'no' })
-        : json(200, { columns: saved, entity });
+      const answer = () =>
+        saved === 'failing' ? json(500, { error: 'no' }) : json(200, { columns: saved, entity });
+      return entity === 'supplier_vehicles' && w.vehicleColumnsGate
+        ? w.vehicleColumnsGate.then(answer)
+        : answer();
     };
   const more: Record<string, Answer> = {
     [`${base}/suppliers`]: init => {
@@ -244,10 +252,11 @@ function boot(
             ? json(500, { error: 'no' })
             : json(200, vehicle(50, { brand: 'New', model: '' })))
         : json(200, w.vehicles);
-    more[`${base}/suppliers/${id}/docs`] = init =>
-      init.method === 'POST'
-        ? writable(`${base}/suppliers/${id}/docs`, () => ({}))(init)
-        : json(200, w.docs);
+    more[`${base}/suppliers/${id}/docs`] = init => {
+      if (init.method !== 'POST') return json(200, w.docs);
+      const take = () => writable(`${base}/suppliers/${id}/docs`, () => ({}))(init);
+      return w.docGate ? w.docGate.then(take) : take();
+    };
     more[`${base}/suppliers/${id}/purchases`] = () => json(200, w.purchases);
     for (const vid of [1, 2, 50]) {
       more[`${base}/suppliers/${id}/vehicles/${vid}`] = writable(
@@ -351,6 +360,16 @@ describe('the Suppliers screen', () => {
     expect(document.querySelector('[data-part=count]')?.textContent).toBe(
       '2 suppliers · 2 catalogue vehicles',
     );
+    // …and the same for the catalogue: its count is no figure, and the others stay
+    cleanup();
+    boot('admin', ALL, { offers: 'forbidden' });
+    await loaded();
+    expect(
+      [...cardOf('Yu Motors').querySelectorAll('[data-part=figure]')].map(e => e.textContent),
+    ).toEqual(['2', 'EGP 66K', '—']);
+    expect(document.querySelector('[data-part=count]')?.textContent).toBe(
+      '2 suppliers · 2 units in the register',
+    );
   });
 
   it("keeps the view it was left in, under the classic page's key, and a table shows the columns the administrator arranged", async () => {
@@ -389,6 +408,19 @@ describe('the Suppliers screen', () => {
       '--ce-c: #dc2626',
     );
     expect(cells[7]).toBe('Open Edit Delete');
+    // a supplier with nothing in a cell has a dash there (a note or an address is simply empty)
+    const bare = [...document.querySelectorAll('[data-part=row]')].find(r =>
+      r.textContent?.includes('Alpha'),
+    ) as HTMLElement;
+    expect([...bare.querySelectorAll('td')].map(c => c.textContent?.trim()).slice(0, 7)).toEqual([
+      'Alpha',
+      '—',
+      '—',
+      '',
+      '—',
+      '—',
+      '—',
+    ]);
     await user.click(screen.getByRole('button', { name: 'Cards' }));
     expect(localStorage.getItem('ml_sup_view')).toBe('cards');
     cleanup();
@@ -455,7 +487,13 @@ describe('the Suppliers screen', () => {
 });
 
 describe('what each grant is offered', () => {
+  const actionsOfRows = () =>
+    [...document.querySelectorAll('[data-part=actionsCell]')].map(c =>
+      c.textContent?.replace(/\s+/g, ' ').trim(),
+    );
+
   it('shows a member who may only view the cards and the catalogue — no Add, no Edit, no Delete, no column controls, no other pages', async () => {
+    const user = userEvent.setup();
     boot('team', VIEWER, { stock: 'forbidden' });
     await loaded();
     expect(screen.queryByRole('button', { name: /Add supplier/ })).toBeNull();
@@ -469,6 +507,9 @@ describe('what each grant is offered', () => {
     expect(document.querySelector('[data-part=count]')?.textContent).toBe(
       '2 suppliers · 2 catalogue vehicles',
     );
+    // …and in the table a row is only opened
+    await user.click(screen.getByRole('button', { name: 'Table' }));
+    expect(actionsOfRows()).toEqual(['Open', 'Open']);
   });
 
   it("offers a member with every grant Add, Edit, Delete and all three pages — but never the column controls, which are the administrator's", async () => {
@@ -484,6 +525,23 @@ describe('what each grant is offered', () => {
     expect(screen.queryByRole('button', { name: 'Columns' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Table' }));
     expect(document.querySelector('[data-part=chevron]')).toBeNull();
+    expect(actionsOfRows()).toEqual(['Open Edit Delete', 'Open Edit Delete']);
+  });
+
+  it('gives each of Edit and Delete in the table its own grant', async () => {
+    const user = userEvent.setup();
+    const only = (which: 'edit' | 'delete') => ({
+      suppliers: true,
+      suppliersActions: { ...VIEWER.suppliersActions, [which]: true },
+    });
+    boot('team', only('edit'));
+    await loaded();
+    await user.click(screen.getByRole('button', { name: 'Table' }));
+    expect(actionsOfRows()).toEqual(['Open Edit', 'Open Edit']);
+    cleanup();
+    boot('team', only('delete'));
+    await loaded();
+    expect(actionsOfRows()).toEqual(['Open Delete', 'Open Delete']);
   });
 
   it("gives each page its own grant: with the purchases but not the documents, a supplier's sheet has Vehicles and Purchases", async () => {
@@ -523,6 +581,27 @@ describe('adding, editing and deleting a supplier', () => {
     expect(document.querySelector('[data-part=dialog] [data-part=title]')?.textContent).toBe(
       'Add supplier',
     );
+  });
+
+  it("draws one of the register's own fields as the type it was given: a number, a date, or text", async () => {
+    const user = userEvent.setup();
+    boot('admin', ALL, {
+      columns: [
+        col('name', { builtin: true, label: 'Name' }),
+        col('contact', { builtin: true, label: 'Contact', type: 'number' }),
+        col('address', { builtin: true, label: 'Address', type: 'date' }),
+        col('notes', { builtin: true, label: 'Notes' }),
+      ],
+    });
+    await loaded();
+    await user.click(screen.getByRole('button', { name: /Add supplier/ }));
+    const typeOf = (label: string) => field(label).querySelector('input')?.getAttribute('type');
+    expect([typeOf('Name'), typeOf('Contact'), typeOf('Address'), typeOf('Notes')]).toEqual([
+      'text',
+      'number',
+      'date',
+      'text',
+    ]);
   });
 
   it('asks for what is required before the name, and for the name', async () => {
@@ -809,6 +888,87 @@ describe("a supplier's pages", () => {
     expect(document.querySelector('[data-part=vehicleDelete]')).toBeNull();
   });
 
+  it('keeps a vehicle the person did not confirm removing', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const s = boot('admin');
+    await loaded();
+    await openTab(user, 'Yu Motors', 'Vehicles');
+    await screen.findByDisplayValue('Aion');
+    await user.click(document.querySelector('[data-part=vehicleDelete]') as HTMLElement);
+    expect(confirm).toHaveBeenCalledWith('Remove this vehicle from the supplier list?');
+    expect(s.w.writes.filter(w => w.method === 'DELETE')).toEqual([]);
+    expect(document.querySelectorAll('[data-part=vehicleRow]').length).toBe(2);
+  });
+
+  it('draws no grid until the arrangement of its columns is known, so it is never drawn in one order and then another', async () => {
+    const user = userEvent.setup();
+    const gate = deferred<void>();
+    const s = boot('admin', ALL, { vehicleColumnsGate: gate.promise });
+    await loaded();
+    await openTab(user, 'Yu Motors', 'Vehicles');
+    await waitFor(() => expect(s.calls('/api/dashboard/suppliers/1/vehicles').length).toBe(1));
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 30));
+    });
+    expect(document.querySelector('[data-part=paneLoading]')).toBeTruthy();
+    expect(document.querySelector('[data-part=gridTable]')).toBeNull();
+    gate.resolve();
+    await screen.findByDisplayValue('Aion');
+    expect(document.querySelector('[data-part=paneLoading]')).toBeNull();
+  });
+
+  it('draws each cell as the type its column was given — a number from nothing up, long text in a box of its own, a box to tick — and saves a ticked box as true', async () => {
+    const user = userEvent.setup();
+    const s = boot('admin', ALL, {
+      vehicleColumns: [
+        col('brand', { builtin: true, label: 'Brand' }),
+        col('model_year', { builtin: true, label: 'Year', type: 'number' }),
+        col('accessories', { builtin: true, label: 'Accessories' }),
+        col('cf_ok', { label: 'Inspected', type: 'checkbox' }),
+        col('cf_when', { label: 'Seen', type: 'date' }),
+        col('cf_page', { label: 'Page', type: 'link' }),
+      ],
+    });
+    await loaded();
+    await openTab(user, 'Yu Motors', 'Vehicles');
+    await screen.findByDisplayValue('Aion');
+    const row = document.querySelector('[data-part=vehicleRow]') as HTMLElement;
+    const kind = (part: string) => row.querySelector(`[data-part=${part}]`);
+    expect(kind('gridInput')?.getAttribute('type')).toBe('text');
+    const number = row.querySelector('[data-part=gridInput][type=number]') as HTMLInputElement;
+    expect(number.getAttribute('min')).toBe('0');
+    expect(number.value).toBe('2026');
+    expect((row.querySelector('textarea[data-part=gridArea]') as HTMLTextAreaElement).value).toBe(
+      'mats',
+    );
+    expect(row.querySelector('[data-part=gridInput][type=date]')).toBeTruthy();
+    expect(row.querySelector('[data-part=gridInput][type=url]')).toBeTruthy();
+    await user.click(kind('gridBox') as HTMLElement);
+    await waitFor(() =>
+      expect(s.w.writes.some(w => w.method === 'PUT' && /vehicles\/1$/.test(w.path))).toBe(true),
+    );
+    const put = s.w.writes.find(w => w.method === 'PUT' && /vehicles\/1$/.test(w.path))!;
+    expect((put.body as { custom_fields: Body }).custom_fields['cf_ok']).toBe(true);
+  });
+
+  it("puts a column's menu away with Escape and leaves the sheet it was opened over", async () => {
+    const user = userEvent.setup();
+    boot('admin');
+    await loaded();
+    await openTab(user, 'Yu Motors', 'Vehicles');
+    await screen.findByDisplayValue('Aion');
+    await user.click(
+      document.querySelector('[data-part=gridHead] [data-part=chevron]') as HTMLElement,
+    );
+    expect(document.querySelector('[data-part=colMenu]')).toBeTruthy();
+    await user.keyboard('{Escape}');
+    expect(document.querySelector('[data-part=colMenu]')).toBeNull();
+    expect(document.querySelector('[data-part=dialog]')).toBeTruthy();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(document.querySelector('[data-part=dialog]')).toBeNull());
+  });
+
   it('says what a supplier has not got yet', async () => {
     const user = userEvent.setup();
     boot('admin', ALL, { vehicles: [] });
@@ -856,6 +1016,22 @@ describe("a supplier's pages", () => {
     expect(await screen.findByText('No documents yet.')).toBeTruthy();
   });
 
+  it('says it is uploading while the file is on its way, and no longer once it has been taken', async () => {
+    const user = userEvent.setup();
+    const gate = deferred<void>();
+    boot('admin', ALL, { docGate: gate.promise });
+    await loaded();
+    await openTab(user, 'Yu Motors', 'Documents');
+    await screen.findByText('No documents yet.');
+    await user.upload(
+      document.querySelector('[data-part=fileInput]') as HTMLInputElement,
+      new File(['abc'], 'new.pdf', { type: 'application/pdf' }),
+    );
+    expect(await screen.findByText('Uploading…')).toBeTruthy();
+    gate.resolve();
+    await waitFor(() => expect(screen.queryByText('Uploading…')).toBeNull());
+  });
+
   it('shows what was bought: four figures, the lead times seen, the cars received and the lines ordered — or that there are none', async () => {
     const user = userEvent.setup();
     boot('admin', ALL, {
@@ -870,6 +1046,16 @@ describe("a supplier's pages", () => {
             colour: 'White',
             status: 'delivered',
             price: 30000,
+          },
+          {
+            stock_id: 2,
+            make: 'BYD',
+            model: 'Dolphin',
+            trim: '',
+            vin: '',
+            colour: '',
+            status: 'ordered',
+            price: 0,
           },
         ],
         poLines: [
@@ -897,7 +1083,7 @@ describe("a supplier's pages", () => {
     });
     await loaded();
     await openTab(user, 'Yu Motors', 'Purchases');
-    await screen.findByText('Cars received (1)');
+    await screen.findByText('Cars received (2)');
     const tiles = [...document.querySelectorAll('[data-part=tile]')].map(e => e.textContent);
     expect(tiles).toEqual([
       'Cars received1',
@@ -911,6 +1097,16 @@ describe("a supplier's pages", () => {
         'BYD Seal Max',
       ),
     ).toBeTruthy();
+    // a car with nothing recorded of it has a dash in each cell, and a price of nothing is no price
+    const dolphin = within(document.querySelector('[data-part=unitsBox]') as HTMLElement)
+      .getByText('BYD Dolphin')
+      .closest('tr') as HTMLElement;
+    expect([...dolphin.querySelectorAll('td')].map(c => c.textContent)).toEqual([
+      'BYD Dolphin',
+      '—',
+      '—',
+      '—',
+    ]);
     expect(
       within(document.querySelector('[data-part=linesBox]') as HTMLElement).getByText('PO-2'),
     ).toBeTruthy();

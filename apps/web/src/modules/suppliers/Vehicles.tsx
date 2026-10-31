@@ -22,8 +22,7 @@ import styles from './suppliers.module.css';
 /** What a cell holds, for the grid: the builtin fields are the vehicle's own, anything added rides in `custom_fields`. */
 function valueOf(v: Vehicle, c: Column): unknown {
   if (!c.builtin) return (v.custom_fields ?? {})[c.key] ?? '';
-  const raw = (v as unknown as Record<string, unknown>)[c.key];
-  return c.key === 'fob_price' && raw ? Number(raw) : (raw ?? '');
+  return (v as unknown as Record<string, unknown>)[c.key] ?? '';
 }
 
 /**

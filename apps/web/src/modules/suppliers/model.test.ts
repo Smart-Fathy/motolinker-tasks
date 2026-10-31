@@ -121,6 +121,8 @@ describe('the answers the Suppliers screen accepts', () => {
       supplier({ created_by: undefined, created_at: undefined, updated_at: undefined }),
     ],
     ['no id', supplier({ id: undefined })],
+    ['no name', supplier({ name: undefined })],
+    ['a null name', supplier({ name: null })],
     ['a fractional id', supplier({ id: 1.5 })],
     ['a numeric name', supplier({ name: 3 })],
     ['added fields that are a list', supplier({ custom_fields: [] })],
@@ -154,6 +156,7 @@ describe('the answers the Suppliers screen accepts', () => {
     ['a price that is text', vehicle({ fob_price: '32789' })],
     ['a year that is text', vehicle({ model_year: '2026' })],
     ['no currency', vehicle({ currency: undefined })],
+    ['a null currency', vehicle({ currency: null })],
     ['a supplier id that is text', vehicle({ supplier_id: '7' })],
     ['no brand', vehicle({ brand: undefined })],
     ['added fields', vehicle({ custom_fields: { cf_grade: 'a' } })],
@@ -253,6 +256,31 @@ describe('the answers the Suppliers screen accepts', () => {
       purchases({
         units: [{ stock_id: 1, make: 'x', model: 'y', trim: '', colour: '', status: '', price: 1 }],
       }),
+    ],
+    [
+      'a unit whose vin is null',
+      purchases({
+        units: [
+          {
+            stock_id: 1,
+            make: 'x',
+            model: 'y',
+            trim: '',
+            vin: null,
+            colour: '',
+            status: '',
+            price: 1,
+          },
+        ],
+      }),
+    ],
+    [
+      'totals with no average purchase-order price',
+      purchases({ totals: { vehicles: 1, ordered: 2, avg_unit_price: 3, lead_times: [] } }),
+    ],
+    [
+      'totals with no average price paid',
+      purchases({ totals: { vehicles: 1, ordered: 2, avg_po_price: 4, lead_times: [] } }),
     ],
     ['not an object', []],
   ];

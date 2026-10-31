@@ -95,21 +95,26 @@ export function useColumns(entity: string, builtins: readonly Column[]): Columns
   const closeDialog = useCallback(() => setDialog(null), []);
   const col = useCallback((key: string) => columnOf(all, builtins, key), [all, builtins]);
 
+  // Everything the editor opens is for the person who may edit: for anybody else a screen's asking opens nothing.
   const openMenu = useCallback(
     (e: MouseEvent, key: string) => {
       e.stopPropagation();
-      if (!col(key)) return;
+      if (!canEdit || !col(key)) return;
       setMenu({ kind: 'column', key, ...placed(e) });
     },
-    [col],
+    [canEdit, col],
   );
-  const openPicker = useCallback((e: MouseEvent) => {
-    e.stopPropagation();
-    const at = placed(e);
-    setMenu(open => (open?.kind === 'picker' ? null : { kind: 'picker', ...at }));
-  }, []);
+  const openPicker = useCallback(
+    (e: MouseEvent) => {
+      e.stopPropagation();
+      if (!canEdit) return;
+      const at = placed(e);
+      setMenu(open => (open?.kind === 'picker' ? null : { kind: 'picker', ...at }));
+    },
+    [canEdit],
+  );
 
-  // A dialog is opened from a menu, which goes away as it opens (and the field editor is not for those who may not edit).
+  // A dialog is opened from a menu, which goes away as it opens.
   const openAdd = useCallback(() => {
     setMenu(null);
     if (canEdit) setDialog({ kind: 'add' });
@@ -117,8 +122,7 @@ export function useColumns(entity: string, builtins: readonly Column[]): Columns
   const openDialog = useCallback(
     (kind: 'field' | 'type' | 'options', key: string) => {
       setMenu(null);
-      if (kind === 'field' && !canEdit) return;
-      if (col(key)) setDialog({ kind, key });
+      if (canEdit && col(key)) setDialog({ kind, key });
     },
     [canEdit, col],
   );
