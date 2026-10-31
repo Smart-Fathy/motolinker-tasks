@@ -710,6 +710,74 @@
     gap: 12px;
     padding: 14px;
   }
+  .avatarImg {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+  }
+  /* the picture, which is also the button that changes it (a small camera at its corner) */
+  .profileAv {
+    position: relative;
+    padding: 0;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    border-radius: 50%;
+    flex-shrink: 0;
+    line-height: 0;
+    user-select: none;
+  }
+  .profileAvEdit {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+  }
+  .profileAvEdit svg {
+    width: 10px;
+    height: 10px;
+  }
+  .profileAv:hover .profileAvEdit {
+    color: var(--primary-text, var(--gold));
+    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.45);
+  }
+  .profilePencil {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 1px;
+    display: inline-flex;
+    user-select: none;
+  }
+  .profilePencil:hover {
+    color: var(--primary-text, var(--gold));
+  }
+  .profilePencil svg {
+    width: 11px;
+    height: 11px;
+  }
+  .profileStatus {
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hasStatus {
+    color: var(--primary);
+  }
   .profileWho {
     min-width: 0;
     flex: 1;
@@ -717,6 +785,9 @@
   .profileName {
     font-size: 14px;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .profileRole {
     font-size: 11px;
@@ -742,6 +813,7 @@
     font-weight: 600;
     text-align: left;
     text-decoration: none;
+    user-select: none;
   }
   .profileItem:hover {
     background: rgba(var(--ov, 255, 255, 255), 0.05);
@@ -1039,6 +1111,13 @@
     }
     .item,
     .bottomItem {
+      min-height: 44px;
+    }
+    /* every button, not a list of them: the picture that changes the picture, and the pencil by the name */
+    .profileAv,
+    .profilePencil,
+    .profileItem {
+      min-width: 44px;
       min-height: 44px;
     }
     :global([data-portal='team']) .item,

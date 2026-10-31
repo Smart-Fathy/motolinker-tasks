@@ -29,14 +29,18 @@ const STILL = '*,*::before,*::after{transition:none!important;animation:none!imp
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // The page, in a context of its own (pages in one context leak font state into each other), signed in, in a colour mode.
-// `next` opens the new app (the ml_ui cookie), otherwise the classic page at /legacy/<portal>.
-async function openPage(browser, base, p, mode, next) {
+// `next` opens the new app (the ml_ui cookie), otherwise the classic page at /legacy/<portal>. `stub` is described where it is used.
+async function openPage(browser, base, p, mode, next, stub) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
   page.portal = p.who;
   await page.setRequestInterception(true);
-  page.on('request', r => {
+  page.on('request', async r => {
     const u = r.url();
+    // What the server would say, said instead where a suite needs a state a real one cannot be put in:
+    // `stub(url, method)` answers { status, body } or nothing (the request goes to the server).
+    const said = stub && u.startsWith(base) ? await stub(u, r.method()) : null;
+    if (said) return r.respond({ status: said.status || 200, contentType: 'application/json', body: JSON.stringify(said.body) });
     if (/unpkg|jsdelivr|fonts\.g|gstatic/.test(u)) return r.respond({ status: 200, contentType: 'text/plain', body: '' });
     if (/^https?:/.test(u) && !u.startsWith(base)) return r.abort('internetdisconnected');
     r.continue();

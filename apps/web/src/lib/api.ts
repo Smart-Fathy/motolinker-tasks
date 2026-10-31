@@ -5,6 +5,9 @@ import type { Portal } from './env';
 /** What GET /api/v1/me answers; the schema lives in packages/contracts, so the server and this app cannot drift. */
 export type Me = z.infer<typeof schemas.MeResponse>;
 
+/** What an employee keeps about themselves (the account menu shows and changes it); the administrator has none. */
+export type Profile = z.infer<typeof schemas.Profile>;
+
 export type MeResult =
   | { kind: 'ok'; me: Me }
   /** the token is not (or no longer) a session */
@@ -19,6 +22,12 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 const isStringList = (v: unknown): boolean =>
   Array.isArray(v) && v.every(x => typeof x === 'string');
 const isCapList = (v: unknown): boolean => v === '*' || isStringList(v);
+const isProfile = (v: unknown): boolean =>
+  isObject(v) &&
+  typeof v['username'] === 'string' &&
+  typeof v['avatarUrl'] === 'string' &&
+  typeof v['statusText'] === 'string' &&
+  typeof v['statusEmoji'] === 'string';
 
 /**
  * Is this what /api/v1/me answers? The app reads these fields and no others, so these are the ones checked;
@@ -26,7 +35,7 @@ const isCapList = (v: unknown): boolean => v === '*' || isStringList(v);
  */
 export function isMe(v: unknown): v is Me {
   if (!isObject(v)) return false;
-  const { actor, caps, sections, scope, workspace, flags } = v;
+  const { actor, caps, sections, scope, profile, workspace, flags } = v;
   if (!isObject(actor) || (actor['kind'] !== 'admin' && actor['kind'] !== 'employee')) return false;
   if (!(actor['id'] === null || Number.isInteger(actor['id']))) return false;
   if (
@@ -36,6 +45,8 @@ export function isMe(v: unknown): v is Me {
   )
     return false;
   if (!isCapList(caps) || !isCapList(sections)) return false;
+  // an employee's own (the administrator's answer has none)
+  if (profile !== undefined && !isProfile(profile)) return false;
   if (
     !isObject(scope) ||
     typeof scope['assignedOnly'] !== 'boolean' ||

@@ -1,5 +1,5 @@
 import { resolveDeepLink } from '@motolinker/contracts/deeplinks';
-import { inPortal, screenIdFromLegacy, screenOf } from '@motolinker/contracts/modules';
+import { inPortal, isPanel, screenIdFromLegacy, screenOf } from '@motolinker/contracts/modules';
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router';
 import { NOT_FRAMED } from '../legacy/frameable';
 import { LegacyFrame } from '../legacy/LegacyFrame';
@@ -20,7 +20,9 @@ export function startScreen(portal: 'admin' | 'team', allows: (id: string) => bo
     /* private mode */
   }
   const id = saved ? screenIdFromLegacy(saved, portal) : null;
-  return id && allows(id) ? id : 'home';
+  // (a panel is not a page to start on: it would only open the panel again)
+  const screen = id ? screenOf(id) : undefined;
+  return id && screen && !isPanel(screen) && allows(id) ? id : 'home';
 }
 
 /**

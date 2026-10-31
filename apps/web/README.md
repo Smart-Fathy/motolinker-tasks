@@ -21,7 +21,7 @@ src/legacy/         a screen that has not moved, shown as its classic page in a 
                     protocol with the page), frameable.ts (the screens a frame cannot hold)
 src/sw/             the service worker: sw.ts (wiring), logic.ts (every decision, testable), shared.ts (what the
                     worker and the pages agree on); built to dist/sw.js by sw-plugin.ts
-src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues, meet, calendar
+src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues, meet, calendar, security
 src/auth/           the sign-in: SignIn.tsx (which step, and what carries between them) and a component per
                     step: PasswordStep, CodeStep (second step), ForgotStep, ResetStep; copy.ts holds every
                     line they say
@@ -74,8 +74,9 @@ always answered:
 
 `app/shell/` is one component for both portals (`portal` says which): the rail, the top bar, the phone's bottom
 bar, and the content outlet. The admin has the classic sidebar (groups that open and close, the footer with the
-classic portal, Security and Sign out); the team has the classic rail with its brand block, the account menu (the
-initials button: Security, the classic portal, Sign out) and the bottom bar on a phone. The parts carry
+classic portal, Security and Sign out); the team has the classic rail with its brand block, the account menu (behind a
+person's own face: picture, name and username, status, Report an issue, Change password, Security, the classic portal, Sign out)
+and the bottom bar on a phone. The frame owns its panels (`useFrame().open('security' | 'report' | …)`): one is open at a time. The parts carry
 `data-part` / `data-screen`, which the suites find them by.
 
 - **Which screens, and who gets them** is the contracts package's, not the app's: `@motolinker/contracts/modules`
@@ -152,8 +153,7 @@ time; each one that moves is deleted from the classic side in the same commit.
 - **It never stays blank.** The page is drawn only when it has said it is up; after 20 seconds without that, the frame
   gives way to a card — "did not open here", with Try again and a link to the classic portal.
 - **What cannot be framed** (`legacy/frameable.ts`): the live chat (a connection and a call that belong to the app's
-  own chat, not a second copy) and Security (a panel that opens over a page). They are cards that say why and link to the
-  classic page that has them.
+  own chat, not a second copy). It is a card that says why and links to the classic page that has it.
 - **Known limits while screens are moving**, each gone with the batch that rebuilds the thing: presence, the notification
   stream and bell, push subscription (an existing one is kept alive by the app; offering one is a screen's job),
   huddles and the assistant do not run in the app yet, because the classic scripts stand down in a frame and the app
@@ -329,6 +329,37 @@ row by row, `docs/parity/meet.md` and `docs/parity/calendar.md`). Both portals h
 - Tests: `meet/model.test.ts` and `calendar/model.test.ts` (the guards held to the schemas in contracts), `meet.test.tsx`,
   `calendar.test.tsx`, `ui/Sheet.test.tsx`, `ui/BrandSelect.test.tsx`; `tests/meetparity.js` and `tests/calparity.js` (look),
   `tests/webmeet.js` (the real thing), `tests/meetings.js` and `tests/calendar.js` (the routes).
+
+## Security and the account menu
+
+The panel that holds two-factor authentication, the devices an account is signed in on and its recent sign-ins, and (team) the picture,
+username, status and password behind a person's own face (`src/modules/security`; row by row, `docs/parity/security.md`). Both
+portals have the panel; the account menu is the team's. The server side is not new — one handler already served both portals'
+Security, and the picture, status, username and password routes have no twin — so the app calls them as they are
+(`/api/employee/security…`, `/api/dashboard/security…`, `/api/employee/{avatar,status,username,change-password}`).
+
+- **A panel, not a page.** Security is `panel: true` in the catalogue: in no rail, never where somebody "was" or starts. The profile menu,
+  the admin's footer and `/security` (what a notification's `#security` and an alert email's link become) all ask the frame for it
+  (`useFrame().open('security')`); `/security` opens it over the page the person was last on and puts the address back. Shell keeps
+  which panel is open (report an issue, security, status, username, password): one at a time.
+- **`SecurityPanel`** is the classic overlay (`security.module.css` is `public/assets/security.js`'s stylesheet, rule for rule): the
+  overview is read when it opens and again after anything that changes it; each view (`views.tsx`) holds what is typed in it and the
+  panel (`SecurityPanel.tsx`) decides what is done with it, one question at a time (a slow answer is not asked twice, and the button
+  says what it is doing). A wrong password or code is the server's 403, said in the panel; **only a 401 can end a session**, and that
+  is the app's to settle, so the panel says nothing of it. The recovery codes are shown once and **Done** waits until they are
+  saved. After anything that signs the other devices out the app tells the server about this device's push subscription again.
+- **`model.ts`** holds the checks on each answer (held to the schemas in `packages/contracts` by `model.test.ts`: the bundle does not
+  carry zod) and the small words — "3 h ago", the ways to sign in, a key in groups of four, what Copy and Download give.
+- **The account** (`account.ts`, `AccountDialogs.tsx`, the menu in `app/shell/Header.tsx`): the picture is chosen from the device
+  (an image of 5 MB or less) and shown at once; the status has four presets; the username's refusal is said in its dialog; a new
+  password says how many other devices were signed out. What a person has just changed is shown at once
+  (`useSession().updateProfile`) and replaced by the server's word the next time it is asked (`/api/v1/me` carries the employee's
+  `profile`).
+- **`ui/Modal`** takes a `width`, a `head="plain"` (a smaller title and no ×, for the dialogs that never had one), a `hintGap`
+  and `loose` (no gap between its parts, no foot of its own), for the account dialogs.
+- Tests: `model.test.ts`, `security.test.tsx` (the panel: every view, state and refusal), `account.test.tsx` (the menu and its
+  dialogs); `tests/secparity.js` and `tests/acctparity.js` (look), `tests/websecurity.js` (the real thing), `tests/account.js` (the
+  routes and the answers' shapes).
 
 ## The gallery
 

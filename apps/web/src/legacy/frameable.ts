@@ -4,6 +4,4 @@
  */
 export const NOT_FRAMED: Readonly<Record<string, string>> = {
   chat: 'Chat keeps a live connection to the server that the classic page opens for itself. It moves into the new app together with the notification bell and huddles, and works in the classic portal until then.',
-  security:
-    'The security panel opens over a page of the classic portal, not as a page of its own. It moves into the new app with the other account screens, and works in the classic portal until then.',
 };

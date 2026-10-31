@@ -425,13 +425,11 @@ describe('a page that does not come up', () => {
 
 describe('screens a frame cannot hold', () => {
   it('say why, and keep the classic portal one click away', async () => {
-    open('admin', adminMe(), { entries: ['/security'] });
-    expect(await screen.findByText(/opens over a page of the classic portal/)).toBeTruthy();
+    open('admin', adminMe(), { entries: ['/chat'] });
+    expect(await screen.findByText(/keeps a live connection to the server/)).toBeTruthy();
     expect(document.querySelector('iframe')).toBeNull();
     expect(
-      screen
-        .getByRole('link', { name: /Open Security in the classic portal/ })
-        .getAttribute('href'),
-    ).toBe('/legacy/dashboard#security');
+      screen.getByRole('link', { name: /Open Chat in the classic portal/ }).getAttribute('href'),
+    ).toBe('/legacy/dashboard#chat');
   });
 });

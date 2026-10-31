@@ -1,11 +1,18 @@
-import { isNewTo, legacyIdOf, presentation, screenOf } from '@motolinker/contracts/modules';
+import {
+  isNewTo,
+  isPanel,
+  legacyIdOf,
+  presentation,
+  screenOf,
+} from '@motolinker/contracts/modules';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { ReportIssue } from '../../modules/issues';
 import { useLiveNotifications } from '../../modules/notifications';
+import { AccountDialogs, SecurityPanel } from '../../modules/security';
 import { ToastHost } from '../../ui';
 import { cx } from '../../ui/cx';
-import { useSession } from '../context';
+import { FrameContext, useSession, type Frame, type FramePanel } from '../context';
 import { buildBottomNav, buildRail, type NavConfig } from '../nav';
 import { BottomNav } from './BottomNav';
 import { Header } from './Header';
@@ -55,15 +62,21 @@ export function Shell({
   const bottom = useMemo(() => buildBottomNav(portal, access), [portal, access]);
   const activeGroup = rail.find(g => g.items.some(i => i.id === active))?.id ?? null;
   const state = useShellState(portal, activeGroup, { openAll: !!openAll });
-  const [reporting, setReporting] = useState(false);
-  const startReport = useCallback(() => setReporting(true), []);
-  const endReport = useCallback(() => setReporting(false), []);
+  // The panels and dialogs the frame owns: one is open at a time, and anything inside the app can ask for one.
+  const [panel, setPanel] = useState<FramePanel | null>(null);
+  const frame = useMemo<Frame>(() => ({ open: setPanel }), []);
+  // A panel puts itself away, and only while it is the one that is open: a dialog that was still waiting for the server when
+  // another was opened must not take that one with it when the answer comes.
+  const endPanel = useCallback(
+    (which: FramePanel) => setPanel(open => (open === which ? null : open)),
+    [],
+  );
 
   // Where the person was, for next time (under the key the classic portal keeps it in, as that portal's page name). A screen
-  // the classic portal never had is not a page it could open, so it is not remembered for it.
+  // the classic portal never had is not a page it could open, so it is not remembered for it; a panel is not a page at all.
   useEffect(() => {
     const screen = active ? screenOf(active) : undefined;
-    if (!screen || isNewTo(screen, portal)) return;
+    if (!screen || isNewTo(screen, portal) || isPanel(screen)) return;
     try {
       window.localStorage.setItem(pageKey(portal), legacyIdOf(screen, portal));
     } catch {
@@ -74,26 +87,32 @@ export function Shell({
   const screen = active ? screenOf(active) : undefined;
   const title = screen ? presentation(screen, portal).title : '';
   return (
-    <div className={styles['layout']} data-part="layout">
-      <Gradients />
-      <div
-        className={cx(styles['overlay'], state.drawer && styles['overlayVisible'])}
-        data-part="overlay"
-        onClick={() => state.setDrawer(false)}
-      />
-      <Sidebar rail={rail} active={active} state={state} onReportIssue={startReport} />
-      <div
-        className={cx(styles['content'], state.collapsed && styles['contentWide'])}
-        data-part="content"
-      >
-        <Header state={state} title={title} onReportIssue={startReport} />
-        <main className={styles['page']} data-part="page">
-          <Outlet />
-        </main>
+    <FrameContext value={frame}>
+      <div className={styles['layout']} data-part="layout">
+        <Gradients />
+        <div
+          className={cx(styles['overlay'], state.drawer && styles['overlayVisible'])}
+          data-part="overlay"
+          onClick={() => state.setDrawer(false)}
+        />
+        <Sidebar rail={rail} active={active} state={state} />
+        <div
+          className={cx(styles['content'], state.collapsed && styles['contentWide'])}
+          data-part="content"
+        >
+          <Header state={state} title={title} />
+          <main className={styles['page']} data-part="page">
+            <Outlet />
+          </main>
+        </div>
+        <BottomNav items={bottom} active={active} state={state} />
+        {panel === 'report' && <ReportIssue onClose={() => endPanel('report')} />}
+        {panel === 'security' && <SecurityPanel onClose={() => endPanel('security')} />}
+        {(panel === 'status' || panel === 'username' || panel === 'password') && (
+          <AccountDialogs which={panel} onClose={() => endPanel(panel)} />
+        )}
+        <ToastHost toasts={toasts} />
       </div>
-      <BottomNav items={bottom} active={active} state={state} />
-      {reporting && <ReportIssue onClose={endReport} />}
-      <ToastHost toasts={toasts} />
-    </div>
+    </FrameContext>
   );
 }

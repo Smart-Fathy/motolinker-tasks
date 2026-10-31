@@ -24,6 +24,13 @@ describe('where a bare address opens', () => {
     expect(startScreen('team', id => id !== 'leads')).toBe('home');
   });
 
+  it('is never a panel (Security opens over a page; starting there would only open it again, for ever)', () => {
+    localStorage.setItem('ml_emp_page', 'security');
+    expect(startScreen('team', () => true)).toBe('home');
+    localStorage.setItem('ml_page', 'security');
+    expect(startScreen('admin', () => true)).toBe('home');
+  });
+
   it("keeps each portal's own memory", () => {
     localStorage.setItem('ml_page', 'deals');
     expect(startScreen('team', () => true)).toBe('home');

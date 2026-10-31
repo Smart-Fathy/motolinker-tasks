@@ -12,6 +12,15 @@ const Scope = z.object({
 
 const CapList = z.union([z.literal('*'), z.array(z.string())]);
 
+// What an employee keeps about themselves, and the account menu shows and changes: the name they sign in with, their picture
+// (a URL, or empty), and a status. The administrator has none of it — there is no account to keep it on.
+const Profile = z.object({
+  username: z.string(),
+  avatarUrl: z.string(),
+  statusText: z.string(),
+  statusEmoji: z.string(),
+});
+
 // GET /api/v1/me — who is asking, and everything the app needs to draw itself for them.
 const MeResponse = z.object({
   actor: z.object({
@@ -24,6 +33,8 @@ const MeResponse = z.object({
   caps: CapList,
   sections: CapList,
   scope: Scope,
+  // an employee's own; the administrator's answer has none
+  profile: Profile.optional(),
   workspace: z.object({
     name: z.string(),
     logo_url: z.string(),
@@ -226,6 +237,113 @@ const CalendarFeed = z.object({
   followups: z.array(CalendarFollowup),
 });
 
+// ── Account security (GET/POST /api/employee/security…, and the same under /api/dashboard) ─────────────────────────────────
+// One handler serves both portals, so these are the answers of both. A wrong password or code is a 403 — never a 401, which
+// the portals read as "your session ended" — and too many tries is a 429 with the wait in `Retry-After`.
+
+// A device the account is signed in on. The timestamps are milliseconds since 1970, or null where the session predates them.
+const SecuritySession = z.object({
+  // what names the session in a sign-out request (not the token)
+  sid: z.string(),
+  device: z.string(),
+  ip: z.string(),
+  createdAt: z.number().nullable(),
+  lastSeenAt: z.number().nullable(),
+  // password | google | password+2fa | google+2fa | password+recovery | google+recovery, or empty
+  method: z.string(),
+  // the device asking
+  current: z.boolean(),
+});
+
+// A line of the sign-in history. Where the browser said nothing, there is nothing: the panel says "Unknown device".
+const SecurityLogin = z.object({
+  at: z.string(),
+  event: z.string(),
+  device: z.string().nullable(),
+  ip: z.string().nullable(),
+  method: z.string().nullable(),
+  new_device: z.boolean(),
+});
+
+// GET …/security — everything the panel shows. `twofa.available` is false while the database cannot hold a second factor:
+// `reason` 'migration' (its table was never made) or 'error' (the database did not answer); `history` is false for the same
+// reason of the sign-in record. `alerts` is what the server does about a sign-in from a device it has not seen.
+const SecurityOverview = z.object({
+  account: z.object({
+    kind: z.enum(['admin', 'employee']),
+    name: z.string(),
+    canChangePassword: z.boolean(),
+  }),
+  twofa: z.object({
+    available: z.boolean(),
+    reason: z.enum(['error', 'migration']).nullable(),
+    enabled: z.boolean(),
+    enabledAt: z.string().nullable(),
+    recoveryLeft: z.number().int().nonnegative(),
+    // false: the secrets are stored as they are, for want of MFA_ENCRYPTION_KEY
+    encrypted: z.boolean(),
+  }),
+  sessions: z.array(SecuritySession),
+  logins: z.array(SecurityLogin),
+  history: z.boolean(),
+  alerts: z.enum(['new', 'all', 'off']),
+});
+
+// POST …/security/2fa/setup — what the authenticator is given: the key, the link that opens it, and the same as a picture
+// (a data: URL).
+const SecuritySetup = z.object({
+  secret: z.string(),
+  otpauth: z.string(),
+  qr: z.string(),
+});
+
+// POST …/security/2fa/enable — the factor is on, the other devices are signed out, and these are the only time the recovery
+// codes are shown.
+const SecurityEnabled = z.object({
+  ok: z.literal(true),
+  recoveryCodes: z.array(z.string()),
+  sessionsRevoked: z.number().int().nonnegative(),
+});
+
+// POST …/security/2fa/disable
+const SecurityDisabled = z.object({
+  ok: z.literal(true),
+  sessionsRevoked: z.number().int().nonnegative(),
+});
+
+// POST …/security/2fa/recovery-codes — new codes; the old ones no longer work.
+const SecurityNewCodes = z.object({
+  ok: z.literal(true),
+  recoveryCodes: z.array(z.string()),
+});
+
+// POST …/security/sessions/revoke-others. `ok` is false (with a `warning`) where some sign-outs could not be saved.
+const SecurityRevoked = z.object({
+  ok: z.boolean(),
+  sessionsRevoked: z.number().int().nonnegative(),
+  warning: z.string().optional(),
+});
+
+// ── An employee's own account (the team portal's account menu) ─────────────────────────────────────────────────────────────
+// PUT /api/employee/status — the answer is what is now stored (it is trimmed, and cut to 100 and 8 characters).
+const StatusBody = z.object({ text: z.string(), emoji: z.string() });
+const StatusResult = z.object({ status_text: z.string(), status_emoji: z.string() });
+
+// POST /api/employee/avatar — a multipart form with an image (up to 5 MB) in `file`.
+const AvatarResult = z.object({ avatar_url: z.string() });
+
+// PUT /api/employee/username — 3 to 32 of letters, numbers, dots, dashes and underscores; taken names are a 409.
+const UsernameBody = z.object({ username: z.string() });
+const UsernameResult = z.object({ ok: z.literal(true), username: z.string() });
+
+// POST /api/employee/change-password — the other devices are signed out; `warning` where some of them could not be.
+const ChangePasswordBody = z.object({ currentPassword: z.string(), newPassword: z.string() });
+const ChangePasswordResult = z.object({
+  ok: z.literal(true),
+  sessionsRevoked: z.number().int().nonnegative(),
+  warning: z.string().optional(),
+});
+
 // What /api/v1 answers when it says no: words for a person, a word for a program, and what was wrong with the request.
 const ApiError = z.object({
   error: z.string(),
@@ -236,6 +354,7 @@ const ApiError = z.object({
 module.exports = {
   Scope,
   CapList,
+  Profile,
   MeResponse,
   NotificationId,
   Notification,
@@ -262,5 +381,20 @@ module.exports = {
   CalendarTask,
   CalendarFollowup,
   CalendarFeed,
+  SecuritySession,
+  SecurityLogin,
+  SecurityOverview,
+  SecuritySetup,
+  SecurityEnabled,
+  SecurityDisabled,
+  SecurityNewCodes,
+  SecurityRevoked,
+  StatusBody,
+  StatusResult,
+  AvatarResult,
+  UsernameBody,
+  UsernameResult,
+  ChangePasswordBody,
+  ChangePasswordResult,
   ApiError,
 };

@@ -38,6 +38,7 @@ const { can, hasSection } = require('./access');
  *   flag?: string,
  *   portals: readonly Portal[],
  *   fresh?: readonly Portal[],
+ *   panel?: boolean,
  *   team?: { label?: string, icon?: string, title?: string },
  *   legacy?: { admin?: string, team?: string },
  * }} Screen
@@ -224,8 +225,16 @@ const SCREENS = /** @type {const} */ ([
     fresh: ADMIN,
   },
 
-  // Not in the rail: reached from the footer (admin) or the profile menu (team), and by '#security' links.
-  { id: 'security', label: 'Security', icon: 'shield-check', needs: always, portals: BOTH },
+  // Not in the rail: reached from the footer (admin) or the profile menu (team), and by '#security' links. A panel over
+  // whatever page the person is on, not a page of its own.
+  {
+    id: 'security',
+    label: 'Security',
+    icon: 'shield-check',
+    needs: always,
+    portals: BOTH,
+    panel: true,
+  },
 ]);
 
 /**
@@ -306,6 +315,16 @@ function isNewTo(screen, portal) {
 }
 
 /**
+ * Is this screen a panel — opened over the page the person is on, as the classic portals open '#security' — rather than a page
+ * of its own? A panel is never where somebody "was", and never where they start.
+ * @param {Screen} screen
+ * @returns {boolean}
+ */
+function isPanel(screen) {
+  return screen.panel === true;
+}
+
+/**
  * What a portal calls a screen: the label and the icon its rail shows, and the title its page carries (the team portal's
  * top bar names the page; it is the label except where the classic page says otherwise).
  * @param {Screen} screen
@@ -383,6 +402,7 @@ module.exports = {
   screenOf,
   inPortal,
   isNewTo,
+  isPanel,
   presentation,
   legacyIdOf,
   screenIdFromLegacy,

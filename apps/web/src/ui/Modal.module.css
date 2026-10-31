@@ -31,6 +31,20 @@
     font-size: 17px;
     font-weight: 800;
   }
+  /* no hint under it: the body is a little further off */
+  .headBare {
+    margin-bottom: 18px;
+  }
+  /* the dialogs of the account menu that have no ×: a smaller title, close to the hint, on a line of its own */
+  .headPlain {
+    display: block;
+    margin-bottom: 0;
+  }
+  .titlePlain {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
   .close {
     background: none;
     border: none;
@@ -38,6 +52,7 @@
     cursor: pointer;
     font-size: 20px;
     line-height: 1;
+    user-select: none;
   }
   .hint {
     font-size: 12px;
@@ -48,10 +63,19 @@
     display: grid;
     gap: 16px;
   }
+  .loose {
+    display: block;
+  }
   .foot {
     display: flex;
     gap: 10px;
     justify-content: flex-end;
     margin-top: 22px;
+  }
+  @media (max-width: 700px) {
+    .close {
+      min-width: 44px;
+      min-height: 44px;
+    }
   }
 }

@@ -79,6 +79,8 @@ export function Specimen({ portal, theme }: { portal: Portal; theme: Theme }) {
       stream: createStream({ url: '', token: '', fetchImpl: nowhere }),
       toasts: createToasts(),
       signOut: () => undefined,
+      updateProfile: () => undefined,
+      resubscribePush: () => undefined,
       recheck: () => undefined,
     };
     return { value, client };
