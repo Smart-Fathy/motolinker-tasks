@@ -1,0 +1,86 @@
+/* The classic portals' form fields as their sheets draw them (.form-group, .form-label, .form-control of public/assets/
+   dashboard.css and employee.css, with the theme layer's field colours and mobile.css's sizes): the admin's are a block with a
+   small upper-case label over a field of 13px; the team's are a column with 11px labels and a field of 14px. One piece for the
+   screens that open a form in the app's dialogs; the dropdowns in them are ui/BrandSelect. */
+@layer ui {
+  .group {
+    margin-bottom: 14px;
+  }
+  .label {
+    cursor: default;
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  :global([data-portal='team']) .group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  :global([data-portal='team']) .label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 0;
+    letter-spacing: 0.05em;
+  }
+
+  .control {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--hair, var(--border));
+    border-radius: calc(8px * var(--r-k, 1));
+    font-size: 13px;
+    background: var(--field-bg, #0e0e10);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .control:focus {
+    border-color: var(--primary);
+    background: var(--surface);
+  }
+  :global([data-portal='team']) .control {
+    background: var(--surface);
+    padding: 11px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    transition:
+      border 0.2s,
+      box-shadow 0.2s;
+    font-family: var(--font);
+  }
+  :global([data-portal='team']) .control:focus {
+    box-shadow:
+      0 0 0 3px rgba(var(--alt-rgb, 124, 106, 255), 0.12),
+      var(--glow, 0 0 #0000);
+  }
+  textarea.control {
+    resize: vertical;
+    font-family: inherit;
+  }
+
+  /* On a phone: a field the size of a thumb, and no zooming by the browser when one is focused. */
+  @media (max-width: 700px) {
+    .control {
+      font-size: 16px;
+    }
+  }
+  @media (max-width: 640px) {
+    .control {
+      padding: 12px 14px;
+      border-radius: calc(10px * var(--r-k, 1));
+    }
+  }
+  @media (max-width: 768px) {
+    :global([data-portal='team']) .control {
+      padding: 12px 14px;
+      font-size: 16px;
+    }
+  }
+}

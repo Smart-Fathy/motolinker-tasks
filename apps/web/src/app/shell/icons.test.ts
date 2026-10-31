@@ -1,10 +1,12 @@
 import { BOTTOM_NAV, NAV, presentation, screenOf } from '@motolinker/contracts/modules';
 import { describe, expect, it } from 'vitest';
+import { COLUMN_ICONS } from '../../columns/model';
 import { ISSUE_ICONS } from '../../modules/issues/model';
 import { CAL_ICONS } from '../../modules/calendar/model';
 import { MEET_ICONS } from '../../modules/meet/model';
 import { TYPE_ICONS } from '../../modules/notifications/model';
 import { ACCOUNT_ICONS } from '../../modules/security/model';
+import { SUPPLIER_ICONS } from '../../modules/suppliers/model';
 import { ICONS } from './icons';
 
 describe('the icons', () => {
@@ -23,6 +25,8 @@ describe('the icons', () => {
     for (const icon of Object.values(MEET_ICONS)) wanted.add(icon);
     for (const icon of Object.values(CAL_ICONS)) wanted.add(icon);
     for (const icon of Object.values(ACCOUNT_ICONS)) wanted.add(icon);
+    for (const icon of Object.values(COLUMN_ICONS)) wanted.add(icon);
+    for (const icon of Object.values(SUPPLIER_ICONS)) wanted.add(icon);
     wanted.delete('brain-ai');
     expect([...wanted].filter(name => !(name in ICONS))).toEqual([]);
   });
@@ -37,6 +41,8 @@ describe('the icons', () => {
       ...Object.values(MEET_ICONS),
       ...Object.values(CAL_ICONS),
       ...Object.values(ACCOUNT_ICONS),
+      ...Object.values(COLUMN_ICONS),
+      ...Object.values(SUPPLIER_ICONS),
     ]);
     for (const portal of portals) {
       for (const g of NAV[portal])

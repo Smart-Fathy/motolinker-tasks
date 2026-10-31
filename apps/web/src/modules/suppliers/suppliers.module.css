@@ -1,0 +1,675 @@
+/* The Suppliers page: the classic portals' own rules for it. public/assets/procurement.js draws the register and a supplier's
+   pages into both portals, mostly with inline styles, from classes that live in both sheets (.sup-*, .stk-*, .hd-file*, .home-w
+   — the purchases' tiles borrow the Home widgets') — and in the admin's alone (the tabs and the cells of a grid of lines,
+   which the team's sheet never had: its supplier pages draw them bare). The page around the register is each portal's own
+   markup. tests/supparity.js holds the result to the classic pages' computed style, value by value. */
+@layer ui {
+  /* ── The page ────────────────────────────────────────────────────────────── */
+  .pageHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: calc(24px * var(--d-k, 1)) calc(28px * var(--d-k, 1)) 0;
+  }
+  .pageTitle {
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-size: 30px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+  .adminBody {
+    padding: 0 28px 28px;
+  }
+  .lead {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-top: 14px;
+  }
+  .list {
+    margin-top: 14px;
+  }
+  .teamBody {
+    padding: 28px;
+  }
+  .teamHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .cardTitle {
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--text);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .cardHint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .teamActions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  /* ── The loader, an error, nothing yet ───────────────────────────────────── */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 64px;
+    color: var(--muted);
+    font-size: 14px;
+    gap: 10px;
+  }
+  :global([data-portal='team']) .loading {
+    display: block;
+    text-align: center;
+    padding: 48px 20px;
+    gap: normal;
+    align-items: normal;
+    justify-content: normal;
+  }
+  .spinner {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  :global([data-portal='team']) .spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.32);
+    color: var(--error-text, #f88);
+    padding: 12px 16px;
+    border-radius: var(--r-md, calc(10px * var(--r-k, 1)));
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  .hintSmall {
+    font-size: 12px;
+  }
+  .none {
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  /* ── Above the register ──────────────────────────────────────────────────── */
+  .head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .count {
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .views {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+  }
+  .viewTab {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 11px 14px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .viewTab svg {
+    width: 14px;
+    height: 14px;
+  }
+  .viewTab:hover {
+    color: var(--text);
+  }
+  .viewTab.active {
+    color: var(--primary-text, var(--gold));
+    font-weight: 700;
+    border-bottom-color: var(--gold);
+  }
+
+  /* ── The cards ───────────────────────────────────────────────────────────── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg, calc(12px * var(--r-k, 1)));
+    padding: 15px 16px 13px;
+    min-width: 0;
+  }
+  .card:hover {
+    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.28);
+  }
+  .cardHead {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    margin-bottom: 13px;
+  }
+  .av {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: rgba(var(--primary-rgb, 201, 163, 94), 0.14);
+    color: var(--primary-text, var(--gold));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+  }
+  .name {
+    font-size: 14px;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sub {
+    font-size: 11.5px;
+    color: var(--muted);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .acts {
+    margin-left: auto;
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: rgba(var(--ov, 255, 255, 255), 0.07);
+    border: 1px solid rgba(var(--ov, 255, 255, 255), 0.07);
+    border-radius: calc(10px * var(--r-k, 1));
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .stat {
+    background: var(--surface);
+    padding: 9px 10px;
+    min-width: 0;
+  }
+  .stat span {
+    display: block;
+    font-size: 9.5px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 3px;
+  }
+  :global([data-portal='team']) .stat b {
+    letter-spacing: -0.03em;
+  }
+  .stat b {
+    font-family: var(--font-num, var(--font-body, 'Manrope', system-ui, -apple-system, sans-serif));
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums lining-nums;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .gos {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .go {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 8px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm, calc(8px * var(--r-k, 1)));
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .go:hover {
+    color: var(--primary-text, var(--gold));
+    border-color: rgba(var(--primary-rgb, 201, 163, 94), 0.4);
+    background: rgba(var(--primary-rgb, 201, 163, 94), 0.06);
+  }
+
+  /* ── The table ───────────────────────────────────────────────────────────── */
+  .tableScroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .headRow {
+    text-align: left;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+  }
+  .th {
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    background: var(--thead-bg, #101012);
+    border-bottom: 1px solid var(--hair-gold, var(--border));
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  .thEnd {
+    text-align: right;
+  }
+  .row {
+    border-bottom: 1px solid var(--hair, var(--border));
+    transition: background 0.1s;
+  }
+  .td {
+    padding: 8px 10px;
+    vertical-align: middle;
+  }
+  .strong {
+    font-weight: 600;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .end {
+    text-align: right;
+    white-space: nowrap;
+  }
+  /* The team's sheet puts less on a table: no sorting cursor, a heading that may wrap, a faint rule under every cell. */
+  :global([data-portal='team']) .th {
+    background: rgba(var(--ov, 255, 255, 255), 0.03);
+    border-bottom-color: var(--border);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    white-space: normal;
+    cursor: auto;
+    user-select: auto;
+  }
+  :global([data-portal='team']) .tableScroll .table thead th:first-child {
+    background: var(--surface);
+  }
+  :global([data-portal='team']) .row {
+    border-bottom-color: var(--border);
+    transition: none;
+  }
+  :global([data-portal='team']) .row > td {
+    border-bottom: 1px solid rgba(var(--ov, 255, 255, 255), 0.04);
+  }
+  .tableScroll .table thead th:first-child,
+  .tableScroll .table tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    box-shadow: 1px 0 0 var(--border);
+  }
+  .tableScroll .table tbody td:first-child {
+    background: var(--surface);
+  }
+  .tableScroll .table thead th:first-child {
+    z-index: 3;
+  }
+
+  /* ── The form ────────────────────────────────────────────────────────────── */
+  .fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0 12px;
+  }
+
+  /* ── A supplier's pages ──────────────────────────────────────────────────── */
+  :global([data-portal='admin']) .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 14px;
+  }
+  :global([data-portal='admin']) .tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 7px 13px;
+    cursor: pointer;
+  }
+  :global([data-portal='admin']) .tab.activeTab {
+    color: var(--text);
+    border-bottom-color: var(--primary);
+  }
+  .pane {
+    min-height: 220px;
+  }
+  .vehBar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .gridBox {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: calc(10px * var(--r-k, 1));
+  }
+  .gridTable {
+    border-collapse: collapse;
+    font-size: 12px;
+    min-width: 900px;
+    width: 100%;
+  }
+  .nothing {
+    color: var(--muted);
+    font-size: 12.5px;
+    padding: 14px;
+    text-align: center;
+  }
+  .upload {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .uploadHint {
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .uploading {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 6px 0;
+  }
+  .files {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+    max-height: 230px;
+    overflow-y: auto;
+  }
+  .file {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    border: 1px solid var(--border);
+    border-radius: calc(9px * var(--r-k, 1));
+    padding: 7px;
+    text-decoration: none;
+    color: var(--text);
+  }
+  .file:hover {
+    border-color: var(--primary);
+  }
+  .fileIcon {
+    height: 74px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    background: var(--bg);
+    border-radius: calc(6px * var(--r-k, 1));
+  }
+  .fileName {
+    font-size: 11.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .fileSub {
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* what was bought: four tiles (the Home widgets' look), the cars and the order lines */
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .tile {
+    background: var(--surface);
+    border: 1px solid color-mix(in srgb, var(--c, var(--w-gold, #c9a35e)) 26%, var(--border));
+    border-radius: var(--r-xl, calc(14px * var(--r-k, 1)));
+    padding: 12px 14px;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .tileTitle {
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+  }
+  .tileBig {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.1;
+    font-family: var(--font-num, var(--font-body, 'Manrope', system-ui, -apple-system, sans-serif));
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings:
+      'tnum' 1,
+      'lnum' 1;
+    letter-spacing: -0.03em;
+  }
+  .leadTimes {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .secLabel {
+    font-size: 10px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .box {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .boxGap {
+    margin-bottom: 14px;
+  }
+  .plainTable {
+    border-collapse: collapse;
+    font-size: 12px;
+    width: 100%;
+  }
+  .noneUnits {
+    color: var(--muted);
+    font-size: 12.5px;
+    padding: 10px 0 16px;
+  }
+  .noneLines {
+    color: var(--muted);
+    font-size: 12.5px;
+    padding: 10px 0;
+  }
+
+  /* The page on a phone (dashboard.css at 640px, employee.css and mobile.css at 700px): the admin's header stacks and its title
+     steps down, every button is a thumb's size, and a table is read as a card for each row. */
+  @media (max-width: 700px) {
+    .pageTitle {
+      font-size: 20px;
+    }
+    .viewTab {
+      min-width: 44px;
+      min-height: 44px;
+    }
+    .go {
+      min-height: 44px;
+    }
+    .tab {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+  @media (max-width: 640px) {
+    .pageHeader {
+      padding: 16px 16px 0;
+      flex-wrap: wrap;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .grid {
+      grid-template-columns: 1fr;
+    }
+    .views {
+      margin-left: 0;
+    }
+  }
+  @media (max-width: 700px) {
+    .tableScroll {
+      overflow-x: visible;
+    }
+    .table,
+    .table tbody,
+    .row {
+      display: block;
+    }
+    .table {
+      min-width: 0;
+    }
+    .table thead {
+      display: none;
+    }
+    .row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-bottom-color: var(--hair, var(--border));
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .row > td {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      border: none;
+      white-space: normal;
+      max-width: none;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+    .row > td + td {
+      border-top: 1px solid rgba(var(--ov, 255, 255, 255), 0.05);
+    }
+    .row > td::before {
+      content: attr(data-label);
+      flex: 0 0 38%;
+      max-width: 38%;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding-top: 2px;
+    }
+    /* (a cell with no heading and nothing in it is a spacer, and a row's buttons run across the foot of the card) */
+    .row > td[data-label='']:empty {
+      display: none;
+    }
+    .row > td[data-label='Actions'] {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .row > td[data-label='Actions']::before {
+      display: none;
+    }
+    .row > td[data-label='Actions'] button {
+      flex: 1 1 auto;
+    }
+    :global([data-portal='team']) .row > td {
+      border-bottom: none;
+    }
+    .row > td.end {
+      white-space: nowrap;
+    }
+    .tableScroll .table thead th:first-child,
+    .tableScroll .table tbody td:first-child {
+      position: static;
+      box-shadow: none;
+    }
+  }
+  /* (the purchases' tiles are the Home widgets' look, and the Home grid's rules reach them: one to a row, and not less than 120px) */
+  @media (max-width: 900px) {
+    .tile {
+      grid-column: span 12;
+      min-height: 120px;
+    }
+  }
+}

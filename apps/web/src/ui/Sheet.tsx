@@ -10,6 +10,8 @@ interface SheetProps {
   children: ReactNode;
   /** the row of buttons along the foot */
   footer: ReactNode;
+  /** the roomy layout (a sheet with a wide table in it): up to 1500px, where the plain one stops at 540 */
+  wide?: boolean;
 }
 
 /**
@@ -18,14 +20,14 @@ interface SheetProps {
  * curtain around it (what was typed is not lost to a stray click), Escape and the × close it, and focus moves in, stays in, and
  * goes back — and differs from it in the look: this one is each portal's own.
  */
-export function Sheet({ title, onClose, children, footer }: SheetProps) {
+export function Sheet({ title, onClose, children, footer, wide }: SheetProps) {
   const id = useId();
   const box = useDialog(onClose);
   return createPortal(
     <div className={styles['overlay']} data-part="curtain">
       <div
         ref={box}
-        className={styles['modal']}
+        className={wide ? `${styles['modal']} ${styles['wide']}` : styles['modal']}
         role="dialog"
         aria-modal="true"
         aria-labelledby={id}

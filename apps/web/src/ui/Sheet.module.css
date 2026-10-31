@@ -25,6 +25,10 @@
     box-shadow: 0 20px 60px rgba(0, 0, 0, calc(0.7 * var(--sh-k, 1)));
     outline: none;
   }
+  /* (opted into by a sheet with a wide table in it: the purchase-order sheet, a supplier's catalogue) */
+  .modal.wide {
+    max-width: min(1500px, 96vw);
+  }
   .header {
     display: flex;
     align-items: center;
@@ -97,6 +101,9 @@
       max-width: 100%;
       margin: 10px;
       border-radius: calc(18px * var(--r-k, 1));
+    }
+    :global([data-portal='admin']) .modal.wide {
+      max-width: min(1500px, 96vw);
     }
     :global([data-portal='admin']) .header {
       padding: 18px 20px 0;
