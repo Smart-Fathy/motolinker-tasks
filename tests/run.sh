@@ -96,6 +96,7 @@ run actor       node tests/actor.js
 run account     node tests/account.js
 run suppliers   node tests/suppliers.js
 run rfqpo       node tests/rfqpo.js
+run contractdocs node tests/contractdocs.js
 run notifications node tests/notifications.js
 run submissions  node tests/submissions.js
 run meetings     node tests/meetings.js
