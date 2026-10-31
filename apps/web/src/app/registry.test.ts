@@ -52,7 +52,7 @@ describe('the registry', () => {
     );
   });
 
-  it('finds, in this app, the modules that have moved: Calendar, Contracts, Home, Issues, Meet, Notifications, Purchase orders, RFQ, Security, Submissions and Suppliers so far', () => {
+  it('finds, in this app, the modules that have moved: Calendar, Contracts, Home, Inventory & Logistics, Issues, Meet, Notifications, Purchase orders, RFQ, Security, Submissions and Suppliers so far', () => {
     expect([...registry.keys()].sort()).toEqual([
       'calendar',
       'contracts',
@@ -63,6 +63,7 @@ describe('the registry', () => {
       'purchaseorders',
       'rfq',
       'security',
+      'stock',
       'submissions',
       'suppliers',
     ]);

@@ -905,8 +905,10 @@ What exists so far, all of it invisible to users:
   catalogue to pick them from, and each as a workbook) and **Purchase orders** (the order sheet with its vehicle lines and what
   they come to, and each as a PDF in a viewer that opens at once and says why when it cannot) and **Contracts** (the Arabic
   car-sale contract — a list that marks the contracts a won deal drafted for itself, a form made of the blanks of the paper
-  contract with payment lines to add and take away, and each as a PDF in the administrator's preview or the team's viewer); the
-  lead's drawer in the framed classic Leads page hands its lead to all three;
+  contract with payment lines to add and take away, and each as a PDF in the administrator's preview or the team's viewer) and
+  **Inventory & Logistics** (the register of cars by vehicle, by status or by model, with its form, its bulk upload and its
+  figures; and the containers on the water — a card for each with its voyage, port calls and position, a look-up by number, a form,
+  and the cars inside); the lead's drawer in the framed classic Leads page hands its lead to RFQ, Purchase orders and Contracts;
   every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
   (`/legacy/<portal>?embed=1`; the live chat, which a frame cannot hold, opens a card that says so and
   links to the classic page), so the whole portal is reachable from the new app while the screens move one at a
@@ -965,7 +967,11 @@ style) and `tests/webdocs.js` (the real server, the built app, a real browser, r
 `tests/contractdocs.js` (the routes of both portals — who may ask for each, what a save keeps and refuses, the starting form, the PDF,
 the contract a won deal drafts for itself — each answer held to its schema and every blank the form offers held to what the contract
 prints), `tests/ctparity.js` (the list, the form and the preview against the classic portals' computed style) and
-`tests/webcontracts.js` (the real server, the built app, a real browser, real PDFs). What each classic screen did,
+`tests/webcontracts.js` (the real server, the built app, a real browser, real PDFs). Inventory & Logistics has them too:
+`tests/stockroutes.js` and `tests/containerroutes.js` (the routes of both portals — who may ask for each, what a save keeps, cleans and
+refuses, the CSV, the look-up, the refresh, the cars in a box — each answer held to its schema), `tests/stparity.js` (both tabs, the
+forms and the upload sheet against the classic portals' computed style) and `tests/webstock.js` (the real server, the built app, a
+real browser). What each classic screen did,
 row by row, and where each row is held, is `docs/parity/`.
 Details in `apps/web/README.md`.
 

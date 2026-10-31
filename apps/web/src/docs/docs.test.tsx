@@ -726,6 +726,16 @@ describe('the lines a form holds', () => {
     act(() => result.current.add({ brand: 'D' }));
     expect(result.current.rows.map(r => r.id)).toEqual([0, 2, 3]);
   });
+  it('starts with one empty line where there are none, and with none where the form says it wants none until one is asked for', () => {
+    expect(hook([]).result.current.rows.length).toBe(1);
+    const none = renderHook(() => useRows([], SHOWN, STARTS, true));
+    expect(none.result.current.rows).toEqual([]);
+    act(() => none.result.current.add());
+    expect(none.result.current.rows.map(r => r.id)).toEqual([0]);
+    // (a form that opens on lines it has begins with them, either way)
+    const some = renderHook(() => useRows([{ brand: 'BYD' }], SHOWN, STARTS, true));
+    expect(some.result.current.rows.map(r => r.values['brand'])).toEqual(['BYD']);
+  });
   it('can be taken down to no lines at all', () => {
     const { result } = hook([{ brand: 'A' }]);
     act(() => result.current.remove(0));

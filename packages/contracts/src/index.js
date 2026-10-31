@@ -10,6 +10,8 @@
 //   deeplinks               links that already exist ('/employee#requests', '?chat=') and the new app's paths, both ways
 //   documents               what the documents are made of: the statuses of an RFQ, a purchase order and a contract, the fields of a
 //                           line, the blanks of a contract's form
+//   logistics               what stock and the container board are made of: a car's columns, a box's statuses and sizes, and the
+//                           container number's own check (ISO 6346)
 //   schemas                 the shapes that go over the wire (zod)
 //
 // Plain CommonJS with JSDoc types (checked by `npm run typecheck`): the server loads it with no build
@@ -26,5 +28,6 @@ module.exports = {
   modules: require('./modules'),
   deeplinks: require('./deeplinks'),
   documents: require('./documents'),
+  logistics: require('./logistics'),
   schemas: require('./schemas'),
 };

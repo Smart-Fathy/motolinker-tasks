@@ -39,6 +39,36 @@ function Field({
   );
 }
 
+describe('the dropdown drawn as a button of the page’s own', () => {
+  it('shows the page’s words on the page’s class instead of its own label, and still lists and chooses', async () => {
+    const user = userEvent.setup({ delay: null });
+    const chosen = vi.fn();
+    render(
+      <BrandSelect
+        part="filter"
+        value=""
+        options={[{ value: '', label: 'All' }, ...LENGTHS]}
+        onChange={chosen}
+        look={{ className: 'tbar-btn', children: <i data-testid="mine">Filter</i> }}
+      />,
+    );
+    const trigger = document.querySelector('[data-part=filter]') as HTMLElement;
+    expect(trigger.className).toBe('tbar-btn');
+    expect(trigger.textContent).toBe('Filter');
+    expect(screen.getByTestId('mine')).toBeTruthy();
+    await user.click(trigger);
+    expect(screen.getAllByRole('option').map(o => o.textContent)).toEqual([
+      'All',
+      '15 min',
+      '30 min',
+      '45 min',
+    ]);
+    await user.click(screen.getByRole('option', { name: '45 min' }));
+    expect(chosen).toHaveBeenCalledWith('45');
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+});
+
 describe('the dropdown', () => {
   it('is a button named by its label that shows the choice, with the options closed', () => {
     render(<Field />);
@@ -48,12 +78,16 @@ describe('the dropdown', () => {
     expect(trigger.getAttribute('aria-haspopup')).toBe('listbox');
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByRole('listbox')).toBeNull();
+    // (its own look, which an open list adds to)
+    expect(trigger.className).toMatch(/trigger/);
+    expect(trigger.className).not.toMatch(/open/);
   });
 
   it('opens a panel of the options with the chosen one marked, drawn on the page itself', async () => {
     const user = userEvent.setup({ delay: null });
     const { container } = render(<Field />);
     await user.click(screen.getByLabelText('Length'));
+    expect(screen.getByLabelText('Length').className).toMatch(/open/);
     const panel = screen.getByRole('listbox');
     expect(container.contains(panel)).toBe(false);
     expect(screen.getByLabelText('Length').getAttribute('aria-expanded')).toBe('true');

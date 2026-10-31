@@ -21,7 +21,7 @@ src/legacy/         a screen that has not moved, shown as its classic page in a 
                     protocol with the page), frameable.ts (the screens a frame cannot hold)
 src/sw/             the service worker: sw.ts (wiring), logic.ts (every decision, testable), shared.ts (what the
                     worker and the pages agree on); built to dist/sw.js by sw-plugin.ts
-src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues, meet, calendar, security, suppliers, rfq, purchaseorders, contracts
+src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues, meet, calendar, security, suppliers, rfq, purchaseorders, contracts, stock
 src/columns/        the column editor every register-style table shares: how a saved list is read against a screen's own
                     columns, the menu behind a header, the Columns list, the dialogs, the inputs (model.ts, data.ts, useColumns.ts,
                     Layer.tsx, Fields.tsx)
@@ -444,6 +444,35 @@ contract screen shares too, below). Both portals have both; what a person may do
   page hands its lead over (`window.mlEmbed.forLead`), so *Contract* there opens the new screen's form made for that lead.
 - Tests: `modules/contracts/model.test.ts` and `contracts.test.tsx` (every state, grant and refusal); `tests/ctparity.js` (look),
   `tests/webcontracts.js` (the real thing: real PDFs), `tests/contractdocs.js` (the routes, both portals).
+
+## Inventory & Logistics
+
+`modules/stock` is two tabs on one screen, in both portals: **Models** (the register of cars) and **Tracking** (the containers on the
+water). What a person may do is the grants (`stock` + `view|browse|create|edit|tracking`: browse reads the register, create and edit
+change it, tracking opens every container route); deleting a model, deleting a box and the CSV are the administrator's.
+
+- **The data** is the portals' own routes through `api.base`. `data.ts` is the register: `useStock` (asked each time the screen
+  opens and after every change; the page gives way to the loader while it is) and `useStockWrites` (save: the server's words on a
+  refusal; delete; the CSV). `containers.ts` is the board: `useContainers` and `useContainerWrites` (look-up, register, save, delete,
+  refresh, link and unlink a car, the test of the carrier key, and `cars()` — the cars of the register that have a VIN, which is how a
+  car is put in a box). The checks on every answer (`model.ts`, `tracking.ts`) are held to the schemas in `packages/contracts` by
+  `model.test.ts` and `tracking.test.ts`; the lists both ends share (a box's states and sizes, the check on its number) are
+  `@motolinker/contracts/logistics`.
+- **The Models tab** (`Models.tsx`, `ModelForm.tsx`, `CsvSheet.tsx`): the pure rules are `model.ts` (a row for each car, the figures
+  over them, searching, the grouping by supplier, a status by its label and colour, the remembered view) and the form's rows are the
+  **column engine's** (`entity` `stock`): the eight fixed columns plus the ones the administrator added, and **what the grid does not
+  show is kept**.
+- **The Tracking tab** (`Tracking.tsx`, `ContainerCard.tsx`, `ContainerForm.tsx`, `LinkSheet.tsx`, `Diagnosis.tsx`): the pure rules
+  are `tracking.ts` (the number's cleaning and check digit, how far along its leg a box is, how old a fix is, the sentence that says
+  why a box is not tracked, what a refresh and a registration came to, the box form's fields to and from the carrier's words). The
+  **map** (`TrackMap.tsx`, `leaflet.ts`) is Leaflet from a CDN, loaded once the first time a card with a fix is drawn; where it does not
+  come the card says where the ship is and gives a link.
+- **Phone**: a table is a card for each row (the classic `mobile.css`), labelled from its own heading; the page's head and tabs take
+  the sizes of the classic phone sheet.
+- Tests: `modules/stock/model.test.ts`, `tracking.test.ts`, `hooks.test.tsx` (what both tabs ask of a fake server, the words
+  of each thing that goes wrong, and the Tracking tab drawn with and without its grant), `stock.test.tsx` and `tracking.test.tsx`
+  (every state, grant and refusal); `tests/stparity.js` (look: both tabs, the forms and the CSV sheet, both portals),
+  `tests/webstock.js` (the real thing), `tests/stockroutes.js` and `tests/containerroutes.js` (the routes, both portals).
 
 ## The gallery
 

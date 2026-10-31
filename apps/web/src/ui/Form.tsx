@@ -25,13 +25,16 @@ export function FormLabel({
   children,
   htmlFor,
   part,
+  className,
 }: {
   children: ReactNode;
   htmlFor?: string;
   part?: string;
+  /** a label that sits in a plain block rather than a `.form-group` says how it differs */
+  className?: string;
 }) {
   return (
-    <label className={styles['label']} htmlFor={htmlFor} data-part={part ?? 'label'}>
+    <label className={cx(styles['label'], className)} htmlFor={htmlFor} data-part={part ?? 'label'}>
       {children}
     </label>
   );

@@ -15,15 +15,19 @@ export interface Rows {
 /**
  * The rows a form starts with: the document's lines, or one empty line if it has none. `shown` are the columns the grid draws
  * (they must be known before the form is: the form is made of them); `starts` are the values a line with none of its own begins
- * with — a purchase order's status begins as the first of the options it has been given.
+ * with — a purchase order's status begins as the first of the options it has been given. A form that wants none until one is
+ * asked for (a vehicle's cars) says `emptyStart`.
  */
 export function useRows(
   lines: readonly Line[],
   shown: readonly Column[],
   starts: () => Readonly<Record<string, string>>,
+  emptyStart = false,
 ): Rows {
   const [rows, setRows] = useState<Row[]>(() =>
-    (lines.length ? lines : [{}]).map((line, i) => rowOf(i, line, shown as Column[], starts())),
+    (lines.length || emptyStart ? lines : [{}]).map((line, i) =>
+      rowOf(i, line, shown as Column[], starts()),
+    ),
   );
   // (the number the next row will be given: a row's own, so that one taken out of the middle does not hand its boxes to the next)
   const next = useRef(rows.length);
