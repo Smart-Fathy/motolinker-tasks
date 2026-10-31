@@ -5,7 +5,7 @@ import {
   type Screen,
 } from '@motolinker/contracts/modules';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, type To } from 'react-router';
 import { useAppTo, useSession, useStreamEvent } from '../app/context';
 import { Unported } from '../app/Unported';
 import { fromStream } from '../modules/notifications';
@@ -16,6 +16,14 @@ import styles from './legacy.module.css';
 const GIVE_UP_MS = 20_000;
 
 type State = 'loading' | 'ready' | 'failed';
+
+/** An address with a lead named in it (whatever else it asks for — the original look — stays). */
+function withLead(target: To, lead: number): To {
+  const path = typeof target === 'string' ? { pathname: target } : target;
+  const search = new URLSearchParams(path.search ?? '');
+  search.set('lead', String(lead));
+  return { ...path, search: `?${search.toString()}` };
+}
 
 /**
  * A screen the app has not rebuilt yet, shown as the classic page itself: the same page, in a frame, without its own chrome
@@ -65,8 +73,10 @@ export function LegacyFrame({ screen }: { screen: Screen }) {
       // opened on a page the person has left while it loaded: take it where they are now
       if (m.type === 'ready') return ask(wanted.current);
       // …otherwise the person moved about inside the frame: the address follows
+      // (a lead's page that sent them to make a document for that lead says whose: the screen that makes it is asked for them)
       const next = screenIdFromLegacy(m.page, portal);
-      if (next) void navigate(to('/' + next));
+      const lead = m.type === 'navigated' ? m.lead : undefined;
+      if (next) void navigate(lead ? withLead(to('/' + next), lead) : to('/' + next));
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);

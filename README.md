@@ -900,7 +900,11 @@ What exists so far, all of it invisible to users:
   the password — and the picture, username, status and password dialogs behind a person's own face), and **Suppliers**
   (the register behind the supplier pickers, as cards with each supplier's figures or as the table the administrator
   arranges; a supplier's catalogue, paperwork and purchases; and the column editor that every register-style table will
-  share — the menu behind a header, the Columns list, the dialogs that add a field or change its type, options and colours);
+  share — the menu behind a header, the Columns list, the dialogs that add a field or change its type, options and colours),
+  **RFQ** (the request sent to a supplier — a list, a form with the vehicles asked about on that column engine, the supplier
+  catalogue to pick them from, and each as a workbook) and **Purchase orders** (the order sheet with its vehicle lines and what
+  they come to, and each as a PDF in a viewer that opens at once and says why when it cannot); the lead's drawer in the framed
+  classic Leads page hands its lead to both;
   every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
   (`/legacy/<portal>?embed=1`; the live chat, which a frame cannot hold, opens a card that says so and
   links to the classic page), so the whole portal is reachable from the new app while the screens move one at a
@@ -952,8 +956,11 @@ style) and `tests/websecurity.js` (the real server, the built app, a real browse
 register, the catalogue, the documents, the purchases and the column-configuration routes of both portals — who may ask for each,
 what is kept, what is refused, what a configuration is cleaned to — each answer held to its schema), `tests/supparity.js` (the register,
 the form, a supplier's pages and the column editor against the classic portals' computed style) and `tests/websuppliers.js` (the real
-server, the built app, a real browser, Google Drive stood in for). What each classic screen did, row by row, and where each row is held,
-is `docs/parity/`.
+server, the built app, a real browser, Google Drive stood in for). RFQs and purchase orders have them too: `tests/rfqpo.js` (the routes of
+both portals — who may ask for each, what a save keeps and refuses, the starting form, the workbook and the PDF — each answer held to its
+schema), `tests/docparity.js` (the lists, the forms, the supplier-catalogue sheet and the viewer against the classic portals' computed
+style) and `tests/webdocs.js` (the real server, the built app, a real browser, real workbooks and PDFs). What each classic screen did,
+row by row, and where each row is held, is `docs/parity/`.
 Details in `apps/web/README.md`.
 
 **Editing the classic portals' scripts while they still exist:** in a frame, `public/assets/dashboard.js` and

@@ -16,6 +16,28 @@ describe('what the frame says', () => {
     expect(parseFromFrame(says({ type: 'unauthorized' }))).toEqual({ type: 'unauthorized' });
   });
 
+  it("reads whose a document is when a lead's page sent the person on to make it", () => {
+    expect(parseFromFrame(says({ type: 'navigated', page: 'rfqs', lead: 7 }))).toEqual({
+      type: 'navigated',
+      page: 'rfqs',
+      lead: 7,
+    });
+    // a lead that is not a whole number above nought is none — the move itself still counts
+    for (const lead of [0, -3, 1.5, '7', null, NaN, Infinity, [7], { id: 7 }, true]) {
+      expect(parseFromFrame(says({ type: 'navigated', page: 'rfqs', lead })), String(lead)).toEqual(
+        {
+          type: 'navigated',
+          page: 'rfqs',
+        },
+      );
+    }
+    // only a move carries it: the page that comes up first is not for anybody
+    expect(parseFromFrame(says({ type: 'ready', page: 'customers', lead: 7 }))).toEqual({
+      type: 'ready',
+      page: 'customers',
+    });
+  });
+
   it('reads nothing else', () => {
     const bad: unknown[] = [
       null,

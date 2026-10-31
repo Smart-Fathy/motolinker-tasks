@@ -806,6 +806,7 @@
     if (!_ldProfile) return;
     const cid = _ldProfile.customer.id;
     closeLeadProfile();
+    if (window.mlEmbed) window.mlEmbed.forLead(cid);   // (framed by the new app: its purchase-order screen makes the document for this lead)
     navigate('purchaseorders');
     openPoForm(null, cid);
   }
@@ -1017,7 +1018,9 @@
   function ldGenerateRfq() {
     if (!_ldProfile) return;
     const cid = _ldProfile.customer.id;
-    closeLeadProfile(); navigate('rfqs'); openRfqForm(null, cid);
+    closeLeadProfile();
+    if (window.mlEmbed) window.mlEmbed.forLead(cid);   // (framed by the new app: its RFQ screen makes the document for this lead)
+    navigate('rfqs'); openRfqForm(null, cid);
   }
 
   // Shared lead picker for document forms (contract / PO / RFQ all use the same list).

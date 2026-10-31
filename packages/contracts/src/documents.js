@@ -1,0 +1,91 @@
+'use strict';
+// What the documents sent to suppliers are made of, before anybody has arranged anything: the statuses a document and a purchase
+// order's line may have, and the fields a line has. The administrator can rename, recolour, add and hide (the column editor), but
+// these are what exists until they do — and what the server's own lists are: tests/rfqpo.js holds every key here to what the
+// routes accept, keep and refuse, so the app and the server cannot come to mean different things by "Confirmed".
+
+/** @typedef {readonly [key: string, label: string]} Choice */
+/** @typedef {readonly [key: string, label: string, width: number]} LineField */
+
+/** What an RFQ's Status can be, in the order the select lists them (the first is what a new one starts as). @type {readonly Choice[]} */
+const RFQ_STATUSES = [
+  ['draft', 'Draft'],
+  ['sent', 'Sent'],
+  ['answered', 'Answered'],
+  ['closed', 'Closed'],
+];
+
+/** …and a purchase order's. @type {readonly Choice[]} */
+const PO_STATUSES = [
+  ['draft', 'Draft'],
+  ['sent', 'Sent'],
+  ['confirmed', 'Confirmed'],
+  ['closed', 'Closed'],
+];
+
+/** The colour a status badge starts with, by status key (every kind of document's, so a contract's will find its own here too). */
+const DOC_STATUS_COLORS = {
+  draft: '#b9b3a4',
+  sent: '#e69650',
+  answered: '#6dd8a4',
+  confirmed: '#6dd8a4',
+  signed: '#6dd8a4',
+  closed: '#888888',
+  cancelled: '#dc2626',
+};
+
+/**
+ * Where a purchase order's vehicle line is in its journey (each line, not the order). `fg` is the colour the status badge is
+ * painted in; `bg` is the wash the classic sheets drew behind it.
+ */
+const PO_LINE_STATUSES = [
+  { key: 'send_to_supplier', label: 'SEND TO SUPPLIER', bg: '#dbe4ff', fg: '#2f3f8f' },
+  { key: 'in_preparation', label: 'Car in Preparation', bg: '#f3ddf7', fg: '#7b2d8e' },
+  { key: 'in_logistics', label: 'In Logistics', bg: '#fdecc8', fg: '#8a5a00' },
+  { key: 'delivered', label: 'Car Delivered to moto', bg: '#d7f2d9', fg: '#1e6b2a' },
+];
+
+/** The fields an RFQ's requested vehicle has, with the width each column starts at. @type {readonly LineField[]} */
+const RFQ_LINE_FIELDS = [
+  ['brand', 'BRAND', 90],
+  ['model', 'MODEL', 96],
+  ['trim', 'TRIM', 90],
+  ['colour', 'COLOR EXT / INT', 130],
+  ['year', 'YEAR', 60],
+  ['accessories', 'ACCESSORIES / REMARKS', 190],
+  ['lead_time', 'LEAD TIME', 90],
+  ['fob_price', 'FOB PRICE', 90],
+  ['cif_price', 'CIF PRICE (RoRo)', 100],
+];
+/** Which of those hold a number. */
+const RFQ_LINE_NUMBERS = ['fob_price', 'cif_price'];
+
+/** …and a purchase order's vehicle line. @type {readonly LineField[]} */
+const PO_LINE_FIELDS = [
+  ['client', 'CLIENT', 150],
+  ['consignee', 'CONSIGNEE', 150],
+  ['units', 'UNITS', 62],
+  ['brand', 'BRAND', 92],
+  ['model', 'MODEL', 110],
+  ['trim', 'TRIM', 120],
+  ['color', 'COLOR EXT / INT', 160],
+  ['year', 'YEAR', 66],
+  ['accessories', 'ACCESSORIES / REMARKS', 200],
+  ['payment_term', 'PAYMENT TERM', 130],
+  ['pi_price', 'PI PRICE', 100],
+  ['status', 'STATUS', 168],
+  ['vin', 'VIN', 150],
+  ['file_link', 'Client file Link', 140],
+];
+const PO_LINE_NUMBERS = ['units', 'pi_price'];
+
+module.exports = {
+  RFQ_STATUSES,
+  PO_STATUSES,
+  DOC_STATUS_COLORS,
+  PO_LINE_STATUSES,
+  RFQ_LINE_FIELDS,
+  RFQ_LINE_NUMBERS,
+  PO_LINE_FIELDS,
+  PO_LINE_NUMBERS,
+};

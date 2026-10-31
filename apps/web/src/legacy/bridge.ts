@@ -8,7 +8,10 @@ export const VERSION = 1;
 
 /** What the page tells the app. */
 export type FromFrame =
-  { type: 'ready'; page: string } | { type: 'navigated'; page: string } | { type: 'unauthorized' };
+  | { type: 'ready'; page: string }
+  /** `lead`: a lead's page sent the person to `page` to make a document for that lead */
+  | { type: 'navigated'; page: string; lead?: number }
+  | { type: 'unauthorized' };
 
 /** What the app tells the page. */
 export type ToFrame =
@@ -28,7 +31,13 @@ export function parseFromFrame(data: unknown): FromFrame | null {
   if (m['type'] === 'unauthorized') return { type: 'unauthorized' };
   if (m['type'] !== 'ready' && m['type'] !== 'navigated') return null;
   const page = m['page'];
-  return typeof page === 'string' && PAGE.test(page) ? { type: m['type'], page } : null;
+  if (typeof page !== 'string' || !PAGE.test(page)) return null;
+  if (m['type'] === 'ready') return { type: 'ready', page };
+  // (a lead that is not a whole number above nought is none: the move still counts, the document is not made for anybody)
+  const lead = m['lead'];
+  return typeof lead === 'number' && Number.isInteger(lead) && lead > 0
+    ? { type: 'navigated', page, lead }
+    : { type: 'navigated', page };
 }
 
 export const toFrame = (message: ToFrame): Record<string, unknown> => ({

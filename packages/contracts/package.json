@@ -13,6 +13,7 @@
     "./access": "./src/access.js",
     "./permissions": "./src/permissions.js",
     "./modules": "./src/modules.js",
-    "./deeplinks": "./src/deeplinks.js"
+    "./deeplinks": "./src/deeplinks.js",
+    "./documents": "./src/documents.js"
   }
 }

@@ -8,6 +8,7 @@
 //   access                  actors, capabilities, scope: one `can()` for guards and navigation
 //   modules                 the screens: who gets each, where each sits in the navigation, what the classic portals called it
 //   deeplinks               links that already exist ('/employee#requests', '?chat=') and the new app's paths, both ways
+//   documents               what an RFQ and a purchase order are made of: their statuses and the fields of a line
 //   schemas                 the shapes that go over the wire (zod)
 //
 // Plain CommonJS with JSDoc types (checked by `npm run typecheck`): the server loads it with no build
@@ -23,5 +24,6 @@ module.exports = {
   ...require('./access'),
   modules: require('./modules'),
   deeplinks: require('./deeplinks'),
+  documents: require('./documents'),
   schemas: require('./schemas'),
 };

@@ -5,6 +5,7 @@ export { Btn, BtnLink } from './Btn';
 export { Button, ButtonLink, LinkButton } from './Button';
 export { Field } from './Field';
 export { GoogleMark } from './icons';
+export { HuddleSheet } from './HuddleSheet';
 export { Modal } from './Modal';
 export { Sheet } from './Sheet';
 export { ToastHost } from './ToastHost';

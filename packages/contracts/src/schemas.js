@@ -496,6 +496,159 @@ const ColumnsResponse = z.object({ columns: z.array(Column).nullable(), entity: 
 const ColumnsBody = z.object({ columns: z.array(z.unknown()) });
 const ColumnsSaved = z.object({ ok: z.literal(true), columns: z.array(Column) });
 
+// ── RFQs and purchase orders (both portals' own routes: …/rfqs, …/purchase-orders; one handler each) ─────────────────────────
+// A document is a header, a supplier block and lines. The lines ride in one JSON column: the fields a line has of its own
+// (packages/contracts/src/documents.js) and, alongside them, whatever the administrator added to the lines' columns (`cf_…`), so
+// a line is an open record. The header's own added fields ride in `custom_fields`, which is absent where migration 012 never ran.
+const DocLines = z.array(z.record(z.string(), z.unknown()));
+
+// GET …/rfqs — the newest 200, with what a list is drawn from.
+const RfqRow = z.object({
+  id: z.number().int(),
+  rfq_no: z.string(),
+  title: z.string(),
+  supplier_name: z.string().nullable(),
+  issuer: z.string().nullable(),
+  rfq_date: z.string().nullable(),
+  status: z.string(),
+  customer_id: z.number().int().nullable(),
+  items: DocLines,
+  created_by: z.string().nullable(),
+  created_at: z.string().nullable(),
+});
+const RfqList = z.array(RfqRow);
+// GET …/rfqs/:id — the whole row.
+const Rfq = RfqRow.extend({
+  supplier_id: z.number().int().nullable(),
+  supplier_contact: z.string().nullable(),
+  supplier_address: z.string().nullable(),
+  supplier_country: z.string().nullable(),
+  payment_terms: z.string().nullable(),
+  delivery_location: z.string().nullable(),
+  service_provider: z.string().nullable(),
+  contact: z.string().nullable(),
+  documents_required: z.string().nullable(),
+  custom_fields: CustomFields,
+  updated_at: z.string().nullable().optional(),
+});
+// An id or a number may be typed (a select's value is text); the server reads either.
+const Loose = z.union([z.string(), z.number()]).nullable().optional();
+// POST / PUT …/rfqs — what the form sends. Nothing is required: the server fills in a number, a status and the rest.
+const RfqBody = z.object({
+  rfq_no: z.string().optional(),
+  title: z.string().optional(),
+  rfq_date: z.string().nullable().optional(),
+  issuer: z.string().optional(),
+  status: z.string().optional(),
+  customer_id: Loose,
+  supplier_id: Loose,
+  supplier_name: z.string().optional(),
+  supplier_contact: z.string().optional(),
+  supplier_address: z.string().optional(),
+  supplier_country: z.string().optional(),
+  payment_terms: z.string().optional(),
+  delivery_location: z.string().optional(),
+  service_provider: z.string().optional(),
+  contact: z.string().optional(),
+  documents_required: z.string().optional(),
+  custom_fields: z.record(z.string(), z.unknown()).optional(),
+  items: DocLines.optional(),
+});
+// GET …/rfqs/new/defaults — a new RFQ's number, today's date, eight lines (the first from the lead, if one was named) and the
+// standing wording.
+const RfqDefaults = z.object({
+  rfq_no: z.string(),
+  rfq_date: z.string(),
+  items: DocLines,
+  payment_terms: z.string(),
+  documents_required: z.string(),
+  customer_id: z.number().int().nullable(),
+});
+// POST …/rfqs/xlsx and …/rfqs/:id/xlsx — the workbook, whole, and what to call it.
+const RfqXlsx = z.object({ xlsx: z.string(), name: z.string() });
+
+// GET …/purchase-orders
+const PoRow = z.object({
+  id: z.number().int(),
+  po_number: z.string(),
+  title: z.string(),
+  supplier: z.string().nullable(),
+  po_date: z.string().nullable(),
+  currency: z.string(),
+  status: z.string(),
+  customer_id: z.number().int().nullable(),
+  items: DocLines,
+  created_by: z.string().nullable(),
+  created_at: z.string().nullable(),
+});
+const PoList = z.array(PoRow);
+// GET …/purchase-orders/:id — the letterhead fields came with later migrations, so a database that lacks them has none.
+const Po = PoRow.extend({
+  notes: z.string().nullable(),
+  supplier_id: z.number().int().nullable().optional(),
+  supplier_contact: z.string().nullable().optional(),
+  supplier_address: z.string().nullable().optional(),
+  supplier_country: z.string().nullable().optional(),
+  issuer: z.string().nullable().optional(),
+  quote_id: z.string().nullable().optional(),
+  incoterm: z.string().nullable().optional(),
+  delivery_location: z.string().nullable().optional(),
+  service_provider: z.string().nullable().optional(),
+  contact: z.string().nullable().optional(),
+  documents_required: z.string().nullable().optional(),
+  payment_terms: z.string().nullable().optional(),
+  custom_fields: CustomFields,
+  updated_at: z.string().nullable().optional(),
+});
+// POST / PUT …/purchase-orders
+const PoBody = z.object({
+  po_number: z.string().optional(),
+  title: z.string().optional(),
+  supplier: z.string().optional(),
+  po_date: z.string().nullable().optional(),
+  currency: z.string().optional(),
+  status: z.string().optional(),
+  notes: z.string().optional(),
+  customer_id: Loose,
+  supplier_id: Loose,
+  supplier_contact: z.string().optional(),
+  supplier_address: z.string().optional(),
+  supplier_country: z.string().optional(),
+  issuer: z.string().optional(),
+  quote_id: z.string().optional(),
+  incoterm: z.string().optional(),
+  delivery_location: z.string().optional(),
+  service_provider: z.string().optional(),
+  contact: z.string().optional(),
+  documents_required: z.string().optional(),
+  payment_terms: z.string().optional(),
+  custom_fields: z.record(z.string(), z.unknown()).optional(),
+  items: DocLines.optional(),
+});
+// GET …/purchase-orders/new/defaults — a number, today's date, USD and one line (from the lead, if one was named).
+const PoDefaults = z.object({
+  po_number: z.string(),
+  po_date: z.string(),
+  currency: z.string(),
+  items: DocLines,
+  customer_id: z.number().int().nullable(),
+});
+// POST …/purchase-orders/pdf (an unsaved form) answers the document; …/:id/pdf (a saved one) says what to call it too.
+const PoPdf = z.object({ pdf: z.string(), name: z.string().optional() });
+// DELETE …/rfqs/:id and …/purchase-orders/:id
+const DocDeleted = z.object({ ok: z.literal(true) });
+
+// A lead, as the document forms' "attach a lead" list needs one: who they are. (The list is the person's own leads: the
+// administrator's …/customers, a team member's …/leads — every column comes with them, which this does not look at.)
+const LeadOption = z
+  .object({
+    id: z.number().int(),
+    name: z.string().nullable(),
+    phone: z.string().nullable().optional(),
+  })
+  .catchall(z.unknown());
+const LeadOptionList = z.array(LeadOption);
+
 // What /api/v1 answers when it says no: words for a person, a word for a program, and what was wrong with the request.
 const ApiError = z.object({
   error: z.string(),
@@ -564,5 +717,21 @@ module.exports = {
   ColumnsResponse,
   ColumnsBody,
   ColumnsSaved,
+  DocLines,
+  RfqRow,
+  RfqList,
+  Rfq,
+  RfqBody,
+  RfqDefaults,
+  RfqXlsx,
+  PoRow,
+  PoList,
+  Po,
+  PoBody,
+  PoDefaults,
+  PoPdf,
+  DocDeleted,
+  LeadOption,
+  LeadOptionList,
   ApiError,
 };

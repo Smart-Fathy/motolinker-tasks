@@ -21,10 +21,12 @@ src/legacy/         a screen that has not moved, shown as its classic page in a 
                     protocol with the page), frameable.ts (the screens a frame cannot hold)
 src/sw/             the service worker: sw.ts (wiring), logic.ts (every decision, testable), shared.ts (what the
                     worker and the pages agree on); built to dist/sw.js by sw-plugin.ts
-src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues, meet, calendar, security, suppliers
+src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues, meet, calendar, security, suppliers, rfq, purchaseorders
 src/columns/        the column editor every register-style table shares: how a saved list is read against a screen's own
                     columns, the menu behind a header, the Columns list, the dialogs, the inputs (model.ts, data.ts, useColumns.ts,
                     Layer.tsx, Fields.tsx)
+src/docs/           what the document screens (RFQs, purchase orders; contracts next) share: the answers' checks and the small
+                    words (model.ts), the data (data.ts), the page, the lines grid, the supplier-catalogue picker, the viewer
 src/auth/           the sign-in: SignIn.tsx (which step, and what carries between them) and a component per
                     step: PasswordStep, CodeStep (second step), ForgotStep, ResetStep; copy.ts holds every
                     line they say
@@ -141,7 +143,8 @@ time; each one that moves is deleted from the classic side in the same commit.
   the Google Chat poller, WhatsApp) and auto-refresh. `tests/embed.js` holds all of it, both portals, every guard
   mutation-tested; a page opened with `?embed=1` outside a frame is exactly the page it was.
 - **The conversation** (`legacy/bridge.ts` ↔ `public/assets/embed.js`) is `{ ml: 'embed', v: 1, type, … }`. The page
-  says `ready{page}` once, first, then `navigated{page}` whenever the person moves about inside it, and `unauthorized`
+  says `ready{page}` once, first, then `navigated{page}` whenever the person moves about inside it (with a `lead` when a
+  lead's page sent them on to make a document for that lead: the app opens `/rfq?lead=<id>`), and `unauthorized`
   when a call came back 401. The app says `navigate{page}` (a click in the rail: the page moves, it is not reloaded)
   and `look{profile}` (the admin saved a new look). Each side hears only the window that framed it, from its own origin,
   and answers with its own origin as the target.
@@ -392,6 +395,34 @@ the grants (`suppliers.view|create|edit|delete|catalogue|docs|purchases`), and w
 - Tests: `model.test.ts` (both modules), `suppliers.test.tsx` and `columns.test.tsx` (every state, grant and refusal);
   `tests/supparity.js` (look), `tests/websuppliers.js` (the real thing), `tests/suppliers.js` (the routes, both portals).
 
+## RFQs and purchase orders
+
+`modules/rfq` and `modules/purchaseorders` are the two documents sent to a supplier; `src/docs` is what they share (and what the
+contract screen will). Both portals have both; what a person may do is the grants (`rfq|purchaseorders` + `view|create|edit|delete|export`).
+
+- **The data** (`docs/data.ts`) is the portals' own routes through `api.base`: a kind of document is a `DocSpec` (its path, its noun,
+  the checks of its answers), and one set of hooks serves both — `useDocList` (the list, again after every change), `useDocStart` (the
+  record being edited, or the starting form of a new one — asked afresh each time, `?customer_id=` where a lead is named),
+  `useDocWrites` (save: the server's words on a refusal; delete: said in a notice), `buildXlsx` / `buildPdf`, `useLeads` (the
+  administrator's customers, a team member's own leads) and `useOfferLoader` (the supplier catalogue, asked when the picker opens).
+  The checks (`model.ts`) are held to the schemas in `packages/contracts` by `model.test.ts`.
+- **The screens** open at once and say what they are waiting for: the list has a loader whenever it is being read, the form's sheet
+  is there before the starting form is (a record that cannot be had is said in it, with only *Cancel*). `?lead=<id>` on the address
+  (`docs/useLeadParam.ts`) opens a new document made from that lead, once, and cleans the address.
+- **The form** (`RfqForm.tsx`, `PoForm.tsx`) is made of the columns the administrator arranged for the document (`rfq_doc`,
+  `po_doc`: its status and the fields added to every document) and for its lines (`rfq_items`, `po_items`): a grid by `docs/Lines.tsx`
+  whose cells are the form's own, so that **what the grid does not show is kept** (each line is saved as it was with what the grid
+  shows put over it, and the added fields are merged over the document's). A line made from the supplier catalogue carries the
+  vehicle's words; a purchase-order line begins as the first status the administrator left.
+- **The workbook and the PDF**: an RFQ is handed to the browser as `RFQ_<number>.xlsx` (a row's *Excel*, or *Save & export Excel*); a
+  purchase order opens in `docs/Viewer.tsx` — at once, with "Rendering PDF…", the PDF in a frame when it is made and the reason in
+  its place when it cannot be — and is given back when the viewer closes.
+- **The lead's drawer** of the classic Leads page (still framed) hands the lead over through the embed bridge, so *RFQ* and
+  *Purchase Order* there open the new screens' forms made for that lead.
+- Tests: `docs/model.test.ts`, `data.test.tsx`, `docs.test.tsx`, `modules/rfq/rfq.test.tsx` and
+  `modules/purchaseorders/purchaseorders.test.tsx` (every state, grant and refusal); `tests/docparity.js` (look),
+  `tests/webdocs.js` (the real thing: real workbooks and PDFs), `tests/rfqpo.js` (the routes, both portals).
+
 ## The gallery
 
 `/dashboard/__gallery` and `/employee/__gallery` (with `?ui=next`; it needs no session) show the design system on
@@ -416,9 +447,9 @@ Opened from the dev server there is no `window.__ML__`; the app falls back to th
 
 The suites that hold it, from the root: `tests/modules.js` (the catalogue against the classic portals), `tests/spashell.js`
 (the build and the server half), `tests/signinparity.js` and `tests/shellparity.js` (look, value by value),
-`tests/webauth.js`, `tests/webshell.js`, `tests/webnotifs.js`, `tests/webissues.js` and `tests/websuppliers.js` (the real server, a real
-browser), `tests/notifparity.js`, `tests/subparity.js`, `tests/issparity.js` and `tests/supparity.js` (the pages, value by value),
-`tests/notifications.js`, `tests/submissions.js`, `tests/issues.js` and `tests/suppliers.js` (the routes behind them),
+`tests/webauth.js`, `tests/webshell.js`, `tests/webnotifs.js`, `tests/webissues.js`, `tests/websuppliers.js` and `tests/webdocs.js` (the real
+server, a real browser), `tests/notifparity.js`, `tests/subparity.js`, `tests/issparity.js`, `tests/supparity.js` and `tests/docparity.js` (the pages,
+value by value), `tests/notifications.js`, `tests/submissions.js`, `tests/issues.js`, `tests/suppliers.js` and `tests/rfqpo.js` (the routes behind them),
 `tests/galleryaudit.js` (readability),
 `tests/embed.js` (the classic pages as guests), `tests/webframe.js` (every unmoved screen in its frame) and
 `tests/webpwa.js` (the service worker, offline and in turns with the classic one).

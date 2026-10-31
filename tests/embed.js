@@ -35,12 +35,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const PORTALS = [
     {
       name: 'admin', token: 'embed-admin', key: 'ml_admin_token', classic: '/legacy/dashboard', api: '/api/dashboard', check: '/api/auth/check', call: 'apiFetch',
-      start: 'customers', other: 'deals', sessions: ctx.sessions, js: 'dashboard.js', stamp: '154', chrome: ['.sidebar', '.header'],
+      start: 'customers', other: 'deals', sessions: ctx.sessions, js: 'dashboard.js', stamp: '155', chrome: ['.sidebar', '.header'],
       session: { username: 'admin', pwv: ctx.ADMIN_PW_VERSION, createdAt: Date.now() },
     },
     {
       name: 'team', token: 'embed-sara', key: 'ml_emp_token', classic: '/legacy/employee', api: '/api/employee', check: '/api/employee/check', call: 'ef',
-      start: 'leads', other: 'deals', sessions: ctx.employeeSessions, js: 'employee.js', stamp: '134', chrome: ['.sidebar', '.topbar'],
+      start: 'leads', other: 'deals', sessions: ctx.employeeSessions, js: 'employee.js', stamp: '135', chrome: ['.sidebar', '.topbar'],
       session: { id: SARA.id, name: SARA.name, username: 'sara', job_title: SARA.title, permissions: normEmpPerms(SARA.raw), createdAt: Date.now() },
     },
   ];
@@ -167,6 +167,23 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await say(page, base, { ml: 'embed', v: 1, type: 'navigate', page: p.other });
     await sleep(400);
     check(`${tag} …and does not repeat itself when asked for the page it is already on`, (await page.msgs()).length === countBefore);
+
+    // a lead's page that sends the person on to make a document says whose it is — once, and only a lead that is one
+    const mark = (await page.msgs()).length;
+    await f.evaluate(start => { window.mlEmbed.forLead(7); window.navigate(start); }, p.start);
+    check(`${tag} a page that sends the person on to make a document for a lead says which lead, with the move`,
+      await until(page, o => window.__msgs.slice(o.mark).some(m => m.data.type === 'navigated' && m.data.page === o.page && m.data.lead === 7), { mark, page: p.start }));
+    await f.evaluate(other => { window.navigate(other); }, p.other);
+    await until(page, o => window.__msgs.slice(o.mark).some(m => m.data.type === 'navigated' && m.data.page === o.page), { mark, page: p.other });
+    const moves = (await page.msgs()).slice(mark).filter(m => m.type === 'navigated');
+    check(`${tag} …and the next move names nobody (a lead is told once)`, moves.length === 2 && moves[0].lead === 7 && !('lead' in moves[1]), JSON.stringify(moves));
+    const mark2 = (await page.msgs()).length;
+    await f.evaluate(start => { for (const bad of [0, -2, 1.5, '7', null, undefined, NaN]) { window.mlEmbed.forLead(bad); } window.navigate(start); }, p.start);
+    await until(page, o => window.__msgs.slice(o.mark).some(m => m.data.type === 'navigated'), { mark: mark2 });
+    const unnamed = (await page.msgs()).slice(mark2).filter(m => m.type === "navigated");
+    check(`${tag} …a lead that is not a whole number above nought is none: the move is told without one`, unnamed.length === 1 && !("lead" in unnamed[0]), JSON.stringify(unnamed));
+    await say(page, base, { ml: 'embed', v: 1, type: 'navigate', page: p.other });
+    await until(page, o => window.__msgs.slice(o.mark).filter(m => m.data.type === 'navigated').length >= 2, { mark: mark2 });
 
     // what is not the protocol is not obeyed
     const before = await shown(f);
