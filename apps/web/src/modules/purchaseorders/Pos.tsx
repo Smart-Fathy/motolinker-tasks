@@ -1,11 +1,11 @@
 import { can } from '@motolinker/contracts/access';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useSession } from '../../app/context';
 import { Badge, ColumnsLayer, useColumns } from '../../columns';
 import { buildPdf, useDocList, useDocWrites } from '../../docs/data';
-import { pdfUrl } from '../../docs/files';
 import { DocPage, Loading } from '../../docs/Page';
 import { useLeadParam } from '../../docs/useLeadParam';
+import { useViewer } from '../../docs/useViewer';
 import {
   docStatusColumn,
   fileName,
@@ -16,7 +16,7 @@ import {
   whenOf,
   type PoRow,
 } from '../../docs/model';
-import { DocViewer, type Viewing } from '../../docs/Viewer';
+import { DocViewer } from '../../docs/Viewer';
 import { Btn } from '../../ui';
 import { cx } from '../../ui/cx';
 import styles from '../../docs/docs.module.css';
@@ -35,8 +35,7 @@ export function Pos() {
   const list = useDocList(PO_SPEC);
   const writes = useDocWrites(PO_SPEC);
   const [form, setForm] = useState<{ id: number | null; lead: number | null } | null>(null);
-  const [viewing, setViewing] = useState<Viewing | null>(null);
-  const url = useRef<string | null>(null);
+  const viewer = useViewer();
   const may = {
     create: can(access.actor, 'purchaseorders.create'),
     edit: can(access.actor, 'purchaseorders.edit'),
@@ -47,46 +46,20 @@ export function Pos() {
   // A new order for a lead, from the lead's own page: "/purchaseorders?lead=<id>" opens the form, made from that lead.
   useLeadParam(may.create, lead => setForm({ id: null, lead }));
 
-  const forget = () => {
-    if (url.current) URL.revokeObjectURL(url.current);
-    url.current = null;
-  };
-  useEffect(() => forget, []);
-  const close = useCallback(() => {
-    forget();
-    setViewing(null);
-  }, []);
-
   /** An order as a PDF, in the viewer: opened at once, with the order's number as its title, and filled when the PDF is made. */
-  const show = useCallback(
-    async (make: () => Promise<Record<string, unknown>>) => {
-      forget();
-      setViewing({ state: 'loading', title: 'Purchase order' });
-      let title = 'Purchase order';
-      try {
-        const payload = await make();
-        if (payload['po_number']) title = `Purchase order ${String(payload['po_number'])}`;
-        const out = await buildPdf(api, payload);
-        url.current = pdfUrl(out.pdf);
-        setViewing({
-          state: 'ready',
-          title,
-          url: url.current,
-          name: fileName(String(out.name || title)),
-        });
-      } catch (e) {
-        setViewing({
-          state: 'error',
-          title,
-          message: e instanceof Error ? e.message : String(e),
-        });
-      }
-    },
-    [api],
-  );
+  const show = (make: () => Promise<Record<string, unknown>>) =>
+    void viewer.show('Purchase order', async say => {
+      const payload = await make();
+      const title = payload['po_number']
+        ? `Purchase order ${String(payload['po_number'])}`
+        : 'Purchase order';
+      say(title);
+      const out = await buildPdf(api, payload);
+      return { pdf: out.pdf, name: fileName(String(out.name || title)) };
+    });
 
   const preview = (x: PoRow) =>
-    void show(async () => {
+    show(async () => {
       const rec = await api.get<unknown>(`${api.base}/purchase-orders/${x.id}`);
       if (!isPo(rec))
         throw new Error('The purchase order came back in a form this app does not know.');
@@ -207,10 +180,10 @@ export function Pos() {
               lead={form.lead}
               docColumns={columns}
               onClose={() => setForm(null)}
-              onPreview={payload => void show(async () => payload)}
+              onPreview={payload => show(async () => payload)}
             />
           )}
-          {viewing && <DocViewer viewing={viewing} onClose={close} />}
+          {viewer.viewing && <DocViewer viewing={viewer.viewing} onClose={viewer.close} />}
         </>
       }
     >

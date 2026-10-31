@@ -638,6 +638,41 @@ const PoPdf = z.object({ pdf: z.string(), name: z.string().optional() });
 // DELETE …/rfqs/:id and …/purchase-orders/:id
 const DocDeleted = z.object({ ok: z.literal(true) });
 
+// GET …/contracts — what a row of the list is drawn from (the contract itself, `data`, comes with GET …/contracts/:id).
+const ContractRow = z.object({
+  id: z.number().int(),
+  contract_no: z.string(),
+  title: z.string(),
+  status: z.string(),
+  customer_id: z.number().int().nullable(),
+  deal_id: z.number().int().nullable(),
+  // 'auto_won' where the contract was drafted by a deal reaching Won
+  created_by: z.string().nullable(),
+  created_at: z.string().nullable(),
+});
+const ContractList = z.array(ContractRow);
+// What the contract holds: the blanks of the paper form by their dotted paths (packages/contracts/src/documents.js lists them),
+// and whatever else was put there (the added fields ride in `custom_fields`, the template names the wording).
+const ContractData = z.record(z.string(), z.unknown());
+// GET …/contracts/:id
+const Contract = ContractRow.extend({
+  data: ContractData,
+  updated_at: z.string().nullable().optional(),
+});
+// POST / PUT …/contracts
+const ContractBody = z.object({
+  contract_no: z.string().optional(),
+  title: z.string().optional(),
+  data: ContractData.optional(),
+  status: z.string().optional(),
+  customer_id: Loose,
+  deal_id: Loose,
+});
+// GET …/contracts/new/defaults — the number a new contract will have, and the form made from the lead or deal named.
+const ContractDefaults = z.object({ contract_no: z.string(), data: ContractData });
+// POST …/contracts/pdf (an unsaved form) answers the document; …/:id/pdf (a saved one) says what to call it too.
+const ContractPdf = z.object({ pdf: z.string(), name: z.string().optional() });
+
 // A lead, as the document forms' "attach a lead" list needs one: who they are. (The list is the person's own leads: the
 // administrator's …/customers, a team member's …/leads — every column comes with them, which this does not look at.)
 const LeadOption = z
@@ -730,6 +765,12 @@ module.exports = {
   PoBody,
   PoDefaults,
   PoPdf,
+  ContractRow,
+  ContractList,
+  Contract,
+  ContractBody,
+  ContractDefaults,
+  ContractPdf,
   DocDeleted,
   LeadOption,
   LeadOptionList,

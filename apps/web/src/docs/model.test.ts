@@ -396,6 +396,7 @@ describe('the columns a document and its lines start with', () => {
       file: 'file-text',
       download: 'download',
       catalogue: 'list-plus',
+      contract: 'file-signature',
     });
   });
 });

@@ -1,4 +1,4 @@
-// What the document screens (RFQs, purchase orders; contracts and quotations next) deal in: the answers of the server and the checks
+// What the document screens (RFQs, purchase orders, contracts; quotations next) deal in: the answers of the server and the checks
 // that tell one from nonsense, the columns a document and its lines start with, and the small things the classic page
 // (public/assets/procurement.js) worked out for itself — a purchase order's total, which lines count, the title a document is
 // saved under. The shapes are packages/contracts' (schemas.js, documents.js); the checks are written by hand because the bundle
@@ -15,7 +15,7 @@ import type { schemas } from '@motolinker/contracts';
 import type { z } from 'zod';
 import { isTicked, tupleColumns, type Column, type ColumnType } from '../columns';
 
-export { PO_STATUSES, RFQ_STATUSES } from '@motolinker/contracts/documents';
+export { CONTRACT_STATUSES, PO_STATUSES, RFQ_STATUSES } from '@motolinker/contracts/documents';
 
 export type Rfq = z.infer<typeof schemas.Rfq>;
 export type RfqRow = z.infer<typeof schemas.RfqRow>;
@@ -23,6 +23,9 @@ export type RfqDefaults = z.infer<typeof schemas.RfqDefaults>;
 export type Po = z.infer<typeof schemas.Po>;
 export type PoRow = z.infer<typeof schemas.PoRow>;
 export type PoDefaults = z.infer<typeof schemas.PoDefaults>;
+export type ContractRow = z.infer<typeof schemas.ContractRow>;
+export type Contract = z.infer<typeof schemas.Contract>;
+export type ContractDefaults = z.infer<typeof schemas.ContractDefaults>;
 export type LeadOption = z.infer<typeof schemas.LeadOption>;
 /** A line of a document: the fields its kind of line has, and whatever the administrator added alongside. */
 export type Line = Record<string, unknown>;
@@ -134,6 +137,30 @@ export const isPoDefaults = (v: unknown): v is PoDefaults =>
   isLines(v['items']) &&
   isIdOrNull(v['customer_id']);
 
+function isContractRow(v: unknown): v is ContractRow {
+  return (
+    isObject(v) &&
+    Number.isInteger(v['id']) &&
+    isText(v['contract_no']) &&
+    isText(v['title']) &&
+    isText(v['status']) &&
+    isIdOrNull(v['customer_id']) &&
+    isIdOrNull(v['deal_id']) &&
+    isTextOrNull(v['created_by']) &&
+    isTextOrNull(v['created_at'])
+  );
+}
+export const isContractList = (v: unknown): v is ContractRow[] =>
+  Array.isArray(v) && v.every(isContractRow);
+
+export const isContract = (v: unknown): v is Contract =>
+  isContractRow(v) &&
+  isObject((v as unknown as Record<string, unknown>)['data']) &&
+  isTextOrMissing((v as unknown as Record<string, unknown>)['updated_at']);
+
+export const isContractDefaults = (v: unknown): v is ContractDefaults =>
+  isObject(v) && isText(v['contract_no']) && isObject(v['data']);
+
 export const isXlsx = (v: unknown): v is { xlsx: string; name: string } =>
   isObject(v) && isText(v['xlsx']) && isText(v['name']);
 export const isPdf = (v: unknown): v is { pdf: string; name?: string } =>
@@ -200,6 +227,21 @@ export const rfqLineFilled = (l: Line): boolean => !!(l['brand'] || l['model'] |
 export const poLineFilled = (l: Line): boolean =>
   !!(l['client'] || l['brand'] || l['model'] || l['vin']);
 
+/** What the extra fields of a form start with: what the document has under each shown field (a tick box is ticked or not). */
+export function extrasOf(
+  shown: readonly Column[],
+  fields: unknown,
+): Record<string, string | boolean> {
+  const have = (fields ?? {}) as Record<string, unknown>;
+  const out: Record<string, string | boolean> = {};
+  for (const c of shown) {
+    if (c.builtin) continue;
+    const raw = have[c.key];
+    out[c.key] = c.type === 'checkbox' ? isTicked(raw) : raw == null ? '' : String(raw);
+  }
+  return out;
+}
+
 /** The value a grid cell starts with for this column (a checkbox is ticked or not; anything else is its text). */
 export function cellOf(line: Line, col: Column): string | boolean {
   const raw = line[col.key];
@@ -237,6 +279,7 @@ export function whenOf(date: string | null, createdAt: string | null): string {
 export const DOC_ICONS = {
   add: 'plus',
   file: 'file-text',
+  contract: 'file-signature',
   download: 'download',
   catalogue: 'list-plus',
 } as const;
