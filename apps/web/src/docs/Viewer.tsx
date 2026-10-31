@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import { Icon } from '../app/shell/icons';
 import { Btn } from '../ui';
+import { cx } from '../ui/cx';
 import { useDialog } from '../ui/useDialog';
 import styles from './docs.module.css';
 import { DOC_ICONS } from './model';
@@ -17,9 +18,19 @@ export type Viewing =
  * when it is made; a document that could not be made says so in the same place. (The admin's card is the one colour it always
  * was, the team's is its surface: each portal's own CSS, as the classic pages have them.)
  */
-export function DocViewer({ viewing, onClose }: { viewing: Viewing; onClose: () => void }) {
+export function DocViewer({
+  viewing,
+  onClose,
+  variant = 'document',
+}: {
+  viewing: Viewing;
+  onClose: () => void;
+  /** 'contract': the administrator's contract preview, which is a little narrower and worded for a contract */
+  variant?: 'document' | 'contract';
+}) {
   const box = useDialog(onClose, { over: true });
   const ready = viewing.state === 'ready';
+  const contract = variant === 'contract';
   const download = () => {
     if (viewing.state !== 'ready') return;
     const a = document.createElement('a');
@@ -28,28 +39,46 @@ export function DocViewer({ viewing, onClose }: { viewing: Viewing; onClose: () 
     a.click();
   };
   return createPortal(
-    <div className={styles['viewerCurtain']} data-part="docModal">
+    <div
+      className={cx(styles['viewerCurtain'], contract && styles['viewerCurtainContract'])}
+      data-part="docModal"
+    >
       <div
         ref={box}
-        className={styles['viewerCard']}
+        className={cx(styles['viewerCard'], contract && styles['viewerCardContract'])}
         role="dialog"
         aria-modal="true"
         aria-label={viewing.title}
         tabIndex={-1}
         data-part="docCard"
       >
-        <div className={styles['viewerHead']} data-part="docHead">
-          <div className={styles['viewerTitle']} data-part="docTitle">
-            <span className={styles['viewerIcon']}>
-              <Icon name={DOC_ICONS.file} size={17} />
+        <div
+          className={cx(styles['viewerHead'], contract && styles['viewerHeadContract'])}
+          data-part="docHead"
+        >
+          <div
+            className={cx(styles['viewerTitle'], contract && styles['viewerTitleContract'])}
+            data-part="docTitle"
+          >
+            <span className={cx(styles['viewerIcon'], contract && styles['viewerIconContract'])}>
+              <Icon
+                name={contract ? DOC_ICONS.contract : DOC_ICONS.file}
+                size={contract ? 18 : 17}
+              />
             </span>
-            <span className={styles['viewerText']} data-part="docTitleText">
-              {viewing.title || 'Document'}
+            <span
+              className={cx(styles['viewerText'], contract && styles['viewerTextContract'])}
+              data-part="docTitleText"
+            >
+              {contract ? 'Contract Preview' : viewing.title || 'Document'}
             </span>
           </div>
-          <div className={styles['viewerButtons']} data-part="docButtons">
+          <div
+            className={cx(styles['viewerButtons'], contract && styles['viewerButtonsContract'])}
+            data-part="docButtons"
+          >
             <Btn kind="primary" small data-part="docDownload" onClick={download}>
-              <Icon name={DOC_ICONS.download} size={14} /> Download
+              <Icon name={DOC_ICONS.download} size={14} /> {contract ? 'Download PDF' : 'Download'}
             </Btn>
             <Btn small data-part="docClose" onClick={onClose}>
               Close
@@ -72,7 +101,7 @@ export function DocViewer({ viewing, onClose }: { viewing: Viewing; onClose: () 
           )}
           {viewing.state === 'ready' && (
             <iframe
-              className={styles['viewerFrame']}
+              className={cx(styles['viewerFrame'], contract && styles['viewerFrameContract'])}
               src={viewing.url}
               title={viewing.title}
               data-part="docFrame"

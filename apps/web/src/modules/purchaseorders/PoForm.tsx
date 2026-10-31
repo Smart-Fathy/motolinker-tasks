@@ -1,15 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useSession } from '../../app/context';
 import { Icon } from '../../app/shell/icons';
-import {
-  ColumnsBar,
-  ColumnsLayer,
-  isTicked,
-  missingRequired,
-  useColumns,
-  type Column,
-  type Columns,
-} from '../../columns';
+import { ColumnsBar, ColumnsLayer, missingRequired, useColumns, type Columns } from '../../columns';
 import { Catalogue } from '../../docs/Catalogue';
 import { Extras } from '../../docs/Extras';
 import { Area, Field, Grid, Input, Lbl, Pick, StatusPick } from '../../docs/Fields';
@@ -17,6 +9,7 @@ import { LinesGrid } from '../../docs/Lines';
 import { useDocStart, useDocWrites, useLeads, useOfferLoader } from '../../docs/data';
 import {
   DOC_ICONS,
+  extrasOf,
   lineTotal,
   PO_LINE_COLUMNS,
   poLineFilled,
@@ -35,17 +28,6 @@ import { PO_SPEC } from './spec';
 
 const text = (rec: Record<string, unknown>, key: string): string =>
   rec[key] == null ? '' : String(rec[key]);
-
-function extrasOf(shown: readonly Column[], fields: unknown): Record<string, string | boolean> {
-  const have = (fields ?? {}) as Record<string, unknown>;
-  const out: Record<string, string | boolean> = {};
-  for (const c of shown) {
-    if (c.builtin) continue;
-    const raw = have[c.key];
-    out[c.key] = c.type === 'checkbox' ? isTicked(raw) : raw == null ? '' : String(raw);
-  }
-  return out;
-}
 
 /** A purchase-order line made of a vehicle of a supplier's catalogue (one unit; the price is the supplier's FOB). */
 export const lineOfOffer = (v: Offer): Line => ({

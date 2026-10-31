@@ -21,11 +21,11 @@ src/legacy/         a screen that has not moved, shown as its classic page in a 
                     protocol with the page), frameable.ts (the screens a frame cannot hold)
 src/sw/             the service worker: sw.ts (wiring), logic.ts (every decision, testable), shared.ts (what the
                     worker and the pages agree on); built to dist/sw.js by sw-plugin.ts
-src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues, meet, calendar, security, suppliers, rfq, purchaseorders
+src/modules/<id>/   a screen that has moved: index.ts default-exports defineModule('<id>', { Page }); home, notifications, submissions, issues, meet, calendar, security, suppliers, rfq, purchaseorders, contracts
 src/columns/        the column editor every register-style table shares: how a saved list is read against a screen's own
                     columns, the menu behind a header, the Columns list, the dialogs, the inputs (model.ts, data.ts, useColumns.ts,
                     Layer.tsx, Fields.tsx)
-src/docs/           what the document screens (RFQs, purchase orders; contracts next) share: the answers' checks and the small
+src/docs/           what the document screens (RFQs, purchase orders, contracts) share: the answers' checks and the small
                     words (model.ts), the data (data.ts), the page, the lines grid, the supplier-catalogue picker, the viewer
 src/auth/           the sign-in: SignIn.tsx (which step, and what carries between them) and a component per
                     step: PasswordStep, CodeStep (second step), ForgotStep, ResetStep; copy.ts holds every
@@ -398,7 +398,7 @@ the grants (`suppliers.view|create|edit|delete|catalogue|docs|purchases`), and w
 ## RFQs and purchase orders
 
 `modules/rfq` and `modules/purchaseorders` are the two documents sent to a supplier; `src/docs` is what they share (and what the
-contract screen will). Both portals have both; what a person may do is the grants (`rfq|purchaseorders` + `view|create|edit|delete|export`).
+contract screen shares too, below). Both portals have both; what a person may do is the grants (`rfq|purchaseorders` + `view|create|edit|delete|export`).
 
 - **The data** (`docs/data.ts`) is the portals' own routes through `api.base`: a kind of document is a `DocSpec` (its path, its noun,
   the checks of its answers), and one set of hooks serves both — `useDocList` (the list, again after every change), `useDocStart` (the
@@ -422,6 +422,28 @@ contract screen will). Both portals have both; what a person may do is the grant
 - Tests: `docs/model.test.ts`, `data.test.tsx`, `docs.test.tsx`, `modules/rfq/rfq.test.tsx` and
   `modules/purchaseorders/purchaseorders.test.tsx` (every state, grant and refusal); `tests/docparity.js` (look),
   `tests/webdocs.js` (the real thing: real workbooks and PDFs), `tests/rfqpo.js` (the routes, both portals).
+
+## Contracts
+
+`modules/contracts` is the Arabic car-sale contract, on the same `src/docs` pieces as the two documents above (a `DocSpec` for
+`contracts`, the list and start hooks, the page, the viewer). Both portals have it; what a person may do is the grants
+(`contracts` + `view|create|edit|delete|export`).
+
+- **The form** (`ContractForm.tsx`) is the blanks of the paper contract — the blocks and fields are `CONTRACT_SECTIONS` in
+  `packages/contracts/src/documents.js`, which `tests/contractdocs.js` holds to what the contract prints — each a text box bound to a
+  dotted path of the contract's `data` (`buyer.name`). `modules/contracts/model.ts` is the rules, as pure functions: where a blank
+  lives (`getPath`/`withPath`), what a contract on the older wording is offered besides (`blocksOf`), the payment lines (`payRowsOf`,
+  `fixedPaysOf`), what the data is once the form is done with it (`dataOf`: **what the form does not show is kept**, the lines are
+  exactly the rows on screen, the contract's own number goes inside it) and what picking a lead puts in the buyer's block (`withLead`).
+- **The lines**: a car-sale contract's payment lines are the person's to add and take away (a new one begins with the standing
+  wording); a contract on the older wording keeps its lines and offers only their amounts.
+- **The PDF** is `docs/Viewer.tsx` in its `contract` variant for the administrator (the classic *Contract Preview*) and the portal's
+  document viewer for the team (the classic team page had no working preview); it opens at once, says why when a contract cannot be
+  made, and is given back when it closes. *Save & preview PDF* shows the contract that was saved without asking for it again.
+- **A won deal's contract** is drafted by the server; the list marks it **auto**. **The lead's drawer** of the framed classic Leads
+  page hands its lead over (`window.mlEmbed.forLead`), so *Contract* there opens the new screen's form made for that lead.
+- Tests: `modules/contracts/model.test.ts` and `contracts.test.tsx` (every state, grant and refusal); `tests/ctparity.js` (look),
+  `tests/webcontracts.js` (the real thing: real PDFs), `tests/contractdocs.js` (the routes, both portals).
 
 ## The gallery
 

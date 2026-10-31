@@ -15,4 +15,4 @@ codebase"). "It looks and works the same" is shown, not asserted. Two things car
 Nothing here is pixel-gated: the new DOM is different on purpose, so approved pictures become the
 regression baseline for the new app instead.
 
-Modules ported so far: [notifications](notifications.md), [submissions](submissions.md), [issues](issues.md), [meet](meet.md), [calendar](calendar.md), [security and the account menu](security.md), [suppliers and the column editor](suppliers.md), [RFQ](rfq.md), [purchase orders](purchaseorders.md).
+Modules ported so far: [notifications](notifications.md), [submissions](submissions.md), [issues](issues.md), [meet](meet.md), [calendar](calendar.md), [security and the account menu](security.md), [suppliers and the column editor](suppliers.md), [RFQ](rfq.md), [purchase orders](purchaseorders.md), [contracts](contracts.md).

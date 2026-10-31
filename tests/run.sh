@@ -12,7 +12,7 @@
 #   bash tests/run.sh --list                  print the suite names and run nothing (also with --only / --shard)
 #
 # `secparity` (the Security panel against the classic one, 8 looks of 2 portals) runs as two, one per portal, for the same reason;
-# so do `supparity` (Suppliers) and `docparity` (RFQs and purchase orders).
+# so do `supparity` (Suppliers), `docparity` (RFQs and purchase orders) and `ctparity` (Contracts).
 # `themeaudit`, the contrast audit, is the longest suite and runs as three (themeaudit1..3) so that it can be
 # spread over machines; --only themeaudit asks for all three. Every suite's seconds go to
 # ${TMPDIR:-/tmp}/ml-suite-times.txt, which is what tests/suite-weights.json is refreshed from.
@@ -37,7 +37,7 @@ if [ -n "$shard" ]; then
 fi
 expanded=()
 for n in "${asked[@]}"; do
-  case "$n" in themeaudit) expanded+=(themeaudit1 themeaudit2 themeaudit3) ;; secparity) expanded+=(secparityadmin secparityteam) ;; supparity) expanded+=(supparityadmin supparityteam) ;; docparity) expanded+=(docparityadmin docparityteam) ;; *) expanded+=("$n") ;; esac
+  case "$n" in themeaudit) expanded+=(themeaudit1 themeaudit2 themeaudit3) ;; secparity) expanded+=(secparityadmin secparityteam) ;; supparity) expanded+=(supparityadmin supparityteam) ;; docparity) expanded+=(docparityadmin docparityteam) ;; ctparity) expanded+=(ctparityadmin ctparityteam) ;; *) expanded+=("$n") ;; esac
 done
 asked=("${expanded[@]}")
 if [ $only_given -eq 1 ]; then only=","; for n in "${asked[@]}"; do only="$only$n,"; done; fi
@@ -120,6 +120,8 @@ run supparityadmin node tests/supparity.js --only=admin
 run supparityteam  node tests/supparity.js --only=team
 run docparityadmin node tests/docparity.js --only=admin
 run docparityteam  node tests/docparity.js --only=team
+run ctparityadmin  node tests/ctparity.js --only=admin
+run ctparityteam   node tests/ctparity.js --only=team
 run acctparity  node tests/acctparity.js
 run webshell     node tests/webshell.js
 run galleryaudit node tests/galleryaudit.js
@@ -132,6 +134,7 @@ run webmeet      node tests/webmeet.js
 run websecurity  node tests/websecurity.js
 run websuppliers node tests/websuppliers.js
 run webdocs      node tests/webdocs.js
+run webcontracts node tests/webcontracts.js
 run webauth      node tests/webauth.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js
