@@ -206,6 +206,23 @@ describe('the list of documents', () => {
     act(() => result.current.reload());
     await waitFor(() => expect(result.current.items).toHaveLength(2));
   });
+  it('is loading again while it is asked for again, and keeps what it has until the answer comes', async () => {
+    const gate = deferred<void>();
+    let n = 0;
+    const s = setup({
+      'GET /api/dashboard/rfqs': () =>
+        n++ ? gate.promise.then(() => [rfqRow(1), rfqRow(2)]) : [rfqRow(1)],
+    });
+    const { result } = renderHook(() => useDocList(RFQ_SPEC), { wrapper: s.wrapper });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.loading).toBe(true));
+    expect(result.current.items).toHaveLength(1);
+    gate.resolve();
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+    expect(result.current.loading).toBe(false);
+  });
   it("is each person's own: what one portal's actor was shown is not shown to another", async () => {
     const admin = setup({ 'GET /api/dashboard/rfqs': () => [rfqRow(1)] });
     const a = renderHook(() => useDocList(RFQ_SPEC), { wrapper: admin.wrapper });
@@ -464,13 +481,22 @@ describe('the leads a document can be attached to', () => {
     );
     const { result } = renderHook(() => useLeads(), { wrapper: s.wrapper });
     await waitFor(() => expect(s.asked).toHaveLength(1));
-    await waitFor(() => expect(result.current.leads).toEqual([]));
+    await waitFor(() => expect(s.client.isFetching()).toBe(0)); // (it has been answered, not merely asked)
+    expect(result.current.leads).toEqual([]);
   });
   it('are none when the answer is not a list of people', async () => {
     const s = setup({ 'GET /api/dashboard/customers': () => [{ name: 'no id' }] });
     const { result } = renderHook(() => useLeads(), { wrapper: s.wrapper });
     await waitFor(() => expect(s.asked).toHaveLength(1));
-    await waitFor(() => expect(result.current.leads).toEqual([]));
+    await waitFor(() => expect(s.client.isFetching()).toBe(0));
+    expect(result.current.leads).toEqual([]);
+  });
+  it('are none when the answer is not a list at all', async () => {
+    const s = setup({ 'GET /api/dashboard/customers': () => ({ error: 'no' }) });
+    const { result } = renderHook(() => useLeads(), { wrapper: s.wrapper });
+    await waitFor(() => expect(s.asked).toHaveLength(1));
+    await waitFor(() => expect(s.client.isFetching()).toBe(0));
+    expect(result.current.leads).toEqual([]);
   });
 });
 

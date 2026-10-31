@@ -103,26 +103,20 @@ export function RfqForm({
   }
   const rec = 'saved' in start.data ? start.data.saved : start.data.fresh;
   return (
-    <Body
-      id={id}
-      saved={'saved' in start.data}
-      rec={rec}
-      items={items}
-      docColumns={docColumns}
-      onClose={onClose}
-    />
+    <Body id={id} lead={lead} rec={rec} items={items} docColumns={docColumns} onClose={onClose} />
   );
 }
 
 function Body({
   id,
+  lead,
   rec,
   items,
   docColumns,
   onClose,
 }: {
   id: number | null;
-  saved: boolean;
+  lead: number | null;
   rec: Rfq | RfqDefaults;
   items: Columns;
   docColumns: Columns;
@@ -138,7 +132,7 @@ function Body({
     rfq_date: text(r, 'rfq_date'),
     issuer: text(r, 'issuer'),
     status: text(r, 'status'),
-    customer_id: text(r, 'customer_id'),
+    customer_id: text(r, 'customer_id') || (lead ? String(lead) : ''),
     supplier_id: text(r, 'supplier_id'),
     supplier_name: text(r, 'supplier_name'),
     supplier_contact: text(r, 'supplier_contact'),

@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Column } from '../../columns';
@@ -121,6 +121,8 @@ interface World {
   offers: unknown[];
   writes: { method: string; path: string; body: Body | null }[];
   saveError: string | null;
+  /** a save is answered when this is settled (at once where there is none) */
+  saveGate: Promise<void> | null;
   deleteError: string | null;
   pdf: 'ok' | 'failing' | 'odd';
   /** the list is answered when this is settled (at once where there is none) */
@@ -144,6 +146,8 @@ function boot(
   init: Partial<World> = {},
   entries = ['/purchaseorders'],
   extra: Record<string, Answer> = {},
+  /** the address is the window's own (a test that is about the address), not an in-memory one */
+  browser = false,
 ) {
   const w: World = {
     orders: [
@@ -231,6 +235,7 @@ function boot(
     ],
     writes: [],
     saveError: null,
+    saveGate: null,
     deleteError: null,
     pdf: 'ok',
     listGate: null,
@@ -258,8 +263,9 @@ function boot(
     [`${base}/purchase-orders`]: init => {
       if (init.method === 'POST') {
         record(`${base}/purchase-orders`, init);
-        if (w.saveError) return json(400, { error: w.saveError });
-        return json(200, full(9, asBody(init) ?? {}));
+        const reply = () =>
+          w.saveError ? json(400, { error: w.saveError }) : json(200, full(9, asBody(init) ?? {}));
+        return w.saveGate ? w.saveGate.then(reply) : reply();
       }
       const answer = () => {
         if (w.orders === 'forbidden') return json(403, { error: 'Not permitted' });
@@ -302,7 +308,11 @@ function boot(
       return w.one[id] ? json(200, w.one[id]) : json(404, { error: 'Purchase order not found' });
     };
   }
-  const s = open(portal, portal === 'admin' ? adminMe() : teamMe(perms), { entries, more });
+  const s = open(portal, portal === 'admin' ? adminMe() : teamMe(perms), {
+    entries,
+    more,
+    browser,
+  });
   return { ...s, w, base };
 }
 
@@ -424,6 +434,24 @@ describe('the purchase-order screen', () => {
     gate.resolve();
     await screen.findByText('MT26P01Y26');
     expect(screen.queryByText(/Loading purchase orders…/)).toBeNull();
+    s.unmount();
+  });
+
+  it("keeps the loader until the document's columns are known as well (a list is never drawn with its status unarranged)", async () => {
+    const gate = deferred<void>();
+    const s = boot('admin', ALL, {}, ['/purchaseorders'], {
+      '/api/dashboard/columns/po_doc': () =>
+        gate.promise.then(() => json(200, { columns: DOC_COLUMNS, entity: 'po_doc' })),
+    });
+    expect(await screen.findByText(/Loading purchase orders…/)).toBeTruthy();
+    await waitFor(() =>
+      expect(s.asked.map(a => a.path)).toContain('/api/dashboard/purchase-orders'),
+    );
+    await new Promise(r => setTimeout(r, 60)); // (the list has had its time to come)
+    expect(screen.queryByText('MT26P01Y26')).toBeNull();
+    expect(screen.getByText(/Loading purchase orders…/)).toBeTruthy();
+    gate.resolve();
+    await screen.findByText('MT26P01Y26');
     s.unmount();
   });
 
@@ -671,6 +699,44 @@ describe('the purchase-order screen', () => {
       );
       expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders/pdf')).toBeUndefined();
     });
+    it("is downloaded under the order's title when the server gives it no name", async () => {
+      stubBlobs();
+      const click = vi
+        .spyOn(HTMLAnchorElement.prototype, 'click')
+        .mockImplementation(() => undefined);
+      boot('admin', ALL, {}, ['/purchaseorders'], {
+        '/api/dashboard/purchase-orders/pdf': () => json(200, { pdf: btoa('%PDF-1.4') }),
+      });
+      await loaded();
+      await userEvent.click(within(rows()[0]!).getByRole('button', { name: 'PDF' }));
+      await waitFor(() => expect(document.querySelector('[data-part=docFrame]')).not.toBeNull());
+      await userEvent.click(within(card()!).getByRole('button', { name: /Download/ }));
+      expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe(
+        'Purchase_order_MT26P01Y26.pdf',
+      );
+    });
+    it('says so when the order that came back is not an order, and asks the PDF of nothing', async () => {
+      stubBlobs();
+      const s = boot('admin', ALL, { one: { 1: { id: 'one', po_number: 7 } } });
+      await loaded();
+      await userEvent.click(within(rows()[0]!).getByRole('button', { name: 'PDF' }));
+      expect(
+        await screen.findByText(
+          /Could not render this document: The purchase order came back in a form this app does not know\./,
+        ),
+      ).toBeTruthy();
+      expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders/pdf')).toBeUndefined();
+    });
+    it('gives the PDF back when the screen goes away with it open', async () => {
+      const blobs = stubBlobs();
+      const s = boot('admin');
+      await loaded();
+      await userEvent.click(within(rows()[0]!).getByRole('button', { name: 'PDF' }));
+      await waitFor(() => expect(document.querySelector('[data-part=docFrame]')).not.toBeNull());
+      expect(blobs.revoke).not.toHaveBeenCalled();
+      s.unmount();
+      expect(blobs.revoke).toHaveBeenCalledWith('blob:pdf-1');
+    });
     it('gives back the PDF it had when another is opened', async () => {
       const blobs = stubBlobs();
       boot('admin');
@@ -716,13 +782,15 @@ describe('the purchase-order screen', () => {
       expect(s.asked.map(a => a.path)).toContain('/api/dashboard/purchase-orders/new/defaults');
     });
     it('is made for a lead when it is opened from one (?lead=), and the address is cleaned', async () => {
-      const s = boot('admin', ALL, {}, ['/purchaseorders?lead=7']);
+      window.history.replaceState(null, '', '/dashboard/purchaseorders?lead=7');
+      const s = boot('admin', ALL, {}, ['/purchaseorders'], {}, true);
       await formReady();
       expect(lineInput(1, COL.client).value).toBe('From the lead');
       expect(s.asked.map(a => a.path)).toContain(
         '/api/dashboard/purchase-orders/new/defaults?customer_id=7',
       );
       await waitFor(() => expect(window.location.search).toBe(''));
+      expect(window.location.pathname).toBe('/dashboard/purchaseorders');
       // …and it is attached to that lead
       await type('po-supplier', 'Yu Motors');
       await userEvent.type(lineInput(1, COL.brand), 'BYD');
@@ -735,18 +803,39 @@ describe('the purchase-order screen', () => {
         '7',
       );
     });
+    it('is attached to the lead it was made for, even if the starting form did not say so', async () => {
+      const s = boot('admin', ALL, {}, ['/purchaseorders?lead=7'], {
+        '/api/dashboard/purchase-orders/new/defaults?customer_id=7': () =>
+          json(200, { ...DEFAULTS, customer_id: null }),
+      });
+      await formReady();
+      await typeLine(1, COL.brand, 'BYD');
+      await userEvent.type(document.getElementById('po-cf-cf_ref')!, 'R');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders')).toBeTruthy(),
+      );
+      expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders')!.body!['customer_id']).toBe(
+        '7',
+      );
+    });
     it("is not opened by a lead's link for a person who may not make one", async () => {
-      boot('team', VIEWER, {}, ['/purchaseorders?lead=7']);
+      window.history.replaceState(null, '', '/employee/purchaseorders?lead=7');
+      boot('team', VIEWER, {}, ['/purchaseorders'], {}, true);
       await loaded();
       expect(dialog()).toBeNull();
       await waitFor(() => expect(window.location.search).toBe(''));
     });
-    it('ignores a lead that is not a number', async () => {
-      boot('admin', ALL, {}, ['/purchaseorders?lead=abc']);
-      await loaded();
-      expect(dialog()).toBeNull();
-      await waitFor(() => expect(window.location.search).toBe(''));
-    });
+    it.each(['abc', '0', '-3', '1.5', ''])(
+      'ignores a lead that is %j, and cleans the address',
+      async lead => {
+        window.history.replaceState(null, '', `/dashboard/purchaseorders?lead=${lead}`);
+        boot('admin', ALL, {}, ['/purchaseorders'], {}, true);
+        await loaded();
+        expect(dialog()).toBeNull();
+        await waitFor(() => expect(window.location.search).toBe(''));
+      },
+    );
     it('offers the status options the administrator has left, starting as the first', async () => {
       boot('admin');
       await openNew();
@@ -901,17 +990,120 @@ describe('the purchase-order screen', () => {
       expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders/pdf')).toBeUndefined();
       expect(card()).toBeNull();
     });
-    it('sends nothing twice when Save is pressed twice at once', async () => {
+    it('starts as the first status the administrator left, which is what the form shows and what is saved', async () => {
+      const first = { key: 'confirmed', label: 'Confirmed', color: '#10b981' };
+      const s = boot('admin', ALL, {
+        docColumns: DOC_COLUMNS.map(c =>
+          c.key === 'status'
+            ? { ...c, options: [first, ...(c.options ?? []).filter(o => o.key !== 'confirmed')] }
+            : c,
+        ),
+      });
+      await openNew();
+      expect(within(dialog()).getByRole('button', { name: /Confirmed/ })).toBeTruthy();
+      await typeLine(1, COL.brand, 'BYD');
+      await userEvent.type(document.getElementById('po-cf-cf_ref')!, 'R');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders')).toBeTruthy(),
+      );
+      expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders')!.body!['status']).toBe(
+        'confirmed',
+      );
+    });
+    it('a date left empty is sent as none, not as an empty word', async () => {
+      const s = boot('admin');
+      await openNew();
+      fireEvent.change(field('po-date'), { target: { value: '' } });
+      await typeLine(1, COL.brand, 'BYD');
+      await userEvent.type(document.getElementById('po-cf-cf_ref')!, 'R');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders')).toBeTruthy(),
+      );
+      expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders')!.body!['po_date']).toBeNull();
+    });
+    it('a currency cleared is sent as USD', async () => {
+      const s = boot('admin');
+      await openNew();
+      await type('po-currency', '');
+      await typeLine(1, COL.brand, 'BYD');
+      await userEvent.type(document.getElementById('po-cf-cf_ref')!, 'R');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders')).toBeTruthy(),
+      );
+      expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders')!.body!['currency']).toBe(
+        'USD',
+      );
+    });
+    it('Save alone does not show the PDF', async () => {
+      stubBlobs();
       const s = boot('admin');
       await openNew();
       await typeLine(1, COL.brand, 'BYD');
       await userEvent.type(document.getElementById('po-cf-cf_ref')!, 'R');
-      const save = within(dialog()).getByRole('button', { name: 'Save' });
-      await userEvent.dblClick(save);
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
       await waitFor(() => expect(dialog()).toBeNull());
-      expect(
-        s.w.writes.filter(x => x.method === 'POST' && x.path === '/api/dashboard/purchase-orders'),
-      ).toHaveLength(1);
+      expect(card()).toBeNull();
+      expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders/pdf')).toBeUndefined();
+    });
+    it('can be saved again once the server has had its say', async () => {
+      const s = boot('admin', ALL, { saveError: 'PO number already exists' });
+      await openNew();
+      await typeLine(1, COL.brand, 'BYD');
+      await userEvent.type(document.getElementById('po-cf-cf_ref')!, 'R');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await screen.findByRole('alert');
+      s.w.saveError = null;
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(dialog()).toBeNull());
+      const posts = s.w.writes.filter(
+        x => x.method === 'POST' && x.path === '/api/dashboard/purchase-orders',
+      );
+      expect(posts).toHaveLength(2);
+    });
+    it('saves what was typed without the spaces around it', async () => {
+      const s = boot('admin');
+      await openNew();
+      await type('po-number', '  MT-SPACED  ');
+      await type('po-issuer', '  Admin  ');
+      await type('po-supplier', '  Yu Motors  ');
+      await type('po-currency', '  EUR  ');
+      await type('po-incoterm', '  CIF  ');
+      await type('po-notes', '  careful  ');
+      await typeLine(1, COL.brand, 'BYD');
+      await userEvent.type(document.getElementById('po-cf-cf_ref')!, 'R');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders')).toBeTruthy(),
+      );
+      expect(lastWrite(s.w, 'POST', '/api/dashboard/purchase-orders')!.body).toMatchObject({
+        po_number: 'MT-SPACED',
+        issuer: 'Admin',
+        supplier: 'Yu Motors',
+        currency: 'EUR',
+        incoterm: 'CIF',
+        notes: 'careful',
+        title: 'Yu Motors — 1 vehicle(s)',
+      });
+    });
+    it('sends nothing twice when Save is pressed again while the first is still on its way', async () => {
+      const gate = deferred<void>();
+      const s = boot('admin', ALL, { saveGate: gate.promise });
+      await openNew();
+      await typeLine(1, COL.brand, 'BYD');
+      await userEvent.type(document.getElementById('po-cf-cf_ref')!, 'R');
+      const save = within(dialog()).getByRole('button', { name: 'Save' });
+      await userEvent.click(save);
+      await userEvent.click(save);
+      await userEvent.click(save);
+      gate.resolve();
+      await waitFor(() => expect(dialog()).toBeNull());
+      const posts = s.w.writes.filter(
+        x => x.method === 'POST' && x.path === '/api/dashboard/purchase-orders',
+      );
+      expect(posts).toHaveLength(1);
     });
     it('Cancel, the × and Escape close it without sending anything', async () => {
       const s = boot('admin');
@@ -963,6 +1155,13 @@ describe('the purchase-order screen', () => {
       expect(total()).toBe('3 line(s) · Total EUR 30,500');
       await userEvent.click(within(dialog()).getByRole('button', { name: '+ Add vehicle line' }));
       expect(total()).toBe('4 line(s) · Total EUR 30,500');
+    });
+    it('totals in USD while the currency is left empty, which is how it will be saved', async () => {
+      boot('admin');
+      await openNew();
+      await typeLine(1, COL.price, '500');
+      await type('po-currency', '');
+      expect(total()).toBe('3 line(s) · Total USD 500');
     });
     it('starts each line as the first status it has been given, and keeps the one that is chosen', async () => {
       const s = boot('admin', ALL, {
@@ -1118,6 +1317,20 @@ describe('the purchase-order screen', () => {
         'delivered',
       ]);
     });
+    it('a record with no currency is shown, and totalled, in USD', async () => {
+      boot('admin', ALL, {
+        one: {
+          3: full(3, {
+            currency: '',
+            items: [{ brand: 'X', pi_price: 100 }],
+            custom_fields: { cf_ref: 'r' },
+          }),
+        },
+      });
+      await openOne(3);
+      expect(field('po-currency').value).toBe('USD');
+      expect(total()).toBe('1 line(s) · Total USD 100');
+    });
     it('keeps a status whose option has since been deleted, rather than changing it quietly', async () => {
       const s = boot('admin', ALL, {
         one: {
@@ -1172,6 +1385,7 @@ describe('the purchase-order screen', () => {
       await pickOption('po-supplier-id', 'Gulf Auto');
       expect(field('po-supplier').value).toBe('Gulf Auto');
       expect(field('po-supplier-contact').value).toBe('');
+      expect(field('po-supplier-address').value).toBe('');
       expect(field('po-supplier-country').value).toBe('UAE');
     });
     it('"— None —" leaves the supplier block as it is', async () => {

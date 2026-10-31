@@ -13,7 +13,8 @@
 //
 // What the server says is the server's, and the same on both sides: this is one handler for the two portals, and the classic page
 // and the new app ask it the same questions.
-// Run with --print to see every difference rather than the first few; --only=admin (or team) for a half; --states=a,b for a few.
+// Run with --print to see every difference rather than the first few; --only=admin (or team; or admin/original, team/loud/dark …) for
+// a half or less; --states=a,b for a few.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');

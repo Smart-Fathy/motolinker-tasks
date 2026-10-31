@@ -206,6 +206,20 @@ describe('the files a document becomes', () => {
     expect(revoke).toHaveBeenCalledWith('blob:book');
     vi.useRealTimers();
   });
+  it('a workbook is in the page while it is handed over (some browsers save only a link that is there)', () => {
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, { createObjectURL: () => 'blob:b', revokeObjectURL: vi.fn() }),
+    );
+    let attached = false;
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      attached = document.body.contains(this);
+    });
+    downloadXlsx(btoa('PK'), 'x');
+    expect(attached).toBe(true);
+  });
   it('a workbook with no name is called after the company', () => {
     vi.stubGlobal(
       'URL',

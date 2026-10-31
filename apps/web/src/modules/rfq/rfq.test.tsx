@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Column } from '../../columns';
@@ -117,6 +117,8 @@ interface World {
   offers: unknown[];
   writes: { method: string; path: string; body: Body | null }[];
   saveError: string | null;
+  /** a save is answered when this is settled (at once where there is none) */
+  saveGate: Promise<void> | null;
   deleteError: string | null;
   xlsx: 'ok' | 'failing' | 'odd';
   /** the list is answered when this is settled (at once where there is none) */
@@ -139,6 +141,8 @@ function boot(
   init: Partial<World> = {},
   entries = ['/rfq'],
   extra: Record<string, Answer> = {},
+  /** the address is the window's own (a test that is about the address), not an in-memory one */
+  browser = false,
 ) {
   const w: World = {
     rfqs: [
@@ -207,6 +211,7 @@ function boot(
     ],
     writes: [],
     saveError: null,
+    saveGate: null,
     deleteError: null,
     xlsx: 'ok',
     listGate: null,
@@ -233,8 +238,9 @@ function boot(
     [`${base}/rfqs`]: init => {
       if (init.method === 'POST') {
         record(`${base}/rfqs`, init);
-        if (w.saveError) return json(400, { error: w.saveError });
-        return json(200, full(9, asBody(init) ?? {}));
+        const reply = () =>
+          w.saveError ? json(400, { error: w.saveError }) : json(200, full(9, asBody(init) ?? {}));
+        return w.saveGate ? w.saveGate.then(reply) : reply();
       }
       const answer = () => {
         if (w.rfqs === 'forbidden') return json(403, { error: 'Not permitted' });
@@ -277,7 +283,11 @@ function boot(
       return json(200, { xlsx: btoa('PK'), name: `MT26W0${id}Y26` });
     };
   }
-  const s = open(portal, portal === 'admin' ? adminMe() : teamMe(perms), { entries, more });
+  const s = open(portal, portal === 'admin' ? adminMe() : teamMe(perms), {
+    entries,
+    more,
+    browser,
+  });
   return { ...s, w, base };
 }
 
@@ -358,6 +368,22 @@ describe('the RFQ screen', () => {
     gate.resolve();
     await screen.findByText('MT26W01Y26');
     expect(screen.queryByText(/Loading RFQs…/)).toBeNull();
+    s.unmount();
+  });
+
+  it("keeps the loader until the document's columns are known as well (a list is never drawn with its status unarranged)", async () => {
+    const gate = deferred<void>();
+    const s = boot('admin', ALL, {}, ['/rfq'], {
+      '/api/dashboard/columns/rfq_doc': () =>
+        gate.promise.then(() => json(200, { columns: DOC_COLUMNS, entity: 'rfq_doc' })),
+    });
+    expect(await screen.findByText(/Loading RFQs…/)).toBeTruthy();
+    await waitFor(() => expect(s.asked.map(a => a.path)).toContain('/api/dashboard/rfqs'));
+    await new Promise(r => setTimeout(r, 60)); // (the list has had its time to come)
+    expect(screen.queryByText('MT26W01Y26')).toBeNull();
+    expect(screen.getByText(/Loading RFQs…/)).toBeTruthy();
+    gate.resolve();
+    await screen.findByText('MT26W01Y26');
     s.unmount();
   });
 
@@ -561,16 +587,42 @@ describe('the RFQ screen', () => {
       expect(s.asked.map(a => a.path)).toContain('/api/dashboard/rfqs/new/defaults');
     });
     it('is made for a lead when it is opened from one (?lead=), and the address is cleaned', async () => {
-      const s = boot('admin', ALL, {}, ['/rfq?lead=7']);
+      window.history.replaceState(null, '', '/dashboard/rfq?lead=7');
+      const s = boot('admin', ALL, {}, ['/rfq'], {}, true);
       await formReady();
       expect(lineInput(1, 2).value).toBe('From the lead');
       expect(s.asked.map(a => a.path)).toContain('/api/dashboard/rfqs/new/defaults?customer_id=7');
       await waitFor(() => expect(window.location.search).toBe(''));
+      expect(window.location.pathname).toBe('/dashboard/rfq');
+    });
+    it.each(['abc', '0', '-3', '1.5', ''])(
+      'ignores a lead that is %j, and cleans the address',
+      async lead => {
+        window.history.replaceState(null, '', `/dashboard/rfq?lead=${lead}`);
+        boot('admin', ALL, {}, ['/rfq'], {}, true);
+        await loaded();
+        expect(dialog()).toBeNull();
+        await waitFor(() => expect(window.location.search).toBe(''));
+      },
+    );
+    it('is attached to the lead it was made for, even if the starting form did not say so', async () => {
+      const s = boot('admin', ALL, {}, ['/rfq?lead=7'], {
+        '/api/dashboard/rfqs/new/defaults?customer_id=7': () =>
+          json(200, { ...DEFAULTS, customer_id: null }),
+      });
+      await formReady();
+      await userEvent.type(lineInput(1, 2), 'BYD');
+      await userEvent.type(document.getElementById('rfq-cf-cf_ref')!, 'R');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(lastWrite(s.w, 'POST', '/api/dashboard/rfqs')).toBeTruthy());
+      expect(lastWrite(s.w, 'POST', '/api/dashboard/rfqs')!.body!['customer_id']).toBe('7');
     });
     it("is not opened by a lead's link for a person who may not make one", async () => {
-      boot('team', VIEWER, {}, ['/rfq?lead=7']);
+      window.history.replaceState(null, '', '/employee/rfq?lead=7');
+      boot('team', VIEWER, {}, ['/rfq'], {}, true);
       await loaded();
       expect(dialog()).toBeNull();
+      await waitFor(() => expect(window.location.search).toBe(''));
     });
     it('offers the status options the administrator has left, starting as the first', async () => {
       boot('admin');
@@ -672,6 +724,90 @@ describe('the RFQ screen', () => {
       expect(dialog()).not.toBeNull();
       expect(lineInput(1, 2).value).toBe('BYD');
       s.unmount();
+    });
+    it('starts as the first status the administrator left, which is what the form shows and what is saved', async () => {
+      const first = { key: 'sent', label: 'Sent Out', color: '#e69650' };
+      const s = boot('admin', ALL, {
+        docColumns: DOC_COLUMNS.map(c =>
+          c.key === 'status'
+            ? { ...c, options: [first, ...(c.options ?? []).filter(o => o.key !== 'sent')] }
+            : c,
+        ),
+      });
+      await loaded();
+      await userEvent.click(screen.getByRole('button', { name: /New RFQ/ }));
+      await formReady();
+      expect(within(dialog()).getByRole('button', { name: /Sent Out/ })).toBeTruthy();
+      await userEvent.type(lineInput(1, 2), 'BYD');
+      await userEvent.type(document.getElementById('rfq-cf-cf_ref')!, 'R');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(lastWrite(s.w, 'POST', '/api/dashboard/rfqs')).toBeTruthy());
+      expect(lastWrite(s.w, 'POST', '/api/dashboard/rfqs')!.body!['status']).toBe('sent');
+    });
+    it('a date left empty is sent as none, not as an empty word', async () => {
+      const s = boot('admin');
+      await loaded();
+      await userEvent.click(screen.getByRole('button', { name: /New RFQ/ }));
+      await formReady();
+      fireEvent.change(field('rfq-date'), { target: { value: '' } });
+      await userEvent.type(lineInput(1, 2), 'BYD');
+      await userEvent.type(document.getElementById('rfq-cf-cf_ref')!, 'R');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(lastWrite(s.w, 'POST', '/api/dashboard/rfqs')).toBeTruthy());
+      expect(lastWrite(s.w, 'POST', '/api/dashboard/rfqs')!.body!['rfq_date']).toBeNull();
+    });
+    it('can be saved again once the server has had its say', async () => {
+      const s = boot('admin', ALL, { saveError: 'RFQ number already exists' });
+      await loaded();
+      await userEvent.click(screen.getByRole('button', { name: /New RFQ/ }));
+      await formReady();
+      await userEvent.type(lineInput(1, 2), 'BYD');
+      await userEvent.type(document.getElementById('rfq-cf-cf_ref')!, 'R');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await screen.findByRole('alert');
+      s.w.saveError = null;
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(dialog()).toBeNull());
+      const posts = s.w.writes.filter(x => x.method === 'POST' && x.path === '/api/dashboard/rfqs');
+      expect(posts).toHaveLength(2);
+    });
+    it('sends nothing twice when Save is pressed again while the first is still on its way', async () => {
+      const gate = deferred<void>();
+      const s = boot('admin', ALL, { saveGate: gate.promise });
+      await loaded();
+      await userEvent.click(screen.getByRole('button', { name: /New RFQ/ }));
+      await formReady();
+      await userEvent.type(lineInput(1, 2), 'BYD');
+      await userEvent.type(document.getElementById('rfq-cf-cf_ref')!, 'R');
+      const save = within(dialog()).getByRole('button', { name: 'Save' });
+      await userEvent.click(save);
+      await userEvent.click(save);
+      await userEvent.click(save);
+      gate.resolve();
+      await waitFor(() => expect(dialog()).toBeNull());
+      const posts = s.w.writes.filter(x => x.method === 'POST' && x.path === '/api/dashboard/rfqs');
+      expect(posts).toHaveLength(1);
+    });
+    it('saves what was typed without the spaces around it', async () => {
+      const s = boot('admin');
+      await loaded();
+      await userEvent.click(screen.getByRole('button', { name: /New RFQ/ }));
+      await formReady();
+      await type('rfq-no', '  MT-SPACED  ');
+      await type('rfq-issuer', '  Admin  ');
+      await type('rfq-supplier-name', '  Yu Motors  ');
+      await type('rfq-payment', '  30/70  ');
+      await userEvent.type(lineInput(1, 2), 'BYD');
+      await userEvent.type(document.getElementById('rfq-cf-cf_ref')!, 'R');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(lastWrite(s.w, 'POST', '/api/dashboard/rfqs')).toBeTruthy());
+      expect(lastWrite(s.w, 'POST', '/api/dashboard/rfqs')!.body).toMatchObject({
+        rfq_no: 'MT-SPACED',
+        issuer: 'Admin',
+        supplier_name: 'Yu Motors',
+        payment_terms: '30/70',
+        title: 'Yu Motors — 1 vehicle(s)',
+      });
     });
     it('Save & export Excel saves, closes the form and hands the browser the workbook of what was saved', async () => {
       const click = vi
@@ -840,6 +976,7 @@ describe('the RFQ screen', () => {
       await pickOption('rfq-supplier-id', 'Gulf Auto');
       expect(field('rfq-supplier-name').value).toBe('Gulf Auto');
       expect(field('rfq-supplier-contact').value).toBe('');
+      expect(field('rfq-supplier-address').value).toBe('');
       expect(field('rfq-supplier-country').value).toBe('UAE');
     });
     it('"— None —" leaves the supplier block as it is', async () => {
