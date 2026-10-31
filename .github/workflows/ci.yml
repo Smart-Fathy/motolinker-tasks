@@ -60,13 +60,16 @@ jobs:
           CI: 'true'
           TZ: UTC
       # The runner prints each suite's last line; the line that says what went wrong is higher up,
-      # in the file it saved (the runner names it under each red suite).
+      # in the file it saved (the runner names it under each red suite). The tail cuts the top off a
+      # suite longer than it (hdtest writes ~134 lines), so the failed checks come first, with their
+      # line numbers: a check that fails prints a line containing " FAIL ". `|| true`, because a file
+      # with none (a suite that crashed; the seconds file) must not stop the loop under `bash -e`.
       - name: What the red suites printed
         if: failure()
         run: |
           for f in /tmp/ml-suite-*.txt; do
             [ -e "$f" ] || continue
-            echo "::group::$f"; tail -n 120 "$f"; echo "::endgroup::"
+            echo "::group::$f"; grep -n ' FAIL ' "$f" || true; tail -n 120 "$f"; echo "::endgroup::"
           done
       # Seconds per suite on this shard, longest first: what tests/suite-weights.json is refreshed from.
       - name: Seconds per suite
