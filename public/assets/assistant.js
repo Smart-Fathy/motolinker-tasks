@@ -21,8 +21,10 @@
 // running portal through PROCFG, which each bundle defines after this loads.
 (function () {
   // In the new app's frame (assets/embed.js) the assistant is the app's to give, not this page's: no button, no panel, no
-  // insight cards — and nothing exported, so the portals' `typeof aiOnNavigate === 'function'` checks find none.
-  if (document.documentElement.hasAttribute('data-embed')) return;
+  // insight cards — and nothing exported, so the portals' `typeof aiOnNavigate === 'function'` checks find none. What this file
+  // still does there is READ: which record is open on the page (told to the app as it opens and closes), and the tab, search,
+  // filters and ticked rows (read when the app asks, as a question goes out). The end of this file hooks that to the bridge.
+  const EMBED = document.documentElement.hasAttribute('data-embed');
   function aiPath(url) {
     const u = String(url);
     if (PROCFG.base === '/api/dashboard') return u;
@@ -210,6 +212,20 @@
   // and forgotten when the element it lives in closes. Search, tab and
   // filters are read from the page at the moment a message is sent.
   const _screen = { record: null };
+  // In a frame the app is told which record is open — and told again when its title arrives, which is after a fetch.
+  let embedSent = 'null', embedTimer = 0, embedTries = 0;
+  // (a page that has not got the name yet shows a dash where it will be: that is no name)
+  const blankName = t => !t || /^[\s—–-]+$/.test(t);
+  function embedRecord(fresh) {
+    if (!EMBED || !window.mlEmbed || typeof window.mlEmbed.record !== 'function') return;
+    const found = recordNow();
+    const rec = found && blankName(found.title) ? { ...found, title: '' } : found;
+    const key = JSON.stringify(rec);
+    if (key !== embedSent) { embedSent = key; window.mlEmbed.record(rec); }
+    clearTimeout(embedTimer);
+    if (fresh) embedTries = 0;
+    if (rec && !rec.title && embedTries++ < 40) embedTimer = setTimeout(() => embedRecord(false), 250);
+  }
   const KIND_LABEL = { lead: 'Lead', deal: 'Deal', task: 'Task', supplier: 'Supplier', purchase_order: 'PO', rfq: 'RFQ', contract: 'Contract', quotation: 'Quotation', container: 'Container', vehicle: 'VIN', stock_model: 'Stock', request: 'Request', issue: 'Issue', meeting: 'Meeting', submission: 'Submission', expense: 'Expense', employee: 'Employee', sale: 'Sale', automation: 'Rule', report: 'Report' };
   function aiScreenSet(record) {
     if (record && record.kind && record.id != null) {
@@ -218,9 +234,10 @@
       if (!same) _ai.ignoreRecord = null;
     } else _screen.record = null;
     aiScreenChip();
+    embedRecord(true);
   }
   function aiScreenClear(src) {
-    if (_screen.record && (!src || _screen.record.src === src)) { _screen.record = null; aiScreenChip(); }
+    if (_screen.record && (!src || _screen.record.src === src)) { _screen.record = null; aiScreenChip(); embedRecord(true); }
   }
   const txt = id => { const el = document.getElementById(id); return el ? (('value' in el && el.tagName !== 'DIV') ? el.value : el.textContent).replace(/\s+/g, ' ').trim() : ''; };
   // Titles land in the DOM after a fetch; read them when the message goes out.
@@ -639,6 +656,28 @@
     } catch (e) {
       typing.remove(); aiAppend('Network error: ' + e.message, 'bot');
     } finally { _ai.busy = false; if (send) send.disabled = false; }
+  }
+
+  // In a frame: no panel, no card, no keys, nothing exported — only the reading, handed to the bridge. `section` is the app's
+  // word for which section the page belongs to (this file, in a frame, has not asked the server).
+  if (EMBED) {
+    const embedRead = section => {
+      if (section) _ai.section = String(section);
+      const out = aiScreenSnapshot();
+      delete out.page; delete out.section;
+      return out;
+    };
+    if (window.mlEmbed && typeof window.mlEmbed.assistant === 'function') {
+      window.mlEmbed.assistant(embedRead, page => {
+        const now = String(page || 'home');
+        const changed = _ai.page !== now;
+        _ai.page = now;
+        aiScreenHooks();
+        if (changed) aiScreenClear();
+      });
+    }
+    document.addEventListener('DOMContentLoaded', aiScreenHooks);
+    return;
   }
 
   // Ctrl/⌘+K opens and closes the panel from anywhere; Escape closes it when

@@ -35,12 +35,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const PORTALS = [
     {
       name: 'admin', token: 'embed-admin', key: 'ml_admin_token', classic: '/legacy/dashboard', api: '/api/dashboard', check: '/api/auth/check', call: 'apiFetch',
-      start: 'customers', other: 'deals', sessions: ctx.sessions, js: 'dashboard.js', stamp: '156', chrome: ['.sidebar', '.header'],
+      start: 'customers', other: 'deals', sessions: ctx.sessions, js: 'dashboard.js', stamp: '157', chrome: ['.sidebar', '.header'],
       session: { username: 'admin', pwv: ctx.ADMIN_PW_VERSION, createdAt: Date.now() },
     },
     {
       name: 'team', token: 'embed-sara', key: 'ml_emp_token', classic: '/legacy/employee', api: '/api/employee', check: '/api/employee/check', call: 'ef',
-      start: 'leads', other: 'deals', sessions: ctx.employeeSessions, js: 'employee.js', stamp: '136', chrome: ['.sidebar', '.topbar'],
+      start: 'leads', other: 'deals', sessions: ctx.employeeSessions, js: 'employee.js', stamp: '137', chrome: ['.sidebar', '.topbar'],
       session: { id: SARA.id, name: SARA.name, username: 'sara', job_title: SARA.title, permissions: normEmpPerms(SARA.raw), createdAt: Date.now() },
     },
   ];
@@ -234,6 +234,131 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const after = await f.evaluate(() => ({ token: Object.keys(localStorage).filter(k => /token/.test(k)).map(k => localStorage.getItem(k)), auth: ['#auth-screen', '#auth-wrap'].map(sel => { const e = document.querySelector(sel); return e ? getComputedStyle(e).display : 'absent'; }) }));
     check(`${tag} …and the frame neither signs the person out nor shows a sign-in form: that is the app's to decide`, after.token.includes(p.token) && after.auth.every(d => d === 'none' || d === 'absent'), JSON.stringify(after));
     p.sessions.set(p.token, p.session);
+    await page.shut();
+
+    // ═══ 2a. The assistant, which the app gives: the page only says what is open and chosen on it ════════════
+    // In a frame the page builds no button, no panel and no card (the app draws them) and exports none of it; what it keeps is the
+    // reading: which record is open (told to the app as it opens and closes), and — when the app asks, as a question goes out —
+    // the tab, the search, the filters and the rows that are ticked. And when the person confirms an action, it reads again.
+    page = await open(p, { src: `${p.classic}?embed=1#${p.start}` });
+    await heard(page, 'ready');
+    const g = page.inside();
+    await sleep(2000);
+    const ui = await g.evaluate(() => ({
+      built: ['ai-btn', 'ai-panel', 'ai-style', 'ai-overlay'].filter(id => document.getElementById(id)),
+      cards: document.querySelectorAll('.ai-card, [id^="ai-card-"]').length,
+      exported: ['aiOnNavigate', 'aiOpen', 'aiToggle', 'aiSend', 'aiScreenSet', 'aiScreenSnapshot', 'aiMountCard'].filter(n => typeof window[n] !== 'undefined'),
+      keys: (() => { let opened = false; const on = () => { opened = true; }; window.aiToggle = on; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })); const was = opened; delete window.aiToggle; return was; })(),
+    }));
+    check(`${tag} the assistant builds nothing in a frame — no button, panel, style or card — exports nothing, and has no key of its own`,
+      ui.built.length === 0 && ui.cards === 0 && ui.exported.length === 0 && ui.keys === false, JSON.stringify(ui));
+    const recordsSince = async since => (await page.msgs()).slice(since).filter(m => m.type === 'record');
+
+    // a record opens on the page: the app is told which, and what it is called
+    let since = (await page.msgs()).length;
+    await g.evaluate(() => { openSupplierDetail(3); });
+    const opened3 = await until(page, o => window.__msgs.slice(o).some(m => m.data.type === 'record' && m.data.record && m.data.record.id === '3'), since);
+    const told = (await recordsSince(since))[0];
+    check(`${tag} a record opened on the page is told to the app: its kind, its number and what the page calls it`,
+      opened3 && told.record.kind === 'supplier' && told.record.id === '3' && told.record.title === 'Supplier' && told.record.sub === '', JSON.stringify(told));
+    check(`${tag} …from the frame, from this origin, in the protocol's words`, told && told.ml === 'embed' && told.v === 1 && told.fromFrame === true && told.origin === base);
+    await sleep(900);
+    check(`${tag} …once (what it said it does not say again while nothing changed)`, (await recordsSince(since)).length === 1, JSON.stringify(await recordsSince(since)));
+    await g.evaluate(() => { openSupplierDetail(3); });
+    await sleep(500);
+    check(`${tag} …nor when the page opens the very same record again`, (await recordsSince(since)).length === 1, JSON.stringify(await recordsSince(since)));
+
+    // a record that closes: none is open
+    since = (await page.msgs()).length;
+    await g.evaluate(() => { hideModal(); });
+    check(`${tag} the record is told to be none when what it was open in closes`,
+      await until(page, o => window.__msgs.slice(o).some(m => m.data.type === 'record' && m.data.record === null), since));
+
+    // its title arrives after a fetch: the app is told again when it does
+    since = (await page.msgs()).length;
+    await g.evaluate(() => {
+      document.getElementById('modal-title').textContent = '—';     // (the dash a page shows until it has the name; the form sets its own once it has what it needs: a fetch away)
+      document.getElementById('modal-overlay').style.display = 'flex';
+      openSupplierForm(5);
+    });
+    check(`${tag} a record whose name is not there yet is told again when it is`,
+      await until(page, o => window.__msgs.slice(o).some(m => m.data.type === 'record' && m.data.record && m.data.record.id === '5' && m.data.record.title !== ''), since, 8000)
+      && (await recordsSince(since))[0].record.title === '', JSON.stringify(await recordsSince(since)));
+    await g.evaluate(() => { hideModal(); });
+    await sleep(400);
+
+    // the app asks what is chosen on the page
+    await g.evaluate(() => {
+      const root = document.querySelector('.page.active');
+      root.insertAdjacentHTML('afterbegin', '<div id="x-fixture"><input type="search" id="x-search" value="  ahmed   hassan  "><select id="f-status"><option value="">All</option><option value="hot" selected>Hot leads</option></select><select id="f-owner"><option value="all" selected>All</option></select><input type="date" id="rep-from" value="2026-10-01"><table><tbody><tr data-id="3"><td><input type="checkbox" checked> Ahmed Hassan</td></tr><tr data-id="4"><td><input type="checkbox"> Not ticked</td></tr></tbody></table></div>');
+    });
+    await say(page, base, { ml: 'embed', v: 1, type: 'screen', id: 7, section: 'leads' });
+    check(`${tag} asked what is chosen on the page, it answers by the number it was asked with`, await until(page, () => window.__msgs.some(m => m.data.type === 'screen' && m.data.id === 7)));
+    const answer = (await page.msgs()).find(m => m.type === 'screen' && m.id === 7);
+    check(`${tag} …the search with words in it, the filters that are not at "everything", the dates and the rows that are ticked (as what the section calls them)`,
+      answer && answer.fromFrame && answer.origin === base && answer.screen && answer.screen.search === 'ahmed   hassan'
+      && JSON.stringify(answer.screen.filters) === JSON.stringify({ status: 'Hot leads', from: '2026-10-01' })
+      && JSON.stringify(answer.screen.selected) === JSON.stringify([{ kind: 'lead', id: '3', title: 'Ahmed Hassan' }]), JSON.stringify(answer));
+    check(`${tag} …and not the page and section, which the app knows`, answer && answer.screen && !('page' in answer.screen) && !('section' in answer.screen));
+    await say(page, base, { ml: 'embed', v: 1, type: 'screen', id: 8, section: 'tasks' });
+    await until(page, () => window.__msgs.some(m => m.data.type === 'screen' && m.data.id === 8));
+    const again = (await page.msgs()).find(m => m.type === 'screen' && m.id === 8);
+    check(`${tag} …the rows it names follow the section the app says the page belongs to`, again && again.screen.selected[0].kind === 'task', JSON.stringify(again));
+    await say(page, base, { ml: 'embed', v: 1, type: 'screen', id: 10, section: 7 });
+    await until(page, () => window.__msgs.some(m => m.data.type === 'screen' && m.data.id === 10));
+    const notAWord = (await page.msgs()).find(m => m.type === 'screen' && m.id === 10);
+    check(`${tag} …and a section that is not a word is not taken for one (the rows are named as they were)`, notAWord && notAWord.screen && notAWord.screen.selected[0].kind === 'task', JSON.stringify(notAWord));
+    await say(page, base, { ml: 'embed', v: 1, type: 'screen', id: 9 });
+    await until(page, () => window.__msgs.some(m => m.data.type === 'screen' && m.data.id === 9));
+    const noSection = (await page.msgs()).find(m => m.type === 'screen' && m.id === 9);
+    check(`${tag} …and a question that names no section is answered all the same`, noSection && noSection.screen && noSection.screen.search === 'ahmed   hassan');
+    await g.evaluate(() => document.getElementById('x-fixture').remove());
+
+    // the app has the page read again
+    await g.evaluate(start => { window.__loaded = 0; pageLoaders[start] = () => { window.__loaded += 1; }; }, p.start);
+    await say(page, base, { ml: 'embed', v: 1, type: 'refresh', what: 'page' });
+    check(`${tag} told that what the page shows has changed, the page on show reads it again — once`, await until(g, () => window.__loaded === 1));
+    await sleep(300);
+    check(`${tag} …and only that page's loader`, await g.evaluate(() => window.__loaded) === 1);
+    await g.evaluate(start => { delete pageLoaders[start]; }, p.start);
+    await say(page, base, { ml: 'embed', v: 1, type: 'refresh', what: 'page' });
+    await sleep(300);
+    check(`${tag} …and a page with no loader is not troubled by being asked`, await g.evaluate(() => document.querySelector('.page.active') !== null));
+
+    // the page changes under an open record: none is open on the new page
+    since = (await page.msgs()).length;
+    await g.evaluate(() => { openSupplierDetail(4); });
+    await until(page, o => window.__msgs.slice(o).some(m => m.data.type === 'record' && m.data.record && m.data.record.id === '4'), since);
+    since = (await page.msgs()).length;
+    await say(page, base, { ml: 'embed', v: 1, type: 'navigate', page: p.other });
+    check(`${tag} a record is told to be none when the page changes under it`,
+      await until(page, o => window.__msgs.slice(o).some(m => m.data.type === 'record' && m.data.record === null), since));
+    await g.evaluate(() => { hideModal(); });
+
+    // the assistant's key, pressed while the keyboard is in the page, is the app's to answer: the page says so, and the browser is kept from using it
+    since = (await page.msgs()).length;
+    const pressed = await g.evaluate(() => {
+      const press = init => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }); document.dispatchEvent(e); return e.defaultPrevented; };
+      return { ctrl: press({ key: 'k', ctrlKey: true }), meta: press({ key: 'K', metaKey: true }), alt: press({ key: 'k', ctrlKey: true, altKey: true }), plain: press({ key: 'k' }), other: press({ key: 'j', ctrlKey: true }) };
+    });
+    await sleep(500);
+    const asks = (await page.msgs()).slice(since).filter(m => m.type === 'ask');
+    check(`${tag} Ctrl+K and ⌘K pressed in the page are told to the app (and the browser does not take them); Alt+Ctrl+K, K alone and other keys are not told`,
+      asks.length === 2 && asks.every(m => m.fromFrame && m.origin === base && m.ml === 'embed' && m.v === 1) && pressed.ctrl && pressed.meta && !pressed.plain && !pressed.other, JSON.stringify({ pressed, asks: asks.length }));
+
+    // what hears of the pages that come on show is told of the one on show now, at once, if it comes late
+    const late = await g.evaluate(() => { let heard = 'never'; window.mlEmbed.assistant(() => ({}), shown => { heard = shown; }); return heard; });
+    check(`${tag} what asks to hear of the pages that come on show is told of the page that is on show already`, late === p.other, JSON.stringify(late));   // (the page it was sent to a moment ago)
+
+    // only the window that framed the page can ask it
+    since = (await page.msgs()).length;
+    await page.evaluate(() => {
+      const s = document.createElement('iframe');
+      s.srcdoc = '<script>parent.frames[0].postMessage({ ml: "embed", v: 1, type: "screen", id: 99, section: "leads" }, "*")<\/script>';
+      document.body.appendChild(s);
+    });
+    await sleep(700);
+    check(`${tag} a window that is not its parent (a sibling frame) gets no answer about the page`, (await page.msgs()).slice(since).filter(m => m.type === 'screen').length === 0);
     await page.shut();
 
     // ═══ 2b. Leaving for Google ═════════════════════════════════════════════════════════════════

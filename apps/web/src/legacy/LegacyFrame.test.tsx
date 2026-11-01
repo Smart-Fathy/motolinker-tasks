@@ -1,8 +1,9 @@
-import { act, cleanup, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { adminMe, teamMe } from '../test/helpers';
 import { open } from '../test/session';
+import { ANSWER, askOpen, assistantServer, looking, SECTIONS, section } from '../test/assistant';
 
 beforeEach(() => {
   localStorage.clear();
@@ -80,6 +81,10 @@ describe('a screen that has not moved, shown as its classic page', () => {
     await opened('Leads (classic page)');
     expect(iframe().getAttribute('data-state')).toBe('loading');
     expect(screen.getByRole('status').textContent).toMatch(/Opening Leads/);
+    // the ring that turns is for the eye; a screen reader is told in words
+    expect(screen.getByRole('status').querySelector('span')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
     speak(page('ready', 'customers'));
     await waitFor(() => expect(iframe().getAttribute('data-state')).toBe('ready'));
     expect(screen.queryByRole('status')).toBeNull();
@@ -464,5 +469,292 @@ describe('screens a frame cannot hold', () => {
     expect(
       screen.getByRole('link', { name: /Open Chat in the classic portal/ }).getAttribute('href'),
     ).toBe('/legacy/dashboard#chat');
+  });
+});
+
+describe('the assistant, around a framed page', () => {
+  // (the classic page builds none of it in a frame: the card stands above the frame, and the panel is the app's)
+  const WITH_LEADS = { ...SECTIONS, sections: [...SECTIONS.sections, section('leads', 'Leads')] };
+  const PROPOSAL = {
+    action: { type: 'notify', title: 'Call Mona', to: 'me' },
+    label: 'Notify',
+    description: 'Send yourself a note: Call Mona.',
+  };
+  const framed = (said: Record<string, unknown> = {}) => {
+    const s = assistantServer('/api/dashboard', { sections: WITH_LEADS, ...said });
+    open('admin', adminMe(), { entries: ['/leads'], more: s.routes });
+    return s;
+  };
+  const ready = async () => {
+    await opened('Leads (classic page)');
+    speak(page('ready', 'customers'));
+    await waitFor(() => expect(iframe().getAttribute('data-state')).toBe('ready'));
+  };
+  const recordMessage = (record: unknown) => ({ ml: 'embed', v: 1, type: 'record', record });
+  const LEAD = { kind: 'lead', id: '12', title: 'Mona Saleh', sub: 'New' };
+  const ask = async (words: string) => {
+    const panel = await askOpen();
+    await userEvent.type(within(panel).getByRole('textbox'), words + '{Enter}');
+    return panel;
+  };
+
+  it("puts the section's card above the frame, where the person sees it before the page", async () => {
+    framed();
+    await ready();
+    const card = await screen.findByText('AI insights · Leads');
+    const slot = document.querySelector('[data-part=frameCard]') as HTMLElement;
+    const box = document.querySelector('[data-part=legacyFrame]') as HTMLElement;
+    expect(slot.contains(card)).toBe(true);
+    expect(slot.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(box.contains(slot)).toBe(false);
+    expect(await screen.findByText('3 today')).toBeTruthy();
+  });
+
+  it('puts no card above the Accounting page, which has one of its own, and asks the server for none', async () => {
+    const s = assistantServer('/api/dashboard', {
+      sections: {
+        ...SECTIONS,
+        sections: [...SECTIONS.sections, section('accounting', 'Accounting')],
+      },
+    });
+    open('admin', adminMe(), { entries: ['/accounting'], more: s.routes });
+    await opened('Accounting (classic page)');
+    await new Promise(r => setTimeout(r, 150));
+    expect(screen.queryByText(/^AI insights/)).toBeNull();
+    expect(document.querySelector('[data-part=frameCard]')?.childElementCount).toBe(0);
+    expect(s.heard.insights).toHaveLength(0);
+  });
+
+  it('shows no card, and leaves nothing in the slot, to a person who may not ask the assistant', async () => {
+    const s = assistantServer('/api/employee', { sections: WITH_LEADS });
+    open('team', teamMe({ leads: true, assistant: false }), {
+      entries: ['/leads'],
+      more: s.routes,
+    });
+    await opened('Leads (classic page)');
+    expect(screen.queryByText(/^AI insights/)).toBeNull();
+    expect(document.querySelector('[data-part=frameCard]')?.childElementCount).toBe(0);
+    expect(s.heard.insights).toHaveLength(0);
+  });
+
+  it('has the panel look at the record the page says is open, until it says none is', async () => {
+    framed();
+    await ready();
+    await askOpen();
+    expect(looking()).toBe('');
+    speak(recordMessage(LEAD));
+    await waitFor(() => expect(looking()).toBe('Lead #12 · Mona Saleh'));
+    speak(recordMessage({ ...LEAD, title: 'Mona S. Saleh' })); // the title comes after a fetch: said again
+    await waitFor(() => expect(looking()).toBe('Lead #12 · Mona S. Saleh'));
+    speak(recordMessage(null));
+    await waitFor(() => expect(looking()).toBe(''));
+  });
+
+  it('stays let go of while the page goes on saying it is the same record, and is looked at again after another one', async () => {
+    framed();
+    await ready();
+    const panel = await askOpen();
+    speak(recordMessage(LEAD));
+    await waitFor(() => expect(looking()).toBe('Lead #12 · Mona Saleh'));
+    await userEvent.click(within(panel).getByTitle('Ignore this record'));
+    expect(looking()).toBe('');
+    speak(recordMessage({ ...LEAD, title: 'Mona S. Saleh' })); // (said again, with the whole name)
+    await new Promise(r => setTimeout(r, 150));
+    expect(looking()).toBe('');
+    speak(recordMessage({ kind: 'lead', id: '13', title: 'Omar Aziz', sub: '' }));
+    await waitFor(() => expect(looking()).toBe('Lead #13 · Omar Aziz'));
+    speak(recordMessage(LEAD)); // (and back to the first: a new thing to look at)
+    await waitFor(() => expect(looking()).toBe('Lead #12 · Mona Saleh'));
+  });
+
+  it('hears a record from its own frame only, and nothing that is not a record', async () => {
+    framed();
+    await ready();
+    await askOpen();
+    speak(recordMessage(LEAD), { source: window });
+    speak(recordMessage(LEAD), { source: null });
+    speak(recordMessage(LEAD), { origin: 'https://elsewhere.example' });
+    speak(recordMessage({ kind: 'Lead', id: '12' }));
+    speak(recordMessage({ kind: 'lead' }));
+    speak({ ml: 'embed', v: 2, type: 'record', record: LEAD });
+    await new Promise(r => setTimeout(r, 150));
+    expect(looking()).toBe('');
+  });
+
+  it('asks the page what is chosen on it as a question goes out, and sends what it says with the question', async () => {
+    const s = framed();
+    await ready();
+    const sent = listen();
+    const panel = await ask('who is hot?');
+    await waitFor(() => expect(sent.of('screen')).toHaveLength(1));
+    const asked = sent.of('screen')[0]!;
+    expect(asked.origin).toBe(window.location.origin);
+    expect(asked.message).toMatchObject({ ml: 'embed', v: 1, type: 'screen', section: 'leads' });
+    expect(s.heard.chat).toHaveLength(0); // (the question waits for the page, a moment)
+    const chosen = {
+      tab: 'Hot',
+      search: 'ahmed',
+      filters: { status: 'Hot leads' },
+      selected: [{ kind: 'lead', id: '3', title: 'Ahmed' }],
+    };
+    speak({
+      ml: 'embed',
+      v: 1,
+      type: 'screen',
+      id: (asked.message as { id: number }).id,
+      screen: chosen,
+    });
+    expect(await within(panel).findByText('Three came today.')).toBeTruthy();
+    expect(s.heard.chat[0]?.['screen']).toEqual({ page: 'customers', section: 'leads', ...chosen });
+  });
+
+  it('goes with the record the page said was open — and not with one the person said to ignore, whatever the page answers', async () => {
+    const s = framed();
+    await ready();
+    const sent = listen();
+    const panel = await askOpen();
+    speak(recordMessage(LEAD));
+    await waitFor(() => expect(looking()).toBe('Lead #12 · Mona Saleh'));
+    await userEvent.type(within(panel).getByRole('textbox'), 'first{Enter}');
+    await waitFor(() => expect(sent.of('screen')).toHaveLength(1));
+    speak({
+      ml: 'embed',
+      v: 1,
+      type: 'screen',
+      id: (sent.of('screen')[0]!.message as { id: number }).id,
+      screen: {},
+    });
+    await within(panel).findByText('Three came today.');
+    expect(s.heard.chat[0]?.['screen']).toMatchObject({
+      record: { kind: 'lead', id: '12', title: 'Mona Saleh', sub: 'New' },
+    });
+    await userEvent.click(within(panel).getByTitle('Ignore this record'));
+    await userEvent.type(within(panel).getByRole('textbox'), 'second{Enter}');
+    await waitFor(() => expect(sent.of('screen')).toHaveLength(2));
+    speak({
+      ml: 'embed',
+      v: 1,
+      type: 'screen',
+      id: (sent.of('screen')[1]!.message as { id: number }).id,
+      screen: { record: LEAD, tab: 'Hot' }, // (a page that names the record again is not heard on it)
+    });
+    await waitFor(() => expect(s.heard.chat).toHaveLength(2));
+    expect(s.heard.chat[1]?.['screen']).toEqual({
+      page: 'customers',
+      section: 'leads',
+      tab: 'Hot',
+    });
+  });
+
+  it('answers a question once: a late or repeated answer is not taken for the next one', async () => {
+    const s = framed();
+    await ready();
+    const sent = listen();
+    const panel = await askOpen();
+    await userEvent.type(within(panel).getByRole('textbox'), 'one{Enter}');
+    await waitFor(() => expect(sent.of('screen')).toHaveLength(1));
+    const first = (sent.of('screen')[0]!.message as { id: number }).id;
+    speak({ ml: 'embed', v: 1, type: 'screen', id: first, screen: { tab: 'A' } });
+    await within(panel).findByText('Three came today.');
+    await userEvent.type(within(panel).getByRole('textbox'), 'two{Enter}');
+    await waitFor(() => expect(sent.of('screen')).toHaveLength(2));
+    const second = (sent.of('screen')[1]!.message as { id: number }).id;
+    expect(second).not.toBe(first);
+    speak({ ml: 'embed', v: 1, type: 'screen', id: first, screen: { tab: 'STALE' } });
+    speak({ ml: 'embed', v: 1, type: 'screen', id: second, screen: { tab: 'B' } });
+    await waitFor(() => expect(s.heard.chat).toHaveLength(2));
+    expect(s.heard.chat[1]?.['screen']).toMatchObject({ tab: 'B' });
+  });
+
+  it('does not hold the question back for a page that does not answer', async () => {
+    const s = framed();
+    await ready();
+    await ask('hello?');
+    await waitFor(() => expect(s.heard.chat).toHaveLength(1), { timeout: 4_000 });
+    expect(s.heard.chat[0]?.['screen']).toEqual({ page: 'customers', section: 'leads' });
+  }, 8_000);
+
+  it('does not wait on a page that has not come up', async () => {
+    const s = framed();
+    await opened('Leads (classic page)'); // (not ready)
+    await ask('hello?');
+    await waitFor(() => expect(s.heard.chat).toHaveLength(1), { timeout: 1_000 });
+    expect(s.heard.chat[0]?.['screen']).toEqual({ page: 'customers', section: 'leads' });
+  });
+
+  it('has the page read again once an action the person confirmed was carried out', async () => {
+    const s = framed({ chat: { ...ANSWER, proposals: [PROPOSAL] } });
+    await ready();
+    const sent = listen();
+    const panel = await askOpen();
+    await userEvent.type(within(panel).getByRole('textbox'), 'remind me{Enter}');
+    await waitFor(() => expect(sent.of('screen')).toHaveLength(1));
+    speak({
+      ml: 'embed',
+      v: 1,
+      type: 'screen',
+      id: (sent.of('screen')[0]!.message as { id: number }).id,
+      screen: null,
+    });
+    await within(panel).findByText('Proposed · Notify');
+    expect(sent.of('refresh')).toHaveLength(0);
+    await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }));
+    await within(panel).findByText('Notification sent to you.');
+    await waitFor(() => expect(sent.of('refresh')).toHaveLength(1));
+    expect(sent.of('refresh')[0]!.message).toMatchObject({
+      ml: 'embed',
+      v: 1,
+      type: 'refresh',
+      what: 'page',
+    });
+    expect(s.heard.run).toHaveLength(1);
+  });
+
+  it("opens the panel, and puts it away, when the page says the assistant's key was pressed in it", async () => {
+    framed();
+    await ready();
+    const expanded = () =>
+      screen.getByRole('button', { name: 'Ask AI' }).getAttribute('aria-expanded');
+    expect(expanded()).toBe('false');
+    speak({ ml: 'embed', v: 1, type: 'ask' });
+    await waitFor(() => expect(expanded()).toBe('true'));
+    speak({ ml: 'embed', v: 1, type: 'ask' });
+    await waitFor(() => expect(expanded()).toBe('false'));
+  });
+
+  it('hears that key from its own frame only, and not at all where the person may not ask', async () => {
+    framed();
+    await ready();
+    const expanded = () =>
+      screen.getByRole('button', { name: 'Ask AI' }).getAttribute('aria-expanded');
+    speak({ ml: 'embed', v: 1, type: 'ask' }, { source: window });
+    speak({ ml: 'embed', v: 1, type: 'ask' }, { origin: 'https://elsewhere.example' });
+    await new Promise(r => setTimeout(r, 100));
+    expect(expanded()).toBe('false');
+    cleanup();
+    const s = assistantServer('/api/employee', { sections: WITH_LEADS });
+    open('team', teamMe({ leads: true, assistant: false }), {
+      entries: ['/leads'],
+      more: s.routes,
+    });
+    await opened('Leads (classic page)');
+    speak({ ml: 'embed', v: 1, type: 'ask' });
+    await new Promise(r => setTimeout(r, 100));
+    expect(screen.queryByRole('dialog', { name: 'AI assistant' })).toBeNull();
+  });
+
+  it('lets go of the record, and of the frame, when the screen is left', async () => {
+    const s = framed();
+    await ready();
+    await askOpen();
+    speak(recordMessage(LEAD));
+    await waitFor(() => expect(looking()).toBe('Lead #12 · Mona Saleh'));
+    await userEvent.click(screen.getByRole('link', { name: 'Submissions' }));
+    await waitFor(() => expect(looking()).toBe(''));
+    expect(document.querySelector('iframe')).toBeNull();
+    const panel = screen.getByRole('dialog', { name: 'AI assistant' });
+    await userEvent.type(within(panel).getByRole('textbox'), 'and here?{Enter}');
+    await waitFor(() => expect(s.heard.chat).toHaveLength(1), { timeout: 1_000 }); // (no frame to wait for)
+    expect(s.heard.chat[0]?.['screen']).toMatchObject({ page: 'submissions' });
   });
 });
