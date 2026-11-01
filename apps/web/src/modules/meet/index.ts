@@ -1,7 +1,6 @@
-import { defineModule } from '../../app/define-module';
-import { Meet } from './Meet';
+import { defineModule, lazyPage } from '../../app/define-module';
 
-export default defineModule('meet', { Page: Meet });
+export default defineModule('meet', { Page: lazyPage(() => import('./Meet'), 'Meet') });
 
 // What the Calendar takes from this module: a meeting, where one is joined, and the sheet that schedules and changes one.
 export { useScheduling } from './Schedule';

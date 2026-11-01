@@ -1,4 +1,3 @@
-import { defineModule } from '../../app/define-module';
-import { Drive } from './Drive';
+import { defineModule, lazyPage } from '../../app/define-module';
 
-export default defineModule('drive', { Page: Drive });
+export default defineModule('drive', { Page: lazyPage(() => import('./Drive'), 'Drive') });

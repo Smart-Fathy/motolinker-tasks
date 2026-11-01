@@ -1,4 +1,3 @@
-import { defineModule } from '../../app/define-module';
-import { Calendar } from './Calendar';
+import { defineModule, lazyPage } from '../../app/define-module';
 
-export default defineModule('calendar', { Page: Calendar });
+export default defineModule('calendar', { Page: lazyPage(() => import('./Calendar'), 'Calendar') });

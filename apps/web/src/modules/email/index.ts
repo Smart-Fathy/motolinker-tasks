@@ -1,4 +1,3 @@
-import { defineModule } from '../../app/define-module';
-import { Email } from './Email';
+import { defineModule, lazyPage } from '../../app/define-module';
 
-export default defineModule('email', { Page: Email });
+export default defineModule('email', { Page: lazyPage(() => import('./Email'), 'Email') });

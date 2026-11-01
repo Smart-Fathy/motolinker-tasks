@@ -1,4 +1,3 @@
-import { defineModule } from '../../app/define-module';
-import { Stock } from './Stock';
+import { defineModule, lazyPage } from '../../app/define-module';
 
-export default defineModule('stock', { Page: Stock });
+export default defineModule('stock', { Page: lazyPage(() => import('./Stock'), 'Stock') });

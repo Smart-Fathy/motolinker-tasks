@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router';
 import { cx } from '../../ui/cx';
 import { useAppTo } from '../context';
 import type { RailItem } from '../nav';
+import { preloadScreen } from '../registry';
 import { Icon, Menu } from './icons';
 import styles from './shell.module.css';
 import type { ShellState } from './state';
@@ -27,6 +28,8 @@ export function BottomNav({
           className={cx(styles['bottomItem'], active === item.id && styles['bottomActive'])}
           data-part={active === item.id ? 'bottomActive' : 'bottomItem'}
           aria-current={active === item.id ? 'page' : undefined}
+          onPointerDown={() => preloadScreen(item.id)}
+          onFocus={() => preloadScreen(item.id)}
           onClick={() => void navigate(to('/' + item.id))}
         >
           <Icon name={item.icon} size={20} />
