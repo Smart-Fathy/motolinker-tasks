@@ -139,8 +139,8 @@ time; each one that moves is deleted from the classic side in the same commit.
   `public/assets/embed.css` before the workspace's look — no sidebar, no top bar, no bottom bar, no sign-in screen (the app
   draws the first three and does the last). The classic scripts read the same attribute and **skip what the app now
   does for every screen**: the service-worker registration (the scope is the app's), push, the notification stream,
-  the presence heartbeat, a huddle revived on load, the assistant, and the sign-in and 401 handling (a dead session is
-  told to the app instead). What stays is what a screen needs: the one-off list reads, page-level streams (a chat room,
+  the presence heartbeat, a huddle revived on load, the assistant's button, panel and cards (it keeps one thing: it *reads*, see
+  below), and the sign-in and 401 handling (a dead session is told to the app instead). What stays is what a screen needs: the one-off list reads, page-level streams (a chat room,
   the Google Chat poller, WhatsApp) and auto-refresh. `tests/embed.js` holds all of it, both portals, every guard
   mutation-tested; a page opened with `?embed=1` outside a frame is exactly the page it was.
 - **The conversation** (`legacy/bridge.ts` ↔ `public/assets/embed.js`) is `{ ml: 'embed', v: 1, type, … }`. The page
@@ -148,7 +148,13 @@ time; each one that moves is deleted from the classic side in the same commit.
   lead's page sent them on to make a document for that lead: the app opens `/rfq?lead=<id>`), and `unauthorized`
   when a call came back 401. The app says `navigate{page}` (a click in the rail: the page moves, it is not reloaded)
   and `look{profile}` (the admin saved a new look). Each side hears only the window that framed it, from its own origin,
-  and answers with its own origin as the target.
+  and answers with its own origin as the target. **For the assistant** the page also says `record{record}` (the lead, deal,
+  task or supplier open on it, as it opens and as its name arrives, or `null` when it closes or the page changes) and
+  answers `screen{id, section}` with `screen{id, screen}` (the tab, the search with words in it, the filters not at
+  "everything" and the rows that are ticked); the app says `refresh{what:'page'}` once the person confirmed something the
+  assistant proposed, and the page reads its data again. `public/assets/assistant.js` does the reading in a frame and builds
+  nothing; `legacy/bridge.ts` holds every one of those messages to its shape (nothing but a record it can hold, a screen
+  it can hold, each thing kept to the length the server keeps it to).
 - **One frame serves the screens that follow it.** The first screen opens the frame; the rest are asked of the page.
   What the person does inside it is followed: a page it moves to is the screen the address names (safe mode kept), the
   browser's back button asks the page for the screen before, a page that reloads itself is taken back to the screen the
@@ -162,9 +168,8 @@ time; each one that moves is deleted from the classic side in the same commit.
 - **What cannot be framed** (`legacy/frameable.ts`): the live chat (a connection and a call that belong to the app's
   own chat, not a second copy). It is a card that says why and links to the classic page that has it.
 - **Known limits while screens are moving**, each gone with the batch that rebuilds the thing: presence, the notification
-  stream and bell, push subscription (an existing one is kept alive by the app; offering one is a screen's job),
-  huddles and the assistant do not run in the app yet, because the classic scripts stand down in a frame and the app
-  does not have them. The classic portal is one click away (`?ui=legacy`) for all of those.
+  stream and bell, push subscription (an existing one is kept alive by the app; offering one is a screen's job) and
+  huddles do not run in the app yet, because the classic scripts stand down in a frame and the app does not have them. The classic portal is one click away (`?ui=legacy`) for all of those.
 
 ## The service worker
 
@@ -568,6 +573,49 @@ grants: `gchat.view` sees the spaces and reads them (and links an account and le
 - Tests: `modules/gchat/model.test.ts`, `data.test.tsx` and `gchat.test.tsx` (every state, grant and refusal, in both portals) and
   `lib/chat-return.test.ts`; `tests/gcparity.js` (look, on a phone too), `tests/webgchat.js` (the real thing, including the trip to
   Google and back) and `tests/gchatroutes.js` (the routes, both portals).
+
+## The assistant
+
+`assistant/` is the **Ask AI** button in the top bar, the panel it opens and the card at the top of a section's page, in both portals, over
+the routes the classic pages use (`…/ai/sections`, `status`, `insights`, `chat`, `actions/run`: one set, mounted under `/api/dashboard` and
+`/api/employee`). Who gets what is the grants: `assistant.chat` has the button, the panel and the cards, `assistant.act` may confirm what the
+assistant proposes. For a person without `assistant.chat` the app draws nothing, answers no key and **asks the server nothing**.
+
+- **One provider** (`AssistantProvider`, mounted by the Shell) holds what the classic pages keep in globals: whether the panel is open
+  (`ml_ai_open`) and how wide it is (`ml_ai_w`, 340–760), a conversation for each section (in memory, as long as the app is open), the
+  language, and what the person is looking at. It stays where it is as they go from screen to screen. A desktop (≥ 1024px) gives the panel
+  its room (the page's `margin-right` is `--ai-w`), a tablet slides it over the page, a phone raises it as a sheet and does not give it the
+  keyboard; Ctrl/⌘+K opens and closes it from anywhere, Escape closes it when it has the keyboard or nothing else is open over the page.
+- **The panel is its own file** (`Panel`, about 3 kB gzipped): the pill and the provider are in the file the app opens with, the panel comes
+  the first time it is wanted (and as the pointer reaches the pill).
+- **A conversation** is a section's: the welcome and a few things to ask stay above the first question until the panel is opened again
+  (the chips go, as in the classic panel); the model's answer says which model gave it and, when it looked something up, how many
+  lookups it made (open them to see what it asked and what it got); an answer in Arabic is set from the right; a busy, failing or missing
+  model is said in words. The question carries the section, the page, the conversation so far (not the question itself), the language if
+  one was chosen, and **what is on the screen**.
+- **A proposal is nothing until it is confirmed** (`Confirm` / `Dismiss` on the card). Confirming carries it out through
+  `…/ai/actions/run`, which the server checks again as if the person had done it by hand; the card says what was done (and a toast does),
+  or why not, and **the page reads its data again** (every screen's queries are invalidated; a framed classic page is told to reload its
+  list). The cards at the top of the pages are left as they are.
+- **What is on the screen** is told in three ways. A screen that has *records* says which is open with `useAssistantRecord`
+  (supplier, issue, stock model, container, RFQ, purchase order, contract, meeting): the panel says "Looking at Supplier #3 · Yu Motors" and
+  the box asks about "this supplier"; the person can ignore it, and a different record is a new thing to look at. `readScreen` reads what
+  is chosen on the page (the selected tab, the search box with words in it, the selects and dates not at "everything", the ticked rows) from
+  the page's `role`s and `type`s, as the classic panel reads it from its class names. A classic page in a frame answers for itself, through the
+  bridge above, and its card stands above the frame.
+- **The card** (`InsightCard`) is where the classic page puts it (after the header of an admin page that has one, above the body of a team
+  page); what it shows is the model's: highlights, risks, suggestions and, where the section has one, who to call first. It asks the server for
+  nothing while it is put away (`ml_ai_card_<page>`), and Refresh asks again whatever the server has kept, with "Reading this section…"
+  in its place until the new one comes.
+- **The checks on every answer** (`model.ts`) are held to the schemas in `packages/contracts` (`AiSections`, `AiStatus`, `AiInsights`,
+  `AiChat`, `AiActionDone`) by a corpus of every wrong value of every field (`test/wrongly.ts`).
+- **Where it is deliberately not the classic panel** is `docs/parity/assistant.md`: a dismissed proposal stays dismissed, one that failed
+  stays failed, the conversation is sent without the question twice, the chips can be reached with the keyboard, and the card of a framed
+  page stands above the frame.
+- Tests: `assistant/*.test.ts(x)` (the model, the conversations, the screen reading, the panel, the pill, the card, every state, in both
+  portals), `legacy/LegacyFrame.test.tsx` and `bridge.test.ts` (the framed page), the record tests in each screen that has records;
+  `tests/assistroutes.js` (the routes of both portals, with the model stood in for), `tests/aiparity.js` (look, on a phone too),
+  `tests/embed.js` (what a framed page tells the app) and `tests/webassist.js` (the real server, the built app, a real browser).
 
 ## The gallery
 
