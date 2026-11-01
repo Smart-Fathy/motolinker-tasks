@@ -12,7 +12,12 @@ const check = (n, ok, x) => { results.push(ok); console.log((ok ? '  ok  ' : ' F
 
 const pad = n => String(n).padStart(2, '0');
 const D = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const today = new Date();
+// The page's clock is moved to the 15th of this month (below), so that the fixtures — a task three days overdue, one due today, two
+// meetings and a follow-up today — are all on the month the page opens on, whichever day the suite runs. On the 1st to the 3rd,
+// "three days ago" is in the month before, which the month grid does not draw, and the suite failed on those days.
+const real = new Date();
+const today = new Date(real.getFullYear(), real.getMonth(), 15, real.getHours(), real.getMinutes(), real.getSeconds());
+const clockShift = today.getTime() - real.getTime();
 const at = (h, plusDays) => {
   const x = new Date(today); x.setDate(x.getDate() + (plusDays || 0)); x.setHours(h, 0, 0, 0); return x;
 };
@@ -76,6 +81,19 @@ async function openPortal(browser, { route, file, tokenKey, port, perms }) {
     req.respond({ status: 404, body: '' });
   });
   await page.evaluateOnNewDocument(k => localStorage.setItem(k, 't'), tokenKey);
+  await page.evaluateOnNewDocument(shift => {
+    const Real = Date;
+    const now = () => Real.now() + shift;
+    function Shifted(...a) {
+      if (!new.target) return new Real(now()).toString();
+      return Reflect.construct(Real, a.length ? a : [now()], new.target);
+    }
+    Shifted.prototype = Real.prototype;
+    Shifted.now = now;
+    Shifted.parse = Real.parse;
+    Shifted.UTC = Real.UTC;
+    window.Date = Shifted;
+  }, clockShift);
   await page.goto(`http://127.0.0.1:${port}${route}`, { waitUntil: 'networkidle2' });
   await sleep(500);
   if (perms) { await page.evaluate(p => { try { applyPermissions(p); } catch (_) {} }, perms); await sleep(150); }
