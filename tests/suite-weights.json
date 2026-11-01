@@ -57,6 +57,7 @@
     "driveroutes": 5,
     "emailroutes": 5,
     "gchatroutes": 6,
+    "assistroutes": 4,
     "calendar": 2,
     "issues": 4,
     "spashell": 2,

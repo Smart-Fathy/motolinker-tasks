@@ -102,6 +102,7 @@ run containerroutes node tests/containerroutes.js
 run driveroutes node tests/driveroutes.js
 run emailroutes node tests/emailroutes.js
 run gchatroutes node tests/gchatroutes.js
+run assistroutes node tests/assistroutes.js
 run notifications node tests/notifications.js
 run submissions  node tests/submissions.js
 run meetings     node tests/meetings.js

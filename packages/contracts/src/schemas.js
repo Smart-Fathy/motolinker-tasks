@@ -1030,6 +1030,121 @@ const GchatSent = z.union([
   z.object({ ok: z.literal(false), error: z.string(), detail: z.string().optional() }),
 ]);
 
+// ── The assistant (src/routes/assistant.js: one factory, mounted for both portals) ─────────────────────────────────────────────────────
+// What this person may ask about: the sections their grants reach, each with the chips the panel offers (in both languages) and the actions
+// that may be proposed there (none where they may not act), and which page of the portal belongs to which section.
+const AiChips = z.object({ en: z.array(z.string()), ar: z.array(z.string()) });
+const AiSection = z.object({
+  key: z.string(),
+  label: z.string(),
+  chips: AiChips,
+  actions: z.array(z.string()),
+});
+const AiSections = z.object({
+  ai: z.boolean(),
+  act: z.boolean(),
+  sections: z.array(AiSection),
+  pages: z.record(z.string(), z.string()),
+});
+
+// The state of the model as the last real call left it (no call is spent to say it): not configured at all, or configured with `ok` null
+// until the first call, true after one that worked, false after one that did not, with why.
+const AiStatus = z.union([
+  z.object({ ai: z.literal(false), ok: z.literal(false) }),
+  z.object({
+    ai: z.literal(true),
+    ok: z.boolean().nullable(),
+    provider: z.string().nullable(),
+    model: z.string().nullable(),
+    error: z.string().nullable(),
+    status: z.number().nullable(),
+    at: z.number(),
+  }),
+]);
+
+// The card at the top of a section's page. Not configured; the Accounting page (which keeps its own cards); the model unable to answer
+// (`busy` is words for a person where it was out of capacity); or the three lists, with who to call first where the section has a call list.
+const AiInsightLists = z.object({
+  highlights: z.array(z.string()),
+  risks: z.array(z.string()),
+  suggestions: z.array(z.string()),
+});
+const AiCallListEntry = z.object({
+  customer_id: z.number().nullable(),
+  name: z.string(),
+  why: z.string(),
+});
+const AiInsights = z.union([
+  z.object({ ai: z.literal(false), section: z.string() }),
+  z.object({ ai: z.boolean(), ok: z.literal(false), section: z.string(), note: z.string() }),
+  z.object({
+    ai: z.literal(true),
+    ok: z.literal(false),
+    error: z.string(),
+    status: z.number().optional(),
+    busy: z.string().optional(),
+    model: z.string().optional(),
+  }),
+  z.object({
+    ai: z.literal(true),
+    ok: z.literal(true),
+    model: z.string(),
+    provider: z.string(),
+    generated_at: z.string(),
+    section: z.string(),
+    label: z.string(),
+    lang: z.string(),
+    insights: AiInsightLists,
+    extra: z.object({ call_list: z.array(AiCallListEntry).optional() }),
+    cached: z.boolean(),
+  }),
+]);
+
+// An answer to a question. Beside the words: the lookups the model made to get there (`tool_calls`, each with what it asked and what it
+// got back), and the actions it proposed, which are only proposals — nothing is written until the person confirms one.
+const AiToolCall = z.object({
+  name: z.string(),
+  args: z.record(z.string(), z.unknown()),
+  result: z.unknown().optional(),
+});
+const AiProposal = z.object({
+  action: z.object({ type: z.string() }).passthrough(),
+  label: z.string(),
+  description: z.string(),
+});
+const AiChat = z.union([
+  z.object({ ai: z.literal(false), section: z.string() }),
+  z.object({
+    ai: z.literal(true),
+    ok: z.literal(false),
+    section: z.string().optional(),
+    error: z.string(),
+    status: z.number().optional(),
+    busy: z.string().optional(),
+  }),
+  z.object({
+    ai: z.literal(true),
+    ok: z.literal(true),
+    section: z.string(),
+    label: z.string(),
+    answer: z.string(),
+    model: z.string(),
+    provider: z.string(),
+    tool_calls: z.array(AiToolCall),
+    proposals: z.array(AiProposal),
+    lang: z.string(),
+  }),
+]);
+
+// A proposal the person confirmed and the server carried out (as the manual route for the same thing would): what was done, in words, and
+// the row it made or changed. A proposal that cannot be carried out is an `{ error }` with a status.
+const AiActionDone = z.object({
+  ok: z.literal(true),
+  type: z.string(),
+  message: z.string(),
+  result: z.unknown().optional(),
+});
+
 // What /api/v1 answers when it says no: words for a person, a word for a program, and what was wrong with the request.
 const ApiError = z.object({
   error: z.string(),
@@ -1155,6 +1270,11 @@ module.exports = {
   GchatSpaceList,
   GchatMessageList,
   GchatSent,
+  AiSections,
+  AiStatus,
+  AiInsights,
+  AiChat,
+  AiActionDone,
   Deleted,
   ApiError,
 };
