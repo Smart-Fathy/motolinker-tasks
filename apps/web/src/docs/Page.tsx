@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { InsightCard } from '../assistant';
 import { useSession } from '../app/context';
 import { Icon } from '../app/shell/icons';
 import { Btn } from '../ui';
@@ -25,12 +26,15 @@ export function Loading({ what }: { what: string }) {
  * a new one, then a hint and the list; the team's has a card-sized title and hint on the left and the button on the right.
  */
 export function DocPage({
+  screen,
   title,
   hint,
   add,
   children,
   sheets,
 }: {
+  /** the screen this is the page of (its card is the assistant's, for that section) */
+  screen: string;
   title: string;
   /** the line under the title: words, with whatever is set in bold among them */
   hint: ReactNode;
@@ -55,6 +59,7 @@ export function DocPage({
           </span>
           {button}
         </div>
+        <InsightCard screen={screen} />
         <div className={styles['adminBody']} data-part="pageBody">
           <div className={styles['lead']} data-part="pageHint">
             {hint}
@@ -68,20 +73,23 @@ export function DocPage({
     );
   }
   return (
-    <div className={styles['teamBody']} data-part="docPage">
-      <div className={styles['teamHead']} data-part="pageHead">
-        <div>
-          <div className={styles['cardTitle']} data-part="pageTitle">
-            {title}
+    <>
+      <InsightCard screen={screen} />
+      <div className={styles['teamBody']} data-part="docPage">
+        <div className={styles['teamHead']} data-part="pageHead">
+          <div>
+            <div className={styles['cardTitle']} data-part="pageTitle">
+              {title}
+            </div>
+            <div className={styles['cardHint']} data-part="pageHint">
+              {hint}
+            </div>
           </div>
-          <div className={styles['cardHint']} data-part="pageHint">
-            {hint}
-          </div>
+          <div className={styles['teamActions']}>{button}</div>
         </div>
-        <div className={styles['teamActions']}>{button}</div>
+        <div data-part="list">{children}</div>
+        {sheets}
       </div>
-      <div data-part="list">{children}</div>
-      {sheets}
-    </div>
+    </>
   );
 }

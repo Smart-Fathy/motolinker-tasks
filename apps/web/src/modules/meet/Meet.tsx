@@ -1,5 +1,6 @@
 import { can } from '@motolinker/contracts/access';
 import { useState } from 'react';
+import { InsightCard } from '../../assistant';
 import { useSession } from '../../app/context';
 import { Icon } from '../../app/shell/icons';
 import { Btn, BtnLink } from '../../ui';
@@ -161,6 +162,7 @@ export function Meet() {
   return (
     <div data-part="meetPage">
       <div className={styles['body']} data-part="body">
+        <InsightCard screen="meet" />
         <div className={styles['title']} data-part="heading">
           Google Meet
         </div>

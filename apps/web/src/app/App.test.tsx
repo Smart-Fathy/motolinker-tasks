@@ -36,7 +36,7 @@ const saraMe = {
 type Answer = Response | Error | (() => Response | Promise<Response>);
 
 /** What the signed-in frame asks for on its own — the workspace, the person's colour choice, the sidebar's arrangement, the
- *  notifications, the live stream — answered quietly, so a test can say only what it is about. */
+ *  notifications, what the assistant may be asked about, the live stream — answered quietly, so a test can say only what it is about. */
 const FRAME: Record<string, Answer> = {
   '/api/workspace': () =>
     json(200, { ...workspace, theme: {}, typography: {}, shape: {}, texts: {} }),
@@ -45,6 +45,8 @@ const FRAME: Record<string, Answer> = {
   '/api/dashboard/nav-config': () => json(200, { groups: [] }),
   '/api/employee/nav-config': () => json(200, { groups: [] }),
   '/api/v1/notifications': () => json(200, { items: [], unread: 0 }),
+  '/api/dashboard/ai/sections': () => json(200, { ai: true, act: false, sections: [], pages: {} }),
+  '/api/employee/ai/sections': () => json(200, { ai: true, act: false, sections: [], pages: {} }),
   '/api/dashboard/notifications/stream?hd=2': () =>
     new Response(new ReadableStream({ start() {} })),
   '/api/employee/notifications/stream?hd=2': () => new Response(new ReadableStream({ start() {} })),

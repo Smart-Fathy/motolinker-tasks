@@ -30,6 +30,8 @@ export function frame(portal: 'admin' | 'team', more: Record<string, Answer> = {
     [`${base}/ui-prefs`]: () => json(200, {}),
     [`${base}/nav-config`]: () => json(200, { groups: [] }),
     '/api/v1/notifications': () => json(200, { items: [], unread: 0 }),
+    [`${base}/ai/sections`]: () => json(200, { ai: true, act: false, sections: [], pages: {} }),
+    [`${base}/ai/status`]: () => json(200, { ai: false, ok: false }),
     [`${base}/notifications/stream?hd=2`]: () =>
       new Response(
         new ReadableStream<Uint8Array>({

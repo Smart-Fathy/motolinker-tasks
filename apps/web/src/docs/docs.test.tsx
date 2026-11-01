@@ -766,6 +766,7 @@ describe('the page around a list', () => {
       inSession(
         'admin',
         <DocPage
+          screen="rfq"
           title="RFQ"
           hint="Hint words"
           add={{ label: 'New RFQ', onClick: onAdd }}
@@ -789,6 +790,7 @@ describe('the page around a list', () => {
       inSession(
         'team',
         <DocPage
+          screen="rfq"
           title="Purchase Orders"
           hint="Hint"
           add={{ label: 'New purchase order', onClick: vi.fn() }}
@@ -811,7 +813,7 @@ describe('the page around a list', () => {
       const { container } = render(
         inSession(
           portal,
-          <DocPage title="RFQ" hint="h" add={null} sheets={null}>
+          <DocPage screen="rfq" title="RFQ" hint="h" add={null} sheets={null}>
             x
           </DocPage>,
         ),

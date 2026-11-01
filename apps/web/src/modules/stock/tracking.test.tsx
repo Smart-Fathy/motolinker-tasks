@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { adminMe, deferred, json, teamMe } from '../../test/helpers';
 import { open, type Answer } from '../../test/session';
+import { askOpen, looking } from '../../test/assistant';
 
 // (the map: Leaflet comes from a CDN, which a test does not reach — what loads, or does not, is the test's to say)
 const leaflet = vi.hoisted(() => ({ load: vi.fn() }));
@@ -1048,6 +1049,15 @@ describe('Inventory & Logistics — changing the boxes', () => {
       expect(words(q('[data-part=formError]'))).toBe('MSDU7337230 is already being tracked.'),
     );
     expect(q('[data-part=dialog]')).not.toBeNull();
+  });
+  it('is the record the assistant is told is open while the form of a box is — by its number — and none for a new box', async () => {
+    boot('admin');
+    await loaded();
+    await askOpen();
+    await userEvent.click(qa('[data-part=edit]')[0]!);
+    await waitFor(() => expect(looking()).toBe('Container #1 · CSQU3054383'));
+    await userEvent.click(q('[data-part=cancel]'));
+    await waitFor(() => expect(looking()).toBe(''));
   });
   it('opens a box for change with what it holds, the dates cut to the boxes that take them, and saves a change', async () => {
     const s = boot('admin');

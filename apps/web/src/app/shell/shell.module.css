@@ -1314,4 +1314,13 @@
     padding: 1px 6px;
     line-height: 1.4;
   }
+  /* The assistant's panel is docked beside the page on a desktop: the page gives it its room, and nothing is covered. */
+  @media (min-width: 1024px) {
+    .contentDocked {
+      margin-right: var(--ai-w);
+    }
+    :global([data-portal='team']) .contentDocked {
+      width: auto;
+    }
+  }
 }

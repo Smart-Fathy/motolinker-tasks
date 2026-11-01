@@ -1,5 +1,6 @@
 import { can } from '@motolinker/contracts/access';
 import { useState } from 'react';
+import { InsightCard, useAssistantRecord } from '../../assistant';
 import { useSession } from '../../app/context';
 import { Icon } from '../../app/shell/icons';
 import {
@@ -155,6 +156,18 @@ export function Suppliers() {
   };
   const detailOf = detail ? items.find(s => s.id === detail.id) : undefined;
   const open = (id: number, tab: Tab = 'vehicles') => setDetail({ id, tab });
+  // (what the assistant is told is open: the supplier whose page, or whose form, is in front of the person)
+  const openId = detail?.id ?? form?.id ?? null;
+  useAssistantRecord(
+    openId === null
+      ? null
+      : {
+          kind: 'supplier',
+          id: String(openId),
+          title: items.find(s => s.id === openId)?.name ?? '',
+          sub: '',
+        },
+  );
 
   const addButton = (
     <Btn kind="primary" data-part="add" onClick={() => setForm({ id: null })}>
@@ -385,6 +398,7 @@ export function Suppliers() {
           </span>
           {may.create && addButton}
         </div>
+        <InsightCard screen="suppliers" />
         <div className={styles['adminBody']} data-part="pageBody">
           <div className={styles['lead']} data-part="pageHint">
             Suppliers you order from. Used by RFQs, purchase orders and stock units.
@@ -398,20 +412,23 @@ export function Suppliers() {
     );
   }
   return (
-    <div className={styles['teamBody']} data-part="suppliersPage">
-      <div className={styles['teamHead']} data-part="pageHead">
-        <div>
-          <div className={styles['cardTitle']} data-part="pageTitle">
-            Suppliers
+    <>
+      <InsightCard screen="suppliers" />
+      <div className={styles['teamBody']} data-part="suppliersPage">
+        <div className={styles['teamHead']} data-part="pageHead">
+          <div>
+            <div className={styles['cardTitle']} data-part="pageTitle">
+              Suppliers
+            </div>
+            <div className={styles['cardHint']} data-part="pageHint">
+              Suppliers you order from. Used by RFQs, purchase orders and stock units.
+            </div>
           </div>
-          <div className={styles['cardHint']} data-part="pageHint">
-            Suppliers you order from. Used by RFQs, purchase orders and stock units.
-          </div>
+          <div className={styles['teamActions']}>{may.create && addButton}</div>
         </div>
-        <div className={styles['teamActions']}>{may.create && addButton}</div>
+        <div data-part="list">{body}</div>
+        {sheets}
       </div>
-      <div data-part="list">{body}</div>
-      {sheets}
-    </div>
+    </>
   );
 }

@@ -1,5 +1,6 @@
 import { can } from '@motolinker/contracts/access';
 import { useState } from 'react';
+import { useAssistantRecord } from '../../assistant';
 import { useSession } from '../../app/context';
 import { Badge, ColumnsLayer, useColumns } from '../../columns';
 import { buildPdf, useDocList, useDocWrites } from '../../docs/data';
@@ -42,6 +43,14 @@ export function Pos() {
     export: can(access.actor, 'purchaseorders.export'),
     delete: can(access.actor, 'purchaseorders.delete'),
   };
+
+  // (what the assistant is told is open: the order whose form is in front of the person; a new one is not a record yet)
+  const editing = form?.id != null ? list.items.find(x => x.id === form.id) : undefined;
+  useAssistantRecord(
+    form?.id != null
+      ? { kind: 'purchase_order', id: String(form.id), title: editing?.po_number ?? '', sub: '' }
+      : null,
+  );
 
   // A new order for a lead, from the lead's own page: "/purchaseorders?lead=<id>" opens the form, made from that lead.
   useLeadParam(may.create, lead => setForm({ id: null, lead }));
@@ -164,6 +173,7 @@ export function Pos() {
 
   return (
     <DocPage
+      screen="purchaseorders"
       title="Purchase Orders"
       hint="Order sheet sent to suppliers. Each PO holds one or more vehicle lines with their own client, spec, PI price and tracking status."
       add={

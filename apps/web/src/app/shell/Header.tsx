@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import ThemeCore from '@theme-core';
+import { AssistantPill } from '../../assistant';
 import { switchToClassicUrl } from '../../lib/env';
 import { MODE_NAMES } from '../../lib/theme';
 import { cx } from '../../ui/cx';
@@ -232,6 +233,7 @@ export function Header({ state, title }: HeaderProps) {
         </div>
         <div className={styles['topbarRight']}>
           <ModeToggle />
+          <AssistantPill />
           <NotificationBell />
           <ProfileMenu />
         </div>
@@ -256,6 +258,7 @@ export function Header({ state, title }: HeaderProps) {
       </div>
       <div className={styles['headerRight']}>
         <ModeToggle />
+        <AssistantPill />
         <NotificationBell />
       </div>
     </header>

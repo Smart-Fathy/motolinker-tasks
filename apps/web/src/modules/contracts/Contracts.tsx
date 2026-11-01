@@ -1,5 +1,6 @@
 import { can } from '@motolinker/contracts/access';
 import { useState } from 'react';
+import { useAssistantRecord } from '../../assistant';
 import { useSession } from '../../app/context';
 import { Badge, ColumnsLayer, useColumns } from '../../columns';
 import { buildContractPdf, useDocList, useDocWrites } from '../../docs/data';
@@ -42,6 +43,14 @@ export function Contracts() {
     export: can(access.actor, 'contracts.export'),
     delete: can(access.actor, 'contracts.delete'),
   };
+
+  // (what the assistant is told is open: the contract whose form is in front of the person; a new one is not a record yet)
+  const editing = form?.id != null ? list.items.find(x => x.id === form.id) : undefined;
+  useAssistantRecord(
+    form?.id != null
+      ? { kind: 'contract', id: String(form.id), title: editing?.contract_no ?? '', sub: '' }
+      : null,
+  );
 
   // A new contract for a lead, from the lead's own page: "/contracts?lead=<id>" opens the form, made from that lead.
   useLeadParam(may.create, lead => setForm({ id: null, lead }));
@@ -161,6 +170,7 @@ export function Contracts() {
 
   return (
     <DocPage
+      screen="contracts"
       title="Contracts"
       hint={
         portal === 'admin' ? (

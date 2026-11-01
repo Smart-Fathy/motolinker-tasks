@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Column } from '../../columns';
 import { adminMe, deferred, json, teamMe } from '../../test/helpers';
 import { open, type Answer } from '../../test/session';
+import { askOpen, looking } from '../../test/assistant';
 
 beforeEach(() => {
   localStorage.clear();
@@ -884,6 +885,17 @@ describe('the RFQ screen', () => {
       await userEvent.click(within(rows()[n - 1]!).getByRole('button', { name: 'Edit' }));
       await formReady();
     };
+    it('is the record the assistant is told is open, until the form is closed — and a new RFQ is none', async () => {
+      boot('admin');
+      await openOne();
+      await askOpen();
+      expect(looking()).toBe('RFQ #1 · MT26W01Y26');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(looking()).toBe(''));
+      await userEvent.click(screen.getByRole('button', { name: /New RFQ/ }));
+      await formReady();
+      expect(looking()).toBe('');
+    });
     it('is the record: its number (which cannot be changed), supplier, lines and added fields', async () => {
       const s = boot('admin');
       await openOne();

@@ -1,6 +1,7 @@
 import { can } from '@motolinker/contracts/access';
 import { useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { InsightCard, useAssistantRecord } from '../../assistant';
 import { useSession } from '../../app/context';
 import { Icon } from '../../app/shell/icons';
 import { cx } from '../../ui/cx';
@@ -223,6 +224,10 @@ export function Issues() {
   const counts = countsOf(items);
   const rows = items.filter(i => shows(filter, i));
   const selected = rows.find(i => i.id === openId) ?? null;
+  // (what the assistant is told is open: "this ticket" means the one in the reading pane)
+  useAssistantRecord(
+    selected ? { kind: 'issue', id: String(selected.id), title: selected.title, sub: '' } : null,
+  );
 
   // The reading pane stays on a ticket the filter still shows, and lets go of one it does not.
   const chooseFilter = (next: IssueFilter) => {
@@ -290,6 +295,7 @@ export function Issues() {
 
   return (
     <div className={styles['page']} data-part="issuesPage">
+      <InsightCard screen="issues" />
       <div className={styles['head']} data-part="head">
         <h2 className={styles['title']} data-part="heading">
           Reported issues

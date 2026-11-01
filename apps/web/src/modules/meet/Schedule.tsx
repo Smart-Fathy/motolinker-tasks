@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useId, useState, type ReactNode } from 'react';
+import { useAssistantRecord } from '../../assistant';
 import { useSession } from '../../app/context';
 import { BrandSelect, Btn, Sheet } from '../../ui';
 import { fetchChoices, useMeetingActions } from './data';
@@ -274,6 +275,12 @@ export function useScheduling(): {
     rooms: Room[];
   } | null>(null);
   const actorKey = me.actor.key;
+  // (what the assistant is told is open: the meeting whose sheet is in front of the person; a new one is not a record yet)
+  useAssistantRecord(
+    state?.meeting
+      ? { kind: 'meeting', id: String(state.meeting.id), title: state.meeting.title, sub: '' }
+      : null,
+  );
   const open = useCallback(
     async (meeting: Meeting | null, seed?: { date?: string }) => {
       const choices = await fetchChoices(qc, api, portal, actorKey);

@@ -5,8 +5,9 @@ import {
   presentation,
   screenOf,
 } from '@motolinker/contracts/modules';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useLocation } from 'react-router';
+import { AssistantLayer, AssistantProvider, useAssistant } from '../../assistant';
 import { ReportIssue } from '../../modules/issues';
 import { useLiveNotifications } from '../../modules/notifications';
 import { AccountDialogs, SecurityPanel } from '../../modules/security';
@@ -39,6 +40,23 @@ function Gradients() {
         </linearGradient>
       </defs>
     </svg>
+  );
+}
+
+/** The page's area, which gives the assistant's panel its room when the panel is docked beside it (on a desktop). */
+function ContentArea({ collapsed, children }: { collapsed: boolean; children: ReactNode }) {
+  const docked = !!useAssistant()?.docked;
+  return (
+    <div
+      className={cx(
+        styles['content'],
+        collapsed && styles['contentWide'],
+        docked && styles['contentDocked'],
+      )}
+      data-part="content"
+    >
+      {children}
+    </div>
   );
 }
 
@@ -86,33 +104,35 @@ export function Shell({
 
   const screen = active ? screenOf(active) : undefined;
   const title = screen ? presentation(screen, portal).title : '';
+  // The classic portal's name for the page, which is how the assistant knows what the person is looking at and where its card goes.
+  const classicPage = screen ? legacyIdOf(screen, portal) : 'home';
   return (
     <FrameContext value={frame}>
-      <div className={styles['layout']} data-part="layout">
-        <Gradients />
-        <div
-          className={cx(styles['overlay'], state.drawer && styles['overlayVisible'])}
-          data-part="overlay"
-          onClick={() => state.setDrawer(false)}
-        />
-        <Sidebar rail={rail} active={active} state={state} />
-        <div
-          className={cx(styles['content'], state.collapsed && styles['contentWide'])}
-          data-part="content"
-        >
-          <Header state={state} title={title} />
-          <main className={styles['page']} data-part="page">
-            <Outlet />
-          </main>
+      <AssistantProvider page={classicPage}>
+        <div className={styles['layout']} data-part="layout">
+          <Gradients />
+          <div
+            className={cx(styles['overlay'], state.drawer && styles['overlayVisible'])}
+            data-part="overlay"
+            onClick={() => state.setDrawer(false)}
+          />
+          <Sidebar rail={rail} active={active} state={state} />
+          <ContentArea collapsed={state.collapsed}>
+            <Header state={state} title={title} />
+            <main className={styles['page']} data-part="page">
+              <Outlet />
+            </main>
+          </ContentArea>
+          <BottomNav items={bottom} active={active} state={state} />
+          {panel === 'report' && <ReportIssue onClose={() => endPanel('report')} />}
+          {panel === 'security' && <SecurityPanel onClose={() => endPanel('security')} />}
+          {(panel === 'status' || panel === 'username' || panel === 'password') && (
+            <AccountDialogs which={panel} onClose={() => endPanel(panel)} />
+          )}
+          <AssistantLayer />
+          <ToastHost toasts={toasts} />
         </div>
-        <BottomNav items={bottom} active={active} state={state} />
-        {panel === 'report' && <ReportIssue onClose={() => endPanel('report')} />}
-        {panel === 'security' && <SecurityPanel onClose={() => endPanel('security')} />}
-        {(panel === 'status' || panel === 'username' || panel === 'password') && (
-          <AccountDialogs which={panel} onClose={() => endPanel(panel)} />
-        )}
-        <ToastHost toasts={toasts} />
-      </div>
+      </AssistantProvider>
     </FrameContext>
   );
 }

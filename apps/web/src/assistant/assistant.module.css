@@ -1,0 +1,610 @@
+/* The assistant, in the classic look: the pill in the top bar, the panel that docks beside the page (slides over it on a tablet, rises as
+   a sheet on a phone), the card at the top of a section's page. The classic portals build their styles in JavaScript (public/assets/
+   assistant.js, aiStyle) and both portals share them: so do both here, with the values the classic ones have (tests/aiparity.js holds
+   each part to the classic page's computed style). */
+@layer ui {
+  :global(:root) {
+    --ai-w: 420px;
+  }
+
+  /* ── The brain ────────────────────────────────────────────────────────────────────────────────────────────────── */
+  .pill .brain,
+  .cardHead .brain {
+    flex-shrink: 0;
+  }
+
+  /* ── The pill in the top bar ──────────────────────────────────────────────────────────────────────────────────── */
+  .pill {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 36px;
+    padding: 0 12px 0 9px;
+    border-radius: 999px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 800;
+    letter-spacing: 0.1px;
+    user-select: none;
+    color: var(--text, #f3efe7);
+    border: 1.5px solid transparent;
+    background:
+      linear-gradient(var(--surface, #141416), var(--surface, #141416)) padding-box,
+      linear-gradient(135deg, #f472b6, #a78bfa 45%, #38bdf8) border-box;
+    transition:
+      box-shadow 0.15s,
+      transform 0.15s;
+  }
+  .pill .brain {
+    width: 20px;
+    height: 20px;
+  }
+  .pill:hover {
+    box-shadow:
+      0 0 0 1px rgba(167, 139, 250, 0.35),
+      0 0 14px rgba(167, 139, 250, 0.35);
+    transform: translateY(-1px);
+  }
+  .pill[aria-expanded='true'] {
+    box-shadow:
+      0 0 0 1px rgba(167, 139, 250, 0.45),
+      0 0 16px rgba(167, 139, 250, 0.45);
+    background:
+      linear-gradient(rgba(167, 139, 250, 0.12), rgba(167, 139, 250, 0.12)) padding-box,
+      linear-gradient(135deg, #f472b6, #a78bfa 45%, #38bdf8) border-box;
+  }
+  .kbd {
+    font: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--muted, #9a958a);
+    border: 1px solid var(--border, #2a2a2e);
+    border-radius: calc(5px * var(--r-k, 1));
+    padding: 1px 5px;
+    line-height: 1.3;
+  }
+
+  /* ── The card at the top of a page ────────────────────────────────────────────────────────────────────────────── */
+  .card {
+    border: 1px solid rgba(167, 139, 250, 0.35);
+    background: linear-gradient(
+      160deg,
+      rgba(167, 139, 250, 0.08),
+      rgba(56, 189, 248, 0.05) 60%,
+      rgba(var(--surface-rgb, 20, 20, 22), 0)
+    );
+    border-radius: calc(14px * var(--r-k, 1));
+    padding: 12px 16px;
+    margin: 0 0 16px;
+  }
+  .cardHead {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+  .cardHead .brain {
+    width: 18px;
+    height: 18px;
+  }
+  .cardHead b {
+    font-size: 13.5px;
+  }
+  .cardStatus {
+    font-size: 11px;
+    color: var(--muted, #9a958a);
+    margin-left: auto;
+  }
+  .mini {
+    padding: 4px 10px;
+    background: none;
+    border: 1px solid var(--border, #2a2a2e);
+    border-radius: calc(7px * var(--r-k, 1));
+    color: var(--muted, #9a958a);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+  }
+  .mini:hover {
+    color: var(--h-a78bfa, #a78bfa);
+    border-color: rgba(167, 139, 250, 0.5);
+  }
+  .miniAsk {
+    border-color: rgba(167, 139, 250, 0.45);
+    color: var(--text, #e8e4da);
+    background: linear-gradient(
+      135deg,
+      rgba(244, 114, 182, 0.16),
+      rgba(167, 139, 250, 0.16) 45%,
+      rgba(56, 189, 248, 0.16)
+    );
+  }
+  .miniAsk .brain {
+    width: 12px;
+    height: 12px;
+    vertical-align: -2px;
+  }
+  .cardBody {
+    margin-top: 10px;
+  }
+  .collapsed .cardBody {
+    display: none;
+  }
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .cols h4 {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin: 0 0 6px;
+    color: var(--muted, #9a958a);
+  }
+  .cols ul {
+    margin: 0;
+    padding-left: 16px;
+  }
+  .cols li {
+    font-size: 12.5px;
+    line-height: 1.55;
+    margin-bottom: 5px;
+  }
+  .cols ul.rtl {
+    direction: rtl;
+    text-align: right;
+    padding-left: 0;
+    padding-right: 16px;
+  }
+  .empty {
+    font-size: 12.5px;
+    color: var(--muted, #9a958a);
+    padding: 4px 0;
+  }
+  .calls {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .callsHead {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin: 8px 0 2px;
+    color: var(--muted);
+  }
+  .call {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    font-size: 12.5px;
+  }
+  .call b {
+    white-space: nowrap;
+  }
+  .call span {
+    color: var(--muted, #9a958a);
+  }
+
+  /* ── The panel ────────────────────────────────────────────────────────────────────────────────────────────────── */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 9994;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .overlayOpen {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .overlay button {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+    user-select: none;
+  }
+  .panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--ai-w);
+    max-width: 96vw;
+    background: var(--surface, #141416);
+    border-left: 1px solid rgba(167, 139, 250, 0.35);
+    z-index: 9995;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition:
+      transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0s 0.28s;
+    box-shadow: none;
+  }
+  .panelOpen {
+    transform: translateX(0);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: -16px 0 48px rgba(0, 0, 0, calc(0.5 * var(--sh-k, 1)));
+  }
+  .grip {
+    position: absolute;
+    left: -4px;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    cursor: col-resize;
+    z-index: 2;
+  }
+  .grip:hover,
+  .gripOn {
+    background: linear-gradient(
+      180deg,
+      rgba(244, 114, 182, 0.5),
+      rgba(167, 139, 250, 0.5),
+      rgba(56, 189, 248, 0.5)
+    );
+  }
+  .head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--border, #2a2a2e);
+    background: linear-gradient(
+      135deg,
+      rgba(244, 114, 182, 0.1),
+      rgba(167, 139, 250, 0.1) 45%,
+      rgba(56, 189, 248, 0.1)
+    );
+  }
+  .head .brain {
+    width: 22px;
+    height: 22px;
+  }
+  .headWho {
+    min-width: 0;
+  }
+  .title {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-weight: 800;
+    font-size: 14.5px;
+  }
+  .title small {
+    font-weight: 600;
+    color: var(--muted, #9a958a);
+    font-size: 12px;
+  }
+  .status {
+    font-size: 11px;
+    margin-top: 2px;
+    color: var(--muted, #9a958a);
+  }
+  .tools {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .ib {
+    background: none;
+    border: none;
+    color: var(--muted, #9a958a);
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    border-radius: calc(8px * var(--r-k, 1));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    line-height: 1;
+    user-select: none;
+  }
+  .ib:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.06);
+    color: var(--text, #e8e4da);
+  }
+  .ib svg {
+    width: 16px;
+    height: 16px;
+  }
+  .sel {
+    background: var(--field-bg-2, #101013);
+    color: var(--text, #e8e4da);
+    border: 1px solid var(--border, #2a2a2e);
+    border-radius: calc(8px * var(--r-k, 1));
+    padding: 4px 6px;
+    font: inherit;
+    font-size: 12px;
+  }
+  .screen {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    margin: 0 14px;
+    padding: 7px 10px;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    background: rgba(56, 189, 248, 0.08);
+    border-radius: calc(10px * var(--r-k, 1));
+    font-size: 12px;
+    color: var(--text, #e8e4da);
+  }
+  .screenOn {
+    display: flex;
+  }
+  .screenKind {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--h-38bdf8, #38bdf8);
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .screenTitle {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .screenX {
+    background: none;
+    border: none;
+    color: var(--muted, #9a958a);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+    user-select: none;
+  }
+  .body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .msg {
+    max-width: 92%;
+    padding: 10px 13px;
+    border-radius: calc(14px * var(--r-k, 1));
+    font-size: 13.5px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msgUser {
+    align-self: flex-end;
+    background: var(--primary, #c9a35e);
+    color: var(--on-primary, #0c0c0e);
+    border-bottom-right-radius: calc(4px * var(--r-k, 1));
+  }
+  .msgBot {
+    align-self: flex-start;
+    background: rgba(var(--ov, 255, 255, 255), 0.06);
+    color: var(--text, #e8e4da);
+    border-bottom-left-radius: calc(4px * var(--r-k, 1));
+  }
+  .msgAr {
+    direction: rtl;
+    text-align: right;
+  }
+  .tag {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.55;
+    margin-top: 5px;
+  }
+  .work {
+    margin-top: 7px;
+    font-size: 11px;
+    color: var(--muted, #9a958a);
+  }
+  .work summary {
+    cursor: pointer;
+  }
+  .work code {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--h-a78bfa, #a78bfa);
+  }
+  .action {
+    align-self: stretch;
+    border: 1px solid rgba(167, 139, 250, 0.45);
+    border-radius: calc(12px * var(--r-k, 1));
+    padding: 10px 12px;
+    background: rgba(167, 139, 250, 0.08);
+  }
+  .actionT {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--h-a78bfa, #a78bfa);
+    font-weight: 800;
+  }
+  .actionD {
+    font-size: 13px;
+    margin: 4px 0 8px;
+  }
+  .actionR {
+    display: flex;
+    gap: 8px;
+  }
+  .actionDone {
+    border-color: rgba(109, 216, 164, 0.45);
+    background: rgba(109, 216, 164, 0.08);
+  }
+  .actionDone .actionT {
+    color: var(--w-mint, #6dd8a4);
+  }
+  .actionFailed {
+    border-color: rgba(229, 115, 115, 0.45);
+    background: rgba(229, 115, 115, 0.08);
+  }
+  .actionFailed .actionT {
+    color: var(--h-e57373, #e57373);
+  }
+  .actionWhy {
+    font-size: 13px;
+    color: var(--h-e57373, #e57373);
+    margin: 6px 0 0;
+  }
+  .btn {
+    padding: 7px 13px;
+    border-radius: calc(9px * var(--r-k, 1));
+    border: 1px solid var(--border, #2a2a2e);
+    background: none;
+    color: var(--text, #e8e4da);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+  }
+  .btnPri {
+    background: linear-gradient(135deg, #f472b6, #a78bfa 45%, #38bdf8);
+    color: var(--on-primary, #0c0c0e);
+    border-color: transparent;
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .chip {
+    display: inline-block;
+    margin: 4px 4px 0 0;
+    padding: 6px 10px;
+    font: inherit;
+    font-size: 12px;
+    border: 1px solid var(--border, #2a2a2e);
+    border-radius: calc(16px * var(--r-k, 1));
+    cursor: pointer;
+    color: var(--muted, #9a958a);
+    background: none;
+    letter-spacing: inherit;
+    text-align: start;
+  }
+  .chip:hover {
+    border-color: #a78bfa;
+    color: var(--h-a78bfa, #a78bfa);
+  }
+  .composer {
+    display: flex;
+    gap: 8px;
+    padding: 12px 14px;
+    border-top: 1px solid var(--border, #2a2a2e);
+  }
+  .composer textarea {
+    flex: 1;
+    resize: none;
+    background: var(--field-bg-2, #101013);
+    color: var(--text, #e8e4da);
+    border: 1px solid var(--border, #2a2a2e);
+    border-radius: calc(10px * var(--r-k, 1));
+    padding: 9px 12px;
+    font-size: 13.5px;
+    font-family: inherit;
+    max-height: 120px;
+  }
+  .send {
+    background: linear-gradient(135deg, #f472b6, #a78bfa 45%, #38bdf8);
+    color: var(--on-primary, #0c0c0e);
+    border: none;
+    border-radius: calc(10px * var(--r-k, 1));
+    padding: 0 14px;
+    cursor: pointer;
+    font-weight: 700;
+    user-select: none;
+  }
+  .send:disabled {
+    opacity: 0.5;
+  }
+
+  /* Docked: on a desktop the page gives the panel its room; nothing is covered. */
+  @media (min-width: 1024px) {
+    .docked .panel {
+      box-shadow: none;
+    }
+    .docked .overlay {
+      display: none;
+    }
+  }
+  @media (max-width: 1023px) {
+    .grip {
+      display: none;
+    }
+  }
+
+  /* A sheet on a phone. */
+  @media (max-width: 768px) {
+    .panel {
+      top: auto;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      max-width: none;
+      height: min(86vh, calc(100vh - 56px));
+      border-left: none;
+      border-top: 1px solid rgba(167, 139, 250, 0.45);
+      border-radius: calc(18px * var(--r-k, 1)) calc(18px * var(--r-k, 1)) 0 0;
+      transform: translateY(100%);
+    }
+    .panelOpen {
+      transform: translateY(0);
+    }
+    .pill {
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      justify-content: center;
+      border-radius: 50%;
+    }
+    .pillLabel,
+    .kbd {
+      display: none;
+    }
+    .card {
+      margin: 0 0 12px;
+    }
+    /* Every button is a touch target (the classic pages' mobile sheet says so of every button, not of a list of them). */
+    .pill,
+    .ib,
+    .send,
+    .btn,
+    .mini,
+    .screenX,
+    .overlay button {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+  /* Last, so it beats every field rule above: iOS zooms into any control under 16px. */
+  @media (max-width: 768px) {
+    .panel select,
+    .panel textarea,
+    .composer textarea,
+    .sel {
+      font-size: 16px;
+    }
+  }
+}

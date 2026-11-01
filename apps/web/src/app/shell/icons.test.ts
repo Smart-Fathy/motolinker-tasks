@@ -4,6 +4,7 @@ import { COLUMN_ICONS } from '../../columns/model';
 import { DOC_ICONS } from '../../docs/model';
 import { ISSUE_ICONS } from '../../modules/issues/model';
 import { CAL_ICONS } from '../../modules/calendar/model';
+import { AI_ICONS } from '../../assistant/model';
 import { CHAT_ICONS } from '../../modules/gchat/model';
 import { MEET_ICONS } from '../../modules/meet/model';
 import { TYPE_ICONS } from '../../modules/notifications/model';
@@ -34,6 +35,7 @@ describe('the icons', () => {
     for (const icon of Object.values(ISSUE_ICONS)) wanted.add(icon);
     for (const icon of Object.values(MEET_ICONS)) wanted.add(icon);
     for (const icon of Object.values(CHAT_ICONS)) wanted.add(icon);
+    for (const icon of Object.values(AI_ICONS)) wanted.add(icon);
     for (const icon of Object.values(CAL_ICONS)) wanted.add(icon);
     for (const icon of Object.values(ACCOUNT_ICONS)) wanted.add(icon);
     for (const icon of Object.values(COLUMN_ICONS)) wanted.add(icon);
@@ -53,6 +55,7 @@ describe('the icons', () => {
       ...Object.values(ISSUE_ICONS),
       ...Object.values(MEET_ICONS),
       ...Object.values(CHAT_ICONS),
+      ...Object.values(AI_ICONS),
       ...Object.values(CAL_ICONS),
       ...Object.values(ACCOUNT_ICONS),
       ...Object.values(COLUMN_ICONS),
