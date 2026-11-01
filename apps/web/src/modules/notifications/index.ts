@@ -1,7 +1,8 @@
-import { defineModule } from '../../app/define-module';
-import { Notifications } from './Notifications';
+import { defineModule, lazyPage } from '../../app/define-module';
 
-export default defineModule('notifications', { Page: Notifications });
+export default defineModule('notifications', {
+  Page: lazyPage(() => import('./Notifications'), 'Notifications'),
+});
 
 // What the frame of the app (the bell in the header, the badge in the rail, the toasts) takes from this module.
 export { NotificationItem } from './NotificationItem';

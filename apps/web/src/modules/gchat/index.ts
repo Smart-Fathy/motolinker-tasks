@@ -1,4 +1,3 @@
-import { defineModule } from '../../app/define-module';
-import { Gchat } from './Gchat';
+import { defineModule, lazyPage } from '../../app/define-module';
 
-export default defineModule('gchat', { Page: Gchat });
+export default defineModule('gchat', { Page: lazyPage(() => import('./Gchat'), 'Gchat') });

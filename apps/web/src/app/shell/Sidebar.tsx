@@ -5,6 +5,7 @@ import { badgeText, useUnreadCount } from '../../modules/notifications';
 import { cx } from '../../ui/cx';
 import { useAppTo, useFrame, useSession, useTheme } from '../context';
 import type { RailGroup } from '../nav';
+import { preloadScreen } from '../registry';
 import { ChevronDown, Icon, PanelLeftClose } from './icons';
 import styles from './shell.module.css';
 import type { ShellState } from './state';
@@ -141,6 +142,8 @@ export function Sidebar({ rail, active, state }: SidebarProps) {
                       data-screen={item.id}
                       aria-current={here ? 'page' : undefined}
                       tabIndex={open ? 0 : -1}
+                      onPointerEnter={() => preloadScreen(item.id)}
+                      onFocus={() => preloadScreen(item.id)}
                       onClick={() => state.setDrawer(false)}
                     >
                       {body}
@@ -154,6 +157,8 @@ export function Sidebar({ rail, active, state }: SidebarProps) {
                       data-screen={item.id}
                       aria-current={here ? 'page' : undefined}
                       tabIndex={open ? 0 : -1}
+                      onPointerEnter={() => preloadScreen(item.id)}
+                      onFocus={() => preloadScreen(item.id)}
                       onClick={() => {
                         state.setDrawer(false);
                         void navigate(to('/' + item.id));

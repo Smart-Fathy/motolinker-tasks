@@ -1,4 +1,3 @@
-import { defineModule } from '../../app/define-module';
-import { Rfqs } from './Rfqs';
+import { defineModule, lazyPage } from '../../app/define-module';
 
-export default defineModule('rfq', { Page: Rfqs });
+export default defineModule('rfq', { Page: lazyPage(() => import('./Rfqs'), 'Rfqs') });

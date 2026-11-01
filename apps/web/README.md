@@ -15,7 +15,8 @@ src/app/            App.tsx (the gallery, or the product: signed out the sign-in
                     Session.tsx (everything a signed-in person has: query client, api, theme, stream, router),
                     routes.tsx (where an address opens), nav.ts + nav-config.ts (the rail), access.ts (what a
                     person may open), registry.ts + define-module.ts (the screens that have moved),
-                    Unported.tsx (the card a screen shows that cannot be framed, or did not open), context.tsx
+                    Unported.tsx (the card a screen shows that cannot be framed, or did not open), context.tsx,
+                    ScreenBoundary.tsx + ScreenLoading.tsx (what stands in for a screen that is on its way, or cannot come)
 src/app/shell/      the frame: Shell, Sidebar, Header, NotificationBell, BottomNav, icons, state (what it remembers), shell.module.css
 src/legacy/         a screen that has not moved, shown as its classic page in a frame: LegacyFrame, bridge.ts (the
                     protocol with the page), frameable.ts (the screens a frame cannot hold)
@@ -199,13 +200,23 @@ A screen is in the catalogue (contracts) first; the app adds only its page. To m
 
 ```ts
 // src/modules/leads/index.ts   (the directory is the id: the app refuses to start if they disagree)
-import { lazy } from 'react';
-import { defineModule } from '../../app/define-module';
-export default defineModule('leads', { Page: lazy(() => import('./Leads')) });
+import { defineModule, lazyPage } from '../../app/define-module';
+export default defineModule('leads', { Page: lazyPage(() => import('./Leads'), 'Leads') });
 ```
 
 `app/registry.ts` finds every `modules/*/index.ts`; nothing else lists them. `defineModule` throws for an id that
-is not in the catalogue. Who may open the screen, where it stands in the rail and what the classic portal called it
+is not in the catalogue.
+
+**A screen comes when it is opened.** `lazyPage(() => import('./Leads'), 'Leads')` is the page the file exports under
+that name, fetched the first time the screen is shown (with its own stylesheet), so the app opens with the frame and
+nobody downloads the screens they do not open. While it comes, `routes.tsx` shows `ScreenLoading` (a spinner, after a
+quarter of a second, so a screen that arrives at once flashes nothing); if it never comes (the connection dropped, or the
+app was updated since this page was opened and the old files are gone) `ScreenBoundary` leaves the frame standing and
+shows the card that offers a reload or the classic page, and the same card stands in for a page that fails while it
+draws. The rail asks for a screen early (`preloadScreen`) as the pointer reaches its item, or focus does, or a finger
+goes down on the phone's bar, so it is usually there before the click. `index.ts` should hold only the lazy page and what the
+frame itself takes from the module (the bell, the report-an-issue dialog, the security panel): a static import of the page
+there would bring the whole screen back into the file the app opens with (`tests/spashell.js` fails if one does). Who may open the screen, where it stands in the rail and what the classic portal called it
 are not repeated here: the rail, the route guard and the deep links all read the catalogue. A screen reads the
 session with `useSession()` (the person, the portal, the api, the theme) and its data with TanStack Query.
 
@@ -603,9 +614,15 @@ change.)
   actions and how a stored record is read) — never from a copy and never from the package root, which carries the
   response schemas. `tests/contracts.js` loads the subpaths in a process of their own and fails if zod comes with
   them; `tests/spashell.js` fails if zod is in any file the build writes.
-- **The bundle has a budget**: 250 kB gzipped for the JavaScript the page opens with (`tests/spashell.js`; about 124 kB
-  today). Anything that is not needed to open the app — the gallery today, a heavy screen later — is a chunk loaded
-  on demand.
+- **The bundle has a budget**: 200 kB gzipped for the JavaScript the page opens with — the entry and the files it
+  imports at once, about 165 kB today — and 60 kB gzipped for any file loaded on demand (the largest screen, Inventory
+  & Logistics, is about 20 kB). `tests/spashell.js` holds both, holds that every screen that has moved is a file of its
+  own that the page does not open with, and that the service worker keeps only the first load. Anything that is not
+  needed to open the app is a chunk loaded on demand.
+- **Every stylesheet the build writes begins by saying the order of the layers** (`layers-plugin.ts`): with a sheet for
+  each screen and one for what screens share, which of them the page names first is the build's doing, and a sheet that
+  names `ui` before `reset` and `base` puts every component under the reset, where every padding and margin turns to
+  zero and nothing else notices. Found by `spashell` the first time the app was split.
 - **Look first, redesign later**: the app wears the classic look from the workspace's tokens, and a suite
   (`tests/signinparity.js`, `tests/shellparity.js`) holds each part to the classic page's computed style. A new screen
   gets the same treatment before it replaces a classic one.

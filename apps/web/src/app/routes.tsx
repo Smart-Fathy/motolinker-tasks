@@ -1,5 +1,6 @@
 import { resolveDeepLink } from '@motolinker/contracts/deeplinks';
 import { inPortal, isPanel, screenIdFromLegacy, screenOf } from '@motolinker/contracts/modules';
+import { Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router';
 import { NOT_FRAMED } from '../legacy/frameable';
 import { LegacyFrame } from '../legacy/LegacyFrame';
@@ -7,6 +8,8 @@ import { useAppTo, useSession } from './context';
 import { useNavConfig } from './nav-config';
 import { Shell } from './shell/Shell';
 import { pageKey } from './shell/state';
+import { ScreenBoundary } from './ScreenBoundary';
+import { ScreenLoading } from './ScreenLoading';
 import { Unported } from './Unported';
 import { registry } from './registry';
 import { useWorkerMessages } from './useWorkerMessages';
@@ -52,7 +55,23 @@ function ScreenRoute() {
   if (!screen || !inPortal(screen, portal) || !access.allows(id))
     return <Navigate to={to('/home')} replace />;
   const found = registry.get(id);
-  if (found) return <found.Page />;
+  // A screen's page is fetched when it is first opened (lazyPage): the frame stays up meanwhile, and if the file cannot be
+  // had — the connection dropped, or the app was updated since this page was opened — the screen says so and offers the way out.
+  if (found)
+    return (
+      <ScreenBoundary
+        key={id}
+        fallback={
+          <Unported screen={screen} onRetry={() => window.location.reload()}>
+            This screen could not be shown. Reload to try again, or open it in the classic portal.
+          </Unported>
+        }
+      >
+        <Suspense fallback={<ScreenLoading />}>
+          <found.Page />
+        </Suspense>
+      </ScreenBoundary>
+    );
   if (Object.hasOwn(NOT_FRAMED, id)) return <Unported screen={screen}>{NOT_FRAMED[id]}</Unported>;
   return <LegacyFrame screen={screen} />;
 }

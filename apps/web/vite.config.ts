@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
+import { layerOrder } from './layers-plugin.ts';
 import { serviceWorker } from './sw-plugin.ts';
 
 // The app is served by the Node server, not by Vite: `npm run build` writes apps/web/dist, and
@@ -9,7 +10,7 @@ import { serviceWorker } from './sw-plugin.ts';
 // files in dist at /ui. So every URL the build writes is under /ui/.
 export default defineConfig({
   base: '/ui/',
-  plugins: [react(), serviceWorker()],
+  plugins: [react(), layerOrder(), serviceWorker()],
   resolve: {
     // The one file that works out the workspace's look, shared with the server and the classic pages (see src/types/theme-core.d.ts).
     alias: {
@@ -32,7 +33,7 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.{ts,tsx}', 'sw-plugin.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}', 'sw-plugin.test.ts', 'layers-plugin.test.ts'],
     // The module registry is whatever `modules/*/index.ts` files there are (import.meta.glob), which a cache keyed on the
     // registry's own text cannot know: a module added since the last run would be missing from it, and its tests fail oddly.
     fsModuleCache: false,

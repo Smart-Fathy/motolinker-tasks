@@ -1,4 +1,5 @@
-import { defineModule } from '../../app/define-module';
-import { Submissions } from './Submissions';
+import { defineModule, lazyPage } from '../../app/define-module';
 
-export default defineModule('submissions', { Page: Submissions });
+export default defineModule('submissions', {
+  Page: lazyPage(() => import('./Submissions'), 'Submissions'),
+});
