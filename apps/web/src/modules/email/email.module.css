@@ -1,0 +1,430 @@
+/* What My Email is drawn with: the classic portals' own rules for it, which are inline styles for the most part (public/assets/
+   dashboard.js and employee.js, "Email") over .email-split, .table-card, .error-msg and .btn of dashboard.css, and .card and .btn of
+   employee.css. The cards that say there is no inbox yet, the account line and the loader are the Google group's (src/google). The
+   two pages are two markups of one idea and are kept as two looks until the redesign makes them one.
+   tests/emparity.js holds the result to the classic pages' computed style, value by value. */
+@layer ui {
+  /* ── The admin's page ───────────────────────────────────────────────────── */
+  /* #page-email.active is a column the height of the screen, and #email-content scrolls inside it */
+  .adminPage {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    height: calc(100vh - 64px);
+  }
+  .adminContent {
+    flex: 1;
+    overflow: auto;
+    padding: 28px;
+  }
+  /* the team's #email-content has 28px of its own (the page has its own besides) */
+  .teamPage {
+    padding: 28px;
+  }
+
+  /* what the card of a Google project that is not set up shows: the variables to add */
+  .env {
+    text-align: left;
+    background: var(--bg);
+    padding: 12px;
+    border-radius: calc(8px * var(--r-k, 1));
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+  /* the team's card is lines of text, the picture of the screen above them */
+  .mailIcon {
+    width: 40px;
+    height: 40px;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* ── Compose, and the head of the admin's inbox ─────────────────────────── */
+  /* (inline styles in the classic page, which beat the phone's rules for a button: so they are written to beat them here) */
+  .compose.compose {
+    font-size: 13px;
+  }
+  .refresh.refresh {
+    font-size: 11px;
+    padding: 4px 10px;
+  }
+
+  /* ── The admin's two panes ──────────────────────────────────────────────── */
+  .split {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+  .inboxPane {
+    flex: 0 0 380px;
+    min-width: 0;
+  }
+  .detailPane {
+    flex: 1;
+    min-width: 0;
+  }
+  /* (a phone shows one pane at a time: the inbox, or the message with a way back) */
+  @media (max-width: 700px) {
+    .split {
+      display: block;
+    }
+    .inboxPane {
+      display: block;
+    }
+    .detailPane {
+      display: none;
+    }
+    .showDetail .inboxPane {
+      display: none;
+    }
+    .showDetail .detailPane {
+      display: block;
+    }
+  }
+
+  /* ── A line of the inbox ────────────────────────────────────────────────── */
+  .row {
+    cursor: pointer;
+    padding: 14px 20px;
+    border-bottom: 1px solid rgba(var(--ov, 255, 255, 255), 0.04);
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    transition: background 0.15s;
+  }
+  .row:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.03);
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    background: var(--primary);
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 5px;
+  }
+  .dotSpace {
+    width: 8px;
+    flex-shrink: 0;
+  }
+  .rowBody {
+    flex: 1;
+    min-width: 0;
+  }
+  .rowTop {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 2px;
+  }
+  .from {
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+  }
+  .date {
+    font-size: 11px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .subject {
+    font-size: 12px;
+    font-weight: 400;
+    margin-bottom: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .snippet {
+    font-size: 11px;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .unread .from {
+    font-weight: 700;
+  }
+  .unread .subject {
+    font-weight: 600;
+  }
+  .none {
+    text-align: center;
+    padding: 24px;
+    color: var(--muted);
+  }
+
+  /* ── The admin's message ────────────────────────────────────────────────── */
+  .placeholder {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .placeholderIcon {
+    font-size: 32px;
+    margin-bottom: 8px;
+  }
+  .placeholderText {
+    font-size: 14px;
+  }
+  .paneError {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.32);
+    color: var(--error-text, #f88);
+    border-radius: var(--r-md, calc(10px * var(--r-k, 1)));
+    padding: 12px 16px;
+    font-size: 13px;
+    margin: 0;
+  }
+  .message {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .messageHead {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  /* (the way back is for a phone, where the inbox and the message are not side by side) */
+  .messageHead .back {
+    display: none;
+    margin-bottom: 14px;
+    font-size: 12px;
+    padding: 5px 12px;
+  }
+  @media (max-width: 700px) {
+    .messageHead .back {
+      display: inline-flex;
+    }
+  }
+  .messageSubject {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    word-break: break-word;
+  }
+  .messageMeta {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .who {
+    font-size: 13px;
+    min-width: 0;
+    flex: 1;
+  }
+  .line {
+    color: var(--muted);
+    word-break: break-all;
+  }
+  .lineGap {
+    margin-bottom: 2px;
+  }
+  .line span {
+    color: var(--text);
+  }
+  .when {
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .answers {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .answers .answer {
+    font-size: 12px;
+    padding: 6px 14px;
+  }
+  .messageBody {
+    padding: 20px 24px;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .messageBodyHtml {
+    padding: 0;
+  }
+  .adminFrame {
+    width: 100%;
+    border: none;
+    min-height: 400px;
+    background: #fff;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .adminText {
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  /* ── The team's inbox ───────────────────────────────────────────────────── */
+  .teamInboxHead {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .teamRow {
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(var(--ov, 255, 255, 255), 0.04);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .teamRow:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.03);
+  }
+  .teamRow.active,
+  .teamRow.active:hover {
+    background: var(--primary-glow);
+  }
+  .teamRowBody {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .teamDot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--primary);
+    flex-shrink: 0;
+    margin-top: 5px;
+  }
+  .teamDotSpace {
+    width: 7px;
+    height: 7px;
+    flex-shrink: 0;
+    margin-top: 5px;
+  }
+  .teamTop {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 3px;
+  }
+  .teamFrom {
+    font-size: 13px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .teamDate {
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .teamSubject {
+    font-size: 13px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 2px;
+  }
+  .teamUnread .teamFrom {
+    font-weight: 700;
+  }
+  .teamNone {
+    text-align: center;
+    padding: 32px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* ── The team's message, under the inbox ────────────────────────────────── */
+  .teamDetail {
+    margin-top: 16px;
+  }
+  /* (the classic .card: the team's own surface) */
+  .teamPanel {
+    background: var(--card);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    padding: calc(24px * var(--d-k, 1));
+    margin-bottom: calc(20px * var(--d-k, 1));
+    box-shadow: 0 2px 12px rgba(0, 0, 0, calc(0.25 * var(--sh-k, 1)));
+    user-select: none;
+  }
+  @media (max-width: 768px) {
+    .teamPanel {
+      padding: 20px 18px;
+    }
+  }
+  .teamBar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .teamSubjectBig {
+    font-size: 15px;
+    font-weight: 700;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .teamMeta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 16px;
+    line-height: 1.8;
+  }
+  .teamBody {
+    font-size: 13px;
+    line-height: 1.7;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  .teamFrame {
+    width: 100%;
+    min-height: 400px;
+    border: none;
+    border-radius: 6px;
+    background: #fff;
+  }
+  .teamText {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--font);
+    color: var(--text);
+  }
+  .teamBodyError {
+    color: var(--danger);
+    font-size: 13px;
+  }
+  .teamReply {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .teamReplyLabel {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+  }
+  .teamReplyBox {
+    margin-bottom: 10px;
+  }
+}

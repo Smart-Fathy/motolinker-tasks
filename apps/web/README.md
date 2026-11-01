@@ -499,6 +499,33 @@ them all.
   `tests/gdparity.js` (look), `tests/webdrive.js` (the real thing, including the trip to Google and back) and `tests/driveroutes.js`
   (the routes, both portals).
 
+## My Email
+
+`modules/email` is one page in both portals' own looks, over `src/google` (the link to the account, the cards that say there is nothing to
+read yet, the account line, the loader — what My Drive and My Sheets use too). What a person may do is the grants: `email.view` reads the
+account, the inbox and a message, `email.send` sends (Compose, Reply and Forward; the team's box under a message), `email.connect` links an
+account and lets go of it (the classic team page offered all of it to everyone). The administrator has them all.
+
+- **The link** is `src/google/link.ts`: `useGoogleLink` asks whose account it is on every visit, goes to Google to make the link (a
+  navigation, so the session goes in the address; the team's page first asks `/api/employee/check`) and lets it go. My Drive, My Sheets and
+  My Email each hand it their routes and how to read the answer. **Nothing is kept for the next visit** (`gcTime: 0`): a screen opened again
+  starts with the loader, never with the last visit's inbox.
+- **The data** (`data.ts`) is the portals' own routes — the administrator's are Gmail's own (`/api/email/*`, not under `/api/dashboard`), the
+  team's are `/api/employee/email/*` — through `routesOf(portal)`: the inbox, one message, `useSend`, and `useRefresh`, which starts the
+  page over as the administrator's **Refresh** does.
+- **The checks on every answer** (`model.ts`) are held to the schemas in `packages/contracts` by a corpus of every wrong value of every
+  field (`test/wrongly.ts`). A message the server answers as a message with nothing in it (Gmail did not give it) is an error to the page, not
+  a blank card.
+- **A message's HTML** is handed to a frame that runs nothing (`Frame.tsx`: `sandbox="allow-same-origin"`) exactly as it came; text is text.
+- **The link says whether it can send** (`canSend`): one made before sending was asked for, or that left it out on Google's consent screen,
+  is told so on both pages, with **Reconnect** for those who may link an account.
+- **Where it is deliberately not the classic page** is `docs/parity/email.md`: the grants, a reply that does not stack another "Re:" or follow
+  what was typed under another message, an error that is not read as an empty inbox, and the administrator's Gmail connection that now only
+  trusts a return the server asked for.
+- Tests: `modules/email/model.test.ts`, `data.test.tsx` and `email.test.tsx` (every state, grant and refusal, in both portals);
+  `tests/emparity.js` (look), `tests/webemail.js` (the real thing, including the trip to Google and back) and `tests/emailroutes.js`
+  (the routes, both portals).
+
 ## The gallery
 
 `/dashboard/__gallery` and `/employee/__gallery` (with `?ui=next`; it needs no session) show the design system on

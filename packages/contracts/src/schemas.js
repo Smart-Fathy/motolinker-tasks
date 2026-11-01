@@ -937,6 +937,46 @@ const DriveFileList = z.array(DriveFile);
 // Letting a Google link go.
 const GoogleDisconnected = z.object({ ok: z.literal(true) });
 
+// ── Gmail (My Email) ───────────────────────────────────────────────────────────
+// A Gmail link says, as a Drive link does, whether its grant reaches far enough for what the page offers: here, to send (a connection
+// made before sending was asked for does not; every administrator's was).
+const GmailConnected = z.object({
+  configured: z.literal(true),
+  connected: z.literal(true),
+  email: z.string().optional(),
+  name: z.string().optional(),
+  canSend: z.boolean(),
+});
+const GmailStatus = z.union([GoogleNotConfigured, GoogleNotConnected, GmailConnected]);
+
+// A line of the inbox: the sender and subject as the message wrote them ('(no subject)' where it wrote none), the date as its Date header
+// says it, a snippet, and whether it is unread.
+const GmailMessageSummary = z.object({
+  id: z.string(),
+  subject: z.string(),
+  from: z.string(),
+  date: z.string(),
+  snippet: z.string(),
+  unread: z.boolean(),
+});
+const GmailMessageList = z.array(GmailMessageSummary);
+
+// A message opened. Gmail not finding it is not an error to this route: it answers a message with nothing in it (no id, no thread), so
+// those two may be missing.
+const GmailMessage = z.object({
+  id: z.string().optional(),
+  threadId: z.string().optional(),
+  labelIds: z.array(z.string()),
+  subject: z.string(),
+  from: z.string(),
+  to: z.string(),
+  date: z.string(),
+  messageId: z.string(),
+  body: z.string(),
+  isHtml: z.boolean(),
+});
+const GmailSent = z.object({ ok: z.literal(true), id: z.string().optional() });
+
 // What /api/v1 answers when it says no: words for a person, a word for a program, and what was wrong with the request.
 const ApiError = z.object({
   error: z.string(),
@@ -1054,6 +1094,10 @@ module.exports = {
   DriveFile,
   DriveFileList,
   GoogleDisconnected,
+  GmailStatus,
+  GmailMessageList,
+  GmailMessage,
+  GmailSent,
   Deleted,
   ApiError,
 };

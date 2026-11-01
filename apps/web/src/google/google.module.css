@@ -158,6 +158,11 @@
   .account .disconnect {
     font-size: 12px;
   }
+  /* (the admin's My Email puts Compose and Disconnect together in a row of their own) */
+  .actions {
+    display: flex;
+    gap: 8px;
+  }
 
   /* ── A link made before uploads were asked for (the admin's page only) ───── */
   .notice {

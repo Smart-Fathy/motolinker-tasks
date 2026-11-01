@@ -75,8 +75,8 @@ Each of these was found by holding the new screens to the classic ones, and is a
 - The administrator's file listing renews an access token that has run out and does not keep the new one (the team's listing does);
   the next listing renews it again. Harmless but wasteful.
 - The administrator's Gmail connection (`/api/email/connect`) hands out no state, and the callback treats a return whose state it did not
-  hand out as a Gmail return, so a code obtained elsewhere would be accepted for the administrator's mailbox. It is the next screen's
-  (My Email), where it will be raised.
+  hand out as a Gmail return, so a code obtained elsewhere would be accepted for the administrator's mailbox. That was the next screen's
+  (My Email), and is fixed there: see `email.md`.
 
 ## How it was checked
 

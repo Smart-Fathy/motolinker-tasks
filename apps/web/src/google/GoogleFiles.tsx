@@ -76,7 +76,13 @@ export function GoogleFiles({ kind }: { kind: Kind }) {
           {...(mayConnect ? { onDisconnect: () => void letGo() } : {})}
         />
         {/* (only the admin's page ever told a link made before uploads were asked for that it needed making again) */}
-        {portal === 'admin' && !link.canUpload && <ReconnectNotice onReconnect={connect} />}
+        {portal === 'admin' && !link.canUpload && (
+          <ReconnectNotice
+            before={SAID.reconnectBefore}
+            after={SAID.reconnectAfter}
+            onReconnect={connect}
+          />
+        )}
         {list.error ? (
           <Failure message={list.error} />
         ) : (
