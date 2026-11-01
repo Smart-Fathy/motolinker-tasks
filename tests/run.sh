@@ -100,6 +100,7 @@ run contractdocs node tests/contractdocs.js
 run stockroutes node tests/stockroutes.js
 run containerroutes node tests/containerroutes.js
 run driveroutes node tests/driveroutes.js
+run emailroutes node tests/emailroutes.js
 run notifications node tests/notifications.js
 run submissions  node tests/submissions.js
 run meetings     node tests/meetings.js

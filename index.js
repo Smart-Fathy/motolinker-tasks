@@ -1089,22 +1089,40 @@ receiver.router.delete('/api/dashboard/requests/:id', requireAuth, async (req, r
 });
 
 // ── Gmail / My Email ──────────────────────────────────────────────────────────
+// What both portals ask Google for: to read the inbox, to send, and who the person is. The administrator's connection used to leave
+// the sending out, so Compose and Reply on its page always came back "insufficient authentication scopes".
+const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
+
+// Gmail's send call takes any one of these grants. Google says what it actually granted, so a link made before sending was asked for
+// (every administrator's was) is told from one that can, and the page can ask for it to be made again rather than let a reply fail.
+const GMAIL_SEND_SCOPES = ['https://www.googleapis.com/auth/gmail.send', 'https://www.googleapis.com/auth/gmail.compose', 'https://www.googleapis.com/auth/gmail.modify', 'https://mail.google.com/'];
+function gmailCanSend(tokens) {
+  const granted = String((tokens && tokens.scope) || '');
+  if (!granted) return true;   // pre-dates scope recording; let Google be the judge
+  return granted.split(/\s+/).some(s => GMAIL_SEND_SCOPES.includes(s));
+}
+
 receiver.router.get('/api/email/status', requireAuth, (_req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.json({ configured: false });
   if (!gmailTokens)      return res.json({ configured: true, connected: false });
-  res.json({ configured: true, connected: true, email: gmailTokens.email, name: gmailTokens.name });
+  res.json({ configured: true, connected: true, email: gmailTokens.email, name: gmailTokens.name, canSend: gmailCanSend(gmailTokens) });
 });
 
+// Like every other flow that comes back to /api/email/callback, this hands out a state first: the return is only trusted if it is
+// one this server asked for, so a code from anywhere else cannot be made the administrator's mailbox.
 receiver.router.get('/api/email/connect', requireAuth, (req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.status(400).send('GOOGLE_CLIENT_ID not configured');
   const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+  const state = crypto.randomBytes(16).toString('hex');
+  pendingDriveAuth.set(state, { type: 'admin-gmail' });
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: `${base}/api/email/callback`,
     response_type: 'code',
-    scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+    scope: GMAIL_SCOPES,
     access_type: 'offline',
     prompt: 'consent',
+    state,
   });
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
@@ -1174,6 +1192,11 @@ receiver.router.get('/api/email/callback', async (req, res) => {
         saveGoogleToken('admin_calendar', full);
         return res.redirect('/dashboard#calendar');
       }
+      if (pending.type === 'admin-gmail') {
+        gmailTokens = full;
+        saveGoogleToken('admin_gmail', gmailTokens);
+        return res.redirect('/dashboard#email');
+      }
       driveTokens = ctx.driveTokens = full;
       saveGoogleToken('admin_drive', full);
       return res.redirect('/dashboard#drive');
@@ -1192,21 +1215,9 @@ receiver.router.get('/api/email/callback', async (req, res) => {
     }
   }
 
-  // Otherwise handle as Gmail
-  try {
-    const base = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, redirect_uri: `${base}/api/email/callback`, grant_type: 'authorization_code' }),
-    });
-    const tokens = await tokenRes.json();
-    if (!tokens.access_token) throw new Error(tokens.error_description || 'No access token');
-    const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
-    const profile = await profileRes.json();
-    gmailTokens = { ...tokens, email: profile.email, name: profile.name, expiry_date: Date.now() + ((tokens.expires_in || 3600) * 1000) };
-    saveGoogleToken('admin_gmail', gmailTokens);
-    res.redirect('/dashboard#email');
-  } catch (e) { res.status(500).send(`OAuth error: ${e.message}`); }
+  // A return this server did not ask for (no state, a state it never handed out, or one already used) is not trusted: trading its code
+  // would link whichever Google account the code belongs to. This used to be treated as the administrator's Gmail.
+  res.status(400).send('This sign-in link is not one this server handed out, or it has already been used. Start again from the page you came from.');
 });
 
 receiver.router.get('/api/email/messages', requireAuth, async (_req, res) => {
@@ -1890,13 +1901,11 @@ receiver.router.get('/api/employee/drive/files',  requireEmployeeAuth, requirePe
 receiver.router.get('/api/employee/drive/sheets', requireEmployeeAuth, requirePerm('sheets', 'view'), async (req, res) => { try { res.json(await listDriveFiles(employeeDriveTokens.get(req.employee.id), 'application/vnd.google-apps.spreadsheet', `${req.employee.id}_drive`)); } catch (e) { res.status(500).json({ error: e.message }); } });
 
 // ── Employee Email ─────────────────────────────────────────────────────────────
-const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
-
 receiver.router.get('/api/employee/email/status', requireEmployeeAuth, requirePerm('email', 'view'), (req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.json({ configured: false });
   const t = employeeEmailTokens.get(req.employee.id);
   if (!t) return res.json({ configured: true, connected: false });
-  res.json({ configured: true, connected: true, email: t.email, name: t.name });
+  res.json({ configured: true, connected: true, email: t.email, name: t.name, canSend: gmailCanSend(t) });
 });
 
 receiver.router.get('/api/employee/email/connect', requireEmployeeAuth, requirePerm('email', 'connect'), (req, res) => {
