@@ -908,7 +908,9 @@ What exists so far, all of it invisible to users:
   contract with payment lines to add and take away, and each as a PDF in the administrator's preview or the team's viewer) and
   **Inventory & Logistics** (the register of cars by vehicle, by status or by model, with its form, its bulk upload and its
   figures; and the containers on the water — a card for each with its voyage, port calls and position, a look-up by number, a form,
-  and the cars inside); the lead's drawer in the framed classic Leads page hands its lead to RFQ, Purchase orders and Contracts;
+  and the cars inside) and **My Drive** and **My Sheets** (the files of the Google account a person has linked — the link, the
+  trip to Google and back, the list with a picture for each kind, and a viewer over the page; the administrator's page and the team's
+  in their own looks); the lead's drawer in the framed classic Leads page hands its lead to RFQ, Purchase orders and Contracts;
   every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
   (`/legacy/<portal>?embed=1`; the live chat, which a frame cannot hold, opens a card that says so and
   links to the classic page), so the whole portal is reachable from the new app while the screens move one at a
@@ -971,7 +973,11 @@ prints), `tests/ctparity.js` (the list, the form and the preview against the cla
 `tests/stockroutes.js` and `tests/containerroutes.js` (the routes of both portals — who may ask for each, what a save keeps, cleans and
 refuses, the CSV, the look-up, the refresh, the cars in a box — each answer held to its schema), `tests/stparity.js` (both tabs, the
 forms and the upload sheet against the classic portals' computed style) and `tests/webstock.js` (the real server, the built app, a
-real browser). What each classic screen did,
+real browser). My Drive and My Sheets have them too: `tests/driveroutes.js` (the routes of both portals — who may ask for each, each
+grant on its own, what Google is asked and what is kept, the round trip through the one callback, a link renewed and let go of — each
+answer held to its schema, Google stood in for), `tests/gdparity.js` (every state of both screens against the classic portals' computed
+style) and `tests/webdrive.js` (the real server, the built app, a real browser, the trip to Google's consent screen and back, stood in
+for). What each classic screen did,
 row by row, and where each row is held, is `docs/parity/`.
 Details in `apps/web/README.md`.
 

@@ -34,7 +34,7 @@ import {
   type ProviderStatus,
   type Refreshed,
 } from './tracking';
-import { oneAtATime } from './wrongly';
+import { oneAtATime } from '../../test/wrongly';
 
 const base = (over: Record<string, unknown> = {}) => ({
   id: 1,

@@ -474,6 +474,31 @@ change it, tracking opens every container route); deleting a model, deleting a b
   (every state, grant and refusal); `tests/stparity.js` (look: both tabs, the forms and the CSV sheet, both portals),
   `tests/webstock.js` (the real thing), `tests/stockroutes.js` and `tests/containerroutes.js` (the routes, both portals).
 
+## My Drive and My Sheets
+
+`modules/drive` and `modules/sheets` are one page over two lists, in both portals, and are only the list they are: everything else is
+`src/google`, which they share. What a person may do is the grants: `drive.view` reads the account and the files, `drive.connect` links an
+account and lets go of it (the classic team page offered both to everyone), `sheets.view` reads the spreadsheets. The administrator has
+them all.
+
+- **The data** (`data.ts`) is the portals' own routes — the administrator's are Drive's own (`/api/drive/*`, not under `/api/dashboard`),
+  the team's are `/api/employee/drive/*` — through `routesOf(portal)`. `useDriveLink` is the one answer both screens share (no Google project
+  here, none linked, or whose account it is and whether it can upload), with the two things a person can do about it: `connect` (a
+  navigation, so the session goes in the address; the team's page first asks `/api/employee/check`, as the classic page did) and
+  `disconnect`. `useDriveFiles` reads the list once there is a link. **Nothing is kept for the next visit** (`gcTime: 0`): a screen opened
+  again starts with the loader, never with the last visit's account.
+- **The pieces** (`Pieces.tsx`, `FileGlyph.tsx`, `GoogleFiles.tsx`) are each portal's own: the administrator's page is a card in the middle
+  of the page and a table card, the team's is lines of text and a card with a scrolling table; both are held to the classic pages by
+  `tests/gdparity.js`. The file list is a card for each row on a phone (the classic `mobile.css`). The viewer is a dialog over the
+  page (focus in, Tab kept in, Escape out).
+- **The checks on every answer** (`model.ts`) are held to the schemas in `packages/contracts` by a corpus of every wrong value of every
+  field (`test/wrongly.ts`, shared with the Inventory screen's tests).
+- **Where it is deliberately not the classic page** is `docs/parity/drive.md`: the team's Disconnect button never worked in the classic page,
+  linking an account is a grant of its own, and Google refusing is told in Google's words with the account and Disconnect kept.
+- Tests: `google/model.test.ts`, `data.test.tsx` and `google.test.tsx` (every state, grant and refusal, in both portals);
+  `tests/gdparity.js` (look), `tests/webdrive.js` (the real thing, including the trip to Google and back) and `tests/driveroutes.js`
+  (the routes, both portals).
+
 ## The gallery
 
 `/dashboard/__gallery` and `/employee/__gallery` (with `?ui=next`; it needs no session) show the design system on
