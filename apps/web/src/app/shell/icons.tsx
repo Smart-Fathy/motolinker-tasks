@@ -190,10 +190,21 @@ export function BrainIcon() {
   );
 }
 
-export function Icon({ name, size }: { name: string; size?: number }) {
+export function Icon({
+  name,
+  size,
+  className,
+}: {
+  name: string;
+  size?: number;
+  /** a screen that draws the icon its own way says so */
+  className?: string;
+}) {
   if (name === 'brain-ai') return <BrainIcon />;
   const Glyph = ICONS[name];
-  return Glyph ? <Glyph aria-hidden="true" {...(size ? { size } : {})} /> : null;
+  return Glyph ? (
+    <Glyph aria-hidden="true" {...(size ? { size } : {})} {...(className ? { className } : {})} />
+  ) : null;
 }
 
 export { ChevronDown, Menu, PanelLeftClose };

@@ -32,7 +32,7 @@ if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log('
 // until it moved: it is a panel over the page, tested in tests/websecurity.js.)
 const NOT_FRAMED = ['chat'];
 // Screens that have moved into the app: their page is the app's own, not the classic page in a frame.
-const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[data-part=submissionsPage]', issues: '[data-part=issuesPage]', meet: '[data-part=meetPage]', calendar: '[data-part=calendarPage]', suppliers: '[data-part=suppliersPage]', rfq: '[data-part=docPage]', purchaseorders: '[data-part=docPage]', contracts: '[data-part=docPage]', stock: '[data-part=stockPage]', drive: '[data-part=googlePage]', sheets: '[data-part=googlePage]' };
+const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[data-part=submissionsPage]', issues: '[data-part=issuesPage]', meet: '[data-part=meetPage]', calendar: '[data-part=calendarPage]', suppliers: '[data-part=suppliersPage]', rfq: '[data-part=docPage]', purchaseorders: '[data-part=docPage]', contracts: '[data-part=docPage]', stock: '[data-part=stockPage]', drive: '[data-part=googlePage]', sheets: '[data-part=googlePage]', email: '[data-part=emailPage]' };
 
 (async () => {
   const db = createFakeSupabase(seedTables(parseSchema()));
@@ -104,7 +104,8 @@ const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[d
       const rail = (await railOf(page)).filter(id => id !== 'home');
       const framed = rail.filter(id => !NOT_FRAMED.includes(id) && !Object.hasOwn(MOVED, id));
       const cards = rail.filter(id => NOT_FRAMED.includes(id));
-      check(`${p.portal}: the rail lists the screens the portal has (${rail.length} besides Home, ${framed.length} of them framed)`, rail.length >= 20 && framed.length >= 10, rail.join());
+      // (the second number is a floor that proves the walk below has screens to walk, not a count: it falls as screens move into the app)
+      check(`${p.portal}: the rail lists the screens the portal has (${rail.length} besides Home, ${framed.length} of them framed)`, rail.length >= 20 && framed.length >= 5, rail.join());
 
       // all of them, one after the other, through the rail: the first opens the frame, the rest are asked of it
       const problems = [];

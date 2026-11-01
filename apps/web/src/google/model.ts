@@ -204,7 +204,6 @@ export const SAID = {
     'This connection was authorised before uploads were supported, so attaching a client file will fail. ',
   reconnect: 'Reconnect',
   reconnectAfter: ' to fix it.',
-  unreachable: 'Cannot reach the server — try again in a moment.',
   unreadable: 'Google Drive could not be read.',
   /** the team member may read spreadsheets and not the Drive status that says whose account it is: the classic page told them it was not set up */
   noAccess: 'Google Drive is not switched on for you. Ask your admin.',
