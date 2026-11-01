@@ -561,7 +561,7 @@ const boxes = () => [
     reset();
     const page = await openPage(browser, base, p, mode, next, stubbed);
     await page.waitForSelector(next ? '[data-part=sidebar]' : '#nav-home.active', { timeout: 20000 });
-    await page.addStyleTag({ content: STILL + (next ? '' : '.ai-card{display:none!important}') });
+    await page.addStyleTag({ content: STILL + '.ai-card,[data-part=aiCard]{display:none!important}' });
     // (a native confirm or prompt would stop the page: the suite answers them)
     await page.evaluate(() => { window.confirm = () => true; window.alert = () => {}; });
     const pick = (classic, now) => next ? now : classic;

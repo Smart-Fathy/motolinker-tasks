@@ -128,7 +128,7 @@ const rows = () => {
     await page.waitForSelector(next ? '[data-part=sidebar]' : '#nav-home.active', { timeout: 20000 });
     // (the classic pages carry the assistant's card at the top of the page; the assistant moves into the new app with its own batch,
     // and the card is not a part of this page)
-    await page.addStyleTag({ content: STILL + (next ? '' : '.ai-card{display:none!important}') });
+    await page.addStyleTag({ content: STILL + '.ai-card,[data-part=aiCard]{display:none!important}' });
     const until = (fn, arg, what) => page.waitForFunction(fn, { timeout: 15000, polling: 50 }, arg).catch(e => { throw new Error(`${p.who}/${side}/${key}: waiting for ${what}: ${e.message.split('\n')[0]}`); });
     const reading = async state => {
       const which = Object.fromEntries(READS[state].map(r => [r, roles[r]]).filter(([, d]) => d));

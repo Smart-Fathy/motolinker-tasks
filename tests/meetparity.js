@@ -179,7 +179,7 @@ const meetings = () => [
     db.failing.clear(); db.latency = 0;
     const page = await openPage(browser, base, p, mode, next);
     await page.waitForSelector(next ? '[data-part=sidebar]' : '#nav-home.active', { timeout: 20000 });
-    await page.addStyleTag({ content: STILL + (next ? '' : '.ai-card{display:none!important}') });
+    await page.addStyleTag({ content: STILL + '.ai-card,[data-part=aiCard]{display:none!important}' });
     const until = (fn, arg, what) => page.waitForFunction(fn, { timeout: 15000, polling: 50 }, arg).catch(async e => {
       const seen = await page.evaluate(() => (document.querySelector('[data-part=meetings], #meet-meetings') || document.body).innerText.replace(/\s+/g, ' ').slice(0, 200)).catch(() => '?');
       throw new Error(`${p.who}/${side}/${key}: waiting for ${what}: ${e.message.split('\n')[0]} — the page says: "${seen}"`);

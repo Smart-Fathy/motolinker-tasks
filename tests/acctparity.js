@@ -169,7 +169,7 @@ const WIDTHS = [390, 670, 800, 1100];
     ctx.employeeSessions.set('other-device', { id: 1, name: 'Admin Person', username: 'smoke', job_title: 'Chief Technical Officer', permissions: {}, createdAt: Date.now() });
     const page = await openPage(browser, base, team, mode, next);
     await page.waitForSelector(next ? '[data-part=sidebar]' : '#nav-home.active', { timeout: 20000 });
-    await page.addStyleTag({ content: STILL + (next ? '' : '.ai-card{display:none!important}') });
+    await page.addStyleTag({ content: STILL + '.ai-card,[data-part=aiCard]{display:none!important}' });
     const pick = (classic, now) => next ? now : classic;
     const until = (fn, arg, what) => page.waitForFunction(fn, { timeout: 15000, polling: 50 }, arg).catch(e => { throw new Error(`${side}/${key}: waiting for ${what}: ${e.message.split('\n')[0]}`); });
     const reading = async (state, groups, extra = {}) => {
@@ -239,7 +239,7 @@ const WIDTHS = [390, 670, 800, 1100];
     Object.assign(person, { avatar_url: FACE, status_emoji: '📚', status_text: 'Focusing' });
     const page2 = await openPage(browser, base, team, mode, next);
     await page2.waitForSelector(next ? '[data-part=sidebar]' : '#nav-home.active', { timeout: 20000 });
-    await page2.addStyleTag({ content: STILL + (next ? '' : '.ai-card{display:none!important}') });
+    await page2.addStyleTag({ content: STILL + '.ai-card,[data-part=aiCard]{display:none!important}' });
     const wait2 = (fn, arg, what) => page2.waitForFunction(fn, { timeout: 15000, polling: 50 }, arg).catch(e => { throw new Error(`${side}/${key}: waiting for ${what}: ${e.message.split('\n')[0]}`); });
     await wait2(s => { const i = document.querySelector(s); return !!i && i.complete && i.naturalWidth > 0; }, pick('#profile-btn .user-avatar img', '[data-part=profileBtn] [data-part=avatar] img'), 'the picture');
     await page2.evaluate(s => document.querySelector(s).click(), pick('#profile-btn', '[data-part=profileBtn]'));
