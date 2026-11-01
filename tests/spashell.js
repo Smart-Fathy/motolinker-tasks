@@ -34,6 +34,13 @@ const jsFile = (builtPage.match(/<script type="module"[^>]*src="\/ui\/assets\/([
 const cssFile = (builtPage.match(/<link rel="stylesheet"[^>]*href="\/ui\/assets\/([^"]+\.css)"/) || [])[1];
 const allJs = assets.filter(f => f.endsWith('.js'));
 const textOf = f => fs.readFileSync(path.join(dist, 'assets', f), 'utf8');
+// What the page opens with: the entry script, and the files the build says it imports at once (a modulepreload each). Every
+// other file is fetched when something asks for it: the gallery, and each screen's page, with its own styles.
+const firstLoadJs = [jsFile, ...[...builtPage.matchAll(/<link rel="modulepreload"[^>]*href="\/ui\/assets\/([^"]+\.js)"/g)].map(m => m[1])];
+// The screens that have moved, read from their own modules: each says which file its page comes from (lazyPage), and the build
+// names the chunk it makes of that file after it.
+const moduleIds = fs.readdirSync(path.join(ROOT, 'apps', 'web', 'src', 'modules'), { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name);
+const pageFileOf = id => (read('apps', 'web', 'src', 'modules', id, 'index.ts').match(/lazyPage\(\(\) => import\('\.\/(\w+)'\)/) || [])[1];
 
 // ── 1. The template and the built page keep the hooks the dressing code finds its places by ─────
 const HOOKS = [
@@ -56,11 +63,18 @@ check('the admin head in the template is the classic dashboard page\'s head', JS
 const fromClassicHead = ([, to]) => !to.startsWith('<a ') && !to.startsWith('<html');
 check('what is swapped in for the team is, word for word, in the classic team page\'s head', SWAPS.team.filter(fromClassicHead).every(([, to]) => classicTeam.includes(to)), SWAPS.team.filter(([, to]) => fromClassicHead([, to]) && !classicTeam.includes(to)).map(([, to]) => to).join(' | '));
 check('the template marks the admin portal on <html>, and the team swap marks the team', template.includes('<html lang="en" data-portal="admin">') && SWAPS.team.some(([from, to]) => from === '<html lang="en" data-portal="admin">' && to === '<html lang="en" data-portal="team">'));
-// The layers rank in the order they are first named in the built sheet, so a component's sheet coming before base.css would put
-// `ui` under the reset and turn every padding and margin in the app to zero. Nothing else notices: the page still opens.
+// The layers rank in the order they are first named across the page's sheets, so a component's sheet that the page names before
+// base.css would put `ui` under the reset and turn every padding and margin in the app to zero. Nothing else notices: the page
+// still opens. With a sheet for each screen and one for what screens share, which the page names first is the build's doing, so
+// every sheet the build writes begins by saying the order (apps/web/layers-plugin.ts), and so it does not matter.
 const builtCss = textOf(cssFile);
 const layerOrder = css => { const seen = []; for (const m of css.matchAll(/@layer\s+([a-z][a-z0-9, -]*)\s*[{;]/gi)) for (const n of m[1].split(',').map(x => x.trim())) if (n && !seen.includes(n)) seen.push(n); return seen; };
-check('the built stylesheet ranks its layers reset, base, ui — the order they are named in, which the import order in main.tsx decides', layerOrder(builtCss).slice(0, 3).join() === 'reset,base,ui', layerOrder(builtCss).join());
+check('the built stylesheet ranks its layers reset, base, ui', layerOrder(builtCss).slice(0, 3).join() === 'reset,base,ui', layerOrder(builtCss).join());
+const allCss = assets.filter(f => f.endsWith('.css'));
+const orderless = allCss.filter(f => layerOrder(textOf(f)).slice(0, 3).join() !== 'reset,base,ui');
+check('…and so does every other sheet the build writes (the shared ones and each screen\'s), so whichever the page names first says the same', allCss.length > 1 && orderless.length === 0, orderless.join() || `${allCss.length} sheets`);
+const declaredByBase = (read('apps', 'web', 'src', 'styles', 'base.css').match(/^@layer\s+([a-z, -]+);/m) || [])[1];
+check('…in the order base.css declares them', declaredByBase && declaredByBase.split(',').map(x => x.trim()).join() === 'reset,base,ui', declaredByBase);
 
 // ── 2. The pure parts ───────────────────────────────────────────────────────────────────────────
 check('the switch takes only next and legacy, from the query first, then the cookie, then the default', (() => {
@@ -199,8 +213,16 @@ db.install();
   check('…cached for a year and marked immutable, which is safe because their names carry a hash of their content', /max-age=31536000/.test(asset.headers.get('cache-control') || '') && /immutable/.test(asset.headers.get('cache-control') || ''));
   check('…the unprocessed page is not one of them, nor a directory, nor a file that is not there, nor a way out of the folder',
     (await fetch(base + '/ui/index.html')).status === 404 && (await fetch(base + '/ui/')).status === 404 && (await fetch(base + '/ui/assets/nope.js')).status === 404 && (await fetch(base + '/ui/..%2f..%2fpackage.json')).status === 404);
-  const gz = zlib.gzipSync(fs.readFileSync(path.join(dist, 'assets', jsFile))).length;
-  check('the JavaScript the page opens with stays inside its budget (250 kB gzipped)', gz <= 250 * 1024, `${(gz / 1024).toFixed(1)} kB`);
+  const gzOf = f => zlib.gzipSync(fs.readFileSync(path.join(dist, 'assets', f))).length;
+  const gz = firstLoadJs.reduce((n, f) => n + gzOf(f), 0);
+  check('the JavaScript the page opens with (the entry and what it imports at once) stays inside its budget (200 kB gzipped)', gz <= 200 * 1024, `${(gz / 1024).toFixed(1)} kB in ${firstLoadJs.length} files`);
+  const onDemand = allJs.filter(f => !firstLoadJs.includes(f)).map(f => [f, gzOf(f)]).sort((a, b) => b[1] - a[1]);
+  check('…and no file that is fetched on demand is larger than 60 kB gzipped, so no screen can grow into a second app', onDemand.length > 0 && onDemand[0][1] <= 60 * 1024, onDemand.slice(0, 3).map(([f, n]) => `${f} ${(n / 1024).toFixed(1)} kB`).join(', '));
+  const pageFiles = moduleIds.map(id => [id, pageFileOf(id)]);
+  const screenChunks = pageFiles.filter(([, file]) => file && allJs.some(f => f.startsWith(file + '-')));
+  check('every screen that has moved has its page in a file of its own, which the module asks for when the screen is opened', moduleIds.length >= 16 && screenChunks.length === moduleIds.length, pageFiles.filter(([id, file]) => !screenChunks.some(([i]) => i === id)).map(([id, file]) => `${id}${file ? '' : ' (not lazyPage)'}`).join(', '));
+  const openedWith = pageFiles.filter(([, file]) => file && firstLoadJs.some(f => f.startsWith(file + '-')));
+  check('…and none of those files is one the page opens with, or the entry would carry the screen again', openedWith.length === 0, openedWith.map(([id]) => id).join());
   const withZod = allJs.filter(f => /ZodError|\$ZodType/.test(textOf(f)));
   check('…no file the build writes, the ones loaded on demand included, carries zod, which the browser has no use for', allJs.length > 0 && withZod.length === 0, withZod.join());
   // (a static `import … from "./x.js"` loads x up front; the `import("./x.js")` the entry makes when asked does not match)
@@ -233,7 +255,8 @@ db.install();
   const worker = fs.readFileSync(path.join(dist, 'sw.js'), 'utf8');
   const named = [...worker.matchAll(/\/ui\/assets\/([A-Za-z0-9_.-]+\.(?:js|css))/g)].map(m => m[1]);
   check('the build writes the worker beside the app, with the first load\'s files written into it and nothing left to fill in', worker.length > 500 && !/__PRECACHE__|__BUILD__/.test(worker) && named.includes(jsFile) && named.includes(cssFile));
-  check('…and only files the build wrote, never one that is loaded on demand', named.length > 0 && named.every(f => assets.includes(f) && !/^Gallery-/.test(f)), named.join());
+  check('…and only files the build wrote, never one that is loaded on demand', named.length > 0 && named.every(f => assets.includes(f) && !/^Gallery-/.test(f) && !pageFiles.some(([, file]) => file && f.startsWith(file + '-'))), named.join());
+  check('…which are the files the page opens with, no more and no fewer', firstLoadJs.every(f => named.includes(f)) && named.filter(f => f.endsWith('.js')).every(f => firstLoadJs.includes(f)), named.join());
   const w = {};
   for (const portal of ['dashboard', 'employee']) {
     const r = await fetch(base + '/sw-ui-' + portal + '.js');
