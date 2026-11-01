@@ -52,12 +52,13 @@ describe('the registry', () => {
     );
   });
 
-  it('finds, in this app, the modules that have moved: Calendar, Contracts, Drive, Email, Home, Inventory & Logistics, Issues, Meet, Notifications, Purchase orders, RFQ, Security, Sheets, Submissions and Suppliers so far', () => {
+  it('finds, in this app, the modules that have moved: Calendar, Contracts, Drive, Email, Google Chat, Home, Inventory & Logistics, Issues, Meet, Notifications, Purchase orders, RFQ, Security, Sheets, Submissions and Suppliers so far', () => {
     expect([...registry.keys()].sort()).toEqual([
       'calendar',
       'contracts',
       'drive',
       'email',
+      'gchat',
       'home',
       'issues',
       'meet',

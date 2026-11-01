@@ -32,7 +32,7 @@ if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log('
 // until it moved: it is a panel over the page, tested in tests/websecurity.js.)
 const NOT_FRAMED = ['chat'];
 // Screens that have moved into the app: their page is the app's own, not the classic page in a frame.
-const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[data-part=submissionsPage]', issues: '[data-part=issuesPage]', meet: '[data-part=meetPage]', calendar: '[data-part=calendarPage]', suppliers: '[data-part=suppliersPage]', rfq: '[data-part=docPage]', purchaseorders: '[data-part=docPage]', contracts: '[data-part=docPage]', stock: '[data-part=stockPage]', drive: '[data-part=googlePage]', sheets: '[data-part=googlePage]', email: '[data-part=emailPage]' };
+const MOVED = { notifications: '[data-part=notificationsPage]', submissions: '[data-part=submissionsPage]', issues: '[data-part=issuesPage]', meet: '[data-part=meetPage]', calendar: '[data-part=calendarPage]', suppliers: '[data-part=suppliersPage]', rfq: '[data-part=docPage]', purchaseorders: '[data-part=docPage]', contracts: '[data-part=docPage]', stock: '[data-part=stockPage]', drive: '[data-part=googlePage]', sheets: '[data-part=googlePage]', email: '[data-part=emailPage]', gchat: '[data-part=gchatPage]' };
 
 (async () => {
   const db = createFakeSupabase(seedTables(parseSchema()));

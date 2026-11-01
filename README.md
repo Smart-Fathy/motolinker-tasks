@@ -913,7 +913,9 @@ What exists so far, all of it invisible to users:
   in their own looks) and **My Email** (the inbox of the Gmail account a person has linked — the link and the trip to Google and
   back, the inbox, a message in a frame that runs nothing, and writing: the administrator's split view with Compose, Reply and
   Forward in a sheet, the team's card with a box under the message to answer in; a connection that cannot send says so and offers
-  to be made again); the lead's drawer in the framed classic Leads page hands its lead to RFQ, Purchase orders and Contracts;
+  to be made again) and **Google Chat** (the spaces of the Google account a person has linked and the conversation in one — the
+  link and the trip to Google and back, the list, the messages, asked for again every twenty seconds while the page is in view, and
+  a box to write in; a link that was granted less says what it cannot do; on a phone one pane at a time, with a way back); the lead's drawer in the framed classic Leads page hands its lead to RFQ, Purchase orders and Contracts;
   every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
   (`/legacy/<portal>?embed=1`; the live chat, which a frame cannot hold, opens a card that says so and
   links to the classic page), so the whole portal is reachable from the new app while the screens move one at a
@@ -985,6 +987,11 @@ Google is asked and what is kept, what makes a link unable to send, that a retur
 answer held to its schema, Google stood in for), `tests/emparity.js` (every state of both screens, the sheet for a new email
 and for a reply included, against the classic portals' computed style) and `tests/webemail.js` (the real server, the built app, a real
 browser, the trip to Google's consent screen and back, a consent that left out the right to send, and what Gmail was sent, stood in
+for). Google Chat has them too: `tests/gchatroutes.js` (the routes of both portals — who may ask for each, each grant on its own,
+what Google is asked and what is kept, what a link reaches, a link renewed, lost and let go of, the way back from Google's consent
+screen when it worked and when it did not — each answer held to its schema, Google stood in for), `tests/gcparity.js` (every state
+of both screens, on a phone as well, against the classic portals' computed style) and `tests/webgchat.js` (the real server, the
+built app, a real browser, the trip to Google's consent screen and back, a return with a reason, and what Chat was sent, stood in
 for). What each classic screen did,
 row by row, and where each row is held, is `docs/parity/`.
 Details in `apps/web/README.md`.

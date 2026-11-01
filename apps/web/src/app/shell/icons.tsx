@@ -1,5 +1,6 @@
 import {
   AlarmClock,
+  AlertCircle,
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
@@ -62,6 +63,7 @@ import {
   Plus,
   Radio,
   RefreshCw,
+  RotateCcw,
   Rows3,
   Search,
   Send,
@@ -86,6 +88,7 @@ import type { Mode } from '../../lib/theme';
 /** The icons the rail and the bottom bar draw, by the names the classic portals gave them (lucide's). */
 export const ICONS: Readonly<Record<string, LucideIcon>> = {
   'alarm-clock': AlarmClock,
+  'alert-circle': AlertCircle,
   'alert-triangle': AlertTriangle,
   'arrow-left': ArrowLeft,
   'arrow-right': ArrowRight,
@@ -146,6 +149,7 @@ export const ICONS: Readonly<Record<string, LucideIcon>> = {
   plus: Plus,
   radio: Radio,
   'refresh-cw': RefreshCw,
+  'rotate-ccw': RotateCcw,
   'rows-3': Rows3,
   search: Search,
   send: Send,

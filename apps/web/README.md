@@ -526,6 +526,38 @@ account and lets go of it (the classic team page offered all of it to everyone).
   `tests/emparity.js` (look), `tests/webemail.js` (the real thing, including the trip to Google and back) and `tests/emailroutes.js`
   (the routes, both portals).
 
+## Google Chat
+
+`modules/gchat` is one page in both portals' own looks, over `src/google` (the link to the account and the loader — what My Drive, My Sheets
+and My Email use too): the spaces of the linked Google account on the left, the one that is open on the right. What a person may do is the
+grants: `gchat.view` sees the spaces and reads them (and links an account and lets go of it: there is no grant of its own for that),
+`gchat.send` writes in one. The administrator has both.
+
+- **The link** is `src/google/link.ts` again: it asks whose account it is on every visit and goes to Google to make the link. A link is
+  only found to be lost when something asks Chat, so a status can say "linked" for an account Google has already revoked; the first
+  thing asked then says **Reconnect**.
+- **The data** (`data.ts`) is the portals' own routes — one set, mounted under `/api/dashboard/gchat` and `/api/employee/gchat` — through
+  `routesOf(portal)`: the status, the spaces, the messages of a space (asked for again every twenty seconds for as long as the
+  conversation is on the page **and the page is in view**), `useSend`, and `useRefresh`, which starts the page over as **Refresh** does.
+  Nothing is kept for the next visit (`gcTime: 0`): a screen opened again starts with the loader, never with the last visit's messages.
+- **What the link reaches** (`caps`: spaces, reading, sending) is what Google actually granted, which can be less than was asked for. A
+  link that was not granted reading is not asked for messages, and the card says so with **Grant read access**; one that was not granted
+  sending, or a member without the grant to send, gets a line where the box would be.
+- **The reason Google sent a person back with** (`?gchat_error=…`, written by the server's callback) is read once, when the app starts
+  (`lib/chat-return.ts`, `main.tsx`), and taken out of the address bar at once — the screen is reached through a redirect to its own
+  address, which would drop it, and a reason has no business staying where it is copied, bookmarked and sent along as a referrer. The
+  screen says it once, with **Try again**.
+- **The checks on every answer** (`model.ts`) are held to the schemas in `packages/contracts` by a corpus of every wrong value of every
+  field (`test/wrongly.ts`).
+- **A phone** shows one pane at a time: the list, or the open space (or the card, where there is one) with a way back. The classic
+  stylesheets hide both panes under 700px unless they are marked, which Google Chat never does, so its classic page shows nothing there.
+- **Where it is deliberately not the classic page** is `docs/parity/gchat.md`: the phone, the open space marked in the list, polling that
+  does not stop for good, words in place of bare codes, a reader who is not taken away from what they are reading, a message that is sent
+  once, and an error that is told as an error.
+- Tests: `modules/gchat/model.test.ts`, `data.test.tsx` and `gchat.test.tsx` (every state, grant and refusal, in both portals) and
+  `lib/chat-return.test.ts`; `tests/gcparity.js` (look, on a phone too), `tests/webgchat.js` (the real thing, including the trip to
+  Google and back) and `tests/gchatroutes.js` (the routes, both portals).
+
 ## The gallery
 
 `/dashboard/__gallery` and `/employee/__gallery` (with `?ui=next`; it needs no session) show the design system on
