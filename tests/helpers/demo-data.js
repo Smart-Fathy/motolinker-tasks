@@ -54,12 +54,13 @@ function allPermissions(normEmpPerms, PERM_ACTIONS) {
   return on;
 }
 
-// Boots the app on the demo data. Returns { base, db, portals: [{ who, route, key, token }] }.
-async function bootDemo({ port, tokens = { admin: 'demo-admin', team: 'demo-employee' } } = {}) {
+// Boots the app on the demo data (with `env` set first, for a suite that needs the server to be set up for something: Google Chat, say).
+// Returns { base, db, portals: [{ who, route, key, token }] }.
+async function bootDemo({ port, tokens = { admin: 'demo-admin', team: 'demo-employee' }, env } = {}) {
   const db = createFakeSupabase(seedTables(parseSchema()));
   db.install();
   seedDemoData(db);
-  const base = await bootApp({ port });
+  const base = await bootApp({ port, ...(env ? { env } : {}) });
   const ctx = require(path.join(__dirname, '..', '..', 'src', 'ctx'));
   const { normEmpPerms, PERM_ACTIONS } = require(path.join(__dirname, '..', '..', 'src', 'routes', 'employee-portal.js'));
   const everything = allPermissions(normEmpPerms, PERM_ACTIONS);

@@ -12,7 +12,7 @@
 #   bash tests/run.sh --list                  print the suite names and run nothing (also with --only / --shard)
 #
 # `secparity` (the Security panel against the classic one, 8 looks of 2 portals) runs as two, one per portal, for the same reason;
-# so do `supparity` (Suppliers), `docparity` (RFQs and purchase orders), `ctparity` (Contracts), `stparity` (Inventory & Logistics), `gdparity` (My Drive and My Sheets) and `emparity` (My Email).
+# so do `supparity` (Suppliers), `docparity` (RFQs and purchase orders), `ctparity` (Contracts), `stparity` (Inventory & Logistics), `gdparity` (My Drive and My Sheets), `emparity` (My Email) and `gcparity` (Google Chat).
 # `themeaudit`, the contrast audit, is the longest suite and runs as three (themeaudit1..3) so that it can be
 # spread over machines; --only themeaudit asks for all three. Every suite's seconds go to
 # ${TMPDIR:-/tmp}/ml-suite-times.txt, which is what tests/suite-weights.json is refreshed from.
@@ -37,7 +37,7 @@ if [ -n "$shard" ]; then
 fi
 expanded=()
 for n in "${asked[@]}"; do
-  case "$n" in themeaudit) expanded+=(themeaudit1 themeaudit2 themeaudit3) ;; secparity) expanded+=(secparityadmin secparityteam) ;; supparity) expanded+=(supparityadmin supparityteam) ;; docparity) expanded+=(docparityadmin docparityteam) ;; ctparity) expanded+=(ctparityadmin ctparityteam) ;; stparity) expanded+=(stparityadmin stparityteam) ;; gdparity) expanded+=(gdparityadmin gdparityteam) ;; emparity) expanded+=(emparityadmin emparityteam) ;; *) expanded+=("$n") ;; esac
+  case "$n" in themeaudit) expanded+=(themeaudit1 themeaudit2 themeaudit3) ;; secparity) expanded+=(secparityadmin secparityteam) ;; supparity) expanded+=(supparityadmin supparityteam) ;; docparity) expanded+=(docparityadmin docparityteam) ;; ctparity) expanded+=(ctparityadmin ctparityteam) ;; stparity) expanded+=(stparityadmin stparityteam) ;; gdparity) expanded+=(gdparityadmin gdparityteam) ;; emparity) expanded+=(emparityadmin emparityteam) ;; gcparity) expanded+=(gcparityadmin gcparityteam) ;; *) expanded+=("$n") ;; esac
 done
 asked=("${expanded[@]}")
 if [ $only_given -eq 1 ]; then only=","; for n in "${asked[@]}"; do only="$only$n,"; done; fi
@@ -133,6 +133,8 @@ run gdparityadmin  node tests/gdparity.js --portal=admin
 run gdparityteam   node tests/gdparity.js --portal=team
 run emparityadmin  node tests/emparity.js --portal=admin
 run emparityteam   node tests/emparity.js --portal=team
+run gcparityadmin  node tests/gcparity.js --portal=admin
+run gcparityteam   node tests/gcparity.js --portal=team
 run acctparity  node tests/acctparity.js
 run webshell     node tests/webshell.js
 run galleryaudit node tests/galleryaudit.js
@@ -149,6 +151,7 @@ run webcontracts node tests/webcontracts.js
 run webstock     node tests/webstock.js
 run webdrive    node tests/webdrive.js
 run webemail    node tests/webemail.js
+run webgchat    node tests/webgchat.js
 run webauth      node tests/webauth.js
 run permlive    node tests/permlive.js
 run permsui     node tests/permsui.js
