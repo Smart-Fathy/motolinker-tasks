@@ -49,8 +49,10 @@ Each of these was found by holding the new screens to the classic ones, and is a
 - **The team's Disconnect button does not work in the classic page.** Its label reads `')">Disconnect` and pressing it runs a script
   that does not parse: the page builds the button with the icon's markup inside an attribute that is quoted with the same quotes
   (`onclick="disconnectDrive('…','<i data-lucide="hard-drive" …>')"`). A team member has never been able to let go of their account
-  from either screen. The new button says Disconnect and does it (`tests/gdparity.js` names the three values that differ, and checks
-  that they still do). The administrator's button was always fine.
+  from either screen. The new button says Disconnect and does it. (`tests/gdparity.js` mends the classic label before it reads the page,
+  and checks at the end that it was broken: the longer label only moves the width at which the account line wraps, and where that is
+  depends on the fonts of the machine the suite runs on — on CI's it wrapped at 390px and moved everything below it by 44px, on the
+  machine the suite was written on it did not.) The administrator's button was always fine.
 - **Link and unlink are a grant of their own** (`drive.connect`), and the new team page offers them only to those who have it. The classic
   page offered both to everyone and sent a member without the grant to Google and back to a raw error. A member who may see the files and
   may not link an account is told "No Google account is linked. Ask your admin to link one for you."

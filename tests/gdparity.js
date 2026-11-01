@@ -36,16 +36,16 @@ const build = spawnSync(process.execPath, [path.join(ROOT, 'node_modules', 'vite
 if (build.status !== 0) { console.log(build.stdout, build.stderr); console.log(' FAIL the web app builds'); process.exit(1); }
 
 // Where the two differ on purpose or by necessity, and why, by portal. Each must still differ, or it is stale and fails.
-const ACCEPTED_BY = {
-  admin: {},
-  team: {
-    // The classic team page builds its Disconnect button with the icon's markup inside an attribute that is quoted with the same
-    // quotes (onclick="disconnectDrive('…','<i data-lucide="hard-drive" …>')"): the attribute ends in the middle of the icon, the
-    // rest of it becomes part of the button, which reads ')">Disconnect and, when pressed, runs a script that does not parse. The
-    // new app's button says Disconnect and lets go of the account.
-    ...Object.fromEntries(['_x', '_w', '_text'].map(p => [`disconnect.${p}`, 'the classic team page\'s Disconnect button is broken (its label is ")\'>Disconnect" and it does nothing); the new one is not'])),
-  },
-};
+const ACCEPTED_BY = { admin: {}, team: {} };
+
+// The classic team page builds its Disconnect button with the icon's markup inside an attribute that is quoted with the same quotes
+// (onclick="disconnectDrive('…','<i data-lucide="hard-drive" …>')"): the attribute ends in the middle of the icon, the rest of it
+// becomes the button's label, ')">Disconnect, and the button, when pressed, runs a script that does not parse. The new app's button says
+// Disconnect and lets go of the account. The longer label would only move the width at which the account line wraps — and where that is
+// depends on the fonts of the machine the suite runs on (it wrapped at 390px on CI's and not on the machine this was written on, and so
+// moved everything under the account line by 44px) — so the label is mended in the classic page before it is read, and what it was is
+// checked at the end: the classic button is still broken, and this is where that is written down.
+const mended = new Set();
 
 const free = (c, x, text = false) => part(c, x, 'abs', null, text);
 const SHEET = 'application/vnd.google-apps.spreadsheet';
@@ -204,6 +204,16 @@ const WIDTHS = arg('widths') ? arg('widths').split(',').map(Number) : [390, 670,
       if (!next) await page.evaluate(() => window.lucide && window.lucide.createIcons());
     };
     const reading = async (screen, state, kind) => {
+      if (!next && p.who === 'team') {
+        const was = await page.evaluate(sel => {
+          const b = document.querySelector(sel);
+          if (!b) return null;
+          const label = b.textContent;
+          if (label !== 'Disconnect') b.textContent = 'Disconnect';
+          return label;
+        }, `${kind === 'drive' ? '#drive-content' : '#sheets-content'} > div:nth-child(1) > button`);
+        if (was !== null && was !== 'Disconnect') mended.add(was);
+      }
       const ROLES = rolesFor(p.who, kind);
       const which = {};
       for (const g of READS[state]) Object.assign(which, ROLES[g]);
@@ -293,6 +303,7 @@ const WIDTHS = arg('widths') ? arg('widths').split(',').map(Number) : [390, 670,
     check('it compared a real number of values (a comparison that found nothing would pass everything)', compared > (PORTAL ? 20000 : 40000), String(compared));
     const stale = Object.entries(staleBy).filter(([who]) => !PORTAL || PORTAL === who).flatMap(([who, set]) => [...set].map(k => `${who}:${k}`));
     check('every accepted difference still differs, so the list is not hiding anything that got fixed', stale.length === 0, stale.join(', '));
+    if (PORTAL !== 'admin') check('the classic team page\'s Disconnect button is still broken: its label is the rest of the icon\'s markup (it is mended before the page is read)', [...mended].join('|') === '\')">Disconnect', JSON.stringify([...mended]));
   }
   fs.rmSync(dist, { recursive: true, force: true });
   console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);
