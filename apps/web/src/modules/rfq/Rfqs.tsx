@@ -1,5 +1,6 @@
 import { can } from '@motolinker/contracts/access';
 import { useState } from 'react';
+import { useAssistantRecord } from '../../assistant';
 import { useSession } from '../../app/context';
 import { Badge, ColumnsLayer, useColumns } from '../../columns';
 import { buildXlsx, useDocList, useDocWrites } from '../../docs/data';
@@ -31,6 +32,14 @@ export function Rfqs() {
     export: can(access.actor, 'rfq.export'),
     delete: can(access.actor, 'rfq.delete'),
   };
+
+  // (what the assistant is told is open: the RFQ whose form is in front of the person; a new one is not a record yet)
+  const editing = form?.id != null ? list.items.find(x => x.id === form.id) : undefined;
+  useAssistantRecord(
+    form?.id != null
+      ? { kind: 'rfq', id: String(form.id), title: editing?.rfq_no ?? '', sub: '' }
+      : null,
+  );
 
   // A new RFQ for a lead, from the lead's own page: "/rfq?lead=<id>" opens the form, made from that lead, and is not kept.
   useLeadParam(may.create, lead => setForm({ id: null, lead }));
@@ -136,6 +145,7 @@ export function Rfqs() {
 
   return (
     <DocPage
+      screen="rfq"
       title="RFQ"
       hint="Request for Quotation sent to a supplier. Prefills from a lead, like the quotation."
       add={

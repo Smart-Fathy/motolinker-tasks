@@ -1,5 +1,6 @@
 import { can } from '@motolinker/contracts/access';
 import { useState, type ReactNode } from 'react';
+import { useAssistantRecord } from '../../assistant';
 import { useSession } from '../../app/context';
 import { Icon } from '../../app/shell/icons';
 import docStyles from '../../docs/docs.module.css';
@@ -74,6 +75,13 @@ export function Tracking() {
     start: Record<string, unknown> | undefined;
   } | null>(null);
   const [link, setLink] = useState<{ id: number; free: FreeCar[] } | null>(null);
+  // (what the assistant is told is open: the container whose form is in front of the person; a new one is not a record yet)
+  const boxOpen = form?.id != null ? board.items.find(x => x.id === form.id) : undefined;
+  useAssistantRecord(
+    form?.id != null
+      ? { kind: 'container', id: String(form.id), title: boxOpen?.container_no ?? '', sub: '' }
+      : null,
+  );
 
   const look = async () => {
     const seen = inspectContainerNo(no);

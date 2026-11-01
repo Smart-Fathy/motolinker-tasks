@@ -1,5 +1,6 @@
 import { can } from '@motolinker/contracts/access';
 import { useNavigate } from 'react-router';
+import { InsightCard } from '../../assistant';
 import { useAppTo, useSession } from '../../app/context';
 import { useSubmissions } from './data';
 import { whenOf, type Submission } from './model';
@@ -160,6 +161,7 @@ export function Submissions() {
           </span>
           {refreshButton}
         </div>
+        <InsightCard screen="submissions" />
         <div className={styles['adminBody']} data-part="pageBody">
           <div className={styles['container']} data-part="container">
             {body}
@@ -169,19 +171,22 @@ export function Submissions() {
     );
   }
   return (
-    <div className={styles['teamBody']} data-part="submissionsPage">
-      <div className={styles['teamHead']} data-part="pageHead">
-        <div>
-          <div className={styles['cardTitle']} data-part="pageTitle">
-            Website Submissions
+    <>
+      <InsightCard screen="submissions" />
+      <div className={styles['teamBody']} data-part="submissionsPage">
+        <div className={styles['teamHead']} data-part="pageHead">
+          <div>
+            <div className={styles['cardTitle']} data-part="pageTitle">
+              Website Submissions
+            </div>
+            <div className={styles['cardHint']} data-part="pageHint">
+              Enquiries the public website sent us.
+            </div>
           </div>
-          <div className={styles['cardHint']} data-part="pageHint">
-            Enquiries the public website sent us.
-          </div>
+          <div className={styles['teamActions']}>{refreshButton}</div>
         </div>
-        <div className={styles['teamActions']}>{refreshButton}</div>
+        <div data-part="container">{body}</div>
       </div>
-      <div data-part="container">{body}</div>
-    </div>
+    </>
   );
 }

@@ -216,7 +216,7 @@ const WIDTHS = arg('widths') ? arg('widths').split(',').map(Number) : [390, 670,
     reset();
     const page = await openPage(browser, base, p, mode, next, stub);
     await page.waitForSelector(next ? '[data-part=sidebar]' : '#nav-home.active', { timeout: 20000 });
-    await page.addStyleTag({ content: STILL + (next ? '' : '.ai-card{display:none!important}') });
+    await page.addStyleTag({ content: STILL + '.ai-card,[data-part=aiCard]{display:none!important}' });
     const pick = (classic, now) => next ? now : classic;
     const until = (fn, arg, what) => page.waitForFunction(fn, { timeout: 15000, polling: 50 }, arg).catch(async e => {
       const seen = await page.evaluate(() => (document.querySelector('[data-part=gchatPage], #page-gchat') || document.body).innerText.replace(/\s+/g, ' ').slice(0, 200)).catch(() => '?');
@@ -312,7 +312,7 @@ const WIDTHS = arg('widths') ? arg('widths').split(',').map(Number) : [390, 670,
       if (next) await page.waitForSelector('[data-part=sidebar]', { timeout: 20000 });
       else await go('home');
       await until(s => !document.querySelector(s), pick('#page-gchat.active', '[data-part=gchatPage]'), 'the page to be left');
-      await page.addStyleTag({ content: STILL + (next ? '' : '.ai-card{display:none!important}') });
+      await page.addStyleTag({ content: STILL + '.ai-card,[data-part=aiCard]{display:none!important}' });
     }
     if (states.includes('listLoading')) {
       let release; world.hold.spaces = new Promise(r => { release = r; });

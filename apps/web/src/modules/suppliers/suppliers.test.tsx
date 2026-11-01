@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Column } from '../../columns';
 import { adminMe, deferred, json, teamMe } from '../../test/helpers';
 import { open, type Answer } from '../../test/session';
+import { askOpen, looking } from '../../test/assistant';
 
 beforeEach(() => {
   localStorage.clear();
@@ -1137,6 +1138,37 @@ describe("a supplier's pages", () => {
         .at(-1)!,
     );
     await waitFor(() => expect(document.querySelector('[data-part=dialog]')).toBeNull());
+  });
+});
+
+describe('the record the assistant is told is open', () => {
+  it("is the supplier whose page is open, by its name; it is none once the page is closed, and a new supplier's form is none", async () => {
+    const user = userEvent.setup();
+    boot('admin', ALL);
+    await loaded();
+    await askOpen();
+    expect(looking()).toBe('');
+    await user.click(within(cardOf('Yu Motors')).getByRole('button', { name: 'Vehicles' }));
+    await waitFor(() => expect(looking()).toBe('Supplier #1 · Yu Motors'));
+    fireEvent.click(
+      within(document.querySelector('[data-part=dialog]') as HTMLElement)
+        .getAllByRole('button', { name: 'Close' })
+        .at(-1)!,
+    );
+    await waitFor(() => expect(looking()).toBe(''));
+    await user.click(screen.getByRole('button', { name: /Add supplier/ }));
+    expect(looking()).toBe('');
+  });
+
+  it('is the supplier whose form is open for changes', async () => {
+    const user = userEvent.setup();
+    boot('admin', ALL);
+    await loaded();
+    await askOpen();
+    await user.click(within(cardOf('Alpha')).getByRole('button', { name: 'Edit' }));
+    await waitFor(() => expect(looking()).toBe('Supplier #2 · Alpha'));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(looking()).toBe(''));
   });
 });
 

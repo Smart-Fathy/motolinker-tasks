@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Column } from '../../columns';
 import { adminMe, deferred, json, teamMe } from '../../test/helpers';
 import { open, type Answer } from '../../test/session';
+import { askOpen, looking } from '../../test/assistant';
 
 beforeEach(() => {
   localStorage.clear();
@@ -413,6 +414,19 @@ describe('Inventory & Logistics — the Models tab', () => {
     expect(words(document.querySelector('[data-part=dialog] [data-part=legacyNote]'))).toBe(
       '1 car was recorded here before VIN tracking. Add it above to bring this model back into stock.',
     );
+  });
+
+  it('is the record the assistant is told is open while the form of a model is, and none for a new model', async () => {
+    boot('admin', ALL, { stock: [vehicle(1, { quantity: 1, units: [unit({ vin: 'V1' })] })] });
+    await loaded();
+    await askOpen();
+    await userEvent.click(document.querySelector('[data-part=rowEdit]') as HTMLElement);
+    await waitFor(() => expect(looking()).toBe('Stock #1 · BYD Seal'));
+    await userEvent.click(document.querySelector('[data-part=cancel]') as HTMLElement);
+    await waitFor(() => expect(looking()).toBe(''));
+    await userEvent.click(document.querySelector('[data-part=add]') as HTMLElement);
+    await waitFor(() => expect(document.querySelector('[data-part=dialog]')).not.toBeNull());
+    expect(looking()).toBe('');
   });
 
   it('says nothing of unmatched cars where there are none', async () => {

@@ -9,9 +9,16 @@
 //                 { ml: 'embed', v: 1, type: 'navigated',    page, lead? }   the person moved to another page, in the frame
 //                                                                     (`lead`: a lead's page sent them there to make a document for it)
 //                 { ml: 'embed', v: 1, type: 'unauthorized' }         the session is gone: the app decides what to do
+//                 { ml: 'embed', v: 1, type: 'record',       record }  the record open on the page changed ({ kind, id, title, sub }, or null)
+//                 { ml: 'embed', v: 1, type: 'screen',       id, screen }  the answer to the question below
+//                 { ml: 'embed', v: 1, type: 'ask' }                   Ctrl/⌘+K was pressed in the page: the assistant's panel is the app's, so the app opens or
+//                                                                      closes it (and the browser is kept from doing what that key does there)
 //   app -> page   { ml: 'embed', v: 1, type: 'navigate',     page }   show that page (no reload)
 //                 { ml: 'embed', v: 1, type: 'look',         profile } the workspace's look changed
-//                 { ml: 'embed', v: 1, type: 'refresh',      what }    something this page shows changed: read it again ('tasks')
+//                 { ml: 'embed', v: 1, type: 'refresh',      what }    something this page shows changed: read it again ('tasks', or
+//                                                                      'page': whatever the page on show is made of)
+//                 { ml: 'embed', v: 1, type: 'screen',       id, section }  what is open and chosen on the page? (the assistant is
+//                                                                      about to be asked something; assets/assistant.js knows how to read it)
 //
 // Only the window that framed this page, from this origin, is listened to or spoken to. The page's own scripts ask
 // `document.documentElement.hasAttribute('data-embed')` to leave to the app what the app now owns (the live notification
@@ -31,6 +38,8 @@
   let shown = null;          // the page the app was last told about
   let lastNoSession = 0;
   let lead = null;           // the lead whose document the next page change is for, until it is told
+  let read = null;           // how to read what is open and chosen on the page (assets/assistant.js says)
+  const watchers = [];       // who wants to hear of each page that comes on show
   window.mlEmbed = {
     // A lead's page is about to send the person to a page that makes a document for that lead (a request for quotation, a purchase
     // order): the app, which may have rebuilt that page, is told whose it is with the next page change.
@@ -44,6 +53,20 @@
       if (shown === page) return;
       send(shown === null ? 'ready' : 'navigated', whose === null ? { page } : { page, lead: whose });
       shown = page;
+      for (const watcher of watchers) { try { watcher(page); } catch (_) { /* one watcher's trouble is its own */ } }
+    },
+    // assets/assistant.js, which in a frame builds nothing and only reads: `reader(section)` says what is open and chosen on the
+    // page, `onPage(page)` hears of each page that comes on show (the one on show now, at once).
+    assistant(reader, onPage) {
+      read = typeof reader === 'function' ? reader : null;
+      if (typeof onPage === 'function') {
+        watchers.push(onPage);
+        if (shown !== null) { try { onPage(shown); } catch (_) { /* as above */ } }
+      }
+    },
+    // The record open on the page changed (a lead's profile, a supplier): the app says what the assistant is looking at.
+    record(record) {
+      send('record', { record });
     },
     // Every call that fails for a dead session ends up here; the app needs telling once.
     unauthorized() {
@@ -53,6 +76,11 @@
       send('unauthorized');
     },
   };
+
+  // The assistant's key, pressed while the keyboard is in the page: the page is a frame, so the app's own listener never hears it.
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && String(e.key).toLowerCase() === 'k') { e.preventDefault(); send('ask'); }
+  });
 
   window.addEventListener('message', e => {
     if (e.source !== app || e.origin !== location.origin) return;
@@ -68,10 +96,22 @@
       // The app heard of a task (assigned, or due) on the stream the page does not open in a frame: the page reads its tasks
       // again, as it does when the notification reaches it directly.
       if (m.what === 'tasks') {
-        for (const read of [window.loadMyTasks, window.loadDropdownTasks]) {
-          if (typeof read === 'function') Promise.resolve().then(read).catch(() => {});
+        for (const load of [window.loadMyTasks, window.loadDropdownTasks]) {
+          if (typeof load === 'function') Promise.resolve().then(load).catch(() => {});
         }
+      } else if (m.what === 'page') {
+        // The assistant carried out something the person confirmed (a task made, a note sent): the page on show reads its data
+        // again, as the assistant's own panel made it do on a page of its own.
+        try {
+          if (shown && typeof pageLoaders !== 'undefined' && typeof pageLoaders[shown] === 'function') Promise.resolve().then(pageLoaders[shown]).catch(() => {});
+        } catch (_) { /* a page with no loaders has nothing to read again */ }
       }
+    } else if (m.type === 'screen') {
+      // The assistant is about to be asked something: what is open and chosen on this page. Always answered, even if with nothing,
+      // so that the app is not left waiting.
+      let screen = null;
+      try { screen = read ? read(typeof m.section === 'string' ? m.section : '') : null; } catch (_) { screen = null; }
+      send('screen', { id: m.id, screen });
     }
   });
 })();

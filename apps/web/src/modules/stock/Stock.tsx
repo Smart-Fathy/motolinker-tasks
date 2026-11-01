@@ -1,5 +1,6 @@
 import { can } from '@motolinker/contracts/access';
 import { useEffect, useState } from 'react';
+import { InsightCard, useAssistantRecord } from '../../assistant';
 import { useSession } from '../../app/context';
 import { Icon } from '../../app/shell/icons';
 import { ColumnsLayer, useColumns } from '../../columns';
@@ -91,6 +92,13 @@ export function Stock() {
     if (!window.confirm(`Delete ${nameOf(v)} from stock?`)) return;
     void writes.remove(v.id);
   };
+  // (what the assistant is told is open: the model whose form is in front of the person; a new one is not a record yet)
+  const editing = form?.id != null ? stock.items.find(x => x.id === form.id) : undefined;
+  useAssistantRecord(
+    form?.id != null
+      ? { kind: 'stock_model', id: String(form.id), title: editing ? nameOf(editing) : '', sub: '' }
+      : null,
+  );
   // "Review" puts the models with unmatched cars in front of you: every model, nothing narrowed, the first one in view.
   const review = () => {
     setViewState('model');
@@ -172,6 +180,7 @@ export function Stock() {
             {add}
           </div>
         </div>
+        <InsightCard screen="stock" />
         <div className={docStyles['adminBody']} data-part="pageBody">
           <div className={styles['dealTabs']} role="tablist" data-part="tabs">
             {(
@@ -200,39 +209,42 @@ export function Stock() {
     );
   }
   return (
-    <div className={docStyles['teamBody']} data-part="stockPage">
-      <div className={docStyles['teamHead']} data-part="pageHead">
-        <div>
-          <div className={docStyles['cardTitle']} data-part="pageTitle">
-            Inventory
+    <>
+      <InsightCard screen="stock" />
+      <div className={docStyles['teamBody']} data-part="stockPage">
+        <div className={docStyles['teamHead']} data-part="pageHead">
+          <div>
+            <div className={docStyles['cardTitle']} data-part="pageTitle">
+              Inventory
+            </div>
+            <div className={docStyles['cardHint']} data-part="pageHint">
+              Cars in stock, with the units held against each model.
+            </div>
           </div>
-          <div className={docStyles['cardHint']} data-part="pageHint">
-            Cars in stock, with the units held against each model.
+          <div className={docStyles['teamActions']} data-part="headActions">
+            {search}
+            {add}
           </div>
         </div>
-        <div className={docStyles['teamActions']} data-part="headActions">
-          {search}
-          {add}
-        </div>
-      </div>
-      <div className={styles['tabStrip']} role="tablist" data-part="tabs">
-        <TeamTab
-          on={tab === 'models'}
-          icon={STOCK_ICONS.models}
-          label="Models"
-          pick={() => setTab('models')}
-        />
-        {may.tracking && (
+        <div className={styles['tabStrip']} role="tablist" data-part="tabs">
           <TeamTab
-            on={tab === 'tracking'}
-            icon={STOCK_ICONS.tracking}
-            label="Tracking"
-            pick={() => setTab('tracking')}
+            on={tab === 'models'}
+            icon={STOCK_ICONS.models}
+            label="Models"
+            pick={() => setTab('models')}
           />
-        )}
+          {may.tracking && (
+            <TeamTab
+              on={tab === 'tracking'}
+              icon={STOCK_ICONS.tracking}
+              label="Tracking"
+              pick={() => setTab('tracking')}
+            />
+          )}
+        </div>
+        {pane}
+        {sheets}
       </div>
-      {pane}
-      {sheets}
-    </div>
+    </>
   );
 }

@@ -915,7 +915,11 @@ What exists so far, all of it invisible to users:
   Forward in a sheet, the team's card with a box under the message to answer in; a connection that cannot send says so and offers
   to be made again) and **Google Chat** (the spaces of the Google account a person has linked and the conversation in one — the
   link and the trip to Google and back, the list, the messages, asked for again every twenty seconds while the page is in view, and
-  a box to write in; a link that was granted less says what it cannot do; on a phone one pane at a time, with a way back); the lead's drawer in the framed classic Leads page hands its lead to RFQ, Purchase orders and Contracts;
+  a box to write in; a link that was granted less says what it cannot do; on a phone one pane at a time, with a way back) and **the
+  assistant** (the Ask AI button in the top bar and Ctrl/⌘+K, the panel that docks beside the page on a desktop, slides over it on a
+  tablet and rises as a sheet on a phone, the card at the top of a section's page, what the model proposes with a button to confirm it,
+  and what is on the screen — the record that is open, the tab, the search, the ticked rows — told to the model; a classic page in the
+  app's frame tells the app the same through the bridge); the lead's drawer in the framed classic Leads page hands its lead to RFQ, Purchase orders and Contracts;
   every other screen in the rail opens **the classic page itself, in a frame** under the app's rail and bars
   (`/legacy/<portal>?embed=1`; the live chat, which a frame cannot hold, opens a card that says so and
   links to the classic page), so the whole portal is reachable from the new app while the screens move one at a
@@ -992,7 +996,12 @@ what Google is asked and what is kept, what a link reaches, a link renewed, lost
 screen when it worked and when it did not — each answer held to its schema, Google stood in for), `tests/gcparity.js` (every state
 of both screens, on a phone as well, against the classic portals' computed style) and `tests/webgchat.js` (the real server, the
 built app, a real browser, the trip to Google's consent screen and back, a return with a reason, and what Chat was sent, stood in
-for). What each classic screen did,
+for). The assistant has them too: `tests/assistroutes.js` (the routes of both portals — who may ask for what, which sections a person is
+offered and whether they may be proposed things to do in them, what the model is told and what comes back when it answers, is busy,
+fails or is not there, that a proposal is nothing until it is confirmed and is checked again when it is — each answer held to its schema,
+the model stood in for at the provider so that the lookups it asks for are really made), `tests/aiparity.js` (the button, the panel in each
+state, the messages, the cards to confirm, "Looking at…" and the card at the top of a page, on a phone as well, against the classic
+portals' computed style) and `tests/webassist.js` (the real server, the built app, a real browser, a scripted model). What each classic screen did,
 row by row, and where each row is held, is `docs/parity/`.
 Details in `apps/web/README.md`.
 

@@ -1,4 +1,18 @@
 @layer ui {
+  /* Above the frame: the assistant's card for the section, as the classic page has it at the top of its body. Nothing there when the
+     person may not be shown one. */
+  .above {
+    padding: calc(16px * var(--d-k, 1)) calc(28px * var(--d-k, 1)) 0;
+  }
+  .above:empty {
+    display: none;
+  }
+  @media (max-width: 768px) {
+    .above {
+      padding: 16px 16px 0;
+    }
+  }
+
   /* The page area, given over to a classic page. Its height is set from the window (LegacyFrame), this is only what it
      starts as. */
   .box {

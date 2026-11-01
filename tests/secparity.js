@@ -236,7 +236,7 @@ const WIDTHS = [390, 670, 800, 1100];
     const S = answers(kind, 'off');
     const page = await openPage(browser, base, p, mode, next, stubFrom(S));
     await page.waitForSelector(next ? '[data-part=sidebar]' : '#nav-home.active, #app', { timeout: 20000 });
-    await page.addStyleTag({ content: STILL + (next ? '' : '.ai-card{display:none!important}') });
+    await page.addStyleTag({ content: STILL + '.ai-card,[data-part=aiCard]{display:none!important}' });
     const pick = (classic, now) => next ? now : classic;
     const until = (fn, arg, what) => page.waitForFunction(fn, { timeout: 15000, polling: 50 }, arg).catch(async e => {
       const seen = await page.evaluate(() => (document.querySelector('[data-part=dialog], #sec-overlay') || document.body).innerText.replace(/\s+/g, ' ').slice(0, 240)).catch(() => '?');

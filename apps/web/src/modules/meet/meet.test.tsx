@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { adminMe, choose, deferred, json, optionsOf, teamMe } from '../../test/helpers';
 import { open, type Answer } from '../../test/session';
+import { askOpen, looking } from '../../test/assistant';
 import { SAID, summaryOf, whenOf, type Meeting } from './model';
 
 beforeEach(() => {
@@ -411,6 +412,20 @@ describe('scheduling a meeting', () => {
 });
 
 describe('changing and cancelling a meeting', () => {
+  it('is the record the assistant is told is open while its sheet is — and none for a new meeting', async () => {
+    const user = userEvent.setup({ delay: null });
+    boot('team', world());
+    await waitFor(() => expect(rows()).toHaveLength(5));
+    await askOpen();
+    await user.click(within(rows()[0]!).getByRole('button', { name: 'Edit' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Edit meeting' });
+    await waitFor(() => expect(looking()).toBe('Meeting #1 · Weekly sales sync'));
+    await user.click(within(sheet).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(looking()).toBe(''));
+    await user.click(screen.getByRole('button', { name: /Schedule a meeting/ }));
+    await screen.findByRole('dialog', { name: 'Schedule a meeting' });
+    expect(looking()).toBe('');
+  });
   it('Edit opens the meeting as it stands, saves it with a PUT, and says calendars re-sync', async () => {
     const user = userEvent.setup({ delay: null });
     const view = boot('team', world());

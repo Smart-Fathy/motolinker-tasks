@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Column } from '../../columns';
 import { adminMe, deferred, json, teamMe } from '../../test/helpers';
 import { open, type Answer } from '../../test/session';
+import { askOpen, looking } from '../../test/assistant';
 
 beforeEach(() => {
   localStorage.clear();
@@ -1283,6 +1284,16 @@ describe('the contracts screen', () => {
       await formReady();
       return s;
     };
+    it('is the record the assistant is told is open, until the form is closed — and a new contract is none', async () => {
+      await openOne();
+      await askOpen();
+      expect(looking()).toBe('Contract #1 · MC2610-1');
+      await userEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(looking()).toBe(''));
+      await userEvent.click(screen.getByRole('button', { name: /New contract/ }));
+      await formReady();
+      expect(looking()).toBe('');
+    });
     it('is the record: its number, every blank where it was, its payment lines, status, lead and added fields', async () => {
       const s = await openOne();
       expect(dialog().querySelector('[data-part=title]')?.textContent).toBe('Contract MC2610-1');
