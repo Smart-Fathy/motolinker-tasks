@@ -56,6 +56,7 @@
     "containerroutes": 6,
     "driveroutes": 5,
     "emailroutes": 5,
+    "gchatroutes": 6,
     "calendar": 2,
     "issues": 4,
     "spashell": 2,

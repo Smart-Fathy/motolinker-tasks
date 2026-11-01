@@ -977,6 +977,59 @@ const GmailMessage = z.object({
 });
 const GmailSent = z.object({ ok: z.literal(true), id: z.string().optional() });
 
+// ── Google Chat ────────────────────────────────────────────────────────────────
+// A Chat link says what the grant Google gave reaches. It can be less than what was asked for — a person may untick boxes on the consent
+// screen — so a link may be unable to list spaces, to read messages or to send. A link Google no longer honours says so (`reconnect`, and
+// whose it was) and is as good as none until it is made again.
+const GchatCaps = z.object({ spaces: z.boolean(), read: z.boolean(), send: z.boolean() });
+const GchatConnected = z.object({
+  configured: z.literal(true),
+  connected: z.literal(true),
+  email: z.string().optional(),
+  name: z.string().optional(),
+  caps: GchatCaps,
+});
+const GchatNotConnected = z.object({
+  configured: z.literal(true),
+  connected: z.literal(false),
+  reconnect: z.literal(true).optional(),
+  email: z.string().optional(),
+});
+const GchatStatus = z.union([GoogleNotConfigured, GchatNotConnected, GchatConnected]);
+
+// A space as the server renames what Chat lists: `name` is Chat's own address for it ('spaces/AAAA…'), `title` is what to call it, `type`
+// is Chat's own word for the kind of space (SPACE, GROUP_CHAT, DIRECT_MESSAGE) and is empty where Chat gave none.
+const GchatSpace = z.object({ name: z.string(), title: z.string(), type: z.string() });
+// Where Chat could not be asked, or said no, the routes still answer 200: an empty list with the reason beside it (and Google's own words
+// where Google gave some).
+const GchatSpaceList = z.object({
+  spaces: z.array(GchatSpace),
+  error: z.string().optional(),
+  detail: z.string().optional(),
+});
+
+// A message of a space, oldest first: who wrote it as Chat names them (`senderName` may be empty), when, and the words (empty for a message
+// that is only a card or an attachment).
+const GchatMessage = z.object({
+  id: z.string(),
+  text: z.string(),
+  senderName: z.string(),
+  senderId: z.string(),
+  createTime: z.string(),
+});
+const GchatMessageList = z.object({
+  messages: z.array(GchatMessage),
+  error: z.string().optional(),
+  detail: z.string().optional(),
+});
+
+// A message sent: the id Chat gave it; or Chat (or the link) saying no, in a 200, beside why. A request the route itself turns away (no such
+// space, nothing to say) is a 400 with the reason alone.
+const GchatSent = z.union([
+  z.object({ ok: z.literal(true), id: z.string().optional() }),
+  z.object({ ok: z.literal(false), error: z.string(), detail: z.string().optional() }),
+]);
+
 // What /api/v1 answers when it says no: words for a person, a word for a program, and what was wrong with the request.
 const ApiError = z.object({
   error: z.string(),
@@ -1098,6 +1151,10 @@ module.exports = {
   GmailMessageList,
   GmailMessage,
   GmailSent,
+  GchatStatus,
+  GchatSpaceList,
+  GchatMessageList,
+  GchatSent,
   Deleted,
   ApiError,
 };
