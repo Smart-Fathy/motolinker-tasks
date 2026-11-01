@@ -1,0 +1,423 @@
+/* What Google Chat is drawn with: the classic portals' own rules for it, which are the main Chat's (the .chat-* rules of dashboard.css and
+   employee.css) plus inline styles for the cards. The main Chat has not moved into the app yet, so what Google Chat borrows from it is
+   written here, for each portal, until it does. The two portals' pages are the same markup; where their stylesheets differ, the team's
+   rules are written under [data-portal='team'].
+   tests/gcparity.js holds the result to the classic pages' computed style, value by value. */
+@layer ui {
+  /* ── The page ───────────────────────────────────────────────────────────── */
+  /* #page-gchat is a .page with its padding taken off (inline), and the layout fills the screen below the bar */
+  .page {
+    padding: 0;
+  }
+  :global([data-portal='team']) .page {
+    max-width: 100%;
+    /* (the team's stylesheet: .page, .chat-messages { overscroll-behavior-y: contain }) */
+    overscroll-behavior-y: contain;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 270px 1fr;
+    height: calc(100vh - 64px);
+    overflow: hidden;
+  }
+  :global([data-portal='team']) .layout {
+    height: calc(100vh - var(--topbar-h));
+  }
+
+  /* ── The spaces ─────────────────────────────────────────────────────────── */
+  .rooms {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .roomsHeader {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .roomsTitle {
+    font-size: 13px;
+    font-weight: 500;
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    letter-spacing: 0.3px;
+  }
+  :global([data-portal='team']) .roomsTitle {
+    font-weight: 700;
+    font-family: inherit;
+    letter-spacing: normal;
+  }
+  /* (an inline style in the classic page, which beats the phone's rules for a button: so it is written to beat them here) */
+  .refresh.refresh {
+    padding: 5px 8px;
+  }
+  .roomList {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+    position: relative;
+  }
+  .row:hover {
+    background: rgba(var(--ov, 255, 255, 255), 0.04);
+  }
+  /* the open one (the administrator's stylesheet has its own, which wins over the hover as the team's does by coming later) */
+  .row.rowActive {
+    background: rgba(var(--primary-rgb, 201, 163, 94), 0.1);
+  }
+  :global([data-portal='team']) .row.rowActive {
+    background: rgba(var(--alt-rgb, 99, 102, 241), 0.14);
+  }
+  .avatarWrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+  .avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(160deg, var(--avatar-bg-1, #1c1a14), var(--field-bg, #0e0e10));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--primary-text, var(--gold));
+    flex-shrink: 0;
+    border: 1px solid var(--hair-gold);
+  }
+  :global([data-portal='team']) .avatar {
+    background: var(--primary);
+    color: var(--on-primary-w, #fff);
+    border: 0 none;
+  }
+  .avatarGroup {
+    border-radius: calc(10px * var(--r-k, 1));
+  }
+  .info {
+    flex: 1;
+    min-width: 0;
+  }
+  .spaceName {
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .preview {
+    font-size: 11px;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 2px;
+  }
+  /* "No spaces yet." — an inline style in the classic page */
+  .none {
+    padding: 18px;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+
+  /* ── The conversation ───────────────────────────────────────────────────── */
+  .main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .header {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+  .name {
+    font-size: 14px;
+    font-weight: 500;
+    font-family: var(--font-head, 'Cormorant Garamond', serif);
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  :global([data-portal='team']) .name {
+    font-weight: 700;
+    font-family: inherit;
+    letter-spacing: normal;
+  }
+  /* the way back to the spaces, on a phone (the classic page has none: on a phone it showed nothing at all). It is drawn as the main
+     Chat's own back button is, and takes no height from the header: its touch target reaches past the row, by its negative margin */
+  .back {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--text);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: calc(6px * var(--r-k, 1));
+  }
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  :global([data-portal='team']) .messages {
+    overscroll-behavior-y: contain;
+  }
+  .msg {
+    display: flex;
+    flex-direction: column;
+    max-width: 70%;
+    position: relative;
+    padding-top: 28px;
+  }
+  .mine {
+    align-self: flex-end;
+    align-items: flex-end;
+  }
+  .theirs {
+    align-self: flex-start;
+    align-items: flex-start;
+  }
+  .sender {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 3px;
+    font-weight: 600;
+  }
+  .bubble {
+    padding: 8px 13px;
+    border-radius: calc(18px * var(--r-k, 1));
+    font-size: 13px;
+    line-height: 1.45;
+    max-width: 100%;
+    word-break: break-word;
+    /* (a message is shown with the lines it was written in, as the classic page shows it) */
+    white-space: pre-wrap;
+  }
+  .mine .bubble {
+    background: linear-gradient(135deg, var(--gold-soft), var(--gold));
+    color: var(--on-primary, #0c0c0e);
+    border-bottom-right-radius: calc(4px * var(--r-k, 1));
+  }
+  :global([data-portal='team']) .mine .bubble {
+    background: var(--primary);
+    color: var(--on-primary-w, #fff);
+  }
+  .theirs .bubble {
+    background: rgba(var(--ov, 255, 255, 255), 0.07);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: calc(4px * var(--r-k, 1));
+  }
+  :global([data-portal='team']) .theirs .bubble {
+    background: var(--surface);
+  }
+  .time {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ── The box a message is written in ────────────────────────────────────── */
+  .composer {
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  /* what stands there when the person may read the space and not write in it (inline styles in the classic page) */
+  .readOnly {
+    justify-content: center;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .reconnect {
+    color: var(--primary-text, var(--primary));
+    margin-left: 4px;
+  }
+  .input {
+    flex: 1;
+    padding: 9px 13px;
+    border-radius: calc(20px * var(--r-k, 1));
+    border: 1px solid var(--hair);
+    background: var(--field-bg, #0e0e10);
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    resize: none;
+    max-height: 110px;
+    overflow-y: auto;
+    line-height: 1.4;
+    transition: border-color 0.2s;
+  }
+  .input:focus {
+    border-color: var(--gold);
+    box-shadow:
+      0 0 0 3px rgba(var(--primary-rgb, 201, 163, 94), 0.14),
+      var(--glow, 0 0 #0000);
+  }
+  :global([data-portal='team']) .input {
+    border: 1px solid var(--border);
+    background: rgba(var(--ov, 255, 255, 255), 0.05);
+  }
+  :global([data-portal='team']) .input:focus {
+    border-color: var(--primary);
+    box-shadow: none;
+  }
+  .send {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold-soft), var(--gold));
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--on-primary, #0c0c0e);
+    user-select: none;
+    transition:
+      opacity 0.15s,
+      transform 0.1s;
+  }
+  :global([data-portal='team']) .send {
+    background: var(--primary);
+    color: var(--on-primary-w, #fff);
+  }
+  .send:hover {
+    opacity: 0.85;
+  }
+  .send:active {
+    transform: scale(0.93);
+  }
+  .send:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* ── What stands where there is no conversation ─────────────────────────── */
+  /* .chat-empty-state: the placeholder, and (with 32px round it, inline) the cards */
+  .empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 13px;
+    gap: 10px;
+    text-align: center;
+  }
+  .placeholderIcon {
+    opacity: 0.25;
+  }
+  .card {
+    padding: 32px;
+  }
+  .cardIcon {
+    opacity: 0.3;
+  }
+  .cardTitle {
+    font-weight: 600;
+    margin-top: 4px;
+  }
+  .cardBody {
+    font-size: 12.5px;
+    color: var(--muted);
+    max-width: 320px;
+    line-height: 1.6;
+  }
+  .cardBtn.cardBtn {
+    margin-top: 10px;
+  }
+  /* "No messages in this space yet." */
+  .quiet {
+    padding: 28px;
+  }
+
+  /* ── A phone: one pane at a time ────────────────────────────────────────── */
+  /* (the classic rules hide both panes unless they are marked .mob-show, and Google Chat never marks them: so it shows nothing) */
+  @media (max-width: 700px) {
+    .layout {
+      grid-template-columns: 1fr;
+      height: calc(100vh - 64px);
+      height: calc(100dvh - 64px);
+    }
+    :global([data-portal='team']) .layout {
+      height: calc(100vh - var(--topbar-h) - var(--bottomnav-h));
+      height: calc(100dvh - var(--topbar-h) - var(--bottomnav-h) - env(safe-area-inset-bottom));
+    }
+    .layout[data-pane='list'] .main {
+      display: none;
+    }
+    .layout[data-pane='main'] .rooms {
+      display: none;
+    }
+    .back {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 38px;
+      padding: 14px 4px;
+      margin: -14px 0;
+    }
+    .msg {
+      max-width: 88%;
+    }
+    .messages {
+      padding: 14px;
+    }
+    /* mobile.css: a tighter header and composer, a bigger button to press, and a box that may shrink */
+    .header {
+      padding: 9px 10px;
+      gap: 7px;
+    }
+    .name {
+      font-size: 13.5px;
+    }
+    .composer {
+      gap: 4px;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+    .input {
+      font-size: 16px;
+      min-width: 0;
+    }
+    .send {
+      min-width: 44px;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+}
